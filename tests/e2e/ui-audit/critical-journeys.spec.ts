@@ -61,8 +61,13 @@ test.beforeEach(async ({ page, browser }, info) => {
   });
   page.on('websocket', (ws) => rejected.push('native WebSocket: ' + ws.url()));
   page.on('pageerror', (err) => {
-    // serviceWorkers:'block' makes Playwright read navigator.serviceWorker in every frame; sandboxed element iframes throw on that read.
-    if (!err.message.startsWith("Failed to read the 'serviceWorker' property from 'Navigator'"))
+    // serviceWorkers:'block' makes Playwright read navigator.serviceWorker in every frame; sandboxed element iframes throw on that read
+    // (Chromium and WebKit word it differently).
+    if (
+      !err.message.startsWith("Failed to read the 'serviceWorker' property from 'Navigator'") &&
+      err.message !==
+        "Service Worker is disabled because the context is sandboxed and lacks the 'allow-same-origin' flag"
+    )
       rejected.push('pageerror: ' + err.message);
   });
   await info.attach('runtime-identity', {
@@ -309,6 +314,9 @@ test('CJA1 Home and Floating retain accepted cancellation through smoothing and 
       (await snapshot(page)).requests.find((row) => row.method === 'chat.abort')?.params,
     ).toEqual({ runId: request.runId, sessionKey: request.sessionKey });
     await transition(page, { action: 'duplicate_final' });
+    // The reveal is ~82 ticks of 16ms page time; on wall time each tick also pays a full
+    // transcript render, so drive it on the paused clock instead of racing settled()'s budget.
+    await page.clock.runFor(2_000);
     await page.clock.resume();
     await settled(page);
     state = await assistantSnapshot(page);

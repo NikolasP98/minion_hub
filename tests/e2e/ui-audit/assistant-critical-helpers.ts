@@ -92,7 +92,9 @@ export async function pauseAssistantTimers(page: Page) {
     clocked.add(page);
   }
   const now = await page.evaluate(() => Date.now());
-  await page.clock.pauseAt(new Date(now + 20));
+  // The installed clock keeps running across the two protocol round trips (>100ms under load),
+  // so a +20ms target can already be in the past; pausing a second ahead only fast-forwards idle time.
+  await page.clock.pauseAt(new Date(now + 1_000));
 }
 export async function advanceAssistantTime(page: Page, milliseconds: number) {
   const now = await page.evaluate(() => Date.now());
