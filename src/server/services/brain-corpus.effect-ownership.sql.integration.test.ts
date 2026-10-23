@@ -187,7 +187,7 @@ beforeAll(async () => {
   await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}",pg_catalog;
     CREATE EXTENSION vector WITH SCHEMA "${schema}";
     CREATE TABLE bg_jobs(id text primary key,tenant_id text not null,user_id text,type text not null,ref_id text,status text not null default 'queued',
-      cursor text,error text,attempts integer not null default 0,lease_until bigint,created_at bigint not null,updated_at bigint not null,started_at bigint,finished_at bigint);
+      cursor text,error text,attempts integer not null default 0,next_attempt_at bigint, lease_until bigint,created_at bigint not null,updated_at bigint not null,started_at bigint,finished_at bigint);
     CREATE TABLE organizations(id uuid primary key default gen_random_uuid());
     CREATE TABLE messages(id uuid primary key default gen_random_uuid(),org_id text not null,channel text not null,account_id text,chat_id text,message_id text,
       direction text not null default 'inbound',content text,sender_id text,sender_name text,occurred_at timestamptz,created_at timestamptz not null default now(),

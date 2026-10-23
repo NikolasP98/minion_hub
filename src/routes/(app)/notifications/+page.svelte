@@ -1,9 +1,15 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { rememberView } from '$lib/shell/remember-view.svelte';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
+  import { page } from '$app/state';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import PulseReceipt from '$lib/components/pulse/PulseReceipt.svelte';
   import { invalidate } from '$app/navigation';
   import { refreshNotifications } from '$lib/state/features/notifications.svelte';
+  import { conn } from '$lib/state/gateway/connection.svelte';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import { toastPromise } from '$lib/state/ui/toast.svelte';
   import { dayGroupLabel, groupByDay, kindLabel, timeAgo } from '$lib/inbox/feed';
@@ -36,6 +42,13 @@
 
   let { data }: { data: PageData } = $props();
 
+  const actions = tryUseActions();
+  $effect(() => {
+    pulse.syncScope(actions?.scopeVersion);
+  });
+  $effect(() => {
+    if (conn.connectedAt) untrack(() => void pulse.recover(refreshPulseNotifications));
+  });
   let reviewing = $state<string | null>(null);
   let pulseBusyId = $state<string | null>(null);
 
@@ -108,11 +121,20 @@
     void refetchInbox();
   }
 
-  async function decidePulse(id: string, action: 'approve' | 'dismiss') {
+  async function refreshPulseNotifications() {
+    await checkedRefresh(
+      () => invalidate('app:notifications'),
+      () => page,
+    );
+  }
+  async function decidePulse(id: string, revision: number, action: 'approve' | 'dismiss') {
+    if (pulseBusyId || pulse.recovery || pulse.receipt(id)) return;
     pulseBusyId = id;
     try {
-      await (action === 'approve' ? pulse.approve(id) : pulse.dismiss(id));
-      await invalidate('app:notifications');
+      const options = { actions, refresh: refreshPulseNotifications };
+      await (action === 'approve'
+        ? pulse.approve(id, revision, options)
+        : pulse.dismiss(id, revision, options));
     } finally {
       pulseBusyId = null;
     }
@@ -184,6 +206,14 @@
   </PageHeader>
 
   <PageBody width="content">
+    {#if pulse.error}<p class="t-caption" role="alert">{pulse.error}</p>{/if}
+    {#if pulse.recovery}<Button
+        variant="secondary"
+        loading={pulse.busy}
+        onclick={() => pulse.recover(refreshPulseNotifications)}>{m.asyncAction_reload()}</Button
+      >{/if}
+    {#each pulse.receipts as receipt (receipt.proposalId)}<PulseReceipt {receipt} />{/each}
+
     <div class="inbox-toolbar">
       <SegmentedControl
         aria-label={m.inbox_kindAll()}
@@ -288,13 +318,16 @@
                   <p>{p.summary}</p>
                 {/if}
                 <Badge variant="neutral" size="sm">{m.nav_pulse()}</Badge>
+                <span class="t-caption">{m.pulse_revision({ revision: p.revision })}</span>
               </div>
               <div class="notification-actions">
                 <Button
                   variant="secondary"
                   size="sm"
-                  disabled={pulseBusyId === p.id}
-                  onclick={() => decidePulse(p.id, 'approve')}
+                  disabled={pulseBusyId !== null ||
+                    pulse.recovery !== null ||
+                    pulse.receipt(p.id) !== undefined}
+                  onclick={() => decidePulse(p.id, p.revision, 'approve')}
                 >
                   <Check size={iconSizes.sm} />
                   {m.notif_approve()}
@@ -303,7 +336,10 @@
                   variant="danger"
                   size="sm"
                   loading={pulseBusyId === p.id}
-                  onclick={() => decidePulse(p.id, 'dismiss')}
+                  disabled={pulseBusyId !== null ||
+                    pulse.recovery !== null ||
+                    pulse.receipt(p.id) !== undefined}
+                  onclick={() => decidePulse(p.id, p.revision, 'dismiss')}
                 >
                   <X size={iconSizes.sm} />
                   {m.common_dismiss()}

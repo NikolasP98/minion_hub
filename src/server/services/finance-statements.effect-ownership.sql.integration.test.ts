@@ -147,7 +147,7 @@ beforeAll(async () => {
     await owner.unsafe(`CREATE SCHEMA "${schema}"; SET search_path TO "${schema}";
     CREATE TABLE bg_jobs (id text primary key, tenant_id text not null, user_id text, type text not null,
       ref_id text, status text not null default 'queued', cursor text, error text, attempts integer not null default 0,
-      lease_until bigint, created_at bigint not null, updated_at bigint not null, started_at bigint, finished_at bigint);`);
+      next_attempt_at bigint, lease_until bigint, created_at bigint not null, updated_at bigint not null, started_at bigint, finished_at bigint);`);
     for (const file of [
       '20260909090100_bg_job_lease_generation.sql',
       '20260909090300_job_effect_receipts.sql',

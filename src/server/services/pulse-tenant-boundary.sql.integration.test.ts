@@ -202,6 +202,19 @@ beforeAll(async () => {
     'utf8',
   );
   await owner.unsafe(migration.replaceAll('public.', `"${schema}".`));
+  await owner.unsafe(
+    `CREATE TABLE bg_jobs(id text PRIMARY KEY,tenant_id text NOT NULL,user_id text,type text NOT NULL,ref_id text,status text NOT NULL DEFAULT 'queued',cursor text,error text,attempts integer NOT NULL DEFAULT 0,lease_generation integer NOT NULL DEFAULT 0,lease_until bigint,created_at bigint NOT NULL,updated_at bigint NOT NULL,started_at bigint,finished_at bigint)`,
+  );
+  await owner.unsafe(
+    readFileSync(
+      new URL(
+        '../../../supabase/migrations/20261023010000_pulse_dispatch_receipts.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  );
+
   await owner.unsafe(`CREATE TABLE gateway (
       id uuid PRIMARY KEY,
       legacy_server_id text,
@@ -224,7 +237,7 @@ beforeAll(async () => {
 }, 20_000);
 
 beforeEach(async () => {
-  await owner`TRUNCATE pulse_proposals,pulse_settings`;
+  await owner`TRUNCATE pulse_dispatches,bg_jobs,pulse_proposals,pulse_settings`;
 });
 
 afterAll(async () => {

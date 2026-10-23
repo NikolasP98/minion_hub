@@ -8,7 +8,10 @@ if (!process.env.MINION_CRITICAL_OUT) throw new Error('Exact built artifact requ
 const evidence = path.resolve(process.env.MINION_CRITICAL_EVIDENCE ?? '.test-artifacts/critical');
 export default defineConfig({
   testDir: './tests/e2e/ui-audit',
-  testMatch: 'critical-journeys.spec.ts',
+  testMatch:
+    process.env.MINION_CRITICAL_PULSE_ONLY === '1'
+      ? 'pulse-critical-journeys.spec.ts'
+      : ['critical-journeys.spec.ts', 'pulse-critical-journeys.spec.ts'],
   workers: 1,
   fullyParallel: false,
   retries: 0,

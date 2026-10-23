@@ -6,6 +6,7 @@ const CRON_AUTH_PATHS = new Set([
   '/api/memberships/tick',
   '/api/org-config/tick',
   '/api/jobs/tick',
+  '/api/pulse/tick',
   '/api/brains/reconcile/tick',
   '/api/meta/sync/tick',
   '/api/marketplace/sync/tick',

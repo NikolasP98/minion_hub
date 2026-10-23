@@ -1,14 +1,21 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
+  import { canClient, canViewPath } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
   import { Bell, ArrowRight, Download, Check, CheckCheck, X } from 'lucide-svelte';
   import { afterNavigate } from '$lib/navigation';
   import { updateState } from '$lib/state/gateway/update-state.svelte';
   import { Button, Popover, Spinner, Tooltip, iconSizes } from '$lib/components/ui';
+  import { conn } from '$lib/state/gateway/connection.svelte';
   import { pulse } from '$lib/state/features/pulse.svelte';
   import { notifications, refreshNotifications } from '$lib/state/features/notifications.svelte';
   import { kindLabel, timeAgo } from '$lib/inbox/feed';
-  import type { PulseProposalRow } from '$server/db/pg-schema/pulse';
+  import PulseReceipt from '$lib/components/pulse/PulseReceipt.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  const actions = tryUseActions();
+  $effect(() => {
+    if (conn.connectedAt && canViewPath('/pulse')) untrack(() => void pulse.recover(undefined));
+  });
 
   interface PendingRequest {
     id: string;
@@ -37,40 +44,43 @@
     placement?: 'top' | 'bottom' | 'left' | 'right' | 'bottom-end';
   } = $props();
 
+  let refreshGeneration = 0;
   let requests = $state<PendingRequest[]>([]);
   let inboxRows = $state<InboxRow[]>([]);
   let loading = $state(false);
   let pulseBusyId = $state<string | null>(null);
 
-  const pulseItems = $derived(pulse.items as unknown as PulseProposalRow[]);
+  const pulseItems = $derived(pulse.items);
   // Unread first so a fresh reminder is never pushed below yesterday's read rows.
   const orderedInbox = $derived(
     [...inboxRows].sort((a, b) => Number(Boolean(a.readAt)) - Number(Boolean(b.readAt))),
   );
   // Rows rendered — read inbox rows included — drives the empty state only.
-  const total = $derived(requests.length + pulseItems.length + inboxRows.length);
+  const total = $derived(
+    requests.length + pulseItems.length + inboxRows.length + pulse.receipts.length,
+  );
 
-  async function fetchRequests() {
+  async function fetchRequests(generation = refreshGeneration) {
     loading = true;
     try {
       const res = await fetch('/api/join-requests/pending');
       if (res.ok) {
         const data = await res.json();
-        requests = data.requests ?? [];
+        if (generation === refreshGeneration) requests = data.requests ?? [];
       }
     } catch {
       // silent
     } finally {
-      loading = false;
+      if (generation === refreshGeneration) loading = false;
     }
   }
 
-  async function fetchInboxRows() {
+  async function fetchInboxRows(generation = refreshGeneration) {
     try {
       const res = await fetch('/api/inbox?limit=8');
       if (res.ok) {
         const data = await res.json();
-        inboxRows = data.items ?? [];
+        if (generation === refreshGeneration) inboxRows = data.items ?? [];
       }
     } catch {
       // silent — the inbox section just stays empty this open
@@ -103,26 +113,43 @@
     void refreshNotifications();
   }
 
-  async function pulseAct(id: string, action: 'approve' | 'dismiss') {
+  async function pulseAct(id: string, revision: number, action: 'approve' | 'dismiss') {
+    if (pulseBusyId || pulse.recovery || pulse.receipt(id)) return;
     pulseBusyId = id;
     try {
       // pulse.act() already re-fetches items + count internally, and
       // notifications.badgeCount reads pulse.pendingCount reactively — the
       // bell badge updates on its own, no extra refresh call needed.
-      await (action === 'approve' ? pulse.approve(id) : pulse.dismiss(id));
+      await (action === 'approve'
+        ? pulse.approve(id, revision, { actions })
+        : pulse.dismiss(id, revision, { actions }));
     } finally {
       pulseBusyId = null;
     }
   }
 
+  // Refresh only for intentional open/identity/access changes. Receipt publication is
+  // an output of these reads and must not become another refresh dependency.
   $effect(() => {
-    if (open) {
-      fetchRequests();
-      fetchInboxRows();
-      pulse.refresh();
-      // Same source as the bell badge, so the header count can never disagree with it.
+    pulse.syncScope(actions?.scopeVersion);
+    const pulseAllowed = canViewPath('/pulse');
+    const reviewAllowed = canClient('users:manage');
+    const isOpen = open;
+    const generation = ++refreshGeneration;
+    untrack(() => {
+      requests = [];
+      inboxRows = [];
+      pulseBusyId = null;
+      if (!isOpen) {
+        loading = false;
+        return;
+      }
+      if (reviewAllowed) void fetchRequests(generation);
+      else loading = false;
+      void fetchInboxRows(generation);
+      if (pulseAllowed) void pulse.refresh();
       void refreshNotifications();
-    }
+    });
   });
 
   // Belt-and-suspenders close: the Popover already dismisses on outside
@@ -217,6 +244,13 @@
         </span>
       </a>
     {/if}
+    {#if pulse.error}<p class="t-caption" role="alert">{pulse.error}</p>{/if}
+    {#if pulse.recovery}<Button
+        variant="secondary"
+        loading={pulse.busy}
+        onclick={() => pulse.recover()}>{m.asyncAction_reload()}</Button
+      >{/if}
+    {#each pulse.receipts as receipt (receipt.proposalId)}<PulseReceipt {receipt} />{/each}
     {#if loading}
       <div class="flex items-center justify-center py-8">
         <Spinner size="md" />
@@ -240,6 +274,7 @@
             class="flex flex-col px-4 py-3 border-b border-[var(--hairline)] hover:bg-bg3/50 transition-colors duration-[var(--duration-fast)]"
           >
             <span class="text-sm font-medium text-foreground truncate">{p.title}</span>
+            <span class="t-caption">{m.pulse_revision({ revision: p.revision })}</span>
             {#if p.summary}
               <p class="text-xs text-muted mt-0.5 line-clamp-2">{p.summary}</p>
             {/if}
@@ -248,7 +283,10 @@
                 variant="ghost"
                 size="xs"
                 loading={pulseBusyId === p.id}
-                onclick={() => pulseAct(p.id, 'approve')}
+                disabled={pulseBusyId !== null ||
+                  pulse.recovery !== null ||
+                  pulse.receipt(p.id) !== undefined}
+                onclick={() => pulseAct(p.id, p.revision, 'approve')}
               >
                 <Check size={iconSizes.xs} />
                 {m.notif_approve()}
@@ -257,7 +295,10 @@
                 variant="ghost"
                 size="xs"
                 loading={pulseBusyId === p.id}
-                onclick={() => pulseAct(p.id, 'dismiss')}
+                disabled={pulseBusyId !== null ||
+                  pulse.recovery !== null ||
+                  pulse.receipt(p.id) !== undefined}
+                onclick={() => pulseAct(p.id, p.revision, 'dismiss')}
               >
                 <X size={iconSizes.xs} />
                 {m.common_dismiss()}

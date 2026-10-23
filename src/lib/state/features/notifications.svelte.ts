@@ -59,6 +59,7 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 /** One request instead of three (`/api/join-requests/count` + `/api/inbox/count`
  *  + `/api/pulse/count`) — see `/api/shell/counts`. */
 async function runRefreshNotifications() {
+  const publishPulseCount = pulse.beginCountRead();
   try {
     const res = await fetch('/api/shell/counts');
     if (res.ok) {
@@ -69,7 +70,7 @@ async function runRefreshNotifications() {
       notifications.inboxUnreadCount = next;
       inboxPrimed = true;
       if (grew) void announceNewestUnread();
-      pulse.setPendingCount(data.pulse ?? 0);
+      publishPulseCount(data.pulse ?? 0);
       notifications.posPendingWork = typeof data.posPending === 'number' ? data.posPending : null;
       notifications.lastFetched = Date.now();
     }

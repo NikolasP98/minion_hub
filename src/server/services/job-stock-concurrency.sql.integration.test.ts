@@ -70,7 +70,7 @@ const fixtureDdl = `
 CREATE TABLE qc_crash_process (pid integer NOT NULL);
 CREATE TABLE bg_jobs (id text PRIMARY KEY, tenant_id text NOT NULL, user_id text, type text NOT NULL,
   ref_id text, status text NOT NULL DEFAULT 'queued', cursor text, error text, attempts integer NOT NULL DEFAULT 0,
-  lease_until bigint, created_at bigint NOT NULL, updated_at bigint NOT NULL, started_at bigint, finished_at bigint);
+  next_attempt_at bigint, lease_until bigint, created_at bigint NOT NULL, updated_at bigint NOT NULL, started_at bigint, finished_at bigint);
 CREATE TABLE fin_invoices (id uuid PRIMARY KEY, org_id text NOT NULL, provider_ref text);
 CREATE TABLE stk_items (id uuid PRIMARY KEY, org_id text NOT NULL, units_per_stock_uom numeric,
   code text NOT NULL DEFAULT 'FIXTURE-ITEM', name text NOT NULL DEFAULT 'Fixture Item');

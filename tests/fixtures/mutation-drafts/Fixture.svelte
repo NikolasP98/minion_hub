@@ -17,6 +17,9 @@
   onDestroy(() => actions.dispose());
   onDestroy(restoreTransport);
   const proposal = {
+    revision: 1,
+    ownerProfileId: null,
+    decidedAt: null,
     id: 'proposal-a',
     orgId: 'synthetic-org-a',
     createdAt: new Date('2026-10-03T12:00:00Z'),

@@ -35,13 +35,19 @@ export interface MatrixEntry {
     | 'column-presentation'
     | 'ui-audit'
     | 'inbox'
-    | 'release';
+    | 'release'
+    | 'pulse';
   readonly why: string;
 }
 
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  ...['legacy', 'owner', 'other-owner', 'conflict', 'indeterminate'].map((scenario) => ({
+    id: `pulse.${scenario}`,
+    domain: 'pulse' as const,
+    why: 'Pulse owner privacy, revision conflicts and retained uncertain receipt',
+  })),
   ...(['owner', 'manager', 'member', 'restricted'] as const).map((persona) => ({
     id: `ui-audit.persona.${persona}-agent`,
     domain: 'ui-audit' as const,

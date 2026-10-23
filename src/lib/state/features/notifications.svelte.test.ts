@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const refreshPulse = vi.fn(async () => {});
 const setPulsePendingCount = vi.fn();
 vi.mock('./pulse.svelte', () => ({
-  pulse: { pendingCount: 0, refreshCount: refreshPulse, setPendingCount: setPulsePendingCount },
+  pulse: {
+    pendingCount: 0,
+    refreshCount: refreshPulse,
+    beginCountRead: () => setPulsePendingCount,
+  },
 }));
 vi.mock('$lib/state/gateway/update-state.svelte', () => ({
   updateState: { pending: false },

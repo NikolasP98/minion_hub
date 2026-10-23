@@ -1,3 +1,6 @@
+import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
+import { cancelPulseForOwnerTx } from './pulse-dispatch.store';
+import { sql as pulseSql } from 'drizzle-orm';
 import type { TenantContext } from './base';
 import { supabaseAdmin } from '$server/supabase';
 
@@ -210,6 +213,13 @@ export async function deleteUser(_ctx: TenantContext, userId: string) {
     console.error('[user.service] deleteUser called with non-uuid id, skipping:', userId);
     return;
   }
+  await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+    const memberships = await tx.execute<{ organization_id: string }>(
+      pulseSql`select organization_id::text from organization_members where profile_id=${userId}::uuid order by organization_id`,
+    );
+    for (const row of memberships)
+      await cancelPulseForOwnerTx(tx, { tenantId: row.organization_id, profileId: userId });
+  });
   await admin.from('organization_members').delete().eq('profile_id', userId);
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) {
@@ -298,6 +308,10 @@ export async function updateUserOrganizations(
   const toAdd = [...desiredIds].filter((id) => !currentIds.has(id));
 
   if (toRemove.length > 0) {
+    await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+      for (const tenantId of [...toRemove].sort())
+        await cancelPulseForOwnerTx(tx, { tenantId, profileId: userId });
+    });
     const { error: delErr } = await admin
       .from('organization_members')
       .delete()

@@ -5,7 +5,10 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const entry = vi.hoisted(() => ({ db: vi.fn() }));
-vi.mock('$server/db/pg-client', () => ({ getCoreDb: entry.db }));
+vi.mock('$server/db/pg-client', () => ({
+  getCoreDb: entry.db,
+  getOrgTransactionDb: (db: unknown) => db,
+}));
 import {
   advanceJob,
   drainJobs,
@@ -72,7 +75,7 @@ beforeAll(async () => {
   await client.exec(`CREATE TABLE bg_jobs (
     id text PRIMARY KEY, tenant_id text NOT NULL, user_id text, type text NOT NULL, ref_id text,
     status text NOT NULL DEFAULT 'queued', cursor text, error text, attempts integer NOT NULL DEFAULT 0,
-    lease_until bigint, created_at bigint NOT NULL, updated_at bigint NOT NULL, started_at bigint, finished_at bigint
+    next_attempt_at bigint, lease_until bigint, created_at bigint NOT NULL, updated_at bigint NOT NULL, started_at bigint, finished_at bigint
   ); INSERT INTO bg_jobs (id, tenant_id, type, created_at, updated_at) VALUES ('existing', 'tenant-a', 'fixture', 1, 1);`);
   await client.exec(migration);
 }, 30_000);

@@ -681,7 +681,7 @@ jobs:
           CREATE ROLE authenticated NOLOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS;
           SQL
 
-      - name: Five formerly uncovered native PostgreSQL fixtures
+      - name: Native PostgreSQL fixtures including Pulse decisions and dispatch
         env:
           HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
           REQUIRE_QA_NATIVE_POSTGRES: '1'
@@ -692,7 +692,7 @@ jobs:
             --reporter=default --reporter=json \
             --outputFile.json=test-results/qa-native-postgres.json
 
-      - name: Refuse incomplete formerly-uncovered native evidence
+      - name: Refuse incomplete native evidence
         if: always()
         run: bun scripts/qc/native-postgres-report.ts qa-native test-results/qa-native-postgres.json
 

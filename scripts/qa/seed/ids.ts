@@ -64,3 +64,7 @@ export function personaEmail(matrixId: string): string {
 /** One password for every QA persona this run — simplest thing that works for
  *  a disposable, non-production stack; override via QA_SEED_PASSWORD. */
 export const QA_PASSWORD = process.env.QA_SEED_PASSWORD ?? 'QaStack!2026';
+
+/** Stable replay namespace for Pulse decision/dispatch fixture rows. */
+export const pulseFixtureId = (scenario: string, kind = 'proposal') =>
+  matrixUuid(`pulse.${scenario}`, kind);
