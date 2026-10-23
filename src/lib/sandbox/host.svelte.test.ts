@@ -121,3 +121,38 @@ describe('createSandboxHost message validation', () => {
     expect(host.versionOf('el_1')).toBe(1);
   });
 });
+
+it.each(['success', 'failure'] as const)(
+  'late accepted sandbox refresh %s cannot publish stale data or errors',
+  async (result) => {
+    const { bindEffectLease } = await import('$lib/assistant/effect-lease');
+    let live = true;
+    const lease = bindEffectLease({ signal: new AbortController().signal }, () => live);
+    let complete!: (value: Response) => void, fail!: (error: Error) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve, reject) => {
+            complete = resolve;
+            fail = reject;
+          }),
+      ),
+    );
+    const publish = vi.fn(() => true);
+    const host = createSandboxHost([], { begin: vi.fn(), publish });
+    try {
+      const loading = host.load(undefined, lease.signal, lease);
+      live = false;
+      if (result === 'failure') fail(Error('old accepted request failed'));
+      else complete(Response.json({ elements: [{ id: 'stale' }] }));
+      expect(await loading).toBe(false);
+      expect(publish).not.toHaveBeenCalled();
+      expect(host.elements).toEqual([]);
+      expect(host.error).toBeNull();
+      expect(host.loading).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);

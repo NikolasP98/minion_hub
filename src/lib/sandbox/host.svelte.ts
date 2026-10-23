@@ -1,3 +1,5 @@
+import { isEffectCurrent, type EffectLease } from '$lib/assistant/effect-lease';
+import type { InvocationCapability } from '$lib/assistant/accepted-runs';
 /**
  * The host side of the sandbox: it owns the element list and is the only thing
  * that talks to the API. Elements run at a null origin and can do nothing but
@@ -57,7 +59,13 @@ function errorText(value: unknown, fallback: string): string {
   return fallback;
 }
 
-export function createSandboxHost(initial: SandboxElementRecord[] = []) {
+export function createSandboxHost(
+  initial: SandboxElementRecord[] = [],
+  publication?: {
+    begin: () => void;
+    publish: (elements: SandboxElementRecord[], capability?: InvocationCapability) => boolean;
+  },
+) {
   let elements = $state<SandboxElementRecord[]>(initial);
   let loading = $state(false);
   let error = $state<string | null>(null);
@@ -107,18 +115,36 @@ export function createSandboxHost(initial: SandboxElementRecord[] = []) {
     return data.type === 'ready';
   }
 
-  async function load() {
+  let loadGeneration = 0;
+  async function load(
+    capability?: InvocationCapability,
+    signal?: AbortSignal,
+    lease?: EffectLease,
+  ): Promise<boolean> {
+    const current = () => !signal?.aborted && isEffectCurrent(lease);
+    if (!current()) return false;
+    const generation = ++loadGeneration;
+    if (!capability) publication?.begin();
     loading = true;
     try {
-      const res = await fetch(ELEMENTS_URL, { headers: { accept: 'application/json' } });
+      const res = await fetch(ELEMENTS_URL, { headers: { accept: 'application/json' }, signal });
+      if (!current() || generation !== loadGeneration) return false;
       if (!res.ok) throw new Error(`could not load elements (${res.status})`);
       const body = (await res.json()) as { elements?: SandboxElementRecord[] };
-      elements = body.elements ?? [];
+      if (!current() || generation !== loadGeneration) return false;
+      const next = body.elements ?? [];
+      // Snapshot and model summary are published in the same synchronous turn.
+      const acknowledged = publication?.publish(next, capability) ?? !capability;
+      if (capability && !acknowledged) return false;
+      elements = next;
       error = null;
+      return true;
     } catch (err) {
-      error = err instanceof Error ? err.message : 'could not load elements';
+      if (current() && generation === loadGeneration)
+        error = err instanceof Error ? err.message : 'could not load elements';
+      return false;
     } finally {
-      loading = false;
+      if (generation === loadGeneration) loading = false;
     }
   }
 

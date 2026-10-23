@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isEffectCurrent, type EffectLease } from '$lib/assistant/effect-lease';
   import type { PageData } from './$types';
   import { page } from '$app/state';
   import { goto } from '$lib/navigation';
@@ -60,6 +61,7 @@
   // item added AND on the first party the user picks themselves — whichever
   // comes first (a clear only happens after a pick, so it is covered too).
   let providerAutofilled = $state(false);
+  let providerSelectionVersion = 0;
 
   // Receipt-only: the "Provider invoice" picker (spec 2026-09-28 Bundle D) —
   // links the entry to a `fin_purchases` row so /stock/entries can show a
@@ -170,7 +172,8 @@
   type Item = StockItemOption;
   const pickedItemIds = $derived(new Set(lines.map((l) => l.itemId)));
 
-  function addItem(item: Item) {
+  async function addItem(item: Item, lease?: EffectLease): Promise<EntryLine | undefined> {
+    if (!isEffectCurrent(lease)) return;
     if (!itemById.has(item.id)) createdItems = [item, ...createdItems];
     const { lines: next, mergedIndex } = mergePickedLine(lines, item.id, () => ({
       itemId: item.id,
@@ -183,10 +186,22 @@
     }));
     lines = next;
     flashIndex = mergedIndex;
-    void autofillProvider(item);
+    // Capture the exact row before the lookup yields: another caller may add,
+    // merge or remove rows while supplier autofill is in flight.
+    const target = lines[mergedIndex ?? lines.length - 1];
+    await autofillProvider(item, target, lease);
+    return target;
   }
   /** One-shot provider autofill — see `autofillPartyId` for the rule. */
-  async function autofillProvider(item: Item) {
+  async function autofillProvider(item: Item, target: EntryLine, lease?: EffectLease) {
+    if (!isEffectCurrent(lease)) return;
+    const selectionVersion = providerSelectionVersion;
+    const entryType = type;
+    const current = () =>
+      isEffectCurrent(lease) &&
+      selectionVersion === providerSelectionVersion &&
+      entryType === type &&
+      lines.includes(target);
     const supplierId = autofillPartyId({
       type,
       partyId,
@@ -197,11 +212,17 @@
     // to run once, not once-per-item-until-one-happens-to-have-a-supplier.
     providerAutofilled = true;
     if (!supplierId) return;
-    const res = await fetch(`/api/crm/parties/${supplierId}`);
-    if (!res.ok) return; // archived/invisible supplier — leave the picker empty
-    // `pick` (not `partyId =`) so the picker shows the name, same as the
-    // assistant fill path.
-    partyPicker?.pick((await res.json()) as PartyOption);
+    try {
+      const res = await fetch(`/api/crm/parties/${supplierId}`, { signal: lease?.signal });
+      if (!current() || !res.ok) return;
+      const supplier = (await res.json()) as PartyOption;
+      if (!current()) return;
+      // `pick` is synchronous: it updates the visible name and calls onPicked.
+      partyPicker?.pick(supplier);
+    } catch {
+      // Optional supplier lookup is best-effort. Keep the added item and the
+      // burned one-shot; a failed/aborted lookup never retries or changes party.
+    }
   }
 
   function removeLine(i: number) {
@@ -360,15 +381,18 @@
           note,
         };
       },
-      set: async (v) => {
+      set: async (v, ctx = { signal: new AbortController().signal }) => {
+        if (!isEffectCurrent(ctx)) return { rejected: [] };
         const rejected: Array<{ key: string; reason: string }> = [];
         const notes: string[] = [];
         const matched = (typed: string, label: string) => {
           if (typed.trim().toLowerCase() !== label.trim().toLowerCase())
             notes.push(`matched "${typed}" → "${label}"`);
         };
-        if (isEntryType(String(v.type ?? '')) && v.type !== type)
+        if (isEntryType(String(v.type ?? '')) && v.type !== type) {
           await goto(`/stock/entries/new?type=${v.type}`, { replaceState: true });
+          if (!isEffectCurrent(ctx)) return { rejected };
+        }
         if (!type) return { rejected: [{ key: 'type', reason: 'pick an entry type first' }] };
 
         if (typeof v.note === 'string') note = v.note;
@@ -376,8 +400,11 @@
         if (typeof v.party === 'string' && v.party.trim()) {
           const res = await fetch(
             `/api/crm/parties?${partyPickerSearchParams(v.party, undefined, undefined, 'ruc')}`,
+            ctx,
           );
+          if (!isEffectCurrent(ctx)) return { rejected };
           const found = res.ok ? ((await res.json()) as PartyOption[]) : [];
+          if (!isEffectCurrent(ctx)) return { rejected };
           const { match, candidates } = fuzzyFind(v.party, found, (p) => [
             p.name,
             p.docNumber,
@@ -393,13 +420,18 @@
             });
         }
 
+        let line = lines.at(-1);
+        let rowChanged = false;
         if (typeof v.item === 'string' && v.item.trim()) {
           const { match, candidates } = fuzzyFind(v.item, availableItems, (it) => [
             it.code,
             it.name,
           ]);
           if (match) {
-            addItem(match);
+            line = await addItem(match, ctx);
+            if (!isEffectCurrent(ctx)) return { rejected };
+            rowChanged = !!line && !lines.includes(line);
+            if (rowChanged) line = undefined;
             matched(v.item, match.name);
           } else
             rejected.push({
@@ -408,11 +440,15 @@
             });
         }
 
-        const line = lines.at(-1);
         for (const key of ['qty', 'rate', 'warehouse'] as const) {
           if (v[key] == null) continue;
           if (!line) {
-            rejected.push({ key, reason: 'add an item first' });
+            rejected.push({
+              key,
+              reason: rowChanged
+                ? 'the selected item row changed while supplier lookup was pending; review it before filling'
+                : 'add an item first',
+            });
             continue;
           }
           if (key === 'warehouse') {
@@ -483,7 +519,10 @@
               label={m.stock_field_party()}
               docLookup
               doc="ruc"
-              onPicked={() => (providerAutofilled = true)}
+              onPicked={() => {
+                providerAutofilled = true;
+                providerSelectionVersion++;
+              }}
             />
           </div>
           {#if type === 'receipt'}

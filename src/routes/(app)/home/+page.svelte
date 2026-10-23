@@ -1,4 +1,12 @@
 <script lang="ts">
+  import { observePreparation } from '$lib/assistant/decision-events';
+  import {
+    createAcceptedSurface,
+    sourceMessageRun,
+    associateDerivedRunMessage,
+    type AcceptedBinding,
+    type TurnOrigin,
+  } from '$lib/assistant/accepted-runs';
   import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
   import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
@@ -46,7 +54,7 @@
   } from '$lib/services/gateway.svelte';
   import { buildAssistantContext } from '$lib/state/features/assistant-context';
   import {
-    requestRouteDecision,
+    requestRouteDecisionWithEvidence,
     gateManifests,
     routerMode,
     type ManifestId,
@@ -482,15 +490,16 @@
         .filter((b) => b?.type === 'tool_use' || b?.type === 'toolCall')
         .map((b) => b.id as string),
     );
-    return {
+    const sources = liveTools.filter((t) => !have.has(t.id));
+    const merged = {
       role: 'assistant',
       content: [
-        ...liveTools
-          .filter((t) => !have.has(t.id))
-          .map((t) => ({ type: 'tool_use', id: t.id, name: t.name, input: t.input })),
+        ...sources.map((t) => ({ type: 'tool_use', id: t.id, name: t.name, input: t.input })),
         ...baseBlocks,
       ],
     } as ChatMessage;
+    associateDerivedRunMessage(merged, [...(streamMessage ? [streamMessage] : []), ...sources]);
+    return merged;
   });
 
   // Stable per-row key derived from content (NOT array index) — so reconciling
@@ -526,7 +535,7 @@
     const rows: RenderedRow[] = [];
     // One row per reply: meta-only tool/reasoning turns fold into the answer that
     // follows (same as the floating assistant), so its sources sit under it.
-    for (const raw of foldToolTurns(messages)) {
+    for (const raw of foldToolTurns(messages, associateDerivedRunMessage)) {
       const m = raw as ChatMessage;
       if (isToolResultOnly(m)) continue;
       const role = msgRole(m);
@@ -673,14 +682,24 @@
     void draft;
     composerRevision++;
   });
-  function updateSubmissionScope() {
+  const readSubmissionScope = () => {
     const id = agentId ?? '';
-    pendingSubmissions.setScope({
+    return {
       actorId: page.data.user?.id ?? '',
       orgId: page.data.activeOrgId ?? '',
       agentId: id,
       sessionKey: chat?.sessionKey ?? `agent:${id}:main`,
-    });
+    };
+  };
+  const acceptedSurface = createAcceptedSurface({
+    readScope: readSubmissionScope,
+    followUp: (parent, results) =>
+      handleSubmit('', 'ask', false, { origin: 'ui_followup', parent, results }),
+  });
+  const acceptedActivity = acceptedSurface.activity;
+  function updateSubmissionScope() {
+    pendingSubmissions.setScope(readSubmissionScope());
+    acceptedSurface.updateScope();
   }
   $effect(() => {
     updateSubmissionScope();
@@ -688,9 +707,13 @@
   $effect(() => {
     setPageContextLocation(page.url.href);
   });
-  const offContextChange = onPageContextChange(() => pendingSubmissions.invalidate());
+  const offContextChange = onPageContextChange((change) => {
+    pendingSubmissions.invalidate();
+    acceptedSurface.contextChanged(change);
+  });
   onDestroy(() => {
     offContextChange();
+    acceptedSurface.dispose();
     pendingSubmissions.invalidate();
   });
   function stopReply() {
@@ -699,11 +722,12 @@
     const id = agentId;
     const displayed = chat;
     const sessionKey = displayed?.sessionKey ?? `agent:${id}:main`;
-    const runId = displayed?.runId;
+    const accepted = !preparing ? acceptedSurface.stop() : undefined;
+    const runId = accepted?.runId ?? displayed?.runId;
     pendingSubmissions.cancel();
     routing = false;
     // Stop during preparation never aborts a different run that appeared meanwhile.
-    if (!preparing && id && runId) void abortChat(id, sessionKey, runId);
+    if (!preparing && id && runId) void abortChat(id, accepted?.sessionKey ?? sessionKey, runId);
   }
 
   // UI choice/artifact callbacks retain their full-envelope classifier bypass.
@@ -711,6 +735,7 @@
     text: string,
     mode: 'ask' | 'capture',
     routed = true,
+    relation: { origin?: TurnOrigin; parent?: AcceptedBinding; results?: string } = {},
   ): Promise<boolean> {
     if (mode === 'capture') {
       console.info('[my-agent] capture', text);
@@ -719,34 +744,48 @@
     if (!agentId || !conn.connected || routing) return false;
     updateSubmissionScope();
     const pending = pendingSubmissions.begin(composerRevision, getPageContextRevision());
+    const observation = observePreparation(pending, relation.origin ?? 'user', relation.parent);
     routing = true;
     try {
       let loaded: ReadonlySet<ManifestId> | undefined;
       if (routed) {
-        const decision = await requestRouteDecision(text, languageTag(), '/home', {
+        const evidence = await requestRouteDecisionWithEvidence(text, languageTag(), '/home', {
           signal: pending.signal,
+          submissionId: pending.submissionId,
         });
+        observation.prepare(evidence);
         updateSubmissionScope();
         if (!pendingSubmissions.isCurrent(pending, getPageContextRevision())) return false;
-        loaded = gateManifests(decision, routerMode());
+        loaded = gateManifests(evidence.decision, routerMode());
       }
+      observation.prepare();
+      const context = (relation.results ?? '') + buildAssistantContext(loaded);
       const submitted = pendingSubmissions.commit(pending, getPageContextRevision(), () =>
-        sendAssistantTurn(
-          pending.agentId,
-          text,
-          buildAssistantContext(loaded),
-          pending.sessionKey,
-          {
-            runId: pending.submissionId,
-            current: () => {
-              updateSubmissionScope();
-              return pendingSubmissions.ownsScope(pending);
-            },
+        sendAssistantTurn(pending.agentId, text, context, pending.sessionKey, {
+          runId: pending.submissionId,
+          silent: relation.origin === 'ui_followup',
+          binding: {
+            pending,
+            surface: acceptedSurface,
+            origin: relation.origin ?? 'user',
+            parent: relation.parent,
           },
-        ),
+          current: () => {
+            updateSubmissionScope();
+            return pendingSubmissions.ownsScope(pending);
+          },
+        }),
       );
+      if (submitted) observation.apply(context, loaded);
       return submitted;
     } finally {
+      observation.discard(
+        pending.phase === 'canceled'
+          ? 'user_stop'
+          : pending.phase === 'invalidated'
+            ? 'context_changed'
+            : 'transport_rejected',
+      );
       if (pendingSubmissions.current === pending) {
         routing = false;
         pendingSubmissions.finish(pending);
@@ -1121,8 +1160,16 @@
                       <ChatTurn
                         message={row.msg}
                         toolResults={toolResultsById}
-                        onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
-                        onChoice={(text) => handleSubmit(text, 'ask', false)}
+                        onArtifactCallback={(cb) =>
+                          handleSubmit(cb, 'ask', false, {
+                            origin: 'artifact',
+                            parent: sourceMessageRun(row.msg),
+                          })}
+                        onChoice={(text) =>
+                          handleSubmit(text, 'ask', false, {
+                            origin: 'ui_choice',
+                            parent: sourceMessageRun(row.msg),
+                          })}
                       />
                       {#if row.text.trim().length > 0}
                         <MessageActions actions={actionsFor(row, ri)} reveal />
@@ -1224,8 +1271,16 @@
                       toolResults={toolResultsById}
                       streaming
                       textOverride={streamDisplay}
-                      onArtifactCallback={(cb) => handleSubmit(cb, 'ask', false)}
-                      onChoice={(text) => handleSubmit(text, 'ask', false)}
+                      onArtifactCallback={(cb) =>
+                        handleSubmit(cb, 'ask', false, {
+                          origin: 'artifact',
+                          parent: sourceMessageRun(streamTurnMessage),
+                        })}
+                      onChoice={(text) =>
+                        handleSubmit(text, 'ask', false, {
+                          origin: 'ui_choice',
+                          parent: sourceMessageRun(streamTurnMessage),
+                        })}
                     />
                     {#if streamDisplay.length === 0 && !streamHasSteps}
                       <!-- Tools running, no answer text yet — live activity verb. -->
@@ -1265,7 +1320,11 @@
             {agentId}
             onsubmit={handleSubmit}
             ownerKey={preferenceOwner()}
-            running={routing || sending || stream !== null || !!streamMessage}
+            running={routing ||
+              sending ||
+              stream !== null ||
+              !!streamMessage ||
+              !!$acceptedActivity}
             onstop={stopReply}
           />
         </div>

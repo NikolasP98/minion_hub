@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   executeTool,
   getTools,
@@ -51,4 +51,19 @@ describe('model-context registry', () => {
     dispose();
     expect(hasTool('boom')).toBe(false);
   });
+});
+
+it('late tool-module completion cannot register after its mounted owner was already disposed', () => {
+  const controller = new AbortController();
+  controller.abort();
+  const changed = vi.fn();
+  const offChanged = onToolChange(changed);
+  const off = registerTool(
+    { name: 'late.sandbox.fixture', description: '', inputSchema: {}, execute: vi.fn() },
+    { signal: controller.signal },
+  );
+  expect(hasTool('late.sandbox.fixture')).toBe(false);
+  expect(changed).not.toHaveBeenCalled();
+  off();
+  offChanged();
 });

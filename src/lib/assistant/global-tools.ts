@@ -1,3 +1,4 @@
+import { isEffectCurrent } from './effect-lease';
 /**
  * Tools available on every page: navigation, page search, spotlight guide,
  * intent choice. Registered once from (app)/+layout.
@@ -83,10 +84,20 @@ export function registerGlobalTools() {
         required: ['steps'],
       },
       // TODO(handoff): Independent native guides need request-bound intent; navigation batches alone are fenced. See meta proposals/2026-10-18-assistant-navigation-confirmation.md.
-      execute: async (input) => {
+      execute: async (input, ctx) => {
+        if (!isEffectCurrent(ctx)) return { error: 'canceled' };
         const steps = (Array.isArray(input.steps) ? input.steps : []) as GuideStep[];
         // Targets mount with the form; give it a moment after navigation.
-        await new Promise((r) => setTimeout(r, 300));
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            clearTimeout(timer);
+            ctx.signal.removeEventListener('abort', finish);
+            resolve();
+          };
+          const timer = setTimeout(finish, 300);
+          ctx.signal.addEventListener('abort', finish, { once: true });
+        });
+        if (!isEffectCurrent(ctx)) return { error: 'canceled' };
         // A target is valid when it is on screen now OR declared by a catalog form
         // for this route (it appears later in the flow — the guide waits for it).
         const onScreen = new Set(

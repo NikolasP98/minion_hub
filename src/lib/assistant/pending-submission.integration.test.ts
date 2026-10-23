@@ -13,6 +13,15 @@ vi.mock('$lib/services/gateway-rpc', () => ({
   gwTrace: vi.fn(),
 }));
 const scope = { actorId: 'actor', orgId: 'org', agentId: 'agent', sessionKey: 'agent:agent:main' };
+async function waitForHistoryRequest() {
+  // Synchronize on recovery dispatch, not the number of promise observers before it.
+  await vi.waitFor(() =>
+    expect(sendRequest).toHaveBeenCalledWith('chat.history', {
+      sessionKey: scope.sessionKey,
+      limit: 200,
+    }),
+  );
+}
 beforeEach(() => {
   vi.useFakeTimers();
   conn.connected = true;
@@ -115,7 +124,7 @@ describe('pending submission transport integration', () => {
       sendAssistantTurn('agent', 'turn A', '', scope.sessionKey, { runId: 'A' });
       if (source === 'ack') {
         rejectSend(new Error('ack lost'));
-        await Promise.resolve();
+        await waitForHistoryRequest();
       } else await vi.advanceTimersByTimeAsync(120_000);
       expect(resolveHistory).toBeTypeOf('function');
       expect(
@@ -148,14 +157,14 @@ describe('pending submission transport integration', () => {
       if (point === 'before-recovery') {
         delete agentChat.agent;
         rejectSend(new Error('old connection closed'));
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(0);
         expect(agentChat.agent).toBeUndefined();
         expect(
           vi.mocked(sendRequest).mock.calls.filter(([method]) => method === 'chat.history'),
         ).toHaveLength(0);
       } else {
         rejectSend(new Error('ack lost'));
-        await Promise.resolve();
+        await waitForHistoryRequest();
         delete agentChat.agent;
         const replacement = ensureAgentChat('agent');
         replacement.runId = 'replacement';
@@ -178,7 +187,7 @@ describe('pending submission transport integration', () => {
     sendAssistantTurn('agent', 'retained transcript', '', scope.sessionKey, { runId: 'A' });
     vi.mocked(getClient).mockReturnValue(null);
     reject(new Error('old socket closed'));
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
     expect(
       vi.mocked(sendRequest).mock.calls.filter(([method]) => method === 'chat.history'),
     ).toHaveLength(0);
@@ -207,7 +216,7 @@ describe('pending submission transport integration', () => {
     );
     manager.finish(turn);
     rejectSend(new Error('ack lost'));
-    await Promise.resolve();
+    await waitForHistoryRequest();
     manager.setScope({ ...scope, actorId: 'other' });
     manager.setScope(scope);
     resolveHistory({ messages: [{ role: 'assistant', content: 'stale owner result' }] });
@@ -228,7 +237,7 @@ describe('pending submission transport integration', () => {
       sendAssistantTurn('agent', 'hello', '', scope.sessionKey, { runId: 'captured' }),
     ).toEqual({ status: 'submitted', runId: 'captured' });
     reject(new Error('ack lost'));
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(0);
     expect(ensureAgentChat('agent').runId).toBe('captured');
     expect(
       vi.mocked(sendRequest).mock.calls.filter(([method]) => method === 'chat.send'),

@@ -200,3 +200,73 @@ it('denies top-level accessors, unknown events and invalid attribution without t
   expect(getter).not.toHaveBeenCalled();
   expect(sdk.construct).not.toHaveBeenCalled();
 });
+
+describe('assistant provenance at the final SDK sink', () => {
+  it('retains all valid probabilities, bounded provenance and explicit known-zero/unknown-null pairs', async () => {
+    const { captureServerEvent } = await import('./posthog');
+    const id = '11111111-1111-4111-8111-111111111111';
+    for (const cost of [
+      { cost_status: 'known', assistant_cost_usd: 0 },
+      { cost_status: 'unknown', assistant_cost_usd: null },
+    ])
+      captureServerEvent({
+        event: 'assistant_route',
+        distinctId: 'server',
+        properties: {
+          ...cost,
+          attempt_id: id,
+          submission_id: id,
+          requested_model: '~typesafe/jev-latest',
+          resolved_model: null,
+          schema_revision: 'a'.repeat(64),
+          question_revision: 'b'.repeat(64),
+          gate_revision: 'c'.repeat(64),
+          attempt_disposition: 'invalid',
+          elapsed_ms: 37,
+          p_mode: 0,
+          p_pages: 0.1,
+          p_forms: 0.2,
+          p_data: 0.3,
+          p_brain: 0.4,
+          p_changelog: 0.5,
+          p_sandbox: 1,
+          prompt: 'private fixture text',
+          unknown: 5,
+        },
+      });
+    await settle();
+    expect(sdk.capture).toHaveBeenCalledTimes(2);
+    for (const [index, cost] of [
+      { cost_status: 'known', assistant_cost_usd: 0 },
+      { cost_status: 'unknown', assistant_cost_usd: null },
+    ].entries()) {
+      expect(sdk.capture.mock.calls[index][0].properties).toMatchObject({
+        ...cost,
+        requested_model: '~typesafe/jev-latest',
+        resolved_model: null,
+        elapsed_ms: 37,
+        p_mode: 0,
+        p_sandbox: 1,
+      });
+      expect(sdk.capture.mock.calls[index][0].properties).not.toHaveProperty('prompt');
+      expect(sdk.capture.mock.calls[index][0].properties).not.toHaveProperty('unknown');
+    }
+  });
+  it('drops inconsistent cost pairs and invalid finite/probability/model/revision values', async () => {
+    const { captureServerEvent } = await import('./posthog');
+    captureServerEvent({
+      event: 'assistant_route',
+      distinctId: 'server',
+      properties: {
+        cost_status: 'known',
+        assistant_cost_usd: null,
+        p_sandbox: 1.1,
+        elapsed_ms: -1,
+        requested_model: 'private value\n',
+        schema_revision: 'invalid',
+      },
+    });
+    await settle();
+    expect(sdk.capture.mock.calls[0][0].properties).toEqual({});
+  });
+});

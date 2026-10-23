@@ -244,3 +244,54 @@ describe('real Hub gateway facade session hook', () => {
     expect(conn.connected).toBe(false);
   });
 });
+
+describe('real gateway final accepted-run integration', () => {
+  it('claims before clearing the run; duplicate final and late ack never re-execute automatic actions', async () => {
+    const { createAcceptedSurface, registerSubmittedRun, observeRunTransport, resetAcceptedRuns } =
+      await import('$lib/assistant/accepted-runs');
+    const { createPendingSubmissions } = await import('$lib/assistant/pending-submission');
+    const { getPageContextRevision } = await import('$lib/assistant/page-context');
+    const { ensureAgentChat } = await import('$lib/state/chat/chat.svelte');
+    const { runAssistantUiCalls } = await import('$lib/assistant/dispatch');
+    vi.mocked(runAssistantUiCalls).mockClear();
+    const scope = {
+      actorId: 'actor',
+      orgId: 'org',
+      agentId: 'owned',
+      sessionKey: 'agent:owned:main',
+    };
+    await wsConnect();
+    const client = authenticate(0, 'finals');
+    await settle();
+    const surface = createAcceptedSurface({ readScope: () => scope, followUp: async () => true });
+    const pending = createPendingSubmissions();
+    pending.setScope(scope);
+    const turn = pending.begin(0, getPageContextRevision());
+    const binding = registerSubmittedRun(turn.submissionId, { pending: turn, surface })!;
+    const chat = ensureAgentChat('owned');
+    chat.runId = binding.runId;
+    chat.sessionKey = scope.sessionKey;
+    const frame = {
+      type: 'event' as const,
+      event: 'chat',
+      payload: {
+        runId: binding.runId,
+        sessionKey: scope.sessionKey,
+        state: 'final',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'fixture final' }] },
+      },
+    };
+    await client.options.onEvent?.(frame);
+    await settle();
+    expect(chat.runId).toBeNull();
+    expect(binding.state).toBe('claimed');
+    expect(runAssistantUiCalls).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(runAssistantUiCalls).mock.calls[0][3]).toBe(binding);
+    await client.options.onEvent?.(frame);
+    observeRunTransport(binding, 'accepted');
+    await settle();
+    expect(runAssistantUiCalls).toHaveBeenCalledTimes(1);
+    surface.dispose();
+    resetAcceptedRuns();
+  });
+});

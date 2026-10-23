@@ -11,6 +11,17 @@ export interface GatewaySessionOwner {
 }
 
 let active = $state.raw<GatewaySessionOwner | null>(null);
+const lifetimeListeners = new Set<() => void>();
+/** Synchronous retirement of local effects; stale socket retirement stays a no-op. */
+export function onGatewaySessionLifetimeChange(listener: () => void): () => void {
+  lifetimeListeners.add(listener);
+  return () => {
+    lifetimeListeners.delete(listener);
+  };
+}
+function lifetimeChanged() {
+  for (const listener of lifetimeListeners) listener();
+}
 
 /** Called only by the gateway facade after authenticated publication. */
 export function publishGatewaySessionOwner(
@@ -23,6 +34,7 @@ export function publishGatewaySessionOwner(
     current: () => active === owner && input.current(),
   });
   active = owner;
+  lifetimeChanged();
   return owner;
 }
 
@@ -30,6 +42,7 @@ export function publishGatewaySessionOwner(
 export function retireGatewaySessionOwner(owner?: GatewaySessionOwner): void {
   if (owner && active !== owner) return;
   active = null;
+  lifetimeChanged();
 }
 
 export function captureGatewaySessionOwner(): GatewaySessionOwner | null {

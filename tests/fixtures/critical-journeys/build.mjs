@@ -42,7 +42,37 @@ const baseAuthority = [
   'src/lib/components/settings/SecretEditModal.svelte',
   'src/lib/components/my-agent/ImageLightbox.svelte',
 ];
-const authority = pulseOnly ? pulseAuthority : [...baseAuthority, ...pulseAuthority];
+const evalOnly = process.env.MINION_CRITICAL_EVAL_ONLY === '1';
+const evalAuthority = [
+  'src/lib/components/layout/FloatingAssistant.svelte',
+  'src/lib/assistant/accepted-runs.ts',
+  'src/lib/assistant/effect-lease.ts',
+  'src/lib/services/gateway/session-owner.svelte.ts',
+  'src/lib/assistant/decision-events.ts',
+  'src/lib/assistant/dispatch.ts',
+  'src/lib/assistant/runner.ts',
+  'src/lib/assistant/model-context.ts',
+  'src/lib/assistant/global-tools.ts',
+  'src/lib/assistant/turn-router.ts',
+  'src/lib/assistant/page-context.ts',
+  'src/lib/sandbox/tools.ts',
+  'src/lib/sandbox/host.svelte.ts',
+  'src/routes/(app)/sandbox/+page.svelte',
+];
+if (evalOnly && pulseOnly) throw Error('Choose one adapter-owned build mode');
+const authority = pulseOnly
+  ? pulseAuthority
+  : [
+      ...baseAuthority.filter(
+        (rel) =>
+          !evalOnly ||
+          (!rel.includes('scheduling/calendar') &&
+            !rel.includes('SecretEditModal') &&
+            !rel.includes('ImageLightbox')),
+      ),
+      ...evalAuthority,
+      ...(evalOnly ? [] : pulseAuthority),
+    ];
 const transformed = new Set();
 const modules = new Set();
 // A prior bundle records selected authority hashes, not every transitive source input.
@@ -50,16 +80,22 @@ const modules = new Set();
 if (process.env.MINION_CRITICAL_REUSE)
   throw Error('Artifact reuse is unsupported; compile current source into fresh output');
 const compilationReuse = null;
-for (const mode of pulseOnly ? ['pulse'] : ['home', 'calendar', 'overlay', 'pulse']) {
+for (const mode of pulseOnly
+  ? ['pulse']
+  : evalOnly
+    ? ['eval']
+    : ['home', 'calendar', 'overlay', 'eval', 'pulse']) {
   const mobile = path.join(hub, 'tests/fixtures/mobile-composition');
   const overlay = path.join(hub, 'tests/fixtures/overlay-native');
   const entry = '\0critical:' + mode;
   const source =
-    mode === 'pulse'
-      ? `import {installPulseTransport} from ${JSON.stringify(fixture + 'pulse-transport.ts')};installPulseTransport(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'PulseFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
-      : mode === 'home'
-        ? `import {install} from ${JSON.stringify(fixture + 'gateway-transport.ts')};install(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'HomeFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
-        : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
+    mode === 'eval'
+      ? `import {installEval} from ${JSON.stringify(fixture + 'eval-transport.ts')};installEval(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'EvalFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+      : mode === 'pulse'
+        ? `import {installPulseTransport} from ${JSON.stringify(fixture + 'pulse-transport.ts')};installPulseTransport(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'PulseFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+        : mode === 'home'
+          ? `import {install} from ${JSON.stringify(fixture + 'gateway-transport.ts')};install(); const {mount}=await import('svelte'); const {default:Fixture}=await import(${JSON.stringify(fixture + 'HomeFixture.svelte')}); await import(${JSON.stringify(hub + 'src/app.css')}); await import(${JSON.stringify(mobile + '/fixture.css')});mount(Fixture,{target:document.getElementById('app')});`
+          : `import ${JSON.stringify(mode === 'calendar' ? mobile + '/calendar.js' : overlay + '/main.js')};`;
   await build({
     base: '/' + mode + '/',
     logLevel: 'warn',
@@ -100,19 +136,27 @@ for (const mode of pulseOnly ? ['pulse'] : ['home', 'calendar', 'overlay', 'puls
           ? { '$lib/paraglide/messages': overlay + '/messages.js', $lib: hub + 'src/lib' }
           : {
               '$app/state':
-                fixture + (mode === 'pulse' ? 'pulse-transport.ts' : 'gateway-transport.ts'),
+                fixture +
+                (mode === 'eval'
+                  ? 'eval-page.svelte.ts'
+                  : mode === 'pulse'
+                    ? 'pulse-transport.ts'
+                    : 'gateway-transport.ts'),
               '$app/navigation':
                 mode === 'pulse'
                   ? fixture + 'pulse-transport.ts'
                   : mobile + '/stubs/app-navigation.js',
               '$app/environment': mobile + '/stubs/app-environment.js',
               '$app/stores': mobile + '/stubs/app-stores.js',
-              '$env/dynamic/public': mobile + '/stubs/env-public.js',
-              '$env/static/public': mobile + '/stubs/env-public.js',
+              '$env/dynamic/public':
+                mode === 'eval' ? fixture + 'eval-env.ts' : mobile + '/stubs/env-public.js',
+              '$env/static/public':
+                mode === 'eval' ? fixture + 'eval-env.ts' : mobile + '/stubs/env-public.js',
               $lib: hub + 'src/lib',
             },
     },
     build: {
+      copyPublicDir: false,
       target: 'es2022',
       copyPublicDir: false,
       outDir: path.join(out, mode),
@@ -194,7 +238,8 @@ fs.writeFileSync(
   ),
   { mode: 0o600 },
 );
-if (files.length > 550 || files.reduce((n, f) => n + f.size, 0) > 50 * 1024 * 1024)
+// Five full-graph entries (home, calendar, overlay, eval, pulse) measure ~53 MiB together.
+if (files.length > 550 || files.reduce((n, f) => n + f.size, 0) > 64 * 1024 * 1024)
   throw Error('Artifact capacity exceeded');
 for (const rel of authority)
   if (!transformed.has(hub + rel)) throw Error('Authority not compiled: ' + rel);
@@ -209,7 +254,7 @@ fs.writeFileSync(
     {
       files,
       compilationReuse,
-      profile: pulseOnly ? 'pulse' : 'base-and-pulse',
+      profile: pulseOnly ? 'pulse' : evalOnly ? 'eval' : 'base-eval-and-pulse',
       authority: [...authority.map((p) => hub + p), ...clients].map((p) => ({
         path: p,
         sha256: sha(fs.readFileSync(p)),

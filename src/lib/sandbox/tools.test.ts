@@ -202,3 +202,34 @@ describe('read tools tolerate either response envelope', () => {
     ]);
   });
 });
+
+test('serial arrange retains a received commit when live validity ends and never starts a second write or refresh', async () => {
+  const { bindEffectLease } = await import('$lib/assistant/effect-lease');
+  let current = true;
+  const lease = bindEffectLease({ signal: new AbortController().signal }, () => current);
+  let release!: (response: Response) => void;
+  fetchMock.mockImplementation(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  );
+  const acknowledge = vi.fn(async () => true);
+  registerSandboxTools({ signal: controller.signal, acknowledge });
+  const pending = executeTool(
+    'sandbox.arrange',
+    { order: ['a', 'b'] },
+    { signal: lease.signal, lease },
+  );
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  current = false;
+  release(jsonResponse({ id: 'a' }));
+  expect(JSON.parse(await pending)).toEqual({
+    updated: 1,
+    failed: ['b'],
+    committed: true,
+    refreshFailed: true,
+  });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(acknowledge).not.toHaveBeenCalled();
+});

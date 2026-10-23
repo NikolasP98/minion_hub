@@ -1,3 +1,5 @@
+import { isEffectCurrent, type EffectLease } from '$lib/assistant/effect-lease';
+import type { InvocationCapability } from '$lib/assistant/accepted-runs';
 /**
  * Page-scoped assistant tools for `/sandbox` (contract §5, spec FR-008).
  *
@@ -118,7 +120,27 @@ const ELEMENT_FIELDS = {
   h: { type: 'number', description: 'Height in grid rows, 1-4.' },
 } as const;
 
-function sandboxTools(): ModelContextTool[] {
+function sandboxTools(
+  acknowledge?: (
+    capability?: InvocationCapability,
+    signal?: AbortSignal,
+    lease?: EffectLease,
+  ) => Promise<boolean>,
+): ModelContextTool[] {
+  const refresh = async (
+    id: string,
+    capability?: InvocationCapability,
+    signal?: AbortSignal,
+    lease?: EffectLease,
+  ) => {
+    if (!isEffectCurrent(lease) || signal?.aborted) return { committed: true, refreshFailed: true };
+    if (acknowledge) {
+      const refreshed = await acknowledge(capability, signal, lease);
+      return refreshed ? {} : { committed: true, refreshFailed: true };
+    }
+    changed(id);
+    return {};
+  };
   return [
     {
       name: 'sandbox.datasets',
@@ -129,8 +151,11 @@ function sandboxTools(): ModelContextTool[] {
         'and guessing them returns an error. Datasets you cannot see are the ones this user has ' +
         'no permission for.',
       inputSchema: { type: 'object', properties: {} },
-      execute: async () => ({
-        datasets: collection(await fetchJson<unknown>('/api/sandbox/datasets'), 'datasets'),
+      execute: async (_input, ctx) => ({
+        datasets: collection(
+          await fetchJson<unknown>('/api/sandbox/datasets', { signal: ctx.signal }),
+          'datasets',
+        ),
       }),
       annotations: { readOnlyHint: true },
     },
@@ -147,7 +172,7 @@ function sandboxTools(): ModelContextTool[] {
         properties: { spec: QUERY_SPEC_SCHEMA },
         required: ['spec'],
       },
-      execute: async (input) => {
+      execute: async (input, ctx) => {
         const spec = (input.spec ?? {}) as Record<string, unknown>;
         const raw = typeof spec.limit === 'number' ? spec.limit : PREVIEW_LIMIT;
         const result = await fetchJson<{
@@ -157,6 +182,7 @@ function sandboxTools(): ModelContextTool[] {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ ...spec, limit: Math.max(1, Math.min(PREVIEW_LIMIT, raw)) }),
+          signal: ctx.signal,
         });
         const rows = result.rows ?? [];
         return {
@@ -186,7 +212,7 @@ function sandboxTools(): ModelContextTool[] {
         },
         required: ['title', 'html', 'js'],
       },
-      execute: async (input) => {
+      execute: async (input, ctx) => {
         const id = str(input.id);
         const body = JSON.stringify({
           title: str(input.title),
@@ -198,11 +224,15 @@ function sandboxTools(): ModelContextTool[] {
         });
         const saved = await fetchJson<unknown>(
           id ? `/api/sandbox/elements/${encodeURIComponent(id)}` : '/api/sandbox/elements',
-          { method: id ? 'PATCH' : 'POST', headers: { 'content-type': 'application/json' }, body },
+          {
+            method: id ? 'PATCH' : 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+            signal: ctx.signal,
+          },
         );
         const savedId = elementId(saved, id);
-        changed(savedId);
-        return { id: savedId };
+        return { id: savedId, ...(await refresh(savedId, ctx.capability, ctx.signal, ctx)) };
       },
       annotations: { readOnlyHint: false },
     },
@@ -216,13 +246,13 @@ function sandboxTools(): ModelContextTool[] {
         properties: { id: { type: 'string' } },
         required: ['id'],
       },
-      execute: async (input) => {
+      execute: async (input, ctx) => {
         const id = str(input.id);
         await fetchJson<unknown>(`/api/sandbox/elements/${encodeURIComponent(id)}`, {
           method: 'DELETE',
+          signal: ctx.signal,
         });
-        changed(id);
-        return { ok: true, id };
+        return { ok: true, id, ...(await refresh(id, ctx.capability, ctx.signal, ctx)) };
       },
       annotations: { readOnlyHint: false },
     },
@@ -233,9 +263,9 @@ function sandboxTools(): ModelContextTool[] {
         'removing something the user refers to by name, and to avoid rebuilding a visual that is ' +
         'already there.',
       inputSchema: { type: 'object', properties: {} },
-      execute: async () => ({
+      execute: async (_input, ctx) => ({
         elements: collection<Record<string, unknown>>(
-          await fetchJson<unknown>('/api/sandbox/elements'),
+          await fetchJson<unknown>('/api/sandbox/elements', { signal: ctx.signal }),
           'elements',
         ).map((e) => describeElement(e as unknown as ElementLike)),
       }),
@@ -267,7 +297,7 @@ function sandboxTools(): ModelContextTool[] {
           },
         },
       },
-      execute: async (input) => {
+      execute: async (input, ctx) => {
         const order = (Array.isArray(input.order) ? input.order : []).filter(
           (v): v is string => typeof v === 'string',
         );
@@ -285,21 +315,29 @@ function sandboxTools(): ModelContextTool[] {
           patches.set(id, patch);
         }
         const failed: string[] = [];
-        await Promise.all(
-          [...patches].map(async ([id, patch]) => {
-            try {
-              await fetchJson<unknown>(`/api/sandbox/elements/${encodeURIComponent(id)}`, {
-                method: 'PATCH',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify(patch),
-              });
-            } catch {
-              failed.push(id);
-            }
-          }),
-        );
-        changed('*');
-        return { updated: patches.size - failed.length, failed };
+        let updated = 0;
+        for (const [id, patch] of patches) {
+          if (!isEffectCurrent(ctx)) {
+            failed.push(id);
+            continue;
+          }
+          try {
+            await fetchJson<unknown>(`/api/sandbox/elements/${encodeURIComponent(id)}`, {
+              method: 'PATCH',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(patch),
+              signal: ctx.signal,
+            });
+            updated++;
+          } catch {
+            failed.push(id);
+          }
+        }
+        return {
+          updated,
+          failed,
+          ...(updated ? await refresh('*', ctx.capability, ctx.signal, ctx) : {}),
+        };
       },
       annotations: { readOnlyHint: false },
     },
@@ -311,6 +349,13 @@ function sandboxTools(): ModelContextTool[] {
  * unmount) to remove them — `registerTool` honours it, so leaving the page
  * takes the schemas out of the envelope again.
  */
-export function registerSandboxTools(opts: { signal: AbortSignal }) {
-  for (const tool of sandboxTools()) registerTool(tool, { signal: opts.signal });
+export function registerSandboxTools(opts: {
+  signal: AbortSignal;
+  acknowledge?: (
+    capability?: InvocationCapability,
+    signal?: AbortSignal,
+    lease?: EffectLease,
+  ) => Promise<boolean>;
+}) {
+  for (const tool of sandboxTools(opts.acknowledge)) registerTool(tool, { signal: opts.signal });
 }

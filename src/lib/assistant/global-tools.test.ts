@@ -46,3 +46,28 @@ describe('registered navigation boundaries', () => {
     }
   });
 });
+
+it('canceled accepted guide never starts after its actual deferred target wait', async () => {
+  const { guide, endGuide } = await import('./guide.svelte');
+  endGuide();
+  const target = document.createElement('button');
+  target.dataset.assist = 'fixture.target';
+  document.body.append(target);
+  const off = registerGlobalTools(),
+    controller = new AbortController();
+  try {
+    const running = executeTool(
+      'ui.guide',
+      { steps: [{ target: 'fixture.target', message: 'Fixture step' }] },
+      { signal: controller.signal },
+    );
+    controller.abort();
+    expect(JSON.parse(await running)).toEqual({ error: 'canceled' });
+    expect(guide.active).toBe(false);
+    expect(guide.steps).toHaveLength(0);
+  } finally {
+    off();
+    target.remove();
+    endGuide();
+  }
+});

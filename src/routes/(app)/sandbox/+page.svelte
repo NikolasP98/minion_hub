@@ -11,7 +11,7 @@
   import { addToPage, DRAG_MIME, type ComponentCopy } from '$lib/sandbox/library';
   import { createSandboxHost, type SandboxElementRecord } from '$lib/sandbox/host.svelte';
   import { byPosition, canvasSummary, layoutUpdates } from '$lib/sandbox/canvas';
-  import { setPageContext } from '$lib/assistant/page-context';
+  import { createPageContextLease } from '$lib/assistant/page-context';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
 
@@ -20,7 +20,14 @@
   // The host owns the list from here (it reloads through the API on every
   // write); the server load is only the first paint.
   // svelte-ignore state_referenced_locally
-  const host = createSandboxHost((data.elements ?? []) as SandboxElementRecord[]);
+  const pageLease = createPageContextLease(
+    canvasSummary((data.elements ?? []) as SandboxElementRecord[]),
+  );
+  // svelte-ignore state_referenced_locally
+  const host = createSandboxHost((data.elements ?? []) as SandboxElementRecord[], {
+    begin: () => pageLease.invalidate(),
+    publish: (elements, capability) => pageLease.update(canvasSummary(elements), capability),
+  });
 
   // The element rows ARE the layout (spec 013 D2): the grid runs controlled and
   // every reorder/resize becomes the minimal PATCH set, debounced so a drag
@@ -62,7 +69,6 @@
   }
 
   // The agent's canvas map (model-only); cleared when the page unmounts.
-  $effect(() => setPageContext(canvasSummary(host.elements)));
 
   // The assistant's page-scoped tools land with S3; `import.meta.glob` keeps the
   // page building while that module is absent (empty map, no resolve error).
@@ -75,8 +81,13 @@
       void loadTools()
         .then((mod) =>
           (
-            mod as { registerSandboxTools?: (opts: { signal: AbortSignal }) => void }
-          ).registerSandboxTools?.({ signal: ac.signal }),
+            mod as {
+              registerSandboxTools?: (opts: {
+                signal: AbortSignal;
+                acknowledge: typeof host.load;
+              }) => void;
+            }
+          ).registerSandboxTools?.({ signal: ac.signal, acknowledge: host.load }),
         )
         .catch(() => {});
     }
@@ -84,6 +95,7 @@
       clearTimeout(layoutTimer);
       ac.abort();
       detach();
+      pageLease.dispose();
     };
   });
 </script>

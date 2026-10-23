@@ -1,3 +1,9 @@
+import {
+  registerSubmittedRun,
+  observeRunTransport,
+  submittedRun,
+  type BindingDescriptor,
+} from '$lib/assistant/accepted-runs';
 // Chat + voice-turn send/load helpers (split from gateway.svelte.ts).
 // These mutate per-agent chat state via `$lib/state/chat/chat.svelte` and
 // dispatch through `sendRequest`. Imported through the gateway facade so
@@ -292,7 +298,12 @@ export function sendAssistantTurn(
   text: string,
   context: string,
   sessionKey = `agent:${agentId}:main`,
-  opts: { silent?: boolean; runId?: string; current?: () => boolean } = {},
+  opts: {
+    silent?: boolean;
+    runId?: string;
+    current?: () => boolean;
+    binding?: BindingDescriptor;
+  } = {},
 ): { status: 'submitted' | 'rejected'; runId: string } {
   const runId = opts.runId ?? uuid();
   const rejected = { status: 'rejected' as const, runId };
@@ -305,6 +316,8 @@ export function sendAssistantTurn(
   // Older SDKs fail closed before touching the composer or transcript.
   if (chat.sending || !conn.connected || !supportsSubmission(client)) return rejected;
 
+  const binding = opts.binding ? registerSubmittedRun(runId, opts.binding) : null;
+  if (opts.binding && !binding) return rejected;
   let request: Promise<unknown>;
   try {
     request = client.beginRequest('chat.send', {
@@ -314,9 +327,11 @@ export function sendAssistantTurn(
       idempotencyKey: runId,
     });
   } catch {
+    if (binding) observeRunTransport(binding, 'rejected');
     return rejected;
   }
 
+  if (binding) submittedRun(binding);
   if (!opts.silent) {
     pushChatMessage(chat, {
       role: 'user',
@@ -351,17 +366,23 @@ export function sendAssistantTurn(
   // Text first, envelope after: the gateway records the whole prompt and
   // truncates long ones from the END, so the envelope must be the part that
   // gets cut, never the user's words.
-  request.catch((e) => {
-    if (!current()) return;
-    clearTimeout(guard);
-    // Dispatch happened; an acknowledgement failure is an unknown outcome.
-    // Retain the run identity for exact abort/reconciliation; never replay it.
-    chat.stream = null;
-    chat.streamMessage = null;
-    chat.sending = false;
-    chat.lastError = String(e);
-    void loadChatHistory(agentId, sessionKey, current);
-  });
+  request
+    .then((ack) => {
+      if (binding && ack && typeof ack === 'object' && 'runId' in ack && ack.runId === runId)
+        observeRunTransport(binding, 'accepted');
+    })
+    .catch((e) => {
+      if (binding) observeRunTransport(binding, 'unknown');
+      if (!current()) return;
+      clearTimeout(guard);
+      // Dispatch happened; an acknowledgement failure is an unknown outcome.
+      // Retain the run identity for exact abort/reconciliation; never replay it.
+      chat.stream = null;
+      chat.streamMessage = null;
+      chat.sending = false;
+      chat.lastError = String(e);
+      void loadChatHistory(agentId, sessionKey, current);
+    });
   return { status: 'submitted', runId };
 }
 

@@ -227,7 +227,7 @@ interface Smoother {
   target: string;
   shown: number;
   timer: ReturnType<typeof setTimeout> | null;
-  pendingFinal: { msg: ChatMessage; onDone: () => void } | null;
+  pendingFinal: { msg: ChatMessage; onDone: (committed: ChatMessage) => void } | null;
 }
 const smoothers = new Map<string, Smoother>();
 
@@ -266,7 +266,7 @@ function commitPending(agentId: string, chat: AgentChatState, s: Smoother): void
   chat.streamMessage = null;
   chat.stream = null;
   smoothers.delete(agentId);
-  pending.onDone();
+  pending.onDone(chat.messages[chat.messages.length - 1]);
 }
 
 function stepSmoother(agentId: string): void {
@@ -329,7 +329,7 @@ export function feedStreamMessage(agentId: string, message: ChatMessage | null):
 export function finishStreamMessage(
   agentId: string,
   finalMsg: ChatMessage,
-  onDone: () => void,
+  onDone: (committed: ChatMessage) => void,
 ): void {
   const chat = ensureAgentChat(agentId);
   let s = smoothers.get(agentId);

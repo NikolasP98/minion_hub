@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isEffectCurrent, type EffectLease } from '$lib/assistant/effect-lease';
   /**
    * In-page "New appointment" form (`/scheduling/bookings/new`). Extracted from
    * the BookingsView modal so the assistant can guide/fill it on a real route and
@@ -160,8 +161,8 @@
     contact && customerName === contact.name && partyId === contact.partyId ? contact.id : null,
   );
 
-  async function loadSlots() {
-    if (!eventTypeId || !date) return;
+  async function loadSlots(_event?: unknown, signal?: AbortSignal, lease?: EffectLease) {
+    if (!isEffectCurrent(lease) || signal?.aborted || !eventTypeId || !date) return;
     const token = ++slotsGeneration;
     const requestScope = { mutationScope, timeZone };
     slotsLoading = true;
@@ -185,10 +186,14 @@
     try {
       const res = await fetch(
         `/api/scheduling/slots?eventTypeId=${eventTypeId}&from=${window.from.toISOString()}&to=${window.to.toISOString()}`,
+        { signal },
       );
+      if (!isEffectCurrent(lease) || signal?.aborted) return;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const nextSlots = ((await res.json()).slots ?? []) as typeof slots;
       if (
+        !isEffectCurrent(lease) ||
+        signal?.aborted ||
         token !== slotsGeneration ||
         requestScope.mutationScope !== mutationScope ||
         requestScope.timeZone !== timeZone
@@ -207,6 +212,8 @@
       }
     } catch {
       if (
+        !isEffectCurrent(lease) ||
+        signal?.aborted ||
         token !== slotsGeneration ||
         requestScope.mutationScope !== mutationScope ||
         requestScope.timeZone !== timeZone
@@ -216,6 +223,7 @@
       slotScope = null;
       slotError = m.sched_slots_unavailable();
     } finally {
+      // Release only this request's busy flag; stale data/error projections above stay fenced.
       if (token === slotsGeneration) slotsLoading = false;
     }
   }
@@ -233,7 +241,8 @@
         client: customerName ?? '',
         phone: phone ?? '',
       }),
-      set: async (v) => {
+      set: async (v, ctx = { signal: new AbortController().signal }) => {
+        if (!isEffectCurrent(ctx)) return { rejected: [] };
         const filled: string[] = [];
         const rejected: Array<{ key: string; reason: string }> = [];
         const notes: string[] = [];
@@ -258,7 +267,10 @@
           date = v.date;
           filled.push('date');
         }
-        if (filled.includes('service') || filled.includes('date')) await loadSlots();
+        if (filled.includes('service') || filled.includes('date')) {
+          await loadSlots(undefined, ctx.signal, ctx);
+          if (!isEffectCurrent(ctx)) return { filled, rejected };
+        }
         if (typeof v.time === 'string' && v.time.trim()) {
           const mm = /^(\d{1,2}):(\d{2})/.exec(v.time.trim());
           const want = mm ? `${mm[1].padStart(2, '0')}:${mm[2]}` : v.time.trim();
@@ -281,18 +293,28 @@
           const q = v.client.trim();
           let found: PartyOption[] = [];
           try {
-            const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(q)}&type=person`);
+            const res = await fetch(`/api/crm/parties?q=${encodeURIComponent(q)}&type=person`, {
+              signal: ctx.signal,
+            });
+            if (!isEffectCurrent(ctx)) return { filled, rejected };
             found = res.ok ? ((await res.json()) as PartyOption[]) : [];
           } catch {
             /* search is best-effort; falls through to "no match" */
           }
+          if (!isEffectCurrent(ctx)) return { filled, rejected };
           const { match, candidates } = fuzzyFind(q, found, (p) => [p.name, p.docNumber, p.phone9]);
           if (match) {
             customerPicker?.pick(match);
             filled.push('client');
             matched(q, match.name ?? '');
           } else if (typeof v.newClientName === 'string' && v.newClientName.trim()) {
-            await customerPicker?.add(v.newClientName, typeof v.phone === 'string' ? v.phone : '');
+            await customerPicker?.add(
+              v.newClientName,
+              typeof v.phone === 'string' ? v.phone : '',
+              null,
+              ctx,
+            );
+            if (!isEffectCurrent(ctx)) return { filled, rejected };
             filled.push('client', 'newClientName');
           } else {
             rejected.push({
@@ -301,7 +323,13 @@
             });
           }
         } else if (typeof v.newClientName === 'string' && v.newClientName.trim()) {
-          await customerPicker?.add(v.newClientName, typeof v.phone === 'string' ? v.phone : '');
+          await customerPicker?.add(
+            v.newClientName,
+            typeof v.phone === 'string' ? v.phone : '',
+            null,
+            ctx,
+          );
+          if (!isEffectCurrent(ctx)) return { filled, rejected };
           filled.push('newClientName');
         }
         if (typeof v.phone === 'string' && v.phone.trim() && !filled.includes('newClientName')) {

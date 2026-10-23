@@ -56,5 +56,11 @@ const server = http.createServer((req, res) => {
   });
   res.end(req.method === 'HEAD' ? undefined : body);
 });
-server.listen(18903, '127.0.0.1', () => console.log('critical-fixture listening 127.0.0.1:18903'));
+const requestedPort =
+  process.env.MINION_CRITICAL_PORT === undefined ? 18903 : Number(process.env.MINION_CRITICAL_PORT);
+if (!Number.isInteger(requestedPort) || requestedPort < 0 || requestedPort > 65535)
+  throw Error('Invalid private fixture port');
+server.listen(requestedPort, '127.0.0.1', () =>
+  console.log(JSON.stringify({ fixturePort: server.address().port })),
+);
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => server.close());

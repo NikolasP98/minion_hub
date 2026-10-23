@@ -150,14 +150,23 @@ export function isToolResultOnly(m: unknown): boolean {
  * assistant message stamped with the last call's time.
  */
 type ChatMsg = { role?: string; content?: unknown; timestamp?: number };
-export function foldToolTurns(messages: readonly unknown[]): ChatMsg[] {
+export function foldToolTurns(
+  messages: readonly unknown[],
+  onFold?: (message: ChatMsg, sources: readonly unknown[]) => void,
+): ChatMsg[] {
   const out: ChatMsg[] = [];
   let pending: RawBlock[] = [];
   let pendingTs: number | undefined;
+  let pendingSources: unknown[] = [];
   const flush = () => {
-    if (pending.length) out.push({ role: 'assistant', content: pending, timestamp: pendingTs });
+    if (pending.length) {
+      const folded = { role: 'assistant', content: pending, timestamp: pendingTs };
+      onFold?.(folded, pendingSources);
+      out.push(folded);
+    }
     pending = [];
     pendingTs = undefined;
+    pendingSources = [];
   };
   for (const m of messages) {
     const mm = m as ChatMsg;
@@ -173,6 +182,7 @@ export function foldToolTurns(messages: readonly unknown[]): ChatMsg[] {
     const blocks = normalizeBlocks(mm.content);
     if (blocks.length > 0 && blocks.every((b) => b.kind === 'tool' || b.kind === 'thinking')) {
       pending.push(...contentBlocks(mm.content));
+      pendingSources.push(m);
       pendingTs = mm.timestamp ?? pendingTs;
       continue;
     }
@@ -181,9 +191,12 @@ export function foldToolTurns(messages: readonly unknown[]): ChatMsg[] {
         typeof mm.content === 'string'
           ? [{ type: 'text', text: mm.content }]
           : contentBlocks(mm.content);
-      out.push({ ...mm, content: [...pending, ...own] });
+      const folded = { ...mm, content: [...pending, ...own] };
+      onFold?.(folded, [...pendingSources, m]);
+      out.push(folded);
       pending = [];
       pendingTs = undefined;
+      pendingSources = [];
     } else {
       out.push(mm);
     }

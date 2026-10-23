@@ -1,3 +1,5 @@
+import { bindEffectLease, isEffectCurrent, type EffectLease } from './effect-lease';
+import type { InvocationCapability } from './accepted-runs';
 /**
  * WebMCP-shaped tool registry for the hub assistant.
  *
@@ -22,7 +24,7 @@ export interface ModelContextTool<I = Record<string, unknown>> {
   /** Returns a string result (WebMCP contract). Objects are JSON-stringified. */
   execute: (
     input: I,
-    ctx: { signal: AbortSignal },
+    ctx: { signal: AbortSignal; capability?: InvocationCapability },
   ) => Promise<string | object | void> | string | object | void;
   annotations?: { readOnlyHint?: boolean; untrustedContentHint?: boolean };
 }
@@ -52,6 +54,7 @@ function emit() {
 
 /** Register one tool. Aborting `signal` unregisters it (WebMCP semantics). */
 export function registerTool(tool: ModelContextTool, opts: { signal?: AbortSignal } = {}) {
+  if (opts.signal?.aborted) return () => {};
   registry.set(tool.name, tool as ModelContextTool);
   try {
     native()?.registerTool(
@@ -72,7 +75,8 @@ export function registerTool(tool: ModelContextTool, opts: { signal?: AbortSigna
     }
   };
   opts.signal?.addEventListener('abort', off, { once: true });
-  emit();
+  if (opts.signal?.aborted) off();
+  else emit();
   return off;
 }
 
@@ -106,16 +110,24 @@ export function hasTool(name: string) {
   return registry.has(name);
 }
 
+export function toolRegistration(name: string): object | undefined {
+  return registry.get(name);
+}
+
 export async function executeTool(
   name: string,
   input: Record<string, unknown>,
-  opts: { signal?: AbortSignal } = {},
+  opts: { signal?: AbortSignal; capability?: InvocationCapability; lease?: EffectLease } = {},
 ): Promise<string> {
   const tool = registry.get(name);
   if (!tool) return JSON.stringify({ error: `tool "${name}" is not available on this page` });
   const signal = opts.signal ?? new AbortController().signal;
+  if (signal.aborted || !isEffectCurrent(opts.lease)) return JSON.stringify({ error: 'canceled' });
   try {
-    return toResultString(await tool.execute(input, { signal }));
+    const context = bindEffectLease({ signal, capability: opts.capability }, () =>
+      isEffectCurrent(opts.lease),
+    );
+    return toResultString(await tool.execute(input, context));
   } catch (e) {
     return JSON.stringify({ error: e instanceof Error ? e.message : String(e) });
   }
@@ -133,19 +145,21 @@ function toResultString(r: unknown): string {
 }
 
 /** Resolve after `name` registers (a form mounting after navigation) or the timeout. */
-export function waitForTool(name: string, ms = 6000): Promise<boolean> {
+export function waitForTool(name: string, ms = 6000, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
   if (hasTool(name)) return Promise.resolve(true);
   return new Promise((resolve) => {
-    const off = onToolChange(() => {
-      if (hasTool(name)) {
-        off();
-        clearTimeout(t);
-        resolve(true);
-      }
-    });
-    const t = setTimeout(() => {
+    const finish = (found: boolean) => {
       off();
-      resolve(false);
-    }, ms);
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      resolve(found);
+    };
+    const abort = () => finish(false);
+    const off = onToolChange(() => {
+      if (hasTool(name)) finish(true);
+    });
+    const timer = setTimeout(() => finish(false), ms);
+    signal?.addEventListener('abort', abort, { once: true });
   });
 }

@@ -1,3 +1,4 @@
+import { bindEffectLease } from './effect-lease';
 /**
  * Executes the `minion-ui` calls found in a finished assistant reply, then —
  * only when the model needs to know something (an error, a read result, an
@@ -9,12 +10,20 @@
 import { executeTool, hasTool, isReadOnly, waitForTool } from './model-context';
 import { parseUiBlocks, type UiCall } from './ui-blocks';
 import { guide } from './guide.svelte';
+import {
+  beginInvocation,
+  isRunCurrent,
+  isInvocationEffectCurrent,
+  settleInvocation,
+  type AcceptedBinding,
+} from './accepted-runs';
 
 export interface UiCallOutcome {
   tool: string;
   result: string;
   /** The tool declared `readOnlyHint`: the model called it to learn something. */
   readOnly?: boolean;
+  contextHandoff?: boolean;
   /** Terminal navigation proposal: no automatic continuation or replay. */
   requiresUserAction?: boolean;
 }
@@ -47,26 +56,45 @@ export function needsFollowUp(outcomes: UiCallOutcome[]): boolean {
   });
 }
 
-export async function runUiCalls(calls: UiCall[]): Promise<UiCallOutcome[]> {
-  // A navigation batch cannot touch the old page, even when a fill precedes it.
-  if (calls.some((call) => call.tool === 'hub.navigate')) {
-    return Promise.all(
-      calls
-        .filter((call) => call.tool === 'hub.navigate')
-        .map(async (call) => ({
-          tool: call.tool,
-          result: await executeTool(call.tool, call.input),
-          requiresUserAction: true,
-        })),
-    );
-  }
+export async function runUiCalls(
+  calls: UiCall[],
+  binding?: AcceptedBinding,
+): Promise<UiCallOutcome[]> {
+  const current = () => !binding || isRunCurrent(binding);
   const outcomes: UiCallOutcome[] = [];
-  for (const call of calls) {
-    // A user-opened form may still be mounting when the next turn arrives.
-    if (call.tool.startsWith('fill_') && !hasTool(call.tool)) await waitForTool(call.tool);
-    const result = await executeTool(call.tool, call.input);
-    outcomes.push({ tool: call.tool, result, readOnly: isReadOnly(call.tool) });
-    label(call, result);
+  // Navigation remains a terminal proposal and excludes every old-page action.
+  const selected = calls.some((c) => c.tool === 'hub.navigate')
+    ? calls.filter((c) => c.tool === 'hub.navigate')
+    : calls;
+  for (const call of selected) {
+    if (!current()) break;
+    if (call.tool.startsWith('fill_') && !hasTool(call.tool)) {
+      await waitForTool(call.tool, 6000, binding?.controller.signal);
+      if (!current()) break;
+    }
+    if (!current()) break;
+    const capability = binding ? beginInvocation(binding, call.tool) : undefined;
+    const result = await executeTool(call.tool, call.input, {
+      signal: binding?.controller.signal,
+      capability,
+      lease: binding
+        ? bindEffectLease(
+            { signal: binding.controller.signal },
+            () => current() && (!capability || isInvocationEffectCurrent(capability)),
+          )
+        : undefined,
+    });
+    const handoff = settleInvocation(capability);
+    if (!current()) break;
+    outcomes.push({
+      tool: call.tool,
+      result,
+      readOnly: isReadOnly(call.tool),
+      requiresUserAction: call.tool === 'hub.navigate',
+      contextHandoff: handoff,
+    });
+    if (call.tool !== 'hub.navigate') label(call, result);
+    if (handoff || call.tool === 'hub.navigate') break;
   }
   return outcomes;
 }
