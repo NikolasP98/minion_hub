@@ -890,7 +890,8 @@ jobs:
 
   critical-journeys-browser:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 105 cases measured at ~23 min on ubuntu-24.04 (21 per project x 5 projects); ~50% headroom.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -915,7 +916,7 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/critical-playwright-browsers
         run: node node_modules/@playwright/test/cli.js install --with-deps chromium firefox webkit
 
-      - name: Run the exact 30-case credential-free matrix
+      - name: Run the exact 105-case credential-free matrix
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/critical-playwright-browsers
           MINION_CRITICAL_RUN_ROOT: ${{ runner.temp }}/critical-journeys-run
