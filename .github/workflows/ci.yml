@@ -890,8 +890,8 @@ jobs:
 
   critical-journeys-browser:
     runs-on: ubuntu-24.04
-    # 105 cases measured at ~23 min on ubuntu-24.04 (21 per project x 5 projects); ~50% headroom.
-    timeout-minutes: 35
+    # 105 cases (21 per project x 5 projects) measured at 24.2 min, 26 min per job on ubuntu-24.04; ~50% headroom.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
