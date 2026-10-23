@@ -77,6 +77,13 @@ describe('POST /api/gateway/whatsapp/member', () => {
     expect(await result()).toEqual({ member: true, profileId: profile, agentId });
   });
 
+  it('not_member when the + and digits forms belong to two different users', async () => {
+    const other = '20000000-0000-4000-8000-000000000009';
+    await db.exec(`insert into user_identities values ('${other}','whatsapp','+51999888777',1);
+      insert into organization_members values ('${org}','${other}');`);
+    expect(await result()).toEqual({ member: false, reason: 'not_member' });
+  });
+
   it('401 without a server token, or with an ambiguous or foreign gateway', async () => {
     await expect(call(undefined, { tenantCtx: { tenantId: org } })).rejects.toMatchObject({
       status: 401,

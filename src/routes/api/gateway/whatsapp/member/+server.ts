@@ -70,15 +70,16 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (channel.length !== 1) return no('account_not_found');
 
   const members = await db.execute<{ user_id: string }>(sql`
-    select ui.user_id from user_identities ui
+    select distinct ui.user_id from user_identities ui
     join organization_members om
       on om.profile_id = ui.user_id and om.organization_id = ${orgId}::uuid
     -- Older claims stored E.164 with '+' (1 of 3 verified rows in prod); compare digits.
     where ui.provider = 'whatsapp' and regexp_replace(ui.external_id, '[^0-9]', '', 'g') = ${digits}
       and ui.verified_at is not null
-    limit 1
+    limit 2
   `);
-  const profileId = members[0]?.user_id;
+  // The unique index is on the raw external_id, so '+N' and 'N' could be two owners: fail closed.
+  const profileId = members.length === 1 ? members[0].user_id : undefined;
   if (!profileId) return no('not_member');
 
   const agents = await db.execute<{
