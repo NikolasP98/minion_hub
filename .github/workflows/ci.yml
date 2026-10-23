@@ -890,8 +890,9 @@ jobs:
 
   critical-journeys-browser:
     runs-on: ubuntu-24.04
-    # 245 cases (21 critical + 28 Pulse/Digest per project x 5 projects); provisional until measured.
-    timeout-minutes: 50
+    # 245 cases (21 critical + 28 Pulse/Digest per project x 5 projects): 22.0 min matrix, 23.5 min job
+    # on ubuntu-24.04; the slowest observed job (105 cases) took 26 min, so ~50% headroom over that.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
