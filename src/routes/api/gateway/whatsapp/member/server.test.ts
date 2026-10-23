@@ -72,6 +72,11 @@ describe('POST /api/gateway/whatsapp/member', () => {
     expect(mocks.limit).toHaveBeenCalledWith('wa-member:srv-1:51999888777', 30, 60_000);
   });
 
+  it('matches an identity stored with a leading +', async () => {
+    await db.exec(`update user_identities set external_id = '+51999888777'`);
+    expect(await result()).toEqual({ member: true, profileId: profile, agentId });
+  });
+
   it('401 without a server token, or with an ambiguous or foreign gateway', async () => {
     await expect(call(undefined, { tenantCtx: { tenantId: org } })).rejects.toMatchObject({
       status: 401,

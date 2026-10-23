@@ -73,7 +73,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     select ui.user_id from user_identities ui
     join organization_members om
       on om.profile_id = ui.user_id and om.organization_id = ${orgId}::uuid
-    where ui.provider = 'whatsapp' and ui.external_id = ${digits} and ui.verified_at is not null
+    -- Older claims stored E.164 with '+' (1 of 3 verified rows in prod); compare digits.
+    where ui.provider = 'whatsapp' and regexp_replace(ui.external_id, '[^0-9]', '', 'g') = ${digits}
+      and ui.verified_at is not null
     limit 1
   `);
   const profileId = members[0]?.user_id;
