@@ -302,6 +302,8 @@ export function install() {
     if (url.pathname === '/api/flows' && method === 'GET') return json({ flows: [] });
     if (url.pathname === '/api/users/aliases' && method === 'GET') return json({ aliases: {} });
     if (url.pathname === '/api/notes' && method === 'GET') return json({ notes: [] });
+    if (url.pathname === '/api/assistant/decision-events' && method === 'POST')
+      return json({ accepted: JSON.parse(String(init?.body)).events.length });
     if (url.pathname === '/api/servers/critical-host/activity-bins' && method === 'GET')
       return json({ bins: [] });
     unexpected.push(`${method} ${url.pathname}`);

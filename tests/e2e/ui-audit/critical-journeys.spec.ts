@@ -60,7 +60,11 @@ test.beforeEach(async ({ page, browser }, info) => {
     }
   });
   page.on('websocket', (ws) => rejected.push('native WebSocket: ' + ws.url()));
-  page.on('pageerror', (err) => rejected.push('pageerror: ' + err.message));
+  page.on('pageerror', (err) => {
+    // serviceWorkers:'block' makes Playwright read navigator.serviceWorker in every frame; sandboxed element iframes throw on that read.
+    if (!err.message.startsWith("Failed to read the 'serviceWorker' property from 'Navigator'"))
+      rejected.push('pageerror: ' + err.message);
+  });
   await info.attach('runtime-identity', {
     body: JSON.stringify({
       browser: browser.version(),
