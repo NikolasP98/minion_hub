@@ -11,9 +11,9 @@ it('actual fixture provider requests preserve prior conversation and expose comp
     locale: 'en',
     model: { requestedModel: 'fixture/main', boundDescriptor: 'utf8-bytes-v1' },
   });
-  const { installEval } = await import('../../fixtures/critical-journeys/eval-transport.ts');
+  const { installEval } = await import('../../fixtures/critical-journeys/eval-transport');
   const { fixtureBridge, FixtureSocket } =
-    await import('../../fixtures/critical-journeys/gateway-transport.ts');
+    await import('../../fixtures/critical-journeys/gateway-transport');
   const previousFetch = globalThis.fetch,
     previousSocket = globalThis.WebSocket;
   installEval();
