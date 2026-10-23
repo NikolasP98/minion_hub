@@ -47,7 +47,13 @@
   import * as m from '$lib/paraglide/messages';
   import { formatMoney } from '$lib/utils/format';
   import { toastError } from '$lib/state/ui/toast.svelte';
-  import { candidatesFor, writePathFor, type Candidate, type Kind } from './composition';
+  import {
+    acceptsQty,
+    candidatesFor,
+    writePathFor,
+    type Candidate,
+    type Kind,
+  } from './composition';
 
   interface Sellable {
     productId: string;
@@ -310,9 +316,14 @@
     });
   }
 
-  function setQty(row: Row, raw: string) {
-    const n = Number(raw);
-    if (!Number.isFinite(n) || n <= 0 || n === row.qty) return;
+  function setQty(row: Row, input: HTMLInputElement) {
+    const n = Number(input.value);
+    if (n === row.qty) return;
+    // A refused value must not stay on screen looking saved.
+    if (!acceptsQty(row.kind, n)) {
+      input.value = String(row.qty);
+      return;
+    }
     void run(async () => {
       switch (writePathFor(row.kind)) {
         case 'package':
@@ -373,7 +384,7 @@
               aria-label={m.pos_catalog_qty_per_unit()}
               value={String(r.qty)}
               disabled={!canEdit || busy}
-              onchange={(e: Event) => setQty(r, (e.currentTarget as HTMLInputElement).value)}
+              onchange={(e: Event) => setQty(r, e.currentTarget as HTMLInputElement)}
             />
             <span class="t-caption unit"
               >{r.kind === 'service' ? m.pos_pkg_sessions_per() : r.detail}</span
