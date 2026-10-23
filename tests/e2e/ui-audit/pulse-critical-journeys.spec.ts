@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 type Snapshot = {
+  feedbackCount?: number;
   requests: {
     method: string;
     path: string;
@@ -300,5 +301,110 @@ for (const locale of ['en', 'es']) {
       true,
     );
     expect(writes(await snapshot(page))).toHaveLength(0);
+  });
+}
+
+for (const locale of ['en', 'es']) {
+  const saveName = locale === 'es' ? 'Guardar comentario' : 'Save feedback';
+  const commentName = locale === 'es' ? 'Comentario (opcional)' : 'Comment (optional)';
+  const reasonName = locale === 'es' ? 'Motivo' : 'Reason';
+  const reloadName = locale === 'es' ? 'Recargar datos' : 'Reload current data';
+  test(`DIGEST1 ${locale} page preserves keyboard feedback after failed save`, async ({ page }) => {
+    await page.goto(
+      `/pulse.html?surface=page&digest&lang=${locale}&feedback-write-fail&digest-malicious-summary`,
+    );
+    await expect(page.locator('img[src*="attacker.invalid"]')).toHaveCount(0);
+    const save = page.getByRole('button', { name: saveName, exact: true });
+    await expect(save).toBeEnabled();
+    await page.getByRole('combobox', { name: reasonName, exact: true }).selectOption('fact_error');
+    await page
+      .getByRole('textbox', { name: commentName, exact: true })
+      .fill('Retain this factual correction.');
+    await save.press('Enter');
+    await expect(page.getByRole('textbox', { name: commentName, exact: true })).toHaveValue(
+      'Retain this factual correction.',
+    );
+    await expect(page.getByRole('combobox', { name: reasonName, exact: true })).toHaveValue(
+      'fact_error',
+    );
+    expect(writes(await snapshot(page))).toHaveLength(1);
+    expect((await snapshot(page)).feedbackCount).toBe(0);
+    await expect(page.getByRole('link', { name: 'ai · 7.0.18', exact: true })).toHaveAttribute(
+      'href',
+      'https://github.com/vercel/ai/releases/tag/ai%407.0.18',
+    );
+  });
+  for (const mode of ['refresh-fail', 'unknown']) {
+    test(`${mode === 'refresh-fail' ? 'DIGEST2' : 'DIGEST3'} ${locale} page reconciles ${mode === 'refresh-fail' ? 'committed feedback refresh with one write' : 'unknown feedback using reads only'}`, async ({
+      page,
+    }) => {
+      await page.goto(`/pulse.html?surface=page&digest&lang=${locale}&feedback-${mode}`);
+      const save = page.getByRole('button', { name: saveName, exact: true });
+      await expect(save).toBeEnabled();
+      await page
+        .getByRole('textbox', { name: commentName, exact: true })
+        .fill('One durable feedback action.');
+      await save.press('Enter');
+      const reload = page.getByRole('button', { name: reloadName, exact: true });
+      await expect(reload).toBeVisible();
+      expect(writes(await snapshot(page))).toHaveLength(1);
+      expect((await snapshot(page)).feedbackCount).toBe(1);
+      await page.evaluate(() => (window as PulseWindow).__pulseFixture!.recover());
+      await reload.press('Enter');
+      await expect(reload).toHaveCount(0);
+      await expect(
+        page.getByRole('button', {
+          name: locale === 'es' ? 'Guardar corrección' : 'Save correction',
+          exact: true,
+        }),
+      ).toBeEnabled();
+      await page.evaluate(() => (window as PulseWindow).__pulseFixture!.reconnect());
+      expect(writes(await snapshot(page))).toHaveLength(1);
+    });
+  }
+  test(`DIGEST4 ${locale} page hides other-owner digest and preserves owner freshness`, async ({
+    page,
+  }) => {
+    await page.goto(`/pulse.html?surface=page&digest&lang=${locale}&other-owner`);
+    await expect(page.locator('[data-pulse-feedback]')).toHaveCount(0);
+    expect(writes(await snapshot(page))).toHaveLength(0);
+    await page.goto(`/pulse.html?surface=page&digest&lang=${locale}`);
+    await expect(page.getByRole('button', { name: saveName, exact: true })).toBeEnabled();
+    await page
+      .getByRole('textbox', { name: commentName, exact: true })
+      .fill('Private unsent owner draft.');
+    await page.evaluate(() => (window as PulseWindow).__pulseFixture!.switchOwner());
+    await expect(page.getByRole('textbox', { name: commentName, exact: true })).toHaveCount(0);
+    expect(writes(await snapshot(page))).toHaveLength(0);
+  });
+}
+
+for (const locale of ['en', 'es']) {
+  test(`DIGEST5 ${locale} page reconnects one actual scheduled SQL card without producing a write`, async ({
+    page,
+  }, info) => {
+    const produced = JSON.parse(
+      fs.readFileSync('tests/fixtures/critical-journeys/scheduled-proposal.json', 'utf8'),
+    );
+    await page.goto(`/pulse.html?surface=page&scheduled&lang=${locale}`);
+    await expect(page.getByRole('heading', { name: produced.title, exact: true })).toHaveCount(1);
+    await expect(page.locator('[data-pulse-feedback]')).toHaveAttribute(
+      'data-pulse-feedback',
+      produced.id,
+    );
+    await page.evaluate(() => (window as PulseWindow).__pulseFixture!.reconnect());
+    await expect(page.getByRole('heading', { name: produced.title, exact: true })).toHaveCount(1);
+    expect(writes(await snapshot(page))).toHaveLength(0);
+    await info.attach('actual-scheduled-card-projection', {
+      body: JSON.stringify({
+        source: 'actual selected scheduler SQL plus owner-scoped listPending read',
+        cardId: produced.id,
+        kind: produced.kind,
+        payload: produced.payload,
+        transport:
+          'immutable actual-service projection rendered in the current production component fixture',
+      }),
+      contentType: 'application/json',
+    });
   });
 }

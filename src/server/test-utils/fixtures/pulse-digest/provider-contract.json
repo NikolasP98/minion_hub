@@ -1,0 +1,24 @@
+{
+  "ai": "7.0.18",
+  "openai": "4.0.9",
+  "api": "chat/completions",
+  "wire": {
+    "model": "fixture/model",
+    "max_tokens": 1024,
+    "usage": {
+      "include": true
+    },
+    "provider": {
+      "allow_fallbacks": false,
+      "require_parameters": true
+    }
+  },
+  "sdk": {
+    "maxRetries": 0,
+    "maxOutputTokens": 1024,
+    "deadlineMs": 30000
+  },
+  "forbidden": ["tools", "models", "stream:true"],
+  "receiptBeforeSdkParse": true,
+  "ordinaryTests": "no external transport"
+}

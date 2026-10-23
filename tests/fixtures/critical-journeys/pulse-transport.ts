@@ -1,5 +1,6 @@
 import type { PulseProposalView } from '$server/services/pulse.service';
 import type { PulseReceipt } from '$server/services/pulse-dispatch.store';
+import scheduledProposal from './scheduled-proposal.json';
 export const page = {
   url: new URL('http://127.0.0.1:18903/pulse.html'),
   params: {},
@@ -12,7 +13,7 @@ export const page = {
     user: { id: 'pulse-owner', role: 'admin' },
     activeOrgId: 'pulse-org',
     activeOrgKind: 'personal',
-    permissions: { permissions: ['pulse:view', 'pulse:edit', 'users:manage'] },
+    permissions: { permissions: ['pulse:view', 'pulse:edit', 'pulse:export', 'users:manage'] },
   },
 };
 export const navigating = null;
@@ -42,17 +43,43 @@ export function bindScopeSwitch(callback: () => void) {
 const requests: { method: string; path: string; body: Record<string, unknown> | null }[] = [];
 const unexpected: string[] = [];
 export function proposal(revision = serverRevision): PulseProposalView {
+  if (new URLSearchParams(location.search).has('scheduled'))
+    return {
+      ...scheduledProposal,
+      createdAt: new Date(scheduledProposal.createdAt),
+      decidedAt: scheduledProposal.decidedAt ? new Date(scheduledProposal.decidedAt) : null,
+      revision,
+      status: decision,
+    };
+  const digest = new URLSearchParams(location.search).has('digest');
   return {
     id: '10000000-0000-4000-8000-000000000001',
     orgId: 'pulse-org',
     createdAt: new Date('2026-10-23T00:00:00Z'),
-    source: 'fixture',
-    kind: 'create_event',
-    title: 'Pulse reviewed calendar action',
-    summary: 'Only this owner can review this action.',
-    payload: {
-      args: { title: 'Review', start: '2030-01-01T09:00:00Z', end: '2030-01-01T10:00:00Z' },
-    },
+    source: digest ? 'dependency-digest' : 'fixture',
+    kind: digest ? 'digest' : 'create_event',
+    title: digest ? 'Review SDK dependency release' : 'Pulse reviewed calendar action',
+    summary: new URLSearchParams(location.search).has('digest-malicious-summary')
+      ? '![untrusted image](https://attacker.invalid/model-image.png)'
+      : 'Only this owner can review this action.',
+    payload: digest
+      ? {
+          digest: {
+            claim: 'The public release affects an installed SDK dependency.',
+            relevance: 'This repository imports ai.',
+            nextStep: 'Review the official release before upgrading.',
+            citations: [
+              {
+                url: 'https://github.com/vercel/ai/releases/tag/ai%407.0.18',
+                package: 'ai',
+                version: '7.0.18',
+              },
+            ],
+          },
+        }
+      : {
+          args: { title: 'Review', start: '2030-01-01T09:00:00Z', end: '2030-01-01T10:00:00Z' },
+        },
     status: decision,
     revision,
     ownerProfileId: 'pulse-owner',
@@ -85,6 +112,8 @@ export function installPulseTransport() {
   let heldReceipt = false;
   let releaseReceipt: (() => void) | undefined;
   let scopeSwitchAt: number | null = null;
+  const feedbackRows: Record<string, unknown>[] = [];
+  let feedbackReadFailed = false;
   let heldProjection = 0;
   const projectionPaths = new Set<string>();
   const releaseProjection: (() => void)[] = [];
@@ -101,6 +130,33 @@ export function installPulseTransport() {
         ? (JSON.parse(options.body) as Record<string, unknown>)
         : null;
     requests.push({ method, path, body });
+    if (path.endsWith('/feedback')) {
+      if (denied) return json({ message: 'Not found' }, 404);
+      if (method === 'GET')
+        return feedbackReadFailed
+          ? json({ message: 'Synthetic feedback refresh failure' }, 503)
+          : json({ feedback: feedbackRows });
+      if (method === 'POST') {
+        if (query.has('feedback-write-fail'))
+          return json({ message: 'Synthetic feedback rejection' }, 400);
+        if (body?.expectedContentRevision !== serverRevision)
+          return json({ message: 'refresh_required' }, 409);
+        const existing = feedbackRows.find((row) => row.clientActionId === body?.clientActionId);
+        if (existing) return json({ feedback: existing });
+        const saved = {
+          ...body,
+          id: crypto.randomUUID(),
+          proposalId: proposal().id,
+          contentRevision: serverRevision,
+          supersedesFeedbackId: body?.supersedesFeedbackId ?? null,
+        };
+        feedbackRows.unshift(saved);
+        if (query.has('feedback-refresh-fail')) feedbackReadFailed = true;
+        if (query.has('feedback-unknown'))
+          throw new TypeError('Synthetic lost feedback acknowledgement');
+        return json({ feedback: saved });
+      }
+    }
     if (method === 'GET' && ['/api/pulse/count', '/api/pulse/proposals'].includes(path)) {
       const response = json(
         path.endsWith('/count')
@@ -235,9 +291,11 @@ export function installPulseTransport() {
       serverRevision,
       dispatches: receipt?.receiptId ? 1 : 0,
       receipt,
+      feedbackCount: feedbackRows.length,
     }),
     recover: () => {
       failInvalidation = false;
+      feedbackReadFailed = false;
     },
     project: () => project?.(),
     reconnect: async () => {

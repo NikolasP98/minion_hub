@@ -76,7 +76,7 @@ describe('actual Pulse migration and restricted owner storage', () => {
     };
     await seedPulse(context);
     await seedPulse(context);
-    expect(registrations).toHaveLength(10);
+    expect(registrations).toHaveLength(20);
     const [counts] =
       await fixture.pg`select (select count(*)::int from pulse_proposals where source='qa') as proposals,(select count(*)::int from pulse_dispatches where gateway_qualification_revision='qa-disabled') as dispatches`;
     expect(counts).toEqual({ proposals: 5, dispatches: 1 });

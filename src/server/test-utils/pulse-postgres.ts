@@ -67,6 +67,17 @@ export async function openPulsePostgres() {
   const migrate = () =>
     applyHubMigration(pg, { version: '20261023010000', body: migration, ledgerSchema: schema });
   await migrate();
+  const digestMigration = readFileSync(
+    new URL('../../../supabase/migrations/20261023020000_pulse_digest.sql', import.meta.url),
+    'utf8',
+  );
+  const migrateDigest = () =>
+    applyHubMigration(pg, {
+      version: '20261023020000',
+      body: digestMigration,
+      ledgerSchema: schema,
+    });
+  await migrateDigest();
   const close = async () => {
     await harness.owner.unsafe(`drop schema ${schema} cascade`);
     await harness.close();
@@ -80,6 +91,8 @@ export async function openPulsePostgres() {
     db: drizzle(pg, { schema: pgSchema }),
     peerDb: drizzle(peer, { schema: pgSchema }),
     migrate,
+    migrateDigest,
+    rerunDigestSql: () => pg.unsafe(digestMigration),
     close,
   };
 }

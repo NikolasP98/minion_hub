@@ -68,3 +68,5 @@ export const QA_PASSWORD = process.env.QA_SEED_PASSWORD ?? 'QaStack!2026';
 /** Stable replay namespace for Pulse decision/dispatch fixture rows. */
 export const pulseFixtureId = (scenario: string, kind = 'proposal') =>
   matrixUuid(`pulse.${scenario}`, kind);
+export const digestFixtureId = (scenario: string, kind = 'run') =>
+  matrixUuid(`pulse.digest.${scenario}`, kind);

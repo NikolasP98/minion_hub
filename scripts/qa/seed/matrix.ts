@@ -43,6 +43,11 @@ export interface MatrixEntry {
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  ...['zero-budget', 'unknown', 'duplicate', 'revoked', 'stale-cursor'].map((scenario) => ({
+    id: `pulse.digest.${scenario}`,
+    domain: 'pulse' as const,
+    why: 'Disabled digest: zero spend, persistent unknown fence, logical duplicate, revoked owner and newer accepted cursor',
+  })),
   ...['legacy', 'owner', 'other-owner', 'conflict', 'indeterminate'].map((scenario) => ({
     id: `pulse.${scenario}`,
     domain: 'pulse' as const,

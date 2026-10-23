@@ -1,0 +1,39 @@
+{
+  "id": "b058c62c-7d38-4c2e-9226-35f989f73c07",
+  "orgId": "10000000-0000-4000-8000-000000000001",
+  "createdAt": "2026-10-23T10:55:55.517Z",
+  "source": "dependency-digest",
+  "kind": "digest",
+  "title": "Review the SDK dependency",
+  "summary": "The official release changes the installed SDK.",
+  "payload": {
+    "digest": {
+      "claim": "Synthetic supported fixture claim.",
+      "nextStep": "Review the linked release before upgrading.",
+      "citations": [
+        {
+          "url": "https://github.com/vercel/ai/releases/tag/v1",
+          "file": "package.json",
+          "package": "ai",
+          "version": "ai@v1",
+          "sourceId": "ai",
+          "dependency": {
+            "file": "package.json",
+            "commit": "4c9b5bf19d9e298df2795324f3f9f8f105b3cf08",
+            "package": "ai",
+            "version": "^7",
+            "fileHash": "414630467f55fe315264d5874c916fc4bf779bf2378f3a5384237a1846abdf65",
+            "lockFile": "bun.lock",
+            "lockHash": "c5e63e6b708c7abc562da19c95d7c317f2fd329fc558b43267e3853d15e454f0"
+          },
+          "contentHash": "736e8da3a2643e9017e6c260422a3f35249f3b1200fc7c9c90460f2efe5d6583"
+        }
+      ],
+      "relevance": "The SDK is present in this repository."
+    }
+  },
+  "status": "pending",
+  "revision": 1,
+  "ownerProfileId": "20000000-0000-4000-8000-000000000001",
+  "decidedAt": null
+}

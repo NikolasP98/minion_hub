@@ -1,4 +1,8 @@
 export const NATIVE_POSTGRES_EXCLUDES = [
+  'src/server/services/pulse-digest.admission.test.ts',
+  'src/server/services/pulse-digest.publication.test.ts',
+  'src/server/services/pulse-feedback.test.ts',
+  'src/server/services/pulse-digest.collection.test.ts',
   '**/*.sql.integration.test.ts',
   'src/server/services/pulse-dispatch.store.test.ts',
   'src/server/services/bg-runtime.selection.test.ts',
@@ -628,6 +632,67 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/services/pulse-digest.admission.test.ts',
+      minimumAssertions: 9,
+      requiredBehaviors: [
+        'native digest accounting and schema requires a stored bounded raw response and usage envelope before received state',
+        'native digest accounting and schema retains replay hashes and bills while bounded cleanup cancels and redacts expired raw evidence',
+        'native digest accounting and schema applies real D and E migration runners twice and paired seed twice',
+        'native digest accounting and schema deduplicates on independent connections before enqueue and permits only one competing snapshot',
+        'native digest accounting and schema locks the last daily allowance and admits one immutable attempt',
+        'native digest accounting and schema denies zero spend unsupported policy amounts and current business or revoked owner',
+        'native digest accounting and schema preserves admitted exposure across policy and day changes and stale late receipt',
+        'native digest accounting and schema enforces effective nonbypass org plus owner RLS and restricts deletion',
+        'native digest accounting and schema rejects mismatched foreign job owner and namespace changes instead of resetting accounting',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-digest.publication.test.ts',
+      minimumAssertions: 10,
+      requiredBehaviors: [
+        'native actual digest worker and atomic publication rejects direct SQL publication binding a received run to another owners card',
+        'native actual digest worker and atomic publication rejects a stale checkpoint before admission with zero provider calls and superseded bookkeeping',
+        'native actual digest worker and atomic publication publishes one card with accepted cursors run and job in the actual selected worker',
+        'native actual digest worker and atomic publication settles deterministic unchanged no-signal without provider traffic',
+        'native actual digest worker and atomic publication retains billed invalid output without cursor advance and fences unknown billing',
+        'native actual digest worker and atomic publication rolls back card cursor run and job together on a cursor fault then recovers locally',
+        'native actual digest worker and atomic publication supersedes a stale source revision without any card or checkpoint overwrite',
+        'native actual digest worker and atomic publication requires full immutable binding and returns the existing decided card only for identical content',
+        'native actual digest worker and atomic publication rejects malformed received SDK index annotations usage and custom output locally preserving raw known bills',
+        'native actual digest worker and atomic publication crashes actual worker children at admission received card cursor and commit boundaries without recall',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-feedback.test.ts',
+      minimumAssertions: 6,
+      requiredBehaviors: [
+        'native owner feedback immutable correction and export uses actual feedback routes and idempotent actions without changing policy',
+        'native owner feedback immutable correction and export enforces strict action UUID content revision and 500 Unicode character boundary',
+        'native owner feedback immutable correction and export permits only one successor under independent concurrent correction transactions',
+        'native owner feedback immutable correction and export denies another current owner cross-org missing member and stale card reads',
+        'native owner feedback immutable correction and export exports bounded owner-only keyset JSONL partitioning factual from preference',
+        'native owner feedback immutable correction and export redacts expired comments using actual bounded cleanup and retains hashes history and billing',
+      ],
+    },
+    {
+      file: 'src/server/services/pulse-digest.collection.test.ts',
+      minimumAssertions: 12,
+      requiredBehaviors: [
+        'native cold-start collection and authenticated selected tick redacts expired raw runs through actual tick with missing-policy',
+        'native cold-start collection and authenticated selected tick redacts expired raw runs through actual tick with expired-policy',
+        'native cold-start collection and authenticated selected tick redacts expired raw runs through actual tick with module-disabled',
+        'native cold-start collection and authenticated selected tick keeps expired late bills without rehydrating response bodies or releasing unknown exposure',
+        'native cold-start collection and authenticated selected tick performs no retained maintenance for absent malformed or mismatching scope',
+        'native cold-start collection and authenticated selected tick caps combined dispatch run source and feedback housekeeping at one hundred raw records per tick',
+        'native cold-start collection and authenticated selected tick starts with an empty queue and one durable immediate poll under duplicate authenticated ticks',
+        'native cold-start collection and authenticated selected tick leaves more than twenty unrelated older jobs untouched',
+        'native cold-start collection and authenticated selected tick records a failed poll at five minutes without a mixed snapshot queue or cursor advance',
+        'native cold-start collection and authenticated selected tick reclaims an expired generation lease and denies a stale collectors successor cadence write',
+        'native cold-start collection and authenticated selected tick fences actual membership deletion during collection and cancels queued digest via the shared caller',
+        'native cold-start collection and authenticated selected tick defers inference without admission when collection leaves fewer than thirty two seconds',
+      ],
+    },
+    {
       file: 'src/server/services/pulse-dispatch.store.test.ts',
       minimumAssertions: 9,
       requiredBehaviors: [
@@ -815,6 +880,10 @@ export function isOrdinaryVitestNativeExclusion(file: string) {
   const normalized = file.replaceAll('\\', '/');
   return (
     [
+      'src/server/services/pulse-digest.admission.test.ts',
+      'src/server/services/pulse-digest.publication.test.ts',
+      'src/server/services/pulse-feedback.test.ts',
+      'src/server/services/pulse-digest.collection.test.ts',
       'src/server/services/pulse-dispatch.store.test.ts',
       'src/server/services/bg-runtime.selection.test.ts',
       'src/server/services/pulse-dispatch.worker.test.ts',

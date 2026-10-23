@@ -39,6 +39,55 @@ describe('POST /api/gateway/pulse/proposals', () => {
   beforeEach(() => {
     mocks.upsert.mockReset().mockResolvedValue({ inserted: 1, skipped: 0 });
   });
+  it.each<[string, Record<string, unknown>]>([
+    ['reserved logical key', { dedupKey: 'internal:dependency-digest:v1:untrusted-run' }],
+    ['reserved internal source', { source: 'dependency-digest' }],
+    ...[
+      'ownerProfileId',
+      'owner_profile_id',
+      'internalRunId',
+      'internal_run_id',
+      'internalPolicyRevision',
+      'internal_policy_revision',
+      'internalInputHash',
+      'internal_input_hash',
+      'internalResultHash',
+      'internal_result_hash',
+    ].flatMap<[string, Record<string, unknown>]>((key) => [
+      [`top-level ${key}`, { [key]: 'untrusted-binding' }],
+      [
+        `nested ${key}`,
+        { payload: { references: [{ metadata: { [key]: 'untrusted-binding' } }] } },
+      ],
+    ]),
+  ])('refuses reserved internal authority before any write: %s', async (_name, override) => {
+    const result = await response(
+      { serverId: 'server-a', tenantCtx: { tenantId: 'org-a', db: mocks.tenantDb } },
+      {
+        orgId: 'org-a',
+        proposals: [validCard, { ...validCard, ...override }],
+      },
+    );
+    expect(result.status).toBe(400);
+    await expect(result.json()).resolves.toEqual({ ok: false, error: 'invalid_proposals' });
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
+  it('preserves identity and legacy tenant checks ahead of reserved-field validation', async () => {
+    const body = {
+      orgId: 'org-b',
+      proposals: [{ ...validCard, dedupKey: 'internal:dependency-digest:v1:attack' }],
+    };
+    expect((await response({}, body)).status).toBe(401);
+    expect(
+      (
+        await response(
+          { serverId: 'server-a', tenantCtx: { tenantId: 'org-a', db: mocks.tenantDb } },
+          body,
+        )
+      ).status,
+    ).toBe(403);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+  });
 
   it.each([
     {},
