@@ -7,5 +7,6 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:catalog');
 
-  return { pos: await loadPosCatalogFormData(ctx, locals.moduleStates?.stock ?? true) };
+  const [stock, crm] = await Promise.all([datasetCtx(locals, 'stock'), datasetCtx(locals, 'crm')]);
+  return { pos: await loadPosCatalogFormData(ctx, locals.moduleStates?.stock ?? true, stock, crm) };
 };

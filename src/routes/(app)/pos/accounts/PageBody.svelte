@@ -1,7 +1,8 @@
 <script lang="ts">
   import { rememberView } from '$lib/shell/remember-view.svelte';
   import type { PageData as LoadedPageData } from './$types';
-  import type { Granted } from '$lib/permissions';
+  import { isDenied, type Granted } from '$lib/permissions';
+  import DataSource from '$lib/components/ui/DataSource.svelte';
   import { invalidate } from '$app/navigation';
   import { page } from '$app/state';
   import { Wallet, CalendarPlus, ShoppingCart } from 'lucide-svelte';
@@ -215,13 +216,18 @@
   />
 </PageShell>
 
+<!-- Scheduling is its own dataset: without view access the schedule form has nothing to offer. -->
+<DataSource value={data.resources} module="scheduling" compact
+  >{#snippet children()}{/snippet}</DataSource
+>
+
 <!-- `openRow`, not `openKey`: an unresolvable key opens nothing. -->
 <ClientAccountDrawer
   clientKey={openRow ? openKey : null}
   clientName={openRow ? nameOf(openRow) : null}
   productNames={data.productNames}
-  eventTypes={data.eventTypes}
-  resources={data.resources}
+  eventTypes={isDenied(data.eventTypes) ? [] : data.eventTypes}
+  resources={isDenied(data.resources) ? [] : data.resources}
   stockEnabled={data.stockEnabled}
   timeZone={data.orgTz}
   mutationScope={page.data.activeOrgId ? `pos:${page.data.activeOrgId}` : ''}

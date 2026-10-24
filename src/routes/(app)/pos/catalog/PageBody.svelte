@@ -1,7 +1,8 @@
 <script lang="ts">
   import { rememberView } from '$lib/shell/remember-view.svelte';
   import type { PageData as LoadedPageData } from './$types';
-  import type { Granted } from '$lib/permissions';
+  import { isDenied, type Granted } from '$lib/permissions';
+  import DataSource from '$lib/components/ui/DataSource.svelte';
   import { invalidate, goto } from '$app/navigation';
   import { page } from '$app/state';
   import { checkedRefresh } from '$lib/services/actions/refresh';
@@ -481,6 +482,11 @@
 
 <svelte:head><title>{m.pos_catalog_title()} — {m.pos_nav_catalog()}</title></svelte:head>
 
+<!-- Stock is its own dataset: without view access the recipe picker stays empty. -->
+<DataSource value={data.stockItems} module="stock" compact
+  >{#snippet children()}{/snippet}</DataSource
+>
+
 <PageShell archetype="collection" scroll="region" labelledBy="pos-catalog-title">
   <DataView views={['table', 'board']} value={viewPref.value} onchange={viewPref.set}>
     {#snippet children({ switcher, view })}
@@ -708,7 +714,7 @@
   <CompositionEditor
     sellable={s}
     {sellables}
-    stockItems={data.stockItems}
+    stockItems={isDenied(data.stockItems) ? [] : data.stockItems}
     {stockEnabled}
     canEdit={canWrite}
     onChanged={() => invalidate('pos:catalog')}

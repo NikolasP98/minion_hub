@@ -30,10 +30,14 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const ctx = await datasetCtx(locals, 'pos');
   if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:appointments');
+  // The calendar IS scheduling data: read it through the scheduling handle (spec 039). A role
+  // without scheduling view gets that dataset's marker for the whole composite page.
+  const sched = await datasetCtx(locals, 'scheduling');
+  if (isDenied(sched)) return { pos: sched };
 
   // The org timezone rides on the resources, exactly like /scheduling/calendar —
   // the two calendars must resolve the SAME window for the same ?view/?date.
-  const resources = await listResources(ctx);
+  const resources = await listResources(sched);
   const orgTz = schedulingTimeZone(resources);
 
   const pageView = parseCalendarPageView(url.searchParams.get('view'));
@@ -47,16 +51,16 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
 
   const activeResources = resources.filter((r) => r.active);
   const [eventTypes, kinds, schedules] = await Promise.all([
-    listEventTypes(ctx),
-    listEventKinds(ctx),
-    Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
+    listEventTypes(sched),
+    listEventKinds(sched),
+    Promise.all(activeResources.map((r) => getResourceSchedule(sched, r.id))),
   ]);
 
   // These three are mutually independent (none consumes another's result) —
   // run them concurrently instead of three sequential round trips.
   const [{ bookings, invoices, accrualSummaries, tagOptions }, categories, pending] =
     await Promise.all([
-      loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true }),
+      loadCalendarWindow(sched, locals, { from, to, eventTypes, pos: true }),
       // The same column's VALUE list — previewed when the operator hovers the
       // `category` option in the calendar's colour picker. Fail-soft for the
       // same reason the colours in `loadPosCalendarWindow` are (a missing POS
@@ -94,7 +98,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     pos: {
       day,
       orgTz,
-      calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
+      calendarScope: calendarWindowScope(sched.tenantId, orgTz),
       view,
       pageView,
       /** Event-scope registry + every tag present on a shown event — the filter's options. */
