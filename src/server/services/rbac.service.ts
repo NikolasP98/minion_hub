@@ -7,6 +7,7 @@ import {
   ALL_SUBRESOURCES,
   FIELD_LEVEL_MODULES,
   SENSITIVE_FIELD_LEVEL,
+  MODULE_LABELS,
   type SubResource,
 } from '$lib/permissions';
 
@@ -70,32 +71,7 @@ export const ACTIONS = ['view', 'create', 'edit', 'delete', 'export', 'manage'] 
 export type PermAction = (typeof ACTIONS)[number];
 export type ActionSet = Record<PermAction, boolean>;
 
-/** Human labels + grouping for the Role Permission Manager UI. */
-export const MODULE_LABELS: Record<Module, string> = {
-  overview: 'Overview',
-  crm: 'CRM',
-  finance: 'Finances',
-  sales: 'Sales',
-  scheduling: 'Scheduling',
-  support: 'Support',
-  projects: 'Projects',
-  memberships: 'Memberships',
-  comms: 'Comms',
-  brains: 'AI Brains',
-  stock: 'Stock',
-  ads: 'Ads',
-  pos: 'Point of Sale',
-  pulse: 'Pulse',
-  agents: 'Agents',
-  channels: 'Channels',
-  flows: 'Agent Builder',
-  marketplace: 'Marketplace',
-  reliability: 'Reliability',
-  workspace: 'Cloud Workspaces',
-  settings: 'Settings',
-  users: 'Users & Team',
-  tools: 'Tool Studio',
-};
+export { MODULE_LABELS };
 
 /** Modules that hold business data (vs platform/admin config). */
 export const BUSINESS_MODULES: readonly Module[] = [

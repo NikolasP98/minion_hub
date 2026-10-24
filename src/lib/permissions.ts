@@ -1,3 +1,5 @@
+import type { Module } from '$server/services/rbac.service';
+import * as m from '$lib/paraglide/messages';
 import { ALL_SUBRESOURCES } from '$lib/routes/route-access-registry';
 import { routeAccessPolicyIdForPath } from '$lib/routes/route-access-policies';
 
@@ -214,4 +216,58 @@ export function effectiveModules(granted: ReadonlySet<string>): Set<ModuleKey> {
     if (mod.resources.some((r) => granted.has(`${r}:view`))) out.add(key);
   }
   return out;
+}
+
+/** Human labels + grouping for the Role Permission Manager UI. */
+export const MODULE_LABELS: Record<Module, string> = {
+  overview: 'Overview',
+  crm: 'CRM',
+  finance: 'Finances',
+  sales: 'Sales',
+  scheduling: 'Scheduling',
+  support: 'Support',
+  projects: 'Projects',
+  memberships: 'Memberships',
+  comms: 'Comms',
+  brains: 'AI Brains',
+  stock: 'Stock',
+  ads: 'Ads',
+  pos: 'Point of Sale',
+  pulse: 'Pulse',
+  agents: 'Agents',
+  channels: 'Channels',
+  flows: 'Agent Builder',
+  marketplace: 'Marketplace',
+  reliability: 'Reliability',
+  workspace: 'Cloud Workspaces',
+  settings: 'Settings',
+  users: 'Users & Team',
+  tools: 'Tool Studio',
+};
+
+/**
+ * Data verbs (spec 039): the owner-facing names of the RBAC actions on a dataset (= module).
+ * `export` / `manage` stay as ACTIONS under "Advanced" (K1).
+ */
+export const DATA_VERBS = {
+  view: { action: 'view', label: () => m.rbac_verb_view() },
+  add: { action: 'create', label: () => m.rbac_verb_add() },
+  edit: { action: 'edit', label: () => m.rbac_verb_edit() },
+  remove: { action: 'delete', label: () => m.rbac_verb_remove() },
+} as const;
+
+/**
+ * Modules whose (app) page reads go through `datasetCtx` (spec 039); grown one module per rollout
+ * slice. Read by spec 037's transition floor (skip it) and by the dataset-read ratchet (zero bare reads).
+ */
+export const DATASET_ENFORCED: readonly Module[] = [];
+
+/** A dataset the caller's role cannot view: returned in a load's data slot instead of throwing. */
+export interface DatasetDenied {
+  denied: Module;
+  verb: 'view';
+}
+
+export function isDenied(v: unknown): v is DatasetDenied {
+  return !!v && typeof v === 'object' && 'denied' in v;
 }
