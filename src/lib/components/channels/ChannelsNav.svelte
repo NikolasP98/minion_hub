@@ -1,10 +1,7 @@
 <script lang="ts">
-  import { canonicalPath } from '$lib/canonical-path';
+  import { navPath } from '$lib/nav/nav-config.svelte';
   import { page } from '$app/state';
-  import {
-    SectionNav,
-    type SectionNavItem,
-  } from '$lib/components/ui/foundations';
+  import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
 
@@ -20,7 +17,7 @@
     })),
   );
 
-  const activeId = $derived(items.find((i) => canonicalPath(page.url.pathname) === i.href)?.id);
+  const activeId = $derived(items.find((i) => navPath() === i.href)?.id);
 </script>
 
 <SectionNav {items} {activeId} ariaLabel={m.nav_channels()} />
