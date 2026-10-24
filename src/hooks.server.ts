@@ -43,7 +43,11 @@ import {
   type PermAction,
 } from '$server/services/rbac.service';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
-import { decideRouteAccess, patternMatches } from '$lib/routes/route-access-policies';
+import {
+  decideRouteAccess,
+  patternMatches,
+  routeAccessPolicyIdForPath,
+} from '$lib/routes/route-access-policies';
 import { SCREEN_DESIGN_MANIFEST } from '$lib/routes/route-design-manifest';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { readNavConfig } from '$server/services/nav-config.service';
@@ -291,8 +295,12 @@ async function prepareRouteGuard(
         if (floor && !granted.has(floor))
           throw error(403, 'You do not have access to this module.');
       }
-      event.locals.pageRule = true; // the page role already decided navigation
-      return { path: hit.target + hit.rest, granted };
+      const full = hit.target + hit.rest;
+      // The page grant replaces the route decision for the target and for sub-paths under the
+      // SAME policy only; a deeper path with its own (stricter) rule is still evaluated below.
+      if (!hit.rest || routeAccessPolicyIdForPath(full) === routeAccessPolicyIdForPath(hit.target))
+        event.locals.pageRule = true;
+      return { path: full, granted };
     }
   }
   // Built-in main at its native path: an explicit `page:<pattern>` row replaces the registry decision.
