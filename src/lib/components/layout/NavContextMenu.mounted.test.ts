@@ -76,6 +76,13 @@ describe('NavContextMenu', () => {
     expect(r[0]).toMatch(/home/i);
   });
 
+  it('(a2) Access… shows only for users:manage, with or without settings:manage', async () => {
+    setup(['users:manage']);
+    mount({ kind: 'item', href: '/pos/sell' });
+    await fireEvent.contextMenu(screen.getByTestId('row'));
+    expect((await rows()).join('|')).toContain('Access');
+  });
+
   it('(b) admin on a built-in page: copy/duplicate/move/rename/hide, no delete', async () => {
     setup(['settings:manage']);
     mount({ kind: 'item', href: '/pos/sell' });

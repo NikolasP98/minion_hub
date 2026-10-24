@@ -7084,5 +7084,14 @@
   "nav_warning_target_gone": "La página de destino ya no existe",
   "nav_saving": "Guardando navegación…",
   "nav_saved": "Navegación actualizada",
-  "nav_dialog_path": "Ruta"
+  "nav_dialog_path": "Ruta",
+  "nav_access_menu": "Acceso…",
+  "nav_access_title": "Quién puede abrir {label}",
+  "nav_access_inherit": "Heredar",
+  "nav_access_allow": "Permitir",
+  "nav_access_deny": "Rechazar",
+  "nav_access_inherit_hint": "Hereda la regla de la sección y, si no, la propia de la página",
+  "nav_access_saved": "Acceso actualizado",
+  "nav_access_saving": "Guardando acceso…",
+  "nav_access_fixed": "Siempre tiene acceso"
 }

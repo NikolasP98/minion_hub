@@ -7084,5 +7084,14 @@
   "nav_warning_target_gone": "Target page no longer exists",
   "nav_saving": "Saving navigation…",
   "nav_saved": "Navigation updated",
-  "nav_dialog_path": "Path"
+  "nav_dialog_path": "Path",
+  "nav_access_menu": "Access…",
+  "nav_access_title": "Who can open {label}",
+  "nav_access_inherit": "Inherit",
+  "nav_access_allow": "Allow",
+  "nav_access_deny": "Deny",
+  "nav_access_inherit_hint": "Inherits the section's rule, then the page's own rule",
+  "nav_access_saved": "Access updated",
+  "nav_access_saving": "Saving access…",
+  "nav_access_fixed": "Always has access"
 }

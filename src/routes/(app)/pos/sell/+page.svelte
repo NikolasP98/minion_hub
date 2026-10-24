@@ -631,6 +631,8 @@
   // a disabled button is never silent (one blocker at a time, not a checklist).
   // Split by step: the cart step can only be blocked by cart-side problems.
   const cartBlocker = $derived.by(() => {
+    // A page grant can open the till to a role that cannot charge (spec 037 FR-010).
+    if (!canAct('pos', 'create')) return m.no_permission();
     if (!shiftOpen) return m.pos_no_open_shift();
     if (cartStorageError) return cartStorageError;
     if (cartProjectionError) return cartProjectionError;
