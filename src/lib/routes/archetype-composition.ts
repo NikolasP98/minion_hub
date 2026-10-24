@@ -141,6 +141,11 @@ function delegateComponents(source: string, body: string): string[] {
  */
 export function composedSource(pageFile: string): string {
   const own = readFileSync(pageFile, 'utf8');
+  // Spec 039: a `DataSource` wrapper page delegates its markup to the sibling `PageBody.svelte`.
+  const sibling = join(dirname(pageFile), 'PageBody.svelte');
+  if (/from '\.\/PageBody\.svelte'/.test(own) && existsSync(sibling)) {
+    return [markupOf(own), composedSource(sibling)].join('\n');
+  }
   const body = markupOf(own);
   const parts = [...layoutChain(pageFile), ...delegateComponents(own, body)]
     .filter((f) => existsSync(f))
