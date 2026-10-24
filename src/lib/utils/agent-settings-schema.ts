@@ -566,19 +566,15 @@ export const AGENT_SETTINGS: AgentSettingDef[] = [
   },
 
   // ── Session ────────────────────────────────────────────────────
+  // TODO(handoff): the gateway's strict AgentEntrySchema has no per-agent `session` object, so
+  // every entry below is rejected on save; remove or move them to the global config panel
+  // (meta proposals/2026-10-22-whatsapp-member-agents-followups.md item 11, spec 035 H1).
   {
     key: 'session.dmScope',
     group: 'session',
     order: 0,
     schema: { type: 'string', title: 'DM Scope' },
     hint: { label: 'DM Scope', help: 'Direct message session scope.' },
-  },
-  {
-    key: 'session.reset',
-    group: 'session',
-    order: 1,
-    schema: { type: 'string', title: 'Reset Policy' },
-    hint: { label: 'Reset Policy', help: 'When sessions are automatically reset.' },
   },
   {
     key: 'session.resetByChannel',
