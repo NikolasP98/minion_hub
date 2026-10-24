@@ -39,10 +39,20 @@ import {
   apiWriteCapability,
   hasOrgCapability,
   type Module,
+  resolveCapabilities,
   type PermAction,
 } from '$server/services/rbac.service';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
-import { decideRouteAccess } from '$lib/routes/route-access-policies';
+import { decideRouteAccess, patternMatches } from '$lib/routes/route-access-policies';
+import { SCREEN_DESIGN_MANIFEST } from '$lib/routes/route-design-manifest';
+import { getCoreCtx } from '$server/auth/core-ctx';
+import { readNavConfig } from '$server/services/nav-config.service';
+import {
+  EMPTY_NAV_CONFIG,
+  floorApplies,
+  moduleViewFloor,
+  resolveNavInstance,
+} from '$lib/nav/custom-sections';
 import { listModuleStates } from '$server/services/modules.service';
 import { isAppRouteBlocked, shouldApplyOrganizationRouteGuards } from '$lib/modules/route-guard';
 import {
@@ -231,12 +241,72 @@ const appHandle: Handle = async ({ event, resolve }) => {
     // applies, or auth-disabled dev reaches routes prod 404s (the per-route
     // guards this hook replaced are gone). The organization guard classifier keeps the
     // /api/metrics bearer bypass (no user / no (app) route id) out of it.
-    await applyModuleAvailabilityGuard(event);
-    await applyRouteAccessGuard(event);
+    const guard = await prepareRouteGuard(event);
+    await applyModuleAvailabilityGuard(event, guard?.path);
+    await applyRouteAccessGuard(event, guard);
     return resolve(event);
   }
   return finishApp({ event, resolve });
 };
+
+interface RouteGuard {
+  /** The path the module + route policies evaluate (the TARGET for a nav instance). */
+  path: string;
+  granted: ReadonlySet<string>;
+}
+
+/**
+ * Spec 037 I1′/I1‴: an unknown path (`/staff/sell~k3x9q2`) resolves to the open
+ * `authenticated` policy, so for a custom-nav instance the guards must evaluate
+ * the TARGET path plus the instance's page grant `page:<id>:view`, and the
+ * module-view floor while `floorApplies(target)`. Page requests only.
+ * Sets `locals.pageRule`: true = the page role already decided (skip the route
+ * policy), false = explicit deny, undefined = today's route policy.
+ */
+async function prepareRouteGuard(
+  event: Parameters<Handle>[0]['event'],
+): Promise<RouteGuard | undefined> {
+  const user = event.locals.user;
+  if (
+    !user ||
+    !shouldApplyOrganizationRouteGuards(true, Boolean(event.locals.tenantCtx), event.route.id)
+  ) {
+    return undefined;
+  }
+  // Cached (2m) — the same resolver the layout bundle serves to the client.
+  const permissions = await loadPermissionsForUser(event.locals, user.id);
+  const granted = new Set(permissions.permissions);
+  const canonical = canonicalPath(event.url.pathname);
+  // Only an instance path pays for the nav-config read (cached by the service).
+  if (canonical.split('/')[2]?.includes('~')) {
+    const ctx = await getCoreCtx(event.locals);
+    event.locals.navConfig = ctx
+      ? await readNavConfig(ctx).catch(() => EMPTY_NAV_CONFIG)
+      : EMPTY_NAV_CONFIG;
+    const hit = resolveNavInstance(event.locals.navConfig, canonical);
+    if (hit) {
+      if (!granted.has(`page:${hit.page.id}:view`)) throw error(404, 'Not found');
+      if (floorApplies(hit.target)) {
+        const floor = moduleViewFloor(hit.target);
+        if (floor && !granted.has(floor))
+          throw error(403, 'You do not have access to this module.');
+      }
+      event.locals.pageRule = true; // the page role already decided navigation
+      return { path: hit.target + hit.rest, granted };
+    }
+  }
+  // Built-in main at its native path: an explicit `page:<pattern>` row replaces the registry decision.
+  // shortcut: exact static screens only (aliasable targets), no dynamic-segment patterns; admins skip.
+  const screen = SCREEN_DESIGN_MANIFEST.find(
+    (r) => !r.pattern.includes('[') && patternMatches(r.pattern, canonical),
+  );
+  const tenantId = event.locals.tenantCtx?.tenantId;
+  if (screen && tenantId && user.supabaseId && user.role !== 'admin') {
+    const caps = await resolveCapabilities(tenantId, user.supabaseId);
+    event.locals.pageRule = caps.explicitView(`page:${screen.pattern}`);
+  }
+  return { path: canonical, granted };
+}
 
 /**
  * Central route-policy guard (perf spec 2026-08-22 §S3). This lived in
@@ -247,27 +317,20 @@ const appHandle: Handle = async ({ event, resolve }) => {
  * equivalent while the layout load becomes navigation-independent.
  * Route-owned page guards remain defense in depth for load-less shells.
  */
-async function applyRouteAccessGuard(event: Parameters<Handle>[0]['event']): Promise<void> {
+async function applyRouteAccessGuard(
+  event: Parameters<Handle>[0]['event'],
+  guard: RouteGuard | undefined,
+): Promise<void> {
+  if (!guard) return;
   const user = event.locals.user;
-  if (
-    !shouldApplyOrganizationRouteGuards(
-      Boolean(user),
-      Boolean(event.locals.tenantCtx),
-      event.route.id,
-    )
-  ) {
-    return;
-  }
-  // shouldApplyOrganizationRouteGuards proves the user exists for this branch.
   if (!user) return;
-  // Cached (2m) — the same resolver the layout bundle serves to the client.
-  const permissions = await loadPermissionsForUser(event.locals, user.id);
-  const granted = new Set(permissions.permissions);
-  const routeAccess = decideRouteAccess(canonicalPath(event.url.pathname), {
+  if (event.locals.pageRule === true) return;
+  if (event.locals.pageRule === false) throw error(403, 'You do not have access to this module.');
+  const routeAccess = decideRouteAccess(guard.path, {
     authenticated: true,
     role: user.role,
-    permissions: granted,
-    orgCapabilities: granted,
+    permissions: guard.granted,
+    orgCapabilities: guard.granted,
   });
   if (!routeAccess.allowed) {
     throw error(
@@ -284,7 +347,10 @@ async function applyRouteAccessGuard(event: Parameters<Handle>[0]['event']): Pro
  * data-bearing route loads also consume, then 404s if the resolved module is
  * kind-restricted or toggled off for this org.
  */
-async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event']): Promise<void> {
+async function applyModuleAvailabilityGuard(
+  event: Parameters<Handle>[0]['event'],
+  guardPath?: string,
+): Promise<void> {
   if (
     !shouldApplyOrganizationRouteGuards(
       Boolean(event.locals.user),
@@ -303,7 +369,7 @@ async function applyModuleAvailabilityGuard(event: Parameters<Handle>[0]['event'
   });
   event.locals.moduleStates = moduleStates;
   if (
-    isAppRouteBlocked(canonicalPath(event.url.pathname), {
+    isAppRouteBlocked(guardPath ?? canonicalPath(event.url.pathname), {
       kind: event.locals.orgKind,
       moduleStates,
     })
@@ -426,8 +492,9 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // same guard itself); request classification is defense in depth on top of that.
   // Existing per-route pulse guards stay in place until this hook has soaked
   // (belt-and-suspenders).
-  await applyModuleAvailabilityGuard(event);
-  await applyRouteAccessGuard(event);
+  const guard = await prepareRouteGuard(event);
+  await applyModuleAvailabilityGuard(event, guard?.path);
+  await applyRouteAccessGuard(event, guard);
 
   // Central RBAC write guard: business-data + org-config mutating API calls
   // (/api/crm|finances|sales|scheduling|support|memberships|projects|work|
