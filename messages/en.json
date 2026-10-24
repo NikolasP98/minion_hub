@@ -7055,5 +7055,12 @@
   "settings_loadingIndicator": "Loading indicator",
   "settings_loadingIndicatorDescription": "Where the app shows that it is working: the section icon turns into a ring, or the divider under your organization becomes an accent line.",
   "settings_loadingIndicatorIconRing": "Section icon",
-  "settings_loadingIndicatorDividerBar": "Header divider"
+  "settings_loadingIndicatorDividerBar": "Header divider",
+  "data_denied_title": "Your role can't view {dataset}",
+  "data_denied_hint": "Ask an admin for View on this dataset",
+  "rbac_verb_view": "View",
+  "rbac_verb_add": "Add",
+  "rbac_verb_edit": "Edit",
+  "rbac_verb_remove": "Remove",
+  "rbac_advanced": "Advanced"
 }

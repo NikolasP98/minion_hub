@@ -7055,5 +7055,12 @@
   "settings_loadingIndicator": "Indicador de carga",
   "settings_loadingIndicatorDescription": "Dónde se muestra que la app está trabajando: el icono de la sección se convierte en un anillo, o la línea bajo tu organización se vuelve de color acento.",
   "settings_loadingIndicatorIconRing": "Icono de sección",
-  "settings_loadingIndicatorDividerBar": "Divisor del menú"
+  "settings_loadingIndicatorDividerBar": "Divisor del menú",
+  "data_denied_title": "Tu rol no puede ver {dataset}",
+  "data_denied_hint": "Pide a un administrador el permiso Ver sobre estos datos",
+  "rbac_verb_view": "Ver",
+  "rbac_verb_add": "Añadir",
+  "rbac_verb_edit": "Editar",
+  "rbac_verb_remove": "Quitar",
+  "rbac_advanced": "Avanzado"
 }
