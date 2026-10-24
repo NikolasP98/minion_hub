@@ -134,6 +134,7 @@
       preferences: { preferences: {} },
       brainAgentIds: [],
       tableConfig: {},
+      navConfig: { version: 1, sections: [], builtinSections: {}, builtin: {} },
       healthSeed: seed,
       tables: [{ table: 'support_issues', dateFields: [] }],
       rules: [

@@ -78,6 +78,7 @@ function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
 		visibleModules: () => [],
 		ownerScoped: () => false,
 		fieldLevel: () => 0,
+		explicitView: () => undefined,
 	};
 }
 

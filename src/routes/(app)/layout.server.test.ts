@@ -47,6 +47,14 @@ vi.mock('$server/services/brain-agents.service', () => ({
 vi.mock('$server/services/table-config.service', () => ({
   readTableConfig: vi.fn(async () => ({})),
 }));
+vi.mock('$server/services/nav-config.service', () => ({
+  readNavConfig: vi.fn(async () => ({
+    version: 1,
+    sections: [],
+    builtinSections: {},
+    builtin: {},
+  })),
+}));
 
 // Defensive org-activation pulls in db + schema; mock these so vitest doesn't
 // try to resolve $env/dynamic/private in the test environment.
@@ -150,8 +158,9 @@ describe('(app)/+layout.server load', () => {
       activeOrgKind: 'business',
       brainAgentIds: [],
       tableConfig: {},
+      navConfig: { version: 1, sections: [], builtinSections: {}, builtin: {} },
     });
-    // depends() should register all eight keys
+    // depends() should register all nine keys
     expect(ev.depends).toHaveBeenCalledWith(
       'app:user',
       'app:permissions',
@@ -161,6 +170,7 @@ describe('(app)/+layout.server load', () => {
       'app:hosts',
       'app:preferences',
       'app:table-config',
+      'app:nav-config',
     );
   });
 
@@ -184,6 +194,63 @@ describe('(app)/+layout.server load', () => {
     const out = await load(ev);
     expect(out).toHaveProperty('activeOrgKind', 'personal');
     expect(getTenant).not.toHaveBeenCalled();
+  });
+
+  describe('navConfig (spec 037)', () => {
+    const page = (id: string, over: Record<string, unknown> = {}) => ({
+      id,
+      kind: 'link',
+      slug: 'sell',
+      label: 'Sell',
+      target: '/pos/sell',
+      ...over,
+    });
+    const staffSection = {
+      id: 'st4ff1',
+      slug: 'staff',
+      label: 'Staff',
+      pages: [page('k3x9q2'), page('a1b2c3', { kind: 'main' }), page('h1dd3n', { hidden: true })],
+    };
+    const empty = { version: 1, sections: [], builtinSections: {}, builtin: {} };
+    const full = async () => ({ ...empty, sections: [staffSection] });
+    const member = { id: 'u-1', email: 'a@b.com', role: 'user', name: 'A', onboardedAt: 'x' };
+    const run = async (permissions: string[], read: () => Promise<unknown>) => {
+      // The core bundle is single-flighted for a short window; start each load cold.
+      (globalThis as { __minionHubInflight?: Map<string, unknown> }).__minionHubInflight?.clear();
+      const { loadPermissionsForUser } = await import('$server/services/permissions.service');
+      const { readNavConfig } = await import('$server/services/nav-config.service');
+      vi.mocked(loadPermissionsForUser).mockResolvedValueOnce({ permissions, roles: [] } as never);
+      vi.mocked(readNavConfig).mockImplementationOnce(read as never);
+      const ev = makeEvent({
+        user: member,
+        session: { activeOrganizationId: 'tenant-x', id: 's1' },
+      }) as unknown as Parameters<typeof load>[0];
+      return (await load(ev)) as { navConfig: { sections: { pages: { id: string }[] }[] } };
+    };
+    const ids = (out: Awaited<ReturnType<typeof run>>) =>
+      out.navConfig.sections.flatMap((s) => s.pages.map((p) => p.id));
+
+    it('ships only the instances (link and main) the member has a page string for', async () => {
+      const out = await run(['page:k3x9q2:view', 'page:a1b2c3:view'], full);
+      expect(ids(out)).toEqual(['k3x9q2', 'a1b2c3']);
+    });
+
+    it('omits instances without a page string', async () => {
+      expect((await run(['pos:view'], full)).navConfig.sections).toEqual([]);
+    });
+
+    it('ships hidden entries only with settings:manage', async () => {
+      const grants = ['page:k3x9q2:view', 'page:h1dd3n:view'];
+      expect(ids(await run(grants, full))).toEqual(['k3x9q2']);
+      expect(ids(await run([...grants, 'settings:manage'], full))).toEqual(['k3x9q2', 'h1dd3n']);
+    });
+
+    it('falls back to the empty config when the read rejects', async () => {
+      const out = await run(['page:k3x9q2:view'], async () => {
+        throw new Error('db down');
+      });
+      expect(out.navConfig).toEqual(empty);
+    });
   });
 
   it('throws when locals.user is not set (requireAuth gate)', async () => {
