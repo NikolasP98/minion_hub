@@ -1,12 +1,12 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { loadPosCatalogFormData } from '$server/services/pos-catalog-form.service';
 import { getTagLinks, getProductIngredientTags } from '$server/services/tag-links.service';
 
 export const load: PageServerLoad = async ({ locals, depends, params }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:catalog');
 
   const data = await loadPosCatalogFormData(ctx, locals.moduleStates?.stock ?? true);
@@ -21,5 +21,5 @@ export const load: PageServerLoad = async ({ locals, depends, params }) => {
   ]);
   const editing = { ...found, tags: (tagsByProduct.get(found.productId) ?? []).map((t) => t.id) };
 
-  return { ...data, editing, inheritedTags: ingredientTags.get(found.productId) ?? [] };
+  return { pos: { ...data, editing, inheritedTags: ingredientTags.get(found.productId) ?? [] } };
 };

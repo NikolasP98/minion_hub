@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
+  import DataSource from '$lib/components/ui/DataSource.svelte';
 
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
@@ -399,126 +400,130 @@
   </span>
 {/snippet}
 
-{#if !openShift}
-  <!-- Sidebar footer widget: full card ≥xl, icon-only button on the collapsed rail. -->
-  <div class="box box-open hidden xl:flex">
-    <div class="status">
-      <AlertTriangle size={iconSizes.sm} class="shrink-0" />
-      <span class="msg">{m.pos_no_open_shift()}</span>
-    </div>
-    <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
-    {#if canAct('pos', 'edit')}
-      <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
-    {/if}
-    {@render colleagues('closed-wide')}
-  </div>
-  <div class="mini-rail">
-    <div class="mini-row mini-open-row">
-      <AlertTriangle size={iconSizes.sm} class="shrink-0" />
-      <span class="mini-status">{m.pos_no_open_shift()}</span>
-      {@render colleagues('closed-mini')}
+<DataSource value={page.data.posSettings} module="pos" compact>
+  {#if !openShift}
+    <!-- Sidebar footer widget: full card ≥xl, icon-only button on the collapsed rail. -->
+    <div class="box box-open hidden xl:flex">
+      <div class="status">
+        <AlertTriangle size={iconSizes.sm} class="shrink-0" />
+        <span class="msg">{m.pos_no_open_shift()}</span>
+      </div>
+      <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
       {#if canAct('pos', 'edit')}
         <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
       {/if}
+      {@render colleagues('closed-wide')}
     </div>
-  </div>
-{:else}
-  <div class="box box-live hidden xl:flex">
-    <div class="status">
-      {@render indicator()}
-      <span class="tickets">{openShift.summary.ticketCount}</span>
+    <div class="mini-rail">
+      <div class="mini-row mini-open-row">
+        <AlertTriangle size={iconSizes.sm} class="shrink-0" />
+        <span class="mini-status">{m.pos_no_open_shift()}</span>
+        {@render colleagues('closed-mini')}
+        {#if canAct('pos', 'edit')}
+          <Button type="button" class="act" onclick={startOpen}>{m.pos_shift_open_cta()}</Button>
+        {/if}
+      </div>
     </div>
-    <span class="since"
-      >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
-    >
-    {@render income(true)}
-    {@render colleagues('live-wide')}
-    <!-- Closing your OWN register is a pos:edit operation (what opens it);
-         `pos: manage` only gates closing someone else's (API, close route). -->
-    {#if canAct('pos', 'edit')}
-      <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
-    {/if}
-  </div>
-  <div class="mini-rail">
-    <div class="mini-row">
-      {@render indicator()}
-      <span class="tickets">{openShift.summary.ticketCount}</span>
-      <span class="mini-detail"
+  {:else}
+    <div class="box box-live hidden xl:flex">
+      <div class="status">
+        {@render indicator()}
+        <span class="tickets">{openShift.summary.ticketCount}</span>
+      </div>
+      <span class="since"
         >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
       >
-      {@render income(false)}
-      {@render colleagues('live-mini')}
+      {@render income(true)}
+      {@render colleagues('live-wide')}
+      <!-- Closing your OWN register is a pos:edit operation (what opens it);
+         `pos: manage` only gates closing someone else's (API, close route). -->
       {#if canAct('pos', 'edit')}
         <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
       {/if}
     </div>
-  </div>
-{/if}
+    <div class="mini-rail">
+      <div class="mini-row">
+        {@render indicator()}
+        <span class="tickets">{openShift.summary.ticketCount}</span>
+        <span class="mini-detail"
+          >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
+        >
+        {@render income(false)}
+        {@render colleagues('live-mini')}
+        {#if canAct('pos', 'edit')}
+          <Button type="button" class="act" onclick={startClose}>{m.pos_shift_close_cta()}</Button>
+        {/if}
+      </div>
+    </div>
+  {/if}
 
-<Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
-  <div class="form">
-    {#each countedMethods as mth (mth.id)}
-      <label class="field">
-        <span class="lbl">{m.pos_shift_float()} · {mth.label}</span>
-        <input type="number" step="0.01" bind:value={openingFloat[mth.id]} />
-      </label>
-    {/each}
-  </div>
-  {#snippet footer()}
-    <Button type="button" class="act primary" onclick={submitOpen}>{m.pos_shift_open_cta()}</Button>
-  {/snippet}
-</Modal>
-
-<Modal bind:open={closeModal} title={m.pos_shift_close_cta()} size="lg">
-  <div class="form">
-    {#each countedMethods as mth (mth.id)}
-      <div class="close-row">
-        <span class="method">{mth.label}</span>
-        <span class="cell">
-          <span class="lbl">{m.pos_shift_expected()}</span>
-          <span class="num expected">{formatMoney(expected[mth.id] ?? 0)}</span>
-        </span>
-        <label class="field cell">
-          <span class="lbl">{m.pos_shift_counted()}</span>
-          <input type="number" step="0.01" bind:value={counted[mth.id]} />
+  <Modal bind:open={openModal} title={m.pos_shift_open_cta()} size="sm">
+    <div class="form">
+      {#each countedMethods as mth (mth.id)}
+        <label class="field">
+          <span class="lbl">{m.pos_shift_float()} · {mth.label}</span>
+          <input type="number" step="0.01" bind:value={openingFloat[mth.id]} />
         </label>
-        <span class="cell">
-          <span class="lbl">{m.pos_shift_difference()}</span>
-          <span
-            class="num diff"
-            class:neg={difference(mth.id) < 0}
-            class:pos={difference(mth.id) > 0}
-          >
-            {formatMoney(difference(mth.id))}
+      {/each}
+    </div>
+    {#snippet footer()}
+      <Button type="button" class="act primary" onclick={submitOpen}
+        >{m.pos_shift_open_cta()}</Button
+      >
+    {/snippet}
+  </Modal>
+
+  <Modal bind:open={closeModal} title={m.pos_shift_close_cta()} size="lg">
+    <div class="form">
+      {#each countedMethods as mth (mth.id)}
+        <div class="close-row">
+          <span class="method">{mth.label}</span>
+          <span class="cell">
+            <span class="lbl">{m.pos_shift_expected()}</span>
+            <span class="num expected">{formatMoney(expected[mth.id] ?? 0)}</span>
           </span>
-        </span>
-      </div>
-    {/each}
-    {#if recordedMethods.length}
-      <p class="lbl recorded-title">{m.pos_shift_auto_recorded()}</p>
-      <div class="recorded">
-        {#each recordedMethods as mth (mth.id)}
-          <span class="recorded-row">
-            <span>{mth.label}</span>
-            <span class="num">{formatMoney(expected[mth.id] ?? 0)}</span>
+          <label class="field cell">
+            <span class="lbl">{m.pos_shift_counted()}</span>
+            <input type="number" step="0.01" bind:value={counted[mth.id]} />
+          </label>
+          <span class="cell">
+            <span class="lbl">{m.pos_shift_difference()}</span>
+            <span
+              class="num diff"
+              class:neg={difference(mth.id) < 0}
+              class:pos={difference(mth.id) > 0}
+            >
+              {formatMoney(difference(mth.id))}
+            </span>
           </span>
-        {/each}
-      </div>
-    {/if}
-    <label class="field">
-      <span class="lbl">{m.pos_shift_note()}</span>
-      <textarea bind:value={note} rows="2"></textarea>
-    </label>
-    {#if pendingEmit > 0}
-      <p class="lbl">{m.pos_shift_close_emit({ count: String(pendingEmit) })}</p>
-    {/if}
-  </div>
-  {#snippet footer()}
-    <Button type="button" class="act primary" onclick={submitClose}
-      >{m.pos_shift_close_cta()}</Button
-    >
-  {/snippet}
-</Modal>
+        </div>
+      {/each}
+      {#if recordedMethods.length}
+        <p class="lbl recorded-title">{m.pos_shift_auto_recorded()}</p>
+        <div class="recorded">
+          {#each recordedMethods as mth (mth.id)}
+            <span class="recorded-row">
+              <span>{mth.label}</span>
+              <span class="num">{formatMoney(expected[mth.id] ?? 0)}</span>
+            </span>
+          {/each}
+        </div>
+      {/if}
+      <label class="field">
+        <span class="lbl">{m.pos_shift_note()}</span>
+        <textarea bind:value={note} rows="2"></textarea>
+      </label>
+      {#if pendingEmit > 0}
+        <p class="lbl">{m.pos_shift_close_emit({ count: String(pendingEmit) })}</p>
+      {/if}
+    </div>
+    {#snippet footer()}
+      <Button type="button" class="act primary" onclick={submitClose}
+        >{m.pos_shift_close_cta()}</Button
+      >
+    {/snippet}
+  </Modal>
+</DataSource>
 
 <style>
   /* ── Sidebar footer widget ── */

@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listResources,
   listEventTypes,
@@ -27,8 +27,8 @@ import {
  *  simplification spec S2 — `/pos/appointments` maps to the `posAppointments`
  *  composite manifest entry) — this load only fetches the tab's data. */
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:appointments');
 
   // The org timezone rides on the resources, exactly like /scheduling/calendar —
@@ -91,42 +91,44 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   });
 
   return {
-    day,
-    orgTz,
-    calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
-    view,
-    pageView,
-    /** Event-scope registry + every tag present on a shown event — the filter's options. */
-    tagOptions,
-    bookings,
-    invoices,
-    resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
-    hours,
-    eventTypes: eventTypes.map((e) => ({
-      id: e.id,
-      title: e.title,
-      productId: e.productId ?? null,
-      active: e.active,
-      length: e.length,
-      /** Catalog list price (`fin_products.unit_price` through `productId`) and
-       *  the org currency — the create tray's Services table Price column. */
-      price: e.price,
-      currency: e.currency,
-      /** The service's assignees — the create tray's Team picker is limited to
-       *  them, exactly like `/pos/appointments/new`'s own load does it, or
-       *  forcing a non-assignee always answers 409. */
-      resourceIds: e.resourceIds,
-      /** Both are event-colour sources (see `booking-color.ts`). */
-      color: e.color,
-      kindId: e.kindId,
-    })),
-    /** Org event kinds with their colours — the `kind` colour source. `name`
-     *  is only for the picker's value preview; the resolver never reads it. */
-    kinds: kinds.map((k) => ({ id: k.id, name: k.name, color: k.color, isDefault: k.isDefault })),
-    /** `fin_product_categories` for the org — the `category` source's values. */
-    categories: categories.map((c) => ({ name: c.name, color: c.color })),
-    stockEnabled: locals.moduleStates?.stock ?? true,
-    accrualSummaries,
-    pending: pending.map((p) => ({ ...p, submittedAt: p.submittedAt.toISOString() })),
+    pos: {
+      day,
+      orgTz,
+      calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
+      view,
+      pageView,
+      /** Event-scope registry + every tag present on a shown event — the filter's options. */
+      tagOptions,
+      bookings,
+      invoices,
+      resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+      hours,
+      eventTypes: eventTypes.map((e) => ({
+        id: e.id,
+        title: e.title,
+        productId: e.productId ?? null,
+        active: e.active,
+        length: e.length,
+        /** Catalog list price (`fin_products.unit_price` through `productId`) and
+         *  the org currency — the create tray's Services table Price column. */
+        price: e.price,
+        currency: e.currency,
+        /** The service's assignees — the create tray's Team picker is limited to
+         *  them, exactly like `/pos/appointments/new`'s own load does it, or
+         *  forcing a non-assignee always answers 409. */
+        resourceIds: e.resourceIds,
+        /** Both are event-colour sources (see `booking-color.ts`). */
+        color: e.color,
+        kindId: e.kindId,
+      })),
+      /** Org event kinds with their colours — the `kind` colour source. `name`
+       *  is only for the picker's value preview; the resolver never reads it. */
+      kinds: kinds.map((k) => ({ id: k.id, name: k.name, color: k.color, isDefault: k.isDefault })),
+      /** `fin_product_categories` for the org — the `category` source's values. */
+      categories: categories.map((c) => ({ name: c.name, color: c.color })),
+      stockEnabled: locals.moduleStates?.stock ?? true,
+      accrualSummaries,
+      pending: pending.map((p) => ({ ...p, submittedAt: p.submittedAt.toISOString() })),
+    },
   };
 };

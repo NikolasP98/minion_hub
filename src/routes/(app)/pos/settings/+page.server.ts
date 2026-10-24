@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { getPosSettings } from '$server/services/pos.service';
 import { listPosSeries } from '$server/services/pos-emission.service';
 
@@ -9,8 +8,8 @@ import { listPosSeries } from '$server/services/pos-emission.service';
  *  (`/api/pos/settings` → requireOrgCapability(locals, 'pos', 'manage')). */
 export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('pos:settings');
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   const [settings, series] = await Promise.all([getPosSettings(ctx), listPosSeries(ctx)]);
-  return { settings, series };
+  return { pos: { settings, series } };
 };
