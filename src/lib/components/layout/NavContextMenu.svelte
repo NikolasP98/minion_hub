@@ -311,7 +311,7 @@
     try {
       await saveNavConfig(op);
     } catch (e) {
-      if (e instanceof NavSaveError) toastError(e.message);
+      if (e instanceof NavSaveError && !e.toasted) toastError(e.message);
       // other failures already reached the user through saveNavConfig's toast
     }
   }

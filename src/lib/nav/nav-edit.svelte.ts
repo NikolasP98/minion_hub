@@ -29,6 +29,8 @@ export class NavSaveError extends Error {
   constructor(
     message: string,
     readonly issues: NavConfigIssue[],
+    /** Already surfaced by saveNavConfig's toast (server refusal) — callers must not toast again. */
+    readonly toasted = false,
   ) {
     super(message);
   }
@@ -72,7 +74,7 @@ export async function saveNavConfig(op: (c: NavConfig) => NavConfig): Promise<vo
         if (res.status === 400) {
           const body = (await res.json().catch(() => ({}))) as { issues?: NavConfigIssue[] };
           const list = body.issues ?? [];
-          throw new NavSaveError(list[0]?.message ?? m.common_error(), list);
+          throw new NavSaveError(list[0]?.message ?? m.common_error(), list, true);
         }
         if (!res.ok) throw new Error(m.common_error());
         await Promise.all([invalidate('app:nav-config'), invalidate('app:permissions')]);
