@@ -574,13 +574,6 @@ export const AGENT_SETTINGS: AgentSettingDef[] = [
     hint: { label: 'DM Scope', help: 'Direct message session scope.' },
   },
   {
-    key: 'session.reset',
-    group: 'session',
-    order: 1,
-    schema: { type: 'string', title: 'Reset Policy' },
-    hint: { label: 'Reset Policy', help: 'When sessions are automatically reset.' },
-  },
-  {
     key: 'session.resetByChannel',
     group: 'session',
     order: 2,
