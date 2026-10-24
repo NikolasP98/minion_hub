@@ -1,7 +1,6 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import type { CustomPropertyBundle } from '$lib/tables/custom-properties';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import {
   getOrgMemberRolesAll,
@@ -46,8 +45,8 @@ const unavailableCustomProperties: CustomPropertyBundle = {
  * loads for users.manage holders — the People detail hides the section otherwise.
  */
 export const load: PageServerLoad = async ({ locals, depends, parent }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return { scheduling: ctx }; // rendered by DataSource (spec 039)
   depends('team:data');
   // AvailabilityEditor invalidates this key after saving weekly hours.
   depends('scheduling:data');
@@ -105,24 +104,26 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   if (!hrEnabled) {
     const fallbackToday = instantDateKey(new Date(), DEFAULT_SCHEDULING_TIME_ZONE);
     return {
-      hrEnabled: false as const,
-      myProfileId,
-      members: memberRows,
-      rbacRoles: rbacRoleRows,
-      organizations: organizationRows,
-      weekStart: dateKeyAddDays(fallbackToday, -3) ?? fallbackToday,
-      myEmployeeId: null,
-      employees: [],
-      resources: [],
-      schedules: {},
-      eventTypes: [],
-      bookings: [],
-      holidays: [],
-      hrSettings: { weeklyOff: [], country: null },
-      leaveTypes: [],
-      allocations: [],
-      requests: [],
-      customProperties: unavailableCustomProperties,
+      scheduling: {
+        hrEnabled: false as const,
+        myProfileId,
+        members: memberRows,
+        rbacRoles: rbacRoleRows,
+        organizations: organizationRows,
+        weekStart: dateKeyAddDays(fallbackToday, -3) ?? fallbackToday,
+        myEmployeeId: null,
+        employees: [],
+        resources: [],
+        schedules: {},
+        eventTypes: [],
+        bookings: [],
+        holidays: [],
+        hrSettings: { weeklyOff: [], country: null },
+        leaveTypes: [],
+        allocations: [],
+        requests: [],
+        customProperties: unavailableCustomProperties,
+      },
     };
   }
 
@@ -188,69 +189,71 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   ]);
 
   return {
-    hrEnabled: true as const,
-    myProfileId,
-    // The viewer's own employee row — approve/reject are hidden on their own requests.
-    myEmployeeId: myProfileId
-      ? (employees.find((e) => e.profileId === myProfileId)?.id ?? null)
-      : null,
-    members: memberRows,
-    rbacRoles: rbacRoleRows,
-    organizations: organizationRows,
-    orgTz,
-    weekStart: teamWindow.weekStart,
-    employees: employeeRows,
-    customProperties,
-    resources: resources.map((r) => ({
-      id: r.id,
-      name: r.name,
-      kind: (r.kind === 'equipment' ? 'equipment' : 'room') as 'room' | 'equipment',
-      color: r.color,
-      active: r.active,
-    })),
-    schedules,
-    eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title })),
-    bookings: bookings.map((b) => ({
-      id: b.id,
-      resourceId: b.resourceId,
-      eventTypeId: b.eventTypeId,
-      start: b.startTime.toISOString(),
-      end: b.endTime.toISOString(),
-      status: b.status,
-      attendeeName: b.attendeeName,
-    })),
-    holidays: holidays.map((h) => ({
-      id: h.id,
-      date: h.date,
-      name: h.name,
-      source: h.source,
-      sourceKey: h.sourceKey,
-      enabled: h.enabled,
-    })),
-    hrSettings,
-    leaveTypes: leaveTypes
-      .filter((t) => t.active)
-      .map((t) => ({ id: t.id, code: t.code, name: t.name, paid: t.paid })),
-    allocations: allocations.map((a) => ({
-      id: a.id,
-      employeeId: a.employeeId,
-      leaveTypeId: a.leaveTypeId,
-      periodStart: a.periodStart,
-      periodEnd: a.periodEnd,
-      days: Number(a.days),
-    })),
-    requests: requests.map((r) => ({
-      id: r.id,
-      employeeId: r.employeeId,
-      leaveTypeId: r.leaveTypeId,
-      fromDate: r.fromDate,
-      toDate: r.toDate,
-      halfDay: r.halfDay,
-      days: Number(r.days),
-      reason: r.reason,
-      status: r.status as 'pending' | 'approved' | 'rejected' | 'cancelled',
-      decidedBy: r.decidedBy,
-      decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
-    })),
+    scheduling: {
+      hrEnabled: true as const,
+      myProfileId,
+      // The viewer's own employee row — approve/reject are hidden on their own requests.
+      myEmployeeId: myProfileId
+        ? (employees.find((e) => e.profileId === myProfileId)?.id ?? null)
+        : null,
+      members: memberRows,
+      rbacRoles: rbacRoleRows,
+      organizations: organizationRows,
+      orgTz,
+      weekStart: teamWindow.weekStart,
+      employees: employeeRows,
+      customProperties,
+      resources: resources.map((r) => ({
+        id: r.id,
+        name: r.name,
+        kind: (r.kind === 'equipment' ? 'equipment' : 'room') as 'room' | 'equipment',
+        color: r.color,
+        active: r.active,
+      })),
+      schedules,
+      eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title })),
+      bookings: bookings.map((b) => ({
+        id: b.id,
+        resourceId: b.resourceId,
+        eventTypeId: b.eventTypeId,
+        start: b.startTime.toISOString(),
+        end: b.endTime.toISOString(),
+        status: b.status,
+        attendeeName: b.attendeeName,
+      })),
+      holidays: holidays.map((h) => ({
+        id: h.id,
+        date: h.date,
+        name: h.name,
+        source: h.source,
+        sourceKey: h.sourceKey,
+        enabled: h.enabled,
+      })),
+      hrSettings,
+      leaveTypes: leaveTypes
+        .filter((t) => t.active)
+        .map((t) => ({ id: t.id, code: t.code, name: t.name, paid: t.paid })),
+      allocations: allocations.map((a) => ({
+        id: a.id,
+        employeeId: a.employeeId,
+        leaveTypeId: a.leaveTypeId,
+        periodStart: a.periodStart,
+        periodEnd: a.periodEnd,
+        days: Number(a.days),
+      })),
+      requests: requests.map((r) => ({
+        id: r.id,
+        employeeId: r.employeeId,
+        leaveTypeId: r.leaveTypeId,
+        fromDate: r.fromDate,
+        toDate: r.toDate,
+        halfDay: r.halfDay,
+        days: Number(r.days),
+        reason: r.reason,
+        status: r.status as 'pending' | 'approved' | 'rejected' | 'cancelled',
+        decidedBy: r.decidedBy,
+        decidedAt: r.decidedAt ? r.decidedAt.toISOString() : null,
+      })),
+    },
   };
 };

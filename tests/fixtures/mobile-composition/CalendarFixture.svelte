@@ -2,7 +2,7 @@
   import type { ComponentProps } from 'svelte';
   import Shell from './Shell.svelte';
   // Mounts the ACTUAL scheduling calendar route component with synthetic data.
-  import CalendarPage from '../../../src/routes/(app)/scheduling/calendar/+page.svelte';
+  import CalendarPage from '../../../src/routes/(app)/scheduling/calendar/PageBody.svelte';
   // Toast surface for the interactions spec's 409 case. Mounting the real
   // `<Toaster>` here raced the calendar's own effects in this standalone
   // (non-SvelteKit) mount, so the spec asserts on the store directly instead —

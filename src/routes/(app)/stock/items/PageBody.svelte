@@ -1,0 +1,382 @@
+<script lang="ts">
+  import type { PageData as LoadedPageData } from './$types';
+  import type { Granted } from '$lib/permissions';
+  import { page } from '$app/state';
+  import { checkedRefresh } from '$lib/services/actions/refresh';
+  import { invalidate, goto } from '$lib/navigation';
+  import * as m from '$lib/paraglide/messages';
+  import { Package } from 'lucide-svelte';
+  import { iconSizes, PageHeader, Modal, Button, Badge, Tooltip, Toggle } from '$lib/components/ui';
+  import { PageShell } from '$lib/components/ui/foundations';
+  import DataTable from '$lib/components/data-table/DataTable.svelte';
+  import CollectionState from '$lib/components/data-view/CollectionState.svelte';
+  import type {
+    DataColumn,
+    EditDraft,
+    BulkAction,
+  } from '$lib/components/data-table/DataTable.svelte';
+  import { canAct } from '$lib/access/can.svelte';
+  import { formatMoney } from '$lib/utils/format';
+  import StockItemCreateForm from '$lib/components/stock/StockItemCreateForm.svelte';
+  import type { StockItemOption } from '$lib/components/stock/StockItemCreateForm.svelte';
+  import TagChip from '$lib/components/tags/TagChip.svelte';
+  import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+  import { UOM_PRESETS } from '$lib/components/stock/stock-ui';
+
+  import { saveRowPatch, type RowSaveResult } from '$lib/components/data-table/row-save';
+  import type { CommandContext } from '$lib/services/actions/definition';
+
+  type PageData = Granted<LoadedPageData['stock']>;
+  let { data }: { data: PageData } = $props();
+  const items = $derived(data.items);
+  type Row = (typeof items)[number];
+
+  // ── Tags (Notion-style inline editing, same wiring as /pos/catalog) ───────
+  // The stock-scope registry is local state so a tag created / renamed /
+  // recoloured / deleted inside one row's popover is visible to sibling rows and
+  // to the column filter immediately, not only after the load round-trips.
+  // svelte-ignore state_referenced_locally -- synchronized from page data below
+  let stockTags = $state<CalTag[]>(data.tags);
+  $effect(() => {
+    stockTags = data.tags;
+  });
+  const registryIds = $derived(new Set(stockTags.map((t) => t.id)));
+  // An own tag that is NOT in the manual stock registry (auto/AI or another
+  // scope) can't be unassigned from here — setTagLinks only replaces manual
+  // links of this scope — so it renders read-only instead of being handed to the
+  // picker, which would drop it from the PUT payload.
+  const manualTags = (it: Row) => it.tags.filter((t) => registryIds.has(t.id));
+  const foreignTags = (it: Row) => it.tags.filter((t) => !registryIds.has(t.id));
+  async function refreshItems() {
+    await checkedRefresh(
+      () => invalidate('stock:items'),
+      () => page,
+    );
+  }
+  function updateTagRegistry(next: CalTag[]) {
+    stockTags = next;
+    void refreshItems().catch(() => toastError(m.data_table_save_failed()));
+  }
+
+  // ── Archive (spec Bundle C #5): a floating bulk action, gated by the same
+  // ?archived=1 filter the "Show archived" chip toggles.
+  async function archiveSelected(ids: Set<string>, archived: boolean) {
+    const res = await fetch('/api/stock/items/archive', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ids: [...ids], archived }),
+    });
+    if (!res.ok) {
+      toastError(m.data_table_save_failed());
+      return;
+    }
+    await invalidate('stock:items');
+  }
+  // Reactive to WHAT is selected, not to the page filter (owner 2026-09-30:
+  // with "Show archived" on, a live row used to get "Restore"). Live rows →
+  // Archive, archived rows → Restore; a mixed selection shows both, each
+  // scoped to its own subset with the count in the label.
+  let selectedIds = $state(new Set<string>());
+  const selectedRows = $derived(items.filter((it) => selectedIds.has(it.id)));
+  const selectedLive = $derived(selectedRows.filter((it) => !it.archivedAt).map((it) => it.id));
+  const selectedArchived = $derived(
+    selectedRows.filter((it) => !!it.archivedAt).map((it) => it.id),
+  );
+  const bulkActions: BulkAction<Row>[] = $derived.by(() => {
+    const mixed = selectedLive.length > 0 && selectedArchived.length > 0;
+    const out: BulkAction<Row>[] = [];
+    if (selectedLive.length > 0)
+      out.push({
+        label: mixed ? m.stock_item_archive_n({ n: selectedLive.length }) : m.verb_archive(),
+        danger: true,
+        onSelect: () => archiveSelected(new Set(selectedLive), true),
+      });
+    if (selectedArchived.length > 0)
+      out.push({
+        label: mixed ? m.stock_item_unarchive_n({ n: selectedArchived.length }) : m.verb_restore(),
+        onSelect: () => archiveSelected(new Set(selectedArchived), false),
+      });
+    return out;
+  });
+  function toggleShowArchived(checked: boolean) {
+    const url = new URL(page.url);
+    if (checked) url.searchParams.set('archived', '1');
+    else url.searchParams.delete('archived');
+    goto(`${url.pathname}${url.search}`, { keepFocus: true, noScroll: true });
+  }
+
+  async function saveRow(
+    it: Row,
+    draft: EditDraft,
+    context?: CommandContext,
+  ): Promise<RowSaveResult> {
+    return saveRowPatch(
+      `/api/stock/items/${it.id}`,
+      {
+        expectedUpdatedAt: it.updatedAt,
+        name: draft.name,
+        uom: draft.uom,
+        reorderLevel: draft.reorderLevel !== '' ? Number(draft.reorderLevel) : null,
+      },
+      undefined,
+      context,
+    );
+  }
+
+  // Same option source as UomPicker (owner directive 2026-09-25): presets ∪
+  // units already used in this org. `data.uoms` is `distinctUoms(items)` —
+  // derived from every item's own `uom`, so a row's current value is always
+  // included here too (no separate "current value" union needed).
+  function uomOptions() {
+    return [...new Set([...data.uoms, ...UOM_PRESETS].map((u) => u.trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((u) => ({ value: u, label: u }));
+  }
+
+  const columns: DataColumn<Row>[] = [
+    {
+      key: 'name',
+      label: m.stock_col_name(),
+      accessor: (it) => it.name,
+      editable: true,
+      custom: true,
+    },
+    {
+      key: 'uom',
+      label: m.stock_col_uom(),
+      accessor: (it) => it.uom,
+      editable: true,
+      type: 'select',
+      options: uomOptions,
+    },
+    {
+      key: 'tags',
+      label: m.stock_col_tags(),
+      custom: true,
+      customEditable: true,
+      sortable: false,
+      accessor: (it) => [...it.tags, ...it.inheritedTags].map((t) => t.name).join(', '),
+      // Inherited tags are filterable too — "show every recipe that uses a
+      // vegan ingredient" is the point of inheritance.
+      filter: {
+        options: () => stockTags.map((t) => ({ value: t.id, label: t.name })),
+        match: (it) => [...it.tags, ...it.inheritedTags].map((t) => t.id),
+      },
+    },
+    {
+      key: 'qtyOnHand',
+      label: m.stock_col_on_hand(),
+      align: 'right',
+      custom: true,
+      accessor: (it) => it.qtyOnHand,
+    },
+    {
+      key: 'stockValue',
+      label: m.stock_col_value(),
+      align: 'right',
+      custom: true,
+      money: true,
+      accessor: (it) => it.stockValue,
+      exportValue: (it) => it.stockValue,
+    },
+    {
+      key: 'reorderLevel',
+      label: m.stock_col_reorder_level(),
+      align: 'right',
+      editable: true,
+      type: 'number',
+      accessor: (it) => it.reorderLevel,
+    },
+    // Derived from the ledger (last positive movement), not columns — so
+    // read-only here.
+    {
+      key: 'lastRestockCost',
+      label: m.stock_col_last_restock_cost(),
+      align: 'right',
+      custom: true,
+      accessor: (it) => it.lastRestockCost,
+      exportValue: (it) => it.lastRestockCost ?? '',
+    },
+    {
+      key: 'lastSupplierName',
+      label: m.stock_col_last_supplier(),
+      accessor: (it) => it.lastSupplierName ?? '',
+    },
+  ];
+
+  // ── Create ───────────────────────────────────────────────────────────────
+  // svelte-ignore state_referenced_locally
+  let createOpen = $state(data.openNew ?? false);
+  let createDirty = $state(false);
+  // ?new=1 while already on the page (assistant deep link): load re-runs, the seed does not.
+  $effect(() => {
+    if (data.openNew) createOpen = true;
+  });
+
+  async function handleCreated(item: StockItemOption) {
+    createOpen = false;
+    await invalidate('stock:items');
+    await goto(`/stock/items/${item.id}`);
+  }
+</script>
+
+<svelte:head><title>{m.stock_items_title()} — {m.nav_stock()}</title></svelte:head>
+
+<PageShell archetype="collection" scroll="region" labelledBy="stock-items-title">
+  <PageHeader
+    titleId="stock-items-title"
+    title={m.stock_items_title()}
+    subtitle={m.stock_items_subtitle()}
+  >
+    {#snippet leading()}<Package size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
+  </PageHeader>
+
+  <DataTable
+    class="flex-1 min-h-0"
+    tableId="stock.items"
+    idColumn={{ value: (it) => it.code }}
+    titleColumn={{ key: 'name', href: (it) => `/stock/items/${it.id}` }}
+    tagScope="stock"
+    tagsOf={(it) => manualTags(it).map((t) => t.id)}
+    {columns}
+    data={items}
+    getRowId={(it) => it.id}
+    customProperties={{
+      bundle: data.customProperties,
+      recordId: (it) => it.id,
+      scopeKey: `${page.data.activeOrgId ?? ''}:stock.items`,
+    }}
+    searchPlaceholder={m.data_table_search()}
+    exportable
+    exportName="stock-items"
+    selectable
+    bind:selectedIds
+    {bulkActions}
+    storageKey="stock-items"
+    canEdit={canAct('stock', 'edit')}
+    onSaveRow={saveRow}
+    onSaveComplete={() =>
+      checkedRefresh(
+        () => invalidate('stock:items'),
+        () => page,
+      )}
+    addLabel={m.stock_new_item()}
+    onAdd={() => (createOpen = true)}
+    addDisabled={!canAct('stock', 'create')}
+  >
+    <!-- The shared collection states (spec 013): nothing exists vs. the
+           table's own filters matched nothing. The table chrome stays so the
+           create action and the filter chips remain reachable. -->
+    {#snippet empty()}
+      <CollectionState
+        state={items.length === 0 ? 'empty' : 'no-results'}
+        message={items.length === 0 ? m.stock_items_empty_hint() : undefined}
+      >
+        {#snippet createAction()}
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={() => (createOpen = true)}
+            disabled={!canAct('stock', 'create')}
+            title={canAct('stock', 'create') ? undefined : m.no_permission()}
+          >
+            {m.stock_new_item()}
+          </Button>
+        {/snippet}
+      </CollectionState>
+    {/snippet}
+    {#snippet options()}
+      <Toggle
+        size="sm"
+        checked={data.showArchived}
+        label={m.stock_items_show_archived()}
+        onchange={toggleShowArchived}
+      />
+    {/snippet}
+    {#snippet cell(it: Row, col: DataColumn<Row>, context)}
+      {#if col.key === 'name'}
+        <span class="flex items-center gap-1.5 min-w-0">
+          <span class="truncate max-w-[16rem]">{it.name}</span>
+          {#if it.archivedAt}<Badge variant="neutral" size="sm"
+              >{m.stock_item_archived_badge()}</Badge
+            >{/if}
+        </span>
+      {:else if col.key === 'lastRestockCost'}
+        <span class="tabular-nums"
+          >{it.lastRestockCost != null ? formatMoney(it.lastRestockCost) : '—'}</span
+        >
+      {:else if col.key === 'qtyOnHand'}
+        {#if it.lowStock}
+          <Tooltip
+            label={m.stock_low_stock_tooltip({ level: String(it.reorderLevel ?? 0) })}
+            openDelay={400}
+          >
+            <span
+              class="block text-right tabular-nums rounded-[var(--radius-xs)] bg-warning/15 px-1.5 text-warning"
+            >
+              {it.qtyOnHand}
+            </span>
+          </Tooltip>
+        {:else}
+          <span class="block text-right tabular-nums">{it.qtyOnHand}</span>
+        {/if}
+      {:else if col.key === 'stockValue'}
+        <span class="tabular-nums">{formatMoney(it.stockValue)}</span>
+      {:else if col.key === 'tags'}
+        {#if context.canEdit}
+          <InlineTagsCell
+            scope="stock"
+            kind="item"
+            entityId={it.id}
+            registry={stockTags}
+            selected={manualTags(it)}
+            readonly={foreignTags(it)}
+            inherited={it.inheritedTags}
+            canEdit
+            showAdd={false}
+            open={!!context.open}
+            onOpenChange={context.onOpenChange}
+            onregistrychange={updateTagRegistry}
+            onrefresh={refreshItems}
+          />
+        {:else if it.tags.length || it.inheritedTags.length}
+          <div class="tag-chips">
+            {#each it.tags as t (t.id)}
+              <TagChip size="sm" name={t.name} color={t.color} />
+            {/each}
+            {#each it.inheritedTags as t ('i:' + t.id)}
+              <TagChip
+                size="sm"
+                name={t.name}
+                color={t.color}
+                dashed
+                title={m.tags_from_ingredients()}
+              />
+            {/each}
+          </div>
+        {:else}
+          <span class="text-tertiary">—</span>
+        {/if}
+      {/if}
+    {/snippet}
+  </DataTable>
+</PageShell>
+
+<Modal dirty={createDirty} bind:open={createOpen} title={m.stock_create_item_title()}>
+  <StockItemCreateForm
+    bind:dirty={createDirty}
+    uomOptions={data.uoms}
+    oncreated={handleCreated}
+    oncancel={() => (createOpen = false)}
+  />
+</Modal>
+
+<style>
+  .tag-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+</style>

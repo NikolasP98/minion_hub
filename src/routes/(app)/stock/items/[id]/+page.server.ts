@@ -1,6 +1,6 @@
-import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import type { PageServerLoad } from './$types';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listItems,
   listWarehouses,
@@ -19,9 +19,10 @@ import { loadCustomPropertyBundle } from '$server/services/custom-property-bundl
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'stock');
+  if (isDenied(ctx)) return { stock: ctx }; // rendered by DataSource (spec 039)
   depends('stock:item-detail');
+  const crm = await datasetCtx(locals, 'crm');
 
   // includeArchived: true — this is the record's OWN resolution (reached from
   // a ledger/entry link, [ / ] nav, or a direct URL) so an archived item must
@@ -43,8 +44,10 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     getLedger(ctx, params.id),
     listConsumption(ctx, { itemId: params.id }),
     itemSupplyInfo(ctx),
-    getInheritedItemTags(ctx, [params.id]),
-    listTags(ctx, 'stock'),
+    isDenied(crm)
+      ? Promise.resolve(new Map<string, { own: never[]; inherited: never[] }>())
+      : getInheritedItemTags(crm, [params.id]),
+    isDenied(crm) ? Promise.resolve([]) : listTags(crm, 'stock'),
     loadCustomPropertyBundle(locals, ctx, 'stock.items', [params.id]),
   ]);
   const item = items.find((i) => i.id === params.id);
@@ -52,9 +55,10 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
   // Standing supplier name for the picker's initial label (the picker itself
   // only round-trips an id).
-  const supplier = item.defaultSupplierPartyId
-    ? await getParty(ctx, item.defaultSupplierPartyId)
-    : null;
+  const supplier =
+    item.defaultSupplierPartyId && !isDenied(crm)
+      ? await getParty(crm, item.defaultSupplierPartyId)
+      : null;
   const supplyInfo = supply.get(item.id) ?? null;
   // Batch-resolve the ledger's entry human ids (Stock card's `entry` column,
   // spec Bundle C #2) — one query for every distinct entryId.
@@ -62,33 +66,35 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const humanIdByEntry = new Map(entryRefs.map((r) => [r.id, r.humanId]));
 
   return {
-    // Units already in use in this org — the UOM picker's options. Derived from
-    // the item list this load already fetches (no extra query).
-    uoms: distinctUoms(items),
-    item: {
-      ...item,
-      defaultSupplierName: supplier?.name ?? null,
-      lastRestockCost: supplyInfo?.lastRestockCost ?? null,
-      lastRestockAt: supplyInfo?.lastRestockAt ?? null,
-      lastSupplierName: supplyInfo?.supplierName ?? null,
+    stock: {
+      // Units already in use in this org — the UOM picker's options. Derived from
+      // the item list this load already fetches (no extra query).
+      uoms: distinctUoms(items),
+      item: {
+        ...item,
+        defaultSupplierName: supplier?.name ?? null,
+        lastRestockCost: supplyInfo?.lastRestockCost ?? null,
+        lastRestockAt: supplyInfo?.lastRestockAt ?? null,
+        lastSupplierName: supplyInfo?.supplierName ?? null,
+      },
+      itemIds: items.map((i) => i.id), // ordered ids only (keep payload small) — [ / ] prev/next nav
+      warehouseCount: warehouses.length,
+      customProperties,
+      bins: bins.map((b) => ({
+        ...b,
+        warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId,
+      })),
+      ledger: ledger.map((l) => ({
+        ...l,
+        warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId,
+        entryHumanId: humanIdByEntry.get(l.entryId) ?? null,
+      })),
+      consumedBy,
+      tags: itemTags.get(params.id)?.own ?? [],
+      inheritedTags: itemTags.get(params.id)?.inherited ?? [],
+      allTags: stockTags
+        .filter((t) => t.kind === 'manual')
+        .map((t) => ({ id: t.id, name: t.name, color: t.color })),
     },
-    itemIds: items.map((i) => i.id), // ordered ids only (keep payload small) — [ / ] prev/next nav
-    warehouseCount: warehouses.length,
-    customProperties,
-    bins: bins.map((b) => ({
-      ...b,
-      warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId,
-    })),
-    ledger: ledger.map((l) => ({
-      ...l,
-      warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId,
-      entryHumanId: humanIdByEntry.get(l.entryId) ?? null,
-    })),
-    consumedBy,
-    tags: itemTags.get(params.id)?.own ?? [],
-    inheritedTags: itemTags.get(params.id)?.inherited ?? [],
-    allTags: stockTags
-      .filter((t) => t.kind === 'manual')
-      .map((t) => ({ id: t.id, name: t.name, color: t.color })),
   };
 };
