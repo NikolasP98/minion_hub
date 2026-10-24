@@ -1,4 +1,5 @@
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { isDenied, type DatasetDenied } from '$lib/permissions';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { categoryColorsForProducts } from '$server/services/finance-products.service';
@@ -38,9 +39,24 @@ export interface CalendarWindowEventType {
 export async function loadCalendarWindow(
   ctx: CoreCtx,
   locals: App.Locals,
-  opts: { from: Date; to: Date; eventTypes: CalendarWindowEventType[]; pos: boolean },
+  opts: {
+    from: Date;
+    to: Date;
+    eventTypes: CalendarWindowEventType[];
+    pos: boolean;
+    /** `ctx` is the SCHEDULING handle. Each foreign dataset is read through its own handle (spec
+     *  039): a denied one degrades its slice (no money, chips, colours or tags), never leaks.
+     *  Omitted by the guarded JSON endpoints, which authorize at the route (S5 migrates them). */
+    foreign?: {
+      pos: CoreCtx | DatasetDenied;
+      stock: CoreCtx | DatasetDenied;
+      crm: CoreCtx | DatasetDenied;
+    };
+  },
 ) {
-  const { from, to, eventTypes, pos } = opts;
+  const { from, to, eventTypes } = opts;
+  const foreign = opts.foreign ?? { pos: ctx, stock: ctx, crm: ctx };
+  const pos = opts.pos && !isDenied(foreign.pos);
 
   // TODO(handoff): no status filter — every status reaches the grid, including
   // cancelled/rejected/no_show. That is what `/pos/appointments` always did; the
@@ -61,28 +77,34 @@ export async function loadCalendarWindow(
   // module must never cost the operator the calendar.
   const productOf = (b: (typeof bookings)[number]): string | null =>
     b.productId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.productId ?? null;
-  const categories = await categoryColorsForProducts(ctx, [
-    ...new Set(bookings.map(productOf).filter((v): v is string => !!v)),
-  ]).catch(() => new Map<string, { name: string; color: string }>());
+  const categories = isDenied(foreign.pos)
+    ? new Map<string, { name: string; color: string }>()
+    : await categoryColorsForProducts(foreign.pos, [
+        ...new Set(bookings.map(productOf).filter((v): v is string => !!v)),
+      ]).catch(() => new Map<string, { name: string; color: string }>());
 
   // Submitted tickets in the same window — the "Invoiced" half of the POS split
   // view. Money never reaches the scheduling calendar, which has no such column.
-  const tickets = pos ? await listTicketsForCalendar(ctx, { from, to }).catch(() => []) : [];
+  const tickets =
+    pos && !isDenied(foreign.pos)
+      ? await listTicketsForCalendar(foreign.pos, { from, to }).catch(() => [])
+      : [];
   // Per-booking paid-ness for the event context menu (spec 2026-10-13 D3):
   // anchored on the line's booking_id, NOT the window — a ticket sold weeks
   // ago still marks its booking paid. One query over the window's ids.
-  const ticketLinks = pos
-    ? await bookingTicketLinks(
-        ctx,
-        bookings.map((b) => b.id),
-      ).catch(() => new Map<string, { id: string; humanId: string | null }[]>())
-    : new Map<string, { id: string; humanId: string | null }[]>();
+  const ticketLinks =
+    pos && !isDenied(foreign.pos)
+      ? await bookingTicketLinks(
+          foreign.pos,
+          bookings.map((b) => b.id),
+        ).catch(() => new Map<string, { id: string; humanId: string | null }[]>())
+      : new Map<string, { id: string; humanId: string | null }[]>();
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
-  if (pos) {
+  if (pos && !isDenied(foreign.stock)) {
     try {
       accrualSummaries = await accrualSummaryForSources(
-        ctx,
+        foreign.stock,
         'booking',
         bookings.map((b) => b.id),
       );
@@ -100,6 +122,8 @@ export async function loadCalendarWindow(
     { id: string; name: string; color: string | null; origin?: 'contact' | 'product' }
   >();
   try {
+    if (isDenied(foreign.crm)) throw new Error('crm denied'); // no tag reads without CRM view
+    const crm = foreign.crm;
     const productIds = [
       ...new Set(bookings.map((b) => b.productId).filter((v): v is string => !!v)),
     ];
@@ -108,14 +132,14 @@ export async function loadCalendarWindow(
     ];
     const [own, byEventType, byProduct, byContact, registry] = await Promise.all([
       getTagLinks(
-        ctx,
+        crm,
         'booking',
         bookings.map((b) => b.id),
       ),
-      getTagLinks(ctx, 'event_type', [...new Set(bookings.map((b) => b.eventTypeId))]),
-      getTagLinks(ctx, 'product', productIds),
-      getContactTagsBulk(ctx, contactIds),
-      listTags(ctx, 'event'),
+      getTagLinks(crm, 'event_type', [...new Set(bookings.map((b) => b.eventTypeId))]),
+      getTagLinks(crm, 'product', productIds),
+      getContactTagsBulk(crm, contactIds),
+      listTags(crm, 'event'),
     ]);
     for (const t of registry) {
       if (t.kind === 'manual') tagOptions.set(t.id, { id: t.id, name: t.name, color: t.color });

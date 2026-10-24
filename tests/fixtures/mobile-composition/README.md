@@ -1,7 +1,7 @@
 # Mobile composition fixture (plan 13-02, UI-04)
 
 Production-bundles the **actual** Home (`src/routes/(app)/home/+page.svelte`) and
-scheduling Calendar (`src/routes/(app)/scheduling/calendar/+page.svelte`) route
+scheduling Calendar (`src/routes/(app)/scheduling/calendar/PageBody.svelte`) route
 components with synthetic data, the (app) shell's height/scroll chain
 (`Shell.svelte`) and `$app/*` / `$env/*` stubs.
 

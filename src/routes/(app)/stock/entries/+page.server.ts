@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listEntries, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
@@ -12,9 +11,13 @@ import { countAttachmentsByObjects } from '$server/services/attachments.service'
 import { entryDocument, type EntryDocumentKind } from '$lib/components/stock/entry-document';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'stock');
+  if (isDenied(ctx)) return { stock: ctx }; // rendered by DataSource (spec 039)
   depends('stock:entries');
+  // Foreign datasets through their own handles; a denied one degrades its labels (spec 039).
+  const crm = await datasetCtx(locals, 'crm');
+  const pos = await datasetCtx(locals, 'pos');
+  const fin = await datasetCtx(locals, 'finance');
 
   const partyId = url.searchParams.get('party') ?? undefined;
   const [entries, items, warehouses] = await Promise.all([
@@ -33,7 +36,9 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // than a new joined query, and entry counts here are in the hundreds, not
   // thousands (ponytail: revisit with a batched lookup if that changes).
   const partyIds = [...new Set(entries.map((e) => e.partyId).filter((x): x is string => !!x))];
-  const parties = await Promise.all(partyIds.map((id) => getParty(ctx, id)));
+  const parties = await Promise.all(
+    partyIds.map((id) => (isDenied(crm) ? Promise.resolve(null) : getParty(crm, id))),
+  );
   const partyById = new Map(parties.filter((p) => p != null).map((p) => [p.id, p]));
   const customProperties = await loadCustomPropertyBundle(
     locals,
@@ -51,9 +56,11 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   const purchaseIds = docs.filter((d) => d?.kind === 'purchase').map((d) => d!.id);
   const [ticketRefs, invoiceLabels, purchaseRefs, lineSummaries, attachmentCounts] =
     await Promise.all([
-      listTicketRefs(ctx, ticketIds),
-      getInvoiceLabelsByIds(ctx, invoiceIds),
-      listPurchaseRefs(ctx, purchaseIds),
+      isDenied(pos) ? Promise.resolve([]) : listTicketRefs(pos, ticketIds),
+      isDenied(fin)
+        ? Promise.resolve(new Map<string, string>())
+        : getInvoiceLabelsByIds(fin, invoiceIds),
+      isDenied(fin) ? Promise.resolve([]) : listPurchaseRefs(fin, purchaseIds),
       listEntryLineSummaries(
         ctx,
         entries.map((e) => e.id),
@@ -83,24 +90,26 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   }
 
   return {
-    customProperties,
-    entries: entries.map((e) => {
-      const summary = lineSummaries.get(e.id);
-      return {
-        ...e,
-        partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null,
-        document: resolveDocument(entryDocument(e.type, e.metadata)),
-        lineCount: summary?.lineCount ?? 0,
-        firstFromWarehouseId: summary?.firstFromWarehouseId ?? null,
-        firstToWarehouseId: summary?.firstToWarehouseId ?? null,
-        attachmentCount: attachmentCounts.get(e.id) ?? 0,
-      };
-    }),
-    partyFilter: partyId ?? null,
-    itemsById,
-    warehousesById,
-    // Gates the Transfer action in the add-menu: one warehouse = nothing to
-    // transfer to. Count only, the roster itself isn't needed here.
-    warehouseCount: warehouses.length,
+    stock: {
+      customProperties,
+      entries: entries.map((e) => {
+        const summary = lineSummaries.get(e.id);
+        return {
+          ...e,
+          partyName: e.partyId ? (partyById.get(e.partyId)?.name ?? e.partyId) : null,
+          document: resolveDocument(entryDocument(e.type, e.metadata)),
+          lineCount: summary?.lineCount ?? 0,
+          firstFromWarehouseId: summary?.firstFromWarehouseId ?? null,
+          firstToWarehouseId: summary?.firstToWarehouseId ?? null,
+          attachmentCount: attachmentCounts.get(e.id) ?? 0,
+        };
+      }),
+      partyFilter: partyId ?? null,
+      itemsById,
+      warehousesById,
+      // Gates the Transfer action in the add-menu: one warehouse = nothing to
+      // transfer to. Count only, the roster itself isn't needed here.
+      warehouseCount: warehouses.length,
+    },
   };
 };

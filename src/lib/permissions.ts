@@ -260,7 +260,7 @@ export const DATA_VERBS = {
  * Modules whose (app) page reads go through `datasetCtx` (spec 039); grown one module per rollout
  * slice. Read by spec 037's transition floor (skip it) and by the dataset-read ratchet (zero bare reads).
  */
-export const DATASET_ENFORCED: readonly Module[] = ['pos'];
+export const DATASET_ENFORCED: readonly Module[] = ['pos', 'scheduling', 'stock'];
 
 /** A dataset the caller's role cannot view: returned in a load's data slot instead of throwing. */
 export interface DatasetDenied {

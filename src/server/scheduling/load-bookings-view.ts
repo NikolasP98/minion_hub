@@ -12,8 +12,7 @@
  * Form actions deliberately stay on their routes: SvelteKit resolves actions
  * per route and runs them before loads re-run.
  */
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, type DatasetDenied } from '$server/auth/dataset-ctx';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
@@ -78,17 +77,23 @@ export interface BookingsViewContactScope {
 export async function loadBookingsView(
   event: BookingsViewLoadEvent,
   opts: LoadBookingsViewOptions & { contactScope: true },
-): Promise<BookingsViewLoadData & BookingsViewContactScope>;
+): Promise<(BookingsViewLoadData & BookingsViewContactScope) | DatasetDenied>;
 export async function loadBookingsView(
   event: BookingsViewLoadEvent,
   opts: LoadBookingsViewOptions & { contactScope?: false },
-): Promise<BookingsViewLoadData>;
+): Promise<BookingsViewLoadData | DatasetDenied>;
 export async function loadBookingsView(
   { locals, depends, url }: BookingsViewLoadEvent,
   opts: LoadBookingsViewOptions,
-): Promise<BookingsViewLoadData | (BookingsViewLoadData & BookingsViewContactScope)> {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+): Promise<
+  BookingsViewLoadData | (BookingsViewLoadData & BookingsViewContactScope) | DatasetDenied
+> {
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return ctx; // rendered by DataSource (spec 039)
+  // Foreign datasets read through their OWN handles; a denied one degrades its slot to empty.
+  const crm = await datasetCtx(locals, 'crm');
+  const fin = await datasetCtx(locals, 'finance');
+  const stk = await datasetCtx(locals, 'stock');
   depends(opts.dependsKey);
 
   // Cross-module nav: ?contact= shows ALL of one contact's bookings (no window).
@@ -108,7 +113,7 @@ export async function loadBookingsView(
     listBookings(ctx, bookingsOpts),
     listResources(ctx),
     listEventTypes(ctx),
-    contact ? getContact(ctx, contact) : Promise.resolve(null),
+    contact && !isDenied(crm) ? getContact(crm, contact) : Promise.resolve(null),
   ]);
 
   // Batched id→label lookup so the row/hover-card surfaces can show a
@@ -116,9 +121,10 @@ export async function loadBookingsView(
   const invoiceIds = [
     ...new Set(rawBookings.map((b) => b.invoiceId).filter((v): v is string => !!v)),
   ];
-  const invoiceLabels = invoiceIds.length
-    ? await getInvoiceLabelsByIds(ctx, invoiceIds)
-    : new Map<string, string>();
+  const invoiceLabels =
+    invoiceIds.length && !isDenied(fin)
+      ? await getInvoiceLabelsByIds(fin, invoiceIds)
+      : new Map<string, string>();
   const bookings: Bookings = rawBookings.map((b) => ({
     ...b,
     invoiceLabel: b.invoiceId ? (invoiceLabels.get(b.invoiceId) ?? null) : null,
@@ -129,10 +135,10 @@ export async function loadBookingsView(
   // try/catch to swallow a query that shouldn't run.
   const stockEnabled = effectiveModuleEnabled(locals.orgKind, locals.moduleStates ?? {}, 'stock');
   let accrualSummaries: AccrualSummaries = [];
-  if (stockEnabled) {
+  if (stockEnabled && !isDenied(stk)) {
     try {
       accrualSummaries = await accrualSummaryForSources(
-        ctx,
+        stk,
         'booking',
         bookings.map((b) => b.id),
       );

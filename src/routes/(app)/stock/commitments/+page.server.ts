@@ -1,15 +1,14 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listAccruals, committedSpend } from '$server/services/stock-accruals.service';
 
 export const load: PageServerLoad = async ({ locals }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'stock');
+  if (isDenied(ctx)) return { stock: ctx }; // rendered by DataSource (spec 039)
   const [open, realized, committed] = await Promise.all([
     listAccruals(ctx, { status: 'open' }),
     listAccruals(ctx, { status: 'realized' }),
     committedSpend(ctx),
   ]);
-  return { open, realized, committed };
+  return { stock: { open, realized, committed } };
 };

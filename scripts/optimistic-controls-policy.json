@@ -136,7 +136,7 @@
     "reason": "Order status includes invoiced/cancelled financial transitions; retain posting acknowledgements."
   },
   {
-    "file": "src/routes/(app)/scheduling/calendar/+page.svelte",
+    "file": "src/routes/(app)/scheduling/calendar/PageBody.svelte",
     "value": "checked={showInheritedTags}",
     "handler": "onchange={setShowInheritedTags}",
     "policy": "optimistic-local",

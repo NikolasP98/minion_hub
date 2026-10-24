@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listItems,
   listWarehouses,
@@ -14,8 +13,8 @@ import { buildLowStockRows, buildStockSeries } from '$server/services/stock.logi
 const SERIES_DAYS = 90;
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'stock');
+  if (isDenied(ctx)) return { stock: ctx }; // rendered by DataSource (spec 039)
   depends('stock:overview');
 
   const [items, warehouses, bins, recentLedger, onHand, flow] = await Promise.all([
@@ -50,13 +49,15 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const series = buildStockSeries(totalValuation, flow, SERIES_DAYS, new Date());
 
   return {
-    series,
-    seriesDays: SERIES_DAYS,
-    totalValuation,
-    itemCount: items.length,
-    warehouseCount: warehouses.length,
-    lowStock,
-    recent,
-    hasData: items.length > 0 || warehouses.length > 0,
+    stock: {
+      series,
+      seriesDays: SERIES_DAYS,
+      totalValuation,
+      itemCount: items.length,
+      warehouseCount: warehouses.length,
+      lowStock,
+      recent,
+      hasData: items.length > 0 || warehouses.length > 0,
+    },
   };
 };

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { flushSync, tick, type ComponentProps } from 'svelte';
-import StockEntry from './+page.svelte';
+import StockEntry from './PageBody.svelte';
 import { page } from '../../../../../../tests/fixtures/pending-submission/page.svelte';
 import { executeTool, hasTool } from '$lib/assistant/model-context';
 import {
