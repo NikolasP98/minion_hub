@@ -34,6 +34,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // without scheduling view gets that dataset's marker for the whole composite page.
   const sched = await datasetCtx(locals, 'scheduling');
   if (isDenied(sched)) return { pos: sched };
+  const stk = await datasetCtx(locals, 'stock');
+  const crm = await datasetCtx(locals, 'crm');
 
   // The org timezone rides on the resources, exactly like /scheduling/calendar —
   // the two calendars must resolve the SAME window for the same ?view/?date.
@@ -60,7 +62,14 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // run them concurrently instead of three sequential round trips.
   const [{ bookings, invoices, accrualSummaries, tagOptions }, categories, pending] =
     await Promise.all([
-      loadCalendarWindow(sched, locals, { from, to, eventTypes, pos: true }),
+      // pos/stock/crm slices of the window come through THEIR handles (a denied one degrades its slice).
+      loadCalendarWindow(sched, locals, {
+        from,
+        to,
+        eventTypes,
+        pos: true,
+        foreign: { pos: ctx, stock: stk, crm },
+      }),
       // The same column's VALUE list — previewed when the operator hovers the
       // `category` option in the calendar's colour picker. Fail-soft for the
       // same reason the colours in `loadPosCalendarWindow` are (a missing POS

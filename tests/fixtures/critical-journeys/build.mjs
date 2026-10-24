@@ -36,7 +36,7 @@ const pulseAuthority = [
 ];
 const baseAuthority = [
   'src/routes/(app)/home/+page.svelte',
-  'src/routes/(app)/scheduling/calendar/+page.svelte',
+  'src/routes/(app)/scheduling/calendar/PageBody.svelte',
   'src/lib/services/gateway.svelte.ts',
   'src/lib/services/gateway/chat-rpc.ts',
   'src/lib/components/settings/SecretEditModal.svelte',

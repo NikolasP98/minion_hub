@@ -52,12 +52,14 @@ describe('route archetype composition (spec 013 FR-004)', () => {
     expect(owners.length).toBeGreaterThanOrEqual(16);
     // /stock/items has no PageShell of its own in the layout chain's ROOT but its
     // sibling /stock/entries inherits the shell from stock/+layout.svelte.
-    const chain = layoutChain('src/routes/(app)/stock/entries/+page.svelte');
+    const chain = layoutChain('src/routes/(app)/stock/entries/PageBody.svelte');
     expect(chain.some((f) => f.endsWith('stock/+layout.svelte'))).toBe(true);
     expect(
-      markupOf(readFileSync('src/routes/(app)/stock/entries/+page.svelte', 'utf8')),
+      markupOf(readFileSync('src/routes/(app)/stock/entries/PageBody.svelte', 'utf8')),
     ).not.toContain('<PageShell');
-    expect(composedSource('src/routes/(app)/stock/entries/+page.svelte')).toContain('<PageShell');
+    expect(composedSource('src/routes/(app)/stock/entries/PageBody.svelte')).toContain(
+      '<PageShell',
+    );
   });
 
   it.each(screens.map((s) => [s.pattern, s.archetype, s.file] as const))(

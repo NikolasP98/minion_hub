@@ -2,7 +2,7 @@
   import { Button } from '@minion-stack/ui';
   import { onDestroy, type ComponentProps } from 'svelte';
   import Pulse from '../../../src/routes/(app)/pulse/+page.svelte';
-  import Scheduling from '../../../src/routes/(app)/scheduling/settings/+page.svelte';
+  import Scheduling from '../../../src/routes/(app)/scheduling/settings/PageBody.svelte';
   import BeforePulse from './BeforePulse.svelte';
   import BeforeScheduling from './BeforeScheduling.svelte';
   import { provideActions } from '$lib/services/actions/context';

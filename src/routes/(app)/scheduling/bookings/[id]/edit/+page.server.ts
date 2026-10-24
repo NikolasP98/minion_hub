@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { getBooking } from '$server/services/scheduling-bookings.service';
 import { listEventTypes, listEventKinds, listResources } from '$server/services/scheduling.service';
 import { listTags } from '$server/services/crm-contacts.service';
@@ -9,8 +9,11 @@ import { getInvoiceLabelsByIds } from '$server/services/finance.service';
 
 /** `/scheduling/bookings/[id]/edit` — full CRUD edit for one booking (spec S5). */
 export const load: PageServerLoad = async ({ locals, params }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return { scheduling: ctx }; // rendered by DataSource (spec 039)
+  // Foreign datasets through their own handles; denied => empty slot (spec 039).
+  const crm = await datasetCtx(locals, 'crm');
+  const fin = await datasetCtx(locals, 'finance');
   const booking = await getBooking(ctx, params.id);
   if (!booking) throw error(404, 'Booking not found');
 
@@ -18,40 +21,46 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     listEventTypes(ctx),
     listEventKinds(ctx),
     listResources(ctx),
-    listTags(ctx, 'event'),
-    getTagLinks(ctx, 'booking', [booking.id]),
-    booking.invoiceId ? getInvoiceLabelsByIds(ctx, [booking.invoiceId]) : Promise.resolve(null),
+    isDenied(crm) ? Promise.resolve([]) : listTags(crm, 'event'),
+    isDenied(crm)
+      ? Promise.resolve(new Map<string, { id: string; name: string; color: string | null }[]>())
+      : getTagLinks(crm, 'booking', [booking.id]),
+    booking.invoiceId && !isDenied(fin)
+      ? getInvoiceLabelsByIds(fin, [booking.invoiceId])
+      : Promise.resolve(null),
   ]);
 
   return {
-    booking: {
-      id: booking.id,
-      title: booking.title,
-      notes: booking.notes,
-      status: booking.status,
-      eventTypeId: booking.eventTypeId,
-      productId: booking.productId,
-      resourceId: booking.resourceId,
-      kindId: booking.kindId,
-      crmContactId: booking.crmContactId,
-      partyId: booking.partyId,
-      attendeeName: booking.attendeeName,
-      attendeeEmail: booking.attendeeEmail,
-      attendeePhone: booking.attendeePhone,
-      invoiceId: booking.invoiceId,
-      invoiceLabel: booking.invoiceId ? (invoiceLabels?.get(booking.invoiceId) ?? null) : null,
+    scheduling: {
+      booking: {
+        id: booking.id,
+        title: booking.title,
+        notes: booking.notes,
+        status: booking.status,
+        eventTypeId: booking.eventTypeId,
+        productId: booking.productId,
+        resourceId: booking.resourceId,
+        kindId: booking.kindId,
+        crmContactId: booking.crmContactId,
+        partyId: booking.partyId,
+        attendeeName: booking.attendeeName,
+        attendeeEmail: booking.attendeeEmail,
+        attendeePhone: booking.attendeePhone,
+        invoiceId: booking.invoiceId,
+        invoiceLabel: booking.invoiceId ? (invoiceLabels?.get(booking.invoiceId) ?? null) : null,
+      },
+      eventTypes: eventTypes.map((e) => ({
+        id: e.id,
+        title: e.title,
+        productId: e.productId ?? null,
+        active: e.active,
+        length: e.length,
+        kindId: e.kindId ?? null,
+      })),
+      kinds,
+      resources,
+      tags: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
+      currentTagIds: (tagsById.get(booking.id) ?? []).map((t) => t.id),
     },
-    eventTypes: eventTypes.map((e) => ({
-      id: e.id,
-      title: e.title,
-      productId: e.productId ?? null,
-      active: e.active,
-      length: e.length,
-      kindId: e.kindId ?? null,
-    })),
-    kinds,
-    resources,
-    tags: tags.map((t) => ({ id: t.id, name: t.name, color: t.color })),
-    currentTagIds: (tagsById.get(booking.id) ?? []).map((t) => t.id),
   };
 };

@@ -30,6 +30,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: (locals: unknown) => mocks.getCoreCtx(locals),
 }));
+// Spec 039: loads read through datasetCtx; every dataset is allowed in this characterization.
+vi.mock('$server/auth/dataset-ctx', () => ({
+  datasetCtx: async (locals: unknown) => (await mocks.getCoreCtx(locals)) ?? { denied: 'x' },
+  isDenied: (v: unknown) => !!v && typeof v === 'object' && 'denied' in v,
+}));
 vi.mock('$server/services/rbac.service', () => ({
   shouldMaskSensitive: (locals: unknown, module: unknown) =>
     mocks.shouldMaskSensitive(locals, module),
@@ -73,6 +78,10 @@ vi.mock('$server/services/stock-accruals.service', () => ({
   accrualSummaryForSources: (ctx: unknown, source: unknown, ids: unknown) =>
     mocks.accrualSummaryForSources(ctx, source, ids),
 }));
+
+// Loads return `{ <dataset>: body }` (spec 039): unwrap the single slot.
+const body = (r: unknown) =>
+  Object.values(r as Record<string, unknown>)[0] as Record<string, unknown>;
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-08-18T12:00:00.000Z');
@@ -178,7 +187,7 @@ describe('/scheduling/bookings load — pinned key set', () => {
     const url = new URL('http://localhost/scheduling/bookings');
     const locals = { orgKind: 'business', moduleStates: { stock: true } };
 
-    const result = (await load({ locals, depends, url } as never)) as Record<string, unknown>;
+    const result = body(await load({ locals, depends, url } as never));
 
     expect(Object.keys(result).sort()).toEqual(
       [
@@ -240,11 +249,13 @@ describe('/scheduling/bookings load — pinned key set', () => {
     mocks.getContact.mockResolvedValue({ contact: { displayName: 'Jane Doe' } });
     const url = new URL('http://localhost/scheduling/bookings?contact=c1');
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: {} },
-      depends: vi.fn(),
-      url,
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: {} },
+        depends: vi.fn(),
+        url,
+      } as never),
+    );
 
     expect(mocks.listBookings).toHaveBeenCalledWith(CTX, {
       crmContactId: 'c1',
@@ -268,11 +279,13 @@ describe('/scheduling/bookings load — pinned key set', () => {
     const { load } = await import('./+page.server');
     const url = new URL('http://localhost/scheduling/bookings');
 
-    const result = (await load({
-      locals: { orgKind: 'personal', moduleStates: { stock: true } },
-      depends: vi.fn(),
-      url,
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'personal', moduleStates: { stock: true } },
+        depends: vi.fn(),
+        url,
+      } as never),
+    );
 
     expect(mocks.accrualSummaryForSources).not.toHaveBeenCalled();
     expect(result.stockEnabled).toBe(false);
@@ -285,11 +298,13 @@ describe('/pos/appointments load — pinned key set', () => {
     const { load } = await import('../../pos/appointments/+page.server');
     const depends = vi.fn();
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: { stock: true } },
-      depends,
-      url: POS_URL(),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: { stock: true } },
+        depends,
+        url: POS_URL(),
+      } as never),
+    );
 
     // POS has no `contactId`/`contactName`/`openNew` — those are a scheduling-only
     // affordance. It DOES now carry `day`/`view`: the page is a calendar whose
@@ -382,11 +397,13 @@ describe('/pos/appointments load — pinned key set', () => {
     const { load } = await import('../../pos/appointments/+page.server');
     mocks.getResourceSchedule.mockResolvedValue(null);
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: { stock: true } },
-      depends: vi.fn(),
-      url: POS_URL(),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: { stock: true } },
+        depends: vi.fn(),
+        url: POS_URL(),
+      } as never),
+    );
 
     expect(result.hours).toEqual({});
   });
@@ -394,11 +411,13 @@ describe('/pos/appointments load — pinned key set', () => {
   it('honours ?view and ?date, resolving the window in the org timezone', async () => {
     const { load } = await import('../../pos/appointments/+page.server');
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: { stock: true } },
-      depends: vi.fn(),
-      url: new URL('http://localhost/pos/appointments?view=day&date=2026-09-01'),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: { stock: true } },
+        depends: vi.fn(),
+        url: new URL('http://localhost/pos/appointments?view=day&date=2026-09-01'),
+      } as never),
+    );
 
     expect(result.view).toBe('day');
     expect(result.day).toBe('2026-09-01');
@@ -435,11 +454,13 @@ describe('/pos/appointments load — pinned key set', () => {
     // effectiveModuleEnabled would say `false` (kind-hidden); POS says `true`
     // because it never consults orgKind at all. This is the fork's own drift,
     // not something this characterization suite should "fix".
-    const result = (await load({
-      locals: { orgKind: 'personal', moduleStates: { stock: true } },
-      depends: vi.fn(),
-      url: POS_URL(),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'personal', moduleStates: { stock: true } },
+        depends: vi.fn(),
+        url: POS_URL(),
+      } as never),
+    );
 
     expect(result.stockEnabled).toBe(true);
   });
@@ -447,11 +468,13 @@ describe('/pos/appointments load — pinned key set', () => {
   it('defaults stockEnabled to true when moduleStates carries no explicit flag', async () => {
     const { load } = await import('../../pos/appointments/+page.server');
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: {} },
-      depends: vi.fn(),
-      url: POS_URL(),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: {} },
+        depends: vi.fn(),
+        url: POS_URL(),
+      } as never),
+    );
 
     expect(result.stockEnabled).toBe(true);
   });
@@ -552,12 +575,14 @@ describe('/scheduling/calendar load — pinned key set', () => {
     const { load } = await import('../calendar/+page.server');
     const depends = vi.fn();
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: { stock: true } },
-      depends,
-      url: new URL('http://localhost/scheduling/calendar'),
-      parent: parentWithPref(),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: { stock: true } },
+        depends,
+        url: new URL('http://localhost/scheduling/calendar'),
+        parent: parentWithPref(),
+      } as never),
+    );
 
     // Same view-derived window arithmetic as /pos/appointments — the two
     // calendars render the same `BookingCalendar` and must agree.
@@ -638,14 +663,16 @@ describe('/scheduling/calendar load — pinned key set', () => {
   it('echoes the ?staff/?kind seeds and the stored showInheritedTags preference', async () => {
     const { load } = await import('../calendar/+page.server');
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: { stock: true } },
-      depends: vi.fn(),
-      url: new URL(
-        'http://localhost/scheduling/calendar?view=day&date=2026-09-08&staff=r1,r2&kind=k2',
-      ),
-      parent: parentWithPref(),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: { stock: true } },
+        depends: vi.fn(),
+        url: new URL(
+          'http://localhost/scheduling/calendar?view=day&date=2026-09-08&staff=r1,r2&kind=k2',
+        ),
+        parent: parentWithPref(),
+      } as never),
+    );
 
     expect(result.view).toBe('day');
     expect(result.day).toBe('2026-09-08');
@@ -657,12 +684,14 @@ describe('/scheduling/calendar load — pinned key set', () => {
   it('defaults showInheritedTags to true when the viewer never set it', async () => {
     const { load } = await import('../calendar/+page.server');
 
-    const result = (await load({
-      locals: { orgKind: 'business', moduleStates: { stock: true } },
-      depends: vi.fn(),
-      url: new URL('http://localhost/scheduling/calendar'),
-      parent: parent(undefined),
-    } as never)) as Record<string, unknown>;
+    const result = body(
+      await load({
+        locals: { orgKind: 'business', moduleStates: { stock: true } },
+        depends: vi.fn(),
+        url: new URL('http://localhost/scheduling/calendar'),
+        parent: parent(undefined),
+      } as never),
+    );
 
     expect(result.showInheritedTags).toBe(true);
   });

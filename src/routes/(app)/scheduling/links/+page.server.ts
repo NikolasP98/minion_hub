@@ -1,17 +1,22 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listLinks, listEventTypes, listResources } from '$server/services/scheduling.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return { scheduling: ctx }; // rendered by DataSource (spec 039)
   depends('scheduling:data');
-  const [links, eventTypes, resources] = await Promise.all([listLinks(ctx), listEventTypes(ctx), listResources(ctx)]);
+  const [links, eventTypes, resources] = await Promise.all([
+    listLinks(ctx),
+    listEventTypes(ctx),
+    listResources(ctx),
+  ]);
   return {
-    links,
-    eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title })),
-    resources: resources.map((r) => ({ id: r.id, name: r.name })),
-    origin: url.origin,
+    scheduling: {
+      links,
+      eventTypes: eventTypes.map((e) => ({ id: e.id, title: e.title })),
+      resources: resources.map((r) => ({ id: r.id, name: r.name })),
+      origin: url.origin,
+    },
   };
 };

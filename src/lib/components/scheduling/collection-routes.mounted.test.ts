@@ -15,9 +15,9 @@ vi.mock('$app/navigation', async (original) => ({
   ...(await original<typeof import('$app/navigation')>()),
   invalidate,
 }));
-const { default: Links } = await import('../../../routes/(app)/scheduling/links/+page.svelte');
+const { default: Links } = await import('../../../routes/(app)/scheduling/links/PageBody.svelte');
 const { default: EventTypes } =
-  await import('../../../routes/(app)/scheduling/event-types/+page.svelte');
+  await import('../../../routes/(app)/scheduling/event-types/PageBody.svelte');
 
 const fetchMock = vi.fn();
 const link = {

@@ -44,7 +44,7 @@ vi.mock('$app/state', async (original) => {
   return { ...actual, page: reactivePage({ ...actual.page }) };
 });
 const { default: Calendar } =
-  await import('../../../routes/(app)/scheduling/calendar/+page.svelte');
+  await import('../../../routes/(app)/scheduling/calendar/PageBody.svelte');
 
 const PROP = '55555555-5555-4555-8555-555555555555';
 const SUBJECT = 'r1-0'; // Paciente 1A, resource r1, 08:00–08:45 Lima

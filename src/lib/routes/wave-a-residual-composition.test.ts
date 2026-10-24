@@ -19,7 +19,7 @@ const RESIDUAL_SCREENS = [
     marker: 'archetype="form"',
   },
   { route: '/orgs', source: 'orgs/+page.svelte', marker: 'archetype="collection"' },
-  { route: '/team', source: 'team/+page.svelte', marker: 'archetype="collection"' },
+  { route: '/team', source: 'team/PageBody.svelte', marker: 'archetype="collection"' },
   { route: '/users', source: 'users/+page.svelte', marker: 'archetype="collection"' },
   {
     route: '/users/join-requests',

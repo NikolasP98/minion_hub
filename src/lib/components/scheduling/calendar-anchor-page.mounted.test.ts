@@ -39,7 +39,7 @@ vi.mock('$lib/components/scheduling/BookingCalendar.svelte', async (original) =>
   default: (await import('./__fixtures__/AnchorProbe.svelte')).default,
 }));
 const { default: Calendar } =
-  await import('../../../routes/(app)/scheduling/calendar/+page.svelte');
+  await import('../../../routes/(app)/scheduling/calendar/PageBody.svelte');
 
 const calendarScope = calendarWindowScope('org-a', FIXTURE_TIME_ZONE);
 const data = (pageView: 'week' | 'table' | 'board' = 'week') =>

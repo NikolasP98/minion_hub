@@ -1,40 +1,13 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import { page } from '$app/state';
-  import { CalendarPlus } from 'lucide-svelte';
-  import { PageHeader, iconSizes } from '$lib/components/ui';
-  import { PageBody, PageShell } from '$lib/components/ui/foundations';
-  import BookingCreateForm from '$lib/components/scheduling/BookingCreateForm.svelte';
-  import * as m from '$lib/paraglide/messages';
+  import DataSource from '$lib/components/ui/DataSource.svelte';
+  import PageBody from './PageBody.svelte';
 
   let { data }: { data: PageData } = $props();
-  const returnTo = $derived(
-    data.contact ? `/scheduling/bookings?contact=${data.contact.id}` : '/scheduling/bookings',
-  );
-  const mutationScope = $derived(`scheduling:${page.data.activeOrgId ?? 'unknown'}`);
 </script>
 
-<svelte:head><title>{m.pos_appt_new()} · {m.nav_scheduling()}</title></svelte:head>
-
-<PageShell archetype="form" scroll="page" labelledBy="scheduling-booking-new-title">
-  <PageHeader
-    titleId="scheduling-booking-new-title"
-    title={m.pos_appt_new()}
-    subtitle={data.contact?.name ?? undefined}
-  >
-    {#snippet leading()}
-      <CalendarPlus size={iconSizes.md} class="text-accent shrink-0" />
-    {/snippet}
-  </PageHeader>
-  <PageBody padding="compact">
-    <BookingCreateForm
-      eventTypes={data.eventTypes}
-      kinds={data.kinds}
-      tags={data.tags}
-      contact={data.contact}
-      {returnTo}
-      timeZone={data.orgTz}
-      {mutationScope}
-    />
-  </PageBody>
-</PageShell>
+<DataSource value={data.scheduling} module="scheduling">
+  {#snippet children(body)}
+    <PageBody data={body} />
+  {/snippet}
+</DataSource>

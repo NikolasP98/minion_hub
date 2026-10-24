@@ -10,7 +10,7 @@
    */
   import type { ComponentProps } from 'svelte';
   import Shell from './Shell.svelte';
-  import CalendarPage from '../../../src/routes/(app)/scheduling/calendar/+page.svelte';
+  import CalendarPage from '../../../src/routes/(app)/scheduling/calendar/PageBody.svelte';
   import BookingsView from '$lib/components/scheduling/BookingsView.svelte';
   import BookingDetailDrawer from '$lib/components/scheduling/BookingDetailDrawer.svelte';
   import { createBookingCustomValues } from '$lib/components/scheduling/kit/booking-custom-values.svelte';
