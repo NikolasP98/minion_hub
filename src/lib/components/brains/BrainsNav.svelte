@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { canonicalPath } from '$lib/canonical-path';
+  import { navPath } from '$lib/nav/nav-config.svelte';
   import { BookOpen, Bot, FileText, Settings } from 'lucide-svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -22,7 +22,7 @@
     ),
   );
 
-  const pathname = $derived(canonicalPath(page.url.pathname));
+  const pathname = $derived(navPath());
 
   function isActive(id: string, href: string): boolean {
     if (id === 'brains') return pathname === '/brains';

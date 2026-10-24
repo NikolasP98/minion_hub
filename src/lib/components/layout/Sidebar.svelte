@@ -10,6 +10,7 @@
   import NavIcon from './NavIcon.svelte';
   import { Button, Tooltip, iconSizes } from '$lib/components/ui';
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
+  import { navConfig } from '$lib/nav/nav-config.svelte';
   import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
   import SidebarUtilities from './SidebarUtilities.svelte';
@@ -36,6 +37,7 @@
       page.data.activeOrgKind,
       pluginNavState.controlCenters,
       pluginNavState.enabledByPluginId,
+      navConfig(),
     ),
   );
 
