@@ -44,6 +44,7 @@ function brainAgentCapabilities(): Capabilities {
     visibleModules: () => ['brains'],
     ownerScoped: () => false,
     fieldLevel: () => 0,
+    explicitView: () => undefined,
   };
 }
 

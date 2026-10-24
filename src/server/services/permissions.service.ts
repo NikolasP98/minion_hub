@@ -1,6 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { PERMISSIONS, ALL_SUBRESOURCES, BUSINESS_ACTION_MODULES } from '$lib/permissions';
 import { resolveCapabilities, type Capabilities } from './rbac.service';
+import { readNavConfig } from './nav-config.service';
+import { getCoreDb } from '$server/db/pg-client';
+import { decideRouteAccess } from '$lib/routes/route-access-policies';
+import { EMPTY_NAV_CONFIG, navPageKeys } from '$lib/nav/custom-sections';
 import type { LoadCtx } from './types';
 
 export interface PermissionsLoadResult {
@@ -115,7 +119,13 @@ export async function loadPermissionsForUser(
 
   // Platform admins (profiles.role='admin', incl. the dev AUTH_DISABLED bypass
   // which has no supabaseId) keep full access — superuser short-circuit.
-  if (ctx.user?.role === 'admin') return { permissions: [...PERMISSIONS], roles: ['admin'] };
+  if (ctx.user?.role === 'admin') {
+    const nav = await loadNav(ctx);
+    return {
+      permissions: [...PERMISSIONS, ...navPageKeys(nav).map((l) => `${l.key}:view`)],
+      roles: ['admin'],
+    };
+  }
 
   // RBAC is now authoritative: resolve the user's org roles → capabilities →
   // legacy permission strings the nav + page guards consume. Falls back to the
@@ -128,5 +138,30 @@ export async function loadPermissionsForUser(
     };
 
   const caps = await resolveCapabilities(ctx.tenantCtx.tenantId, profileId);
-  return { permissions: capsToLegacyPermissions(caps), roles: caps.roles };
+  const out = capsToLegacyPermissions(caps);
+  // Page rules (spec 037): an explicit page row wins, then the section row, then
+  // the target's own registry decision (the same rule that guards its native path).
+  const have = new Set(out);
+  for (const { key, sectionKey, target } of navPageKeys(await loadNav(ctx))) {
+    const allowed =
+      caps.explicitView(key) ??
+      (sectionKey ? caps.explicitView(sectionKey) : undefined) ??
+      decideRouteAccess(target, {
+        authenticated: true,
+        role: ctx.user?.role,
+        permissions: have,
+        orgCapabilities: have,
+      }).allowed;
+    if (allowed) out.push(`${key}:view`);
+  }
+  return { permissions: out, roles: caps.roles };
+}
+
+/** Fail soft: a nav-config hiccup must never lock a member out of the app. */
+async function loadNav(ctx: LoadCtx) {
+  return readNavConfig({
+    db: getCoreDb(),
+    tenantId: ctx.tenantCtx!.tenantId,
+    profileId: ctx.user?.supabaseId,
+  }).catch(() => EMPTY_NAV_CONFIG);
 }
