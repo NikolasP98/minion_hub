@@ -53,7 +53,7 @@ describe('dataset-read ratchet (spec 039)', () => {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(
         path.join(dir, '+page.server.ts'),
-        "export const load = async ({ locals }) => { const ctx = await getCoreCtx(locals); return { ctx }; };\n",
+        'export const load = async ({ locals }) => { const ctx = await getCoreCtx(locals); return { ctx }; };\n',
       );
       const counts = collect();
       expect(counts[rel]).toBe(1);

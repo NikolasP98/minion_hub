@@ -21,7 +21,7 @@
 
   const denied = $derived(isDenied(value) ? value : null);
   const dataset = $derived(
-    denied ? (MODULE_LABELS[denied.denied] ?? denied.denied) : (module ? MODULE_LABELS[module] : ''),
+    denied ? (MODULE_LABELS[denied.denied] ?? denied.denied) : module ? MODULE_LABELS[module] : '',
   );
 </script>
 
