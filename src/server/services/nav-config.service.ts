@@ -4,7 +4,12 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { appNavConfig } from '$server/db/pg-schema/nav-config';
 import { supabaseAdmin } from '$server/supabase';
-import { normalizeNavConfig, type NavConfig } from '$lib/nav/custom-sections';
+import {
+  aliasableTargets,
+  navPageKeys,
+  normalizeNavConfig,
+  type NavConfig,
+} from '$lib/nav/custom-sections';
 
 /**
  * The org's custom-navigation document (see `$lib/nav/custom-sections.ts`).
@@ -68,4 +73,23 @@ export async function deleteOrphanPageRules(orgId: string, keep: readonly string
     .eq('org_id', orgId)
     .in('module', orphans);
   if (delError) throw delError;
+}
+
+/**
+ * Strict allowlist for the `permission_rules` keys the page-access surface may write:
+ * `page:<id>` / `section:<id>` present in this org's nav document, or `page:<pattern>`
+ * for an aliasable built-in screen. Anything else (module keys included) is refused.
+ */
+export async function isPageRuleKey(ctx: CoreCtx, key: string): Promise<boolean> {
+  const m = /^(page|section):(.+)$/.exec(key);
+  if (!m) return false;
+  if (m[1] === 'page' && m[2].startsWith('/'))
+    return aliasableTargets().some((t) => t.pattern === m[2]);
+  if (!/^[a-z0-9]{6}$/.test(m[2])) return false;
+  const config = await readNavConfig(ctx);
+  const live = new Set(
+    navPageKeys(config).flatMap((k) => (k.sectionKey ? [k.key, k.sectionKey] : [k.key])),
+  );
+  for (const s of config.sections) live.add(`section:${s.id}`);
+  return live.has(key);
 }

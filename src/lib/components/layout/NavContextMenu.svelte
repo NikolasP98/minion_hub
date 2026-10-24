@@ -12,6 +12,7 @@
     Copy,
     CopyPlus,
     Eye,
+    ShieldCheck,
     EyeOff,
     FolderInput,
     Pencil,
@@ -24,6 +25,7 @@
   import Picker from '$lib/components/ui/Picker.svelte';
   import { Button, Input } from '$lib/components/ui';
   import { Dialog, ConfirmDialog, FormField } from '$lib/components/ui/foundations';
+  import PageAccessDialog from './PageAccessDialog.svelte';
   import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import { canonicalPath } from '$lib/canonical-path';
@@ -34,6 +36,7 @@
   import { navConfig } from '$lib/nav/nav-config.svelte';
   import {
     NavSaveError,
+    canEditAccess,
     canEditNav,
     navClipboard,
     newIssues,
@@ -42,6 +45,9 @@
   import {
     addLink,
     addSection,
+    builtinPageKey,
+    pageViewKey,
+    sectionViewKey,
     aliasableTargets,
     duplicatePage,
     instancePath,
@@ -164,9 +170,13 @@
         selection: 'checkbox',
         checked: currentHome === href,
       });
-      if (!canEditNav()) return out;
       const target = instance?.target ?? builtinTarget;
       if (!target) return out;
+      const access = { id: 'access', label: m.nav_access_menu(), icon: ShieldCheck };
+      if (!canEditNav()) {
+        if (canEditAccess()) out.push(access);
+        return out;
+      }
       out.push({ id: 'copy', label: m.nav_menu_copy(), icon: Copy });
       out.push({ id: 'duplicate', label: m.nav_menu_duplicate(), icon: CopyPlus });
       out.push({ id: 'move', label: m.nav_menu_move(), icon: FolderInput });
@@ -184,9 +194,13 @@
         });
       else if (instance)
         out.push({ id: 'delete', label: m.nav_menu_delete(), icon: Trash2, danger: true });
-      // TODO(handoff): "Access…" (users:manage) is omitted until S5 ships PageAccessDialog — add `access` here.
+      if (canEditAccess()) out.push(access);
     } else if (kind === 'header') {
-      if (!canEditNav()) return out;
+      if (!canEditNav()) {
+        if (customSection && canEditAccess())
+          out.push({ id: 'access', label: m.nav_access_menu(), icon: ShieldCheck });
+        return out;
+      }
       const paste = {
         id: 'paste',
         label: m.nav_menu_paste(),
@@ -202,7 +216,8 @@
           label: toggled(customSection.hidden),
           icon: customSection.hidden ? Eye : EyeOff,
         });
-        // TODO(handoff): section "Access…" (users:manage) arrives with S5.
+        if (canEditAccess())
+          out.push({ id: 'access', label: m.nav_access_menu(), icon: ShieldCheck });
         out.push({
           id: 'delete-section',
           label: m.nav_menu_delete_section(),
@@ -274,7 +289,8 @@
     | { t: 'move' }
     | { t: 'delete' }
     | { t: 'restore' }
-    | { t: 'delete-section' };
+    | { t: 'delete-section' }
+    | { t: 'access' };
   let fLabel = $state('');
   let fSlug = $state('');
   let slugEdited = $state(false);
@@ -385,10 +401,23 @@
       id === 'move' ||
       id === 'delete' ||
       id === 'restore' ||
-      id === 'delete-section'
+      id === 'delete-section' ||
+      id === 'access'
     )
       openDlg({ t: id });
   }
+
+  /** The view-rule key the Access dialog edits: section header, page instance, or built-in screen. */
+  const accessSubject = $derived.by(() => {
+    if (customSection) return { key: sectionViewKey(customSection), label: customSection.label };
+    if (instance) return { key: pageViewKey(instance.page), label: instance.page.label };
+    if (builtinTarget)
+      return {
+        key: builtinPageKey(builtinTarget),
+        label: config.builtin[builtinTarget]?.label ?? label,
+      };
+    return null;
+  });
 
   // Rename / New section form ───────────────────────────────────────────────
   const hasSlug = $derived(dlg?.t === 'new-section' || !!instance || !!customSection);
@@ -497,7 +526,9 @@
   <ContextMenu {...at} {items} label={m.nav_menu_label()} onclose={close} {onselect} />
 {/if}
 
-{#if dlg && (dlg.t === 'rename' || dlg.t === 'new-section')}
+{#if dlg?.t === 'access' && accessSubject}
+  <PageAccessDialog bind:open={dlgOpen} subject={accessSubject} onclose={closeDlg} />
+{:else if dlg && (dlg.t === 'rename' || dlg.t === 'new-section')}
   <Dialog
     bind:open={dlgOpen}
     title={dlg.t === 'rename' ? m.nav_menu_rename() : m.nav_menu_new_section()}
