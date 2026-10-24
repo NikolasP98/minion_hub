@@ -159,9 +159,14 @@ export async function loadPermissionsForUser(
 
 /** Fail soft: a nav-config hiccup must never lock a member out of the app. */
 async function loadNav(ctx: LoadCtx) {
-  return readNavConfig({
-    db: getCoreDb(),
-    tenantId: ctx.tenantCtx!.tenantId,
-    profileId: ctx.user?.supabaseId,
-  }).catch(() => EMPTY_NAV_CONFIG);
+  // try/await, not .catch(): getCoreDb() itself throws when the PG client is unconfigured.
+  try {
+    return await readNavConfig({
+      db: getCoreDb(),
+      tenantId: ctx.tenantCtx!.tenantId,
+      profileId: ctx.user?.supabaseId,
+    });
+  } catch {
+    return EMPTY_NAV_CONFIG;
+  }
 }
