@@ -11,7 +11,11 @@ const mocks = vi.hoisted(() => ({
   listAdultGuardianCandidates: vi.fn(),
 }));
 
-vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: (l: unknown) => mocks.getCoreCtx(l) }));
+vi.mock('$server/auth/dataset-ctx', () => ({
+  datasetCtx: (l: unknown) => mocks.getCoreCtx(l),
+  isDenied: (v: unknown) => !!v && typeof v === 'object' && 'denied' in v,
+  viewableModules: async () => new Set(['scheduling', 'stock', 'finance', 'sales', 'support']),
+}));
 vi.mock('$server/services/rbac.service', () => ({
   ownerFilter: (l: unknown, m: unknown) => mocks.ownerFilter(l, m),
   shouldMaskSensitive: (l: unknown, m: unknown) => mocks.shouldMaskSensitive(l, m),
@@ -89,7 +93,7 @@ describe('crm contact detail loader — bookings fan-out (S10)', () => {
     const row = { id: 'bk-1', title: 'Consulta', startTime: new Date(), status: 'accepted' };
     mocks.listBookings.mockResolvedValueOnce([row]);
 
-    const data = (await load(event())) as Record<string, unknown>;
+    const data = ((await load(event())) as { crm: Record<string, unknown> }).crm;
 
     expect(mocks.listBookings).toHaveBeenCalledWith(
       CTX,
@@ -101,7 +105,7 @@ describe('crm contact detail loader — bookings fan-out (S10)', () => {
   it('degrades to an empty list when scheduling is disabled/absent for the org', async () => {
     mocks.listBookings.mockRejectedValueOnce(new Error('relation "sched_bookings" missing'));
 
-    const data = (await load(event())) as Record<string, unknown>;
+    const data = ((await load(event())) as { crm: Record<string, unknown> }).crm;
 
     expect(data.bookings).toEqual([]);
   });

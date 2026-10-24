@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { ownerFilter } from '$server/services/rbac.service';
 import { getOrder } from '$server/services/sales.service';
 import { listEntityTimeline } from '$server/services/activity.service';
@@ -9,8 +9,8 @@ import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'sales');
+  if (isDenied(ctx)) return { sales: ctx }; // rendered by DataSource (spec 039)
   depends('sales:order');
 
   // if-owner scope: a scoped caller only opens orders they own (else 404).
@@ -24,5 +24,5 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
       role: locals.user?.role ?? null,
     }),
   ]);
-  return { order, timeline, transitions };
+  return { sales: { order, timeline, transitions } };
 };

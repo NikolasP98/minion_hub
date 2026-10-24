@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, viewableModules } from '$server/auth/dataset-ctx';
 import { ownerFilter } from '$server/services/rbac.service';
 import { toSentimentGranularity } from '$server/services/crm-insights.service';
 import {
@@ -12,8 +11,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const RANGE_DAYS: Record<string, number> = { '30d': 30, '90d': 90, '365d': 365 };
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'crm');
+  if (isDenied(ctx)) return { crm: ctx }; // rendered by DataSource (spec 039)
 
   const requestedRange = url.searchParams.get('range') ?? '90d';
   const range: CrmInsightsRange =
@@ -44,8 +43,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   });
 
   return {
-    ...dashboard,
-    range,
-    sentGranularity,
+    crm: {
+      ...dashboard,
+      range,
+      sentGranularity,
+    },
   };
 };

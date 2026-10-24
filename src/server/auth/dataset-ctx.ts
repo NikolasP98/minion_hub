@@ -34,3 +34,13 @@ export async function readDataset<T>(
   const c = await datasetCtx(locals, module);
   return isDenied(c) ? c : fn(c);
 }
+
+/** Which of `modules` the caller's role can view (one datasetCtx each) — for services that count foreign datasets. */
+export async function viewableModules(
+  locals: App.Locals,
+  modules: readonly Module[],
+): Promise<Set<Module>> {
+  const out = new Set<Module>();
+  for (const m of modules) if (!isDenied(await datasetCtx(locals, m))) out.add(m);
+  return out;
+}

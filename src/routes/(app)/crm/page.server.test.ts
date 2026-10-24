@@ -7,8 +7,10 @@ const mocks = vi.hoisted(() => ({
   getFinSettings: vi.fn(),
 }));
 
-vi.mock('$server/auth/core-ctx', () => ({
-  requireCoreCtx: (locals: unknown) => mocks.requireCoreCtx(locals),
+vi.mock('$server/auth/dataset-ctx', () => ({
+  datasetCtx: (l: unknown) => mocks.requireCoreCtx(l),
+  isDenied: (v: unknown) => !!v && typeof v === 'object' && 'denied' in v,
+  viewableModules: async () => new Set(['scheduling', 'stock', 'finance', 'sales', 'support']),
 }));
 vi.mock('$server/services/rbac.service', () => ({
   ownerFilter: (locals: unknown, module: unknown) => mocks.ownerFilter(locals, module),
@@ -49,6 +51,13 @@ describe('CRM dashboard organization-date bounds', () => {
     vi.clearAllMocks();
   });
 
+  it('crm denied: the slot is the marker and no CRM service runs', async () => {
+    mocks.requireCoreCtx.mockResolvedValue({ denied: 'crm', verb: 'view' });
+    const out = (await load(event('7d'))) as { crm: unknown };
+    expect(out.crm).toEqual({ denied: 'crm', verb: 'view' });
+    expect(mocks.getCrmDashboardStats).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['7d', 7, '2026-03-04', '2026-03-04T05:00:00.000Z'],
     ['30d', 30, '2026-02-09', '2026-02-09T05:00:00.000Z'],
@@ -57,7 +66,7 @@ describe('CRM dashboard organization-date bounds', () => {
   ] as const)(
     'resolves %s as exactly %i inclusive civil days in fin_settings.timezone',
     async (range, days, expectedFrom, expectedFromInstant) => {
-      const data = (await load(event(range))) as {
+      const data = ((await load(event(range))) as { crm: unknown }).crm as {
         from: string;
         to: string;
         timeZone: string;

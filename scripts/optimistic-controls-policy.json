@@ -120,7 +120,7 @@
     "reason": "toggleShowResolved changes the local filter before fetching its new read projection."
   },
   {
-    "file": "src/routes/(app)/sales/+page.svelte",
+    "file": "src/routes/(app)/sales/PageBody.svelte",
     "value": "value={o.status}",
     "handler": "onchange={(value) => setStatus(o.id, String(value), o.updatedAt)}",
     "policy": "explicit-decision",
@@ -128,7 +128,7 @@
     "reason": "Order status includes invoiced/cancelled financial transitions; retain posting acknowledgements."
   },
   {
-    "file": "src/routes/(app)/sales/[id]/+page.svelte",
+    "file": "src/routes/(app)/sales/[id]/PageBody.svelte",
     "value": "value={o.status}",
     "handler": "onchange={(value) => setStatus(String(value))}",
     "policy": "explicit-decision",

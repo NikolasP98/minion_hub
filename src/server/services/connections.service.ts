@@ -55,10 +55,13 @@ export async function contactConnections(
   ctx: CoreCtx,
   contactId: string,
   kind?: OrgKind | null,
+  /** Spec 039: module ids the caller's role can view; others' groups are dropped (no foreign counts). */
+  viewable?: ReadonlySet<string>,
 ): Promise<ConnGroup[]> {
   const modules = await listModuleStates(ctx);
   const groups: ConnGroup[] = [];
-  const enabled = (featureId: string) => effectiveModuleEnabled(kind, modules, featureId);
+  const enabled = (featureId: string) =>
+    effectiveModuleEnabled(kind, modules, featureId) && (!viewable || viewable.has(featureId));
 
   await withOrgCore(ctx, async (tx) => {
     // ── Engagement (CRM is implicit — we're on its page) ───────────────────

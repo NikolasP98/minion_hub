@@ -1,12 +1,11 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listPeriods, listPurchases } from '$server/services/purchases.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'finance');
+  if (isDenied(ctx)) return { finance: ctx }; // rendered by DataSource (spec 039)
   depends('finances:purchases');
   // Compras volume is tiny (~35 docs/month) — load everything at once, group
   // client-side by period. No pagination needed at this scale (spec §4).
@@ -17,5 +16,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     'finances.purchases',
     purchases.map((purchase) => purchase.id),
   );
-  return { periods, purchases, customProperties };
+  return { finance: { periods, purchases, customProperties } };
 };
