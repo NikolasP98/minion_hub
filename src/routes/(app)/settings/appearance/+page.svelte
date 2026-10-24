@@ -8,6 +8,7 @@
   import SparklineStyleSettings from '$lib/components/settings/SparklineStyleSettings.svelte';
   import ThinkingStyleSettings from '$lib/components/settings/ThinkingStyleSettings.svelte';
   import DensitySettings from '$lib/components/settings/DensitySettings.svelte';
+  import LoadingIndicatorSettings from '$lib/components/settings/LoadingIndicatorSettings.svelte';
   import MinionLogo from '$lib/components/layout/MinionLogo.svelte';
   import CRTConfigModal from '$lib/components/settings/CRTConfigModal.svelte';
   import { Check, Globe } from 'lucide-svelte';
@@ -48,6 +49,11 @@
     <!-- Density (spec 013 A) -->
     <Card padding="md">
       <DensitySettings />
+    </Card>
+
+    <!-- Loading indicator (spec 038) -->
+    <Card padding="md">
+      <LoadingIndicatorSettings />
     </Card>
 
     <!-- Logo Presets -->

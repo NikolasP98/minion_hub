@@ -7051,5 +7051,9 @@
   "pulse_feedbackRecorded": "Recorded: {reason}",
   "pulse_feedbackExport": "Export my feedback",
   "pulse_digestNextStep": "Suggested next step:",
-  "pulse_digestEvidence": "Public source evidence"
+  "pulse_digestEvidence": "Public source evidence",
+  "settings_loadingIndicator": "Loading indicator",
+  "settings_loadingIndicatorDescription": "Where the app shows that it is working: the section icon turns into a ring, or the divider under your organization becomes an accent line.",
+  "settings_loadingIndicatorIconRing": "Section icon",
+  "settings_loadingIndicatorDividerBar": "Header divider"
 }

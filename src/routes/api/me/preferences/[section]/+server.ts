@@ -23,6 +23,7 @@ const VALID_SECTIONS = new Set([
   'appointmentServicesColumns',
   'dailyDashboard',
   'density',
+  'loadingIndicator',
 ]);
 
 /** `{ version: 1, mode: 'compact' | 'comfortable' }` — shell density (spec 013 A).
@@ -33,6 +34,17 @@ function isValidDensity(v: unknown): boolean {
   return (
     version === 1 &&
     (mode === 'compact' || mode === 'comfortable') &&
+    Object.keys(rest).length === 0
+  );
+}
+
+/** `{ version: 1, placement: 'icon-ring' | 'divider-bar' }` — sidebar busy indicator (spec 038). */
+function isValidLoadingIndicator(v: unknown): boolean {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const { version, placement, ...rest } = v as { version?: unknown; placement?: unknown };
+  return (
+    version === 1 &&
+    (placement === 'icon-ring' || placement === 'divider-bar') &&
     Object.keys(rest).length === 0
   );
 }
@@ -155,6 +167,9 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
   if (section === 'density' && !isValidDensity(body.value)) {
     throw error(400, 'Invalid density preference');
+  }
+  if (section === 'loadingIndicator' && !isValidLoadingIndicator(body.value)) {
+    throw error(400, 'Invalid loadingIndicator preference');
   }
   if (section === 'thinkingStyle' && !isThinkingStyle(body.value?.style)) {
     throw error(400, 'Invalid thinkingStyle preference');

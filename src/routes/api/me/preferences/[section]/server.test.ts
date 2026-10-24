@@ -111,6 +111,33 @@ describe('PUT /api/me/preferences/density', () => {
   });
 });
 
+describe('PUT /api/me/preferences/loadingIndicator', () => {
+  it('accepts both placements in the exact versioned shape', async () => {
+    for (const placement of ['icon-ring', 'divider-bar']) {
+      expect((await put('loadingIndicator', { version: 1, placement })).status).toBe(200);
+      expect(upsertUserPreference).toHaveBeenLastCalledWith(
+        expect.anything(),
+        'u1',
+        'loadingIndicator',
+        { version: 1, placement },
+      );
+    }
+  });
+  it('rejects unknown placements, versions, extra keys and non-objects', async () => {
+    for (const invalid of [
+      { version: 1, placement: 'footer' },
+      { version: 2, placement: 'icon-ring' },
+      { placement: 'icon-ring' },
+      { version: 1, placement: 'icon-ring', extra: 1 },
+      'icon-ring',
+      null,
+    ]) {
+      await expect(put('loadingIndicator', invalid)).rejects.toMatchObject({ status: 400 });
+    }
+    expect(upsertUserPreference).not.toHaveBeenCalled();
+  });
+});
+
 describe('PUT /api/me/preferences/thinkingStyle', () => {
   it('accepts every known spinner style', async () => {
     for (const style of [

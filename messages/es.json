@@ -7051,5 +7051,9 @@
   "pulse_feedbackRecorded": "Registrado: {reason}",
   "pulse_feedbackExport": "Exportar mis comentarios",
   "pulse_digestNextStep": "Siguiente paso sugerido:",
-  "pulse_digestEvidence": "Evidencia pública de las fuentes"
+  "pulse_digestEvidence": "Evidencia pública de las fuentes",
+  "settings_loadingIndicator": "Indicador de carga",
+  "settings_loadingIndicatorDescription": "Dónde se muestra que la app está trabajando: el icono de la sección se convierte en un anillo, o la línea bajo tu organización se vuelve de color acento.",
+  "settings_loadingIndicatorIconRing": "Icono de sección",
+  "settings_loadingIndicatorDividerBar": "Divisor del menú"
 }

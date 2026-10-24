@@ -13,7 +13,7 @@
    */
   import { goto } from '$app/navigation';
   import { ChevronsUpDown, LayoutList, Check, PanelLeft } from 'lucide-svelte';
-  import { Button, Dropdown, iconSizes, type DropdownItem } from '$lib/components/ui';
+  import { Button, Dropdown, Spinner, iconSizes, type DropdownItem } from '$lib/components/ui';
   import { visibleModules } from '$lib/nav/modules';
   import { navMode, navModuleData } from '$lib/state/ui/nav-mode.svelte';
   import { canViewPath } from '$lib/access/can.svelte';
@@ -24,8 +24,10 @@
     collapsed?: boolean;
     /** Expand the sidebar (mini rail only). */
     onExpand?: () => void;
+    /** The global busy signal renders in the icon's cell (spec 038, placement icon-ring). */
+    busy?: boolean;
   }
-  let { collapsed = false, onExpand }: Props = $props();
+  let { collapsed = false, onExpand, busy = false }: Props = $props();
 
   const FULL = '__full';
 
@@ -67,9 +69,10 @@
     onclick={onExpand}
     aria-label={m.nav_expandSidebar()}
   >
-    <span class="mini-icons">
+    <span class="mini-icons" class:is-busy={busy}>
       <ActiveIcon size={iconSizes.md} class="mod-icon shrink-0" />
       <PanelLeft size={iconSizes.md} class="expand-icon shrink-0" />
+      <Spinner size="md" class="busy-ring shrink-0" />
     </span>
   </Button>
 {:else}
@@ -77,7 +80,10 @@
     <Dropdown {items} {onSelect} placement="bottom" class="min-w-52">
       {#snippet trigger()}
         <span class="switcher">
-          <ActiveIcon size={iconSizes.md} class="shrink-0" />
+          <span class="icon-cell" class:is-busy={busy}>
+            <ActiveIcon size={iconSizes.md} class="mod-icon shrink-0" />
+            <Spinner size="md" class="busy-ring shrink-0" />
+          </span>
           <span class="t-label switcher-label">{label}</span>
           <ChevronsUpDown size={iconSizes.sm} class="shrink-0 opacity-60" />
         </span>
@@ -127,6 +133,30 @@
     white-space: nowrap;
   }
 
+  /* Busy: the house Spinner takes the icon's cell (same 16px box — no shift)
+     and crossfades with the icon. Accent, like the divider bar. */
+  .icon-cell {
+    display: grid;
+    place-items: center;
+  }
+  .icon-cell > :global(*) {
+    grid-area: 1 / 1;
+  }
+  .icon-cell > :global(.busy-ring),
+  .mini-icons > :global(.busy-ring) {
+    color: var(--color-accent);
+    opacity: 0;
+    transition: opacity var(--duration-normal) var(--ease-standard);
+  }
+  .icon-cell.is-busy > :global(.busy-ring),
+  .mini-icons.is-busy > :global(.busy-ring) {
+    opacity: 1;
+  }
+  .icon-cell.is-busy > :global(.mod-icon),
+  .mini-icons.is-busy > :global(.mod-icon) {
+    opacity: 0;
+  }
+
   /* Mini rail: one 36px square that lines up with the icon-only nav rows. */
   :global(.switcher-mini) {
     width: 100%;
@@ -149,6 +179,10 @@
     opacity: 1;
   }
   :global(aside:hover) .mini-icons > :global(.mod-icon) {
+    opacity: 0;
+  }
+  /* Rail hover still means "expand": the ring yields to the panel icon. */
+  :global(aside:hover) .mini-icons > :global(.busy-ring) {
     opacity: 0;
   }
 </style>
