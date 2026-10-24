@@ -1,8 +1,17 @@
-import { describe, test, expect, vi, beforeEach } from 'vitest';
+import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 // Mutable so kind-gating tests below can flip `activeOrgKind` per test without
 // re-mocking the module — `page.data` is read fresh at each canViewPath() call.
+const enforced = vi.hoisted(() => ({ list: [] as string[] }));
+vi.mock('$lib/permissions', async (orig) => ({
+  ...(await orig<typeof import('$lib/permissions')>()),
+  get DATASET_ENFORCED() {
+    return enforced.list;
+  },
+}));
+
 const pageData: {
+  navConfig?: unknown;
   user: { role: 'user' | 'admin' };
   permissions: { permissions: string[] };
   activeOrgKind?: 'business' | 'personal' | null;
@@ -29,8 +38,15 @@ vi.mock('$app/state', () => ({
   page: { data: pageData },
 }));
 
+// can.svelte now pulls the nav model (route manifest + icon map): a cold transform takes ~30s.
+beforeAll(async () => {
+  await import('./can.svelte');
+}, 180_000);
+
 beforeEach(() => {
   pageData.activeOrgKind = 'business';
+  pageData.navConfig = undefined;
+  enforced.list = [];
 });
 
 describe('canClient', () => {
@@ -99,5 +115,61 @@ describe('canViewPath — org-kind gating', () => {
     // canViewPath falls straight through to the existing RBAC result, same
     // as calling it with the plain path.
     expect(canViewPath('/agents?archetype=copilot')).toBe(canViewPath('/agents'));
+  });
+});
+
+// Spec 037 I1′/I1‴: an instance path is judged on its page grant AND (while the
+// transition floor applies) the target module's view — the same predicate resolve
+// and the server guards use, so the sidebar never offers a link that would 403.
+describe('canViewPath — nav instances', () => {
+  const cfg = {
+    version: 1,
+    sections: [
+      {
+        id: 'sec001',
+        slug: 'staff',
+        label: 'Staff',
+        pages: [{ id: 'k3x9q2', slug: 'sell', label: 'Sell', kind: 'link', target: '/pos/sell' }],
+      },
+    ],
+    builtinSections: {},
+    builtin: {},
+  };
+  const as = (perms: string[]) => {
+    pageData.user = { role: 'user' };
+    pageData.permissions = { permissions: perms };
+    pageData.navConfig = cfg;
+  };
+
+  test('needs the page grant and, while unenforced, the module floor', async () => {
+    const { canViewPath } = await import('./can.svelte');
+    as(['page:k3x9q2:view', 'pos:view']);
+    expect(canViewPath('/staff/sell~k3x9q2')).toBe(true);
+    expect(canViewPath('/staff/sell~k3x9q2/t/1')).toBe(true);
+    as(['pos:view']);
+    expect(canViewPath('/staff/sell~k3x9q2')).toBe(false);
+    as(['page:k3x9q2:view']);
+    expect(canViewPath('/staff/sell~k3x9q2')).toBe(false);
+  });
+
+  test('floor lifts once the module is dataset-enforced', async () => {
+    const { canViewPath } = await import('./can.svelte');
+    enforced.list = ['pos'];
+    as(['page:k3x9q2:view']);
+    expect(canViewPath('/staff/sell~k3x9q2')).toBe(true);
+  });
+
+  test("empty config: unknown path keeps today's open policy", async () => {
+    const { canViewPath } = await import('./can.svelte');
+    as(['page:k3x9q2:view']);
+    pageData.navConfig = undefined;
+    expect(canViewPath('/staff/sell~k3x9q2')).toBe(true);
+  });
+
+  test('personal org hides a POS instance', async () => {
+    const { canViewPath } = await import('./can.svelte');
+    as(['page:k3x9q2:view', 'pos:view']);
+    pageData.activeOrgKind = 'personal';
+    expect(canViewPath('/staff/sell~k3x9q2')).toBe(false);
   });
 });
