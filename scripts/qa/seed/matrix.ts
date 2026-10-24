@@ -234,6 +234,16 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'tenancy',
     why: 'one sandbox_elements row on the business org default page, so /sandbox renders something before the assistant has built anything',
   },
+  {
+    id: 'tenancy.nav.staff-section',
+    domain: 'tenancy',
+    why: 'a custom "Staff" section with a Sell link and the moved Appointments main (fixed ids), the fixture for instance routing',
+  },
+  {
+    id: 'tenancy.nav.staff-sell-viewer-rule',
+    domain: 'tenancy',
+    why: 'an explicit can_view=false override on the seeded Staff › Sell link, so the viewer persona proves the 404 path through the override, not just the inherited rule',
+  },
   { id: 'tenancy.join.request-pending', domain: 'tenancy', why: 'join_request status=pending' },
   { id: 'tenancy.join.link-expired', domain: 'tenancy', why: 'join_link expires_at in the past' },
   { id: 'tenancy.join.link-revoked', domain: 'tenancy', why: 'join_link revoked=true' },

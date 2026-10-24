@@ -1,5 +1,15 @@
-import { describe, test, expect } from 'vitest';
-import { capsToLegacyPermissions } from './permissions.service';
+import { describe, test, expect, vi, beforeEach } from 'vitest';
+
+const readNavConfig = vi.hoisted(() => vi.fn());
+const resolveCapabilities = vi.hoisted(() => vi.fn());
+vi.mock('./nav-config.service', () => ({ readNavConfig }));
+vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => ({}) }));
+vi.mock('./rbac.service', async (orig) => ({
+  ...(await orig<typeof import('./rbac.service')>()),
+  resolveCapabilities,
+}));
+
+import { capsToLegacyPermissions, loadPermissionsForUser } from './permissions.service';
 import { buildCapabilities } from './rbac.service';
 import { requiredViewPermForPath } from '$lib/permissions';
 
@@ -187,5 +197,91 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
     expect(requiredViewPermForPath('/settings/roles')).toBeNull();
     expect(requiredViewPermForPath('/team')).toBe('scheduling:view'); // HR page (spec 2026-09-02-hub-team-hr-module)
     expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
+  });
+});
+
+describe('loadPermissionsForUser — page view strings (spec 037)', () => {
+  const nav = {
+    version: 1,
+    builtin: {},
+    builtinSections: {},
+    sections: [
+      {
+        id: 'st4ff1',
+        slug: 'staff',
+        label: 'Staff',
+        pages: [
+          { id: 'k3x9q2', kind: 'link', slug: 'sell', label: 'Sell', target: '/pos/sell' },
+          {
+            id: 'a1b2c3',
+            kind: 'main',
+            slug: 'appts',
+            label: 'Appts',
+            target: '/pos/appointments',
+          },
+        ],
+      },
+    ],
+  };
+  const row = (module: string, can_view: boolean) => ({
+    role_key: 'staff',
+    module,
+    can_view,
+    can_create: false,
+    can_edit: false,
+    can_delete: false,
+    can_export: false,
+    can_manage: false,
+  });
+  const run = async (
+    roles: string[],
+    rows: ReturnType<typeof row>[] = [],
+    user = { supabaseId: 'p1' },
+  ) => {
+    resolveCapabilities.mockResolvedValue(buildCapabilities(roles, rows));
+    const out = await loadPermissionsForUser(
+      { tenantCtx: { tenantId: 'org-a' }, user } as never,
+      'u1',
+    );
+    return new Set(out.permissions);
+  };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    readNavConfig.mockResolvedValue(nav);
+  });
+
+  test('inherits the target rule: staff (has pos:create) sees the Sell link, viewer does not', async () => {
+    expect((await run(['staff'])).has('page:k3x9q2:view')).toBe(true);
+    expect((await run(['viewer'])).has('page:k3x9q2:view')).toBe(false);
+  });
+  test('an explicit page row wins over the target rule', async () => {
+    expect(
+      (await run(['viewer'], [{ ...row('page:k3x9q2', true), role_key: 'viewer' }])).has(
+        'page:k3x9q2:view',
+      ),
+    ).toBe(true);
+    expect((await run(['staff'], [row('page:k3x9q2', false)])).has('page:k3x9q2:view')).toBe(false);
+  });
+  test('a section row applies unless the page has its own row', async () => {
+    expect((await run(['staff'], [row('section:st4ff1', false)])).has('page:k3x9q2:view')).toBe(
+      false,
+    );
+    const both = await run(['staff'], [row('section:st4ff1', false), row('page:k3x9q2', true)]);
+    expect(both.has('page:k3x9q2:view')).toBe(true);
+  });
+  test('platform admin gets every instance string', async () => {
+    const out = await loadPermissionsForUser(
+      { tenantCtx: { tenantId: 'org-a' }, user: { role: 'admin' } } as never,
+      'u1',
+    );
+    expect(out.permissions).toEqual(
+      expect.arrayContaining(['page:k3x9q2:view', 'page:a1b2c3:view']),
+    );
+  });
+  test('a failing nav read adds no page strings and does not throw', async () => {
+    readNavConfig.mockRejectedValue(new Error('db down'));
+    const p = await run(['staff']);
+    expect([...p].some((x) => x.startsWith('page:'))).toBe(false);
+    expect(p.has('pos:view')).toBe(true);
   });
 });

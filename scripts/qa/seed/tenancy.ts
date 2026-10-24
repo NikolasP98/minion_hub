@@ -379,4 +379,51 @@ export async function seed(ctx: SeedContext): Promise<void> {
     table: 'sandbox_elements',
     where: { id: sandboxElementId },
   });
+
+  // Custom nav (spec 037): a "Staff" section with a Sell link and the moved
+  // Appointments main. Fixed ids keep the seed deterministic.
+  const navConfig = {
+    version: 1,
+    builtin: {},
+    sections: [
+      {
+        id: 'st4ff1',
+        slug: 'staff',
+        label: 'Staff',
+        icon: '🧑‍⚕️',
+        pages: [
+          { id: 'k3x9q2', kind: 'link', slug: 'sell', label: 'Sell', target: '/pos/sell' },
+          {
+            id: 'a1b2c3',
+            kind: 'main',
+            slug: 'appointments',
+            label: 'Appointments',
+            target: '/pos/appointments',
+          },
+        ],
+      },
+    ],
+    builtinSections: {},
+  };
+  await sql`
+    insert into app_nav_config (org_id, value)
+    values (${ORG_BUSINESS}, ${sql.json(navConfig)})
+    on conflict (org_id) do update set value = excluded.value, updated_at = now()
+  `;
+  register('tenancy.nav.staff-section', {
+    table: 'app_nav_config',
+    where: { org_id: ORG_BUSINESS },
+  });
+  // Explicit can_view=false on the Sell link so the viewer persona proves the
+  // 404 path through the override, not just the inherited /pos/sell rule.
+  await sql`
+    insert into permission_rules
+      (org_id, role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage)
+    values (${ORG_BUSINESS}, 'viewer', 'page:k3x9q2', false, false, false, false, false, false)
+    on conflict (org_id, role_key, module) do update set can_view = false
+  `;
+  register('tenancy.nav.staff-sell-viewer-rule', {
+    table: 'permission_rules',
+    where: { org_id: ORG_BUSINESS, role_key: 'viewer', module: 'page:k3x9q2' },
+  });
 }

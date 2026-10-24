@@ -26,6 +26,11 @@ vi.mock('../gateway.pg.service', () => ({
 vi.mock('../gateway-lease.service', () => ({
   resolveChannelEndpoint: vi.fn(async () => null),
 }));
+// permissions.service reads the org nav config (spec 037); keep the shim test off the DB/cache.
+const emptyNav = { version: 1, sections: [], builtin: {}, builtinSections: {} };
+vi.mock('../nav-config.service', () => ({ readNavConfig: vi.fn(async () => emptyNav) }));
+// The real module imports the icon map + route manifests (slow transform, >5s cold).
+vi.mock('$lib/nav/custom-sections', () => ({ EMPTY_NAV_CONFIG: emptyNav, navPageKeys: () => [] }));
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -456,6 +456,13 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
       });
     },
   );
+  test('nav config writes are settings:manage; resolve is an ungated read', () => {
+    expect(apiWriteCapability('/api/nav/config', 'PUT')).toEqual({
+      module: 'settings',
+      action: 'manage',
+    });
+    expect(apiWriteCapability('/api/nav/resolve', 'GET')).toBeNull();
+  });
   test('reads are never gated here', () => {
     expect(apiWriteCapability('/api/crm/contacts', 'GET')).toBeNull();
     expect(apiWriteCapability('/api/crm/contacts', 'HEAD')).toBeNull();
@@ -767,5 +774,35 @@ describe('deleteCustomRole — in-use guard', () => {
   });
   test('404s for a key this org never created', async () => {
     await expect(deleteCustomRole('org1', 'custom-ghost')).rejects.toThrow();
+  });
+});
+
+describe('Capabilities.explicitView — override rows only, no parent fallback', () => {
+  const row = (role_key: string, can_view: boolean) => ({
+    role_key,
+    module: 'page:k3x9q2',
+    can_view,
+    can_create: false,
+    can_edit: false,
+    can_delete: false,
+    can_export: false,
+    can_manage: false,
+  });
+  test('no row -> undefined', () => {
+    expect(buildCapabilities(['staff'], []).explicitView('page:k3x9q2')).toBeUndefined();
+  });
+  test('a can_view:false row -> false', () => {
+    expect(buildCapabilities(['viewer'], [row('viewer', false)]).explicitView('page:k3x9q2')).toBe(
+      false,
+    );
+  });
+  test('two roles, one granting -> true', () => {
+    const caps = buildCapabilities(['viewer', 'staff'], [row('viewer', false), row('staff', true)]);
+    expect(caps.explicitView('page:k3x9q2')).toBe(true);
+  });
+  test('a row for a role the member lacks is ignored', () => {
+    expect(
+      buildCapabilities(['staff'], [row('viewer', false)]).explicitView('page:k3x9q2'),
+    ).toBeUndefined();
   });
 });

@@ -215,3 +215,9 @@ export function effectiveModules(granted: ReadonlySet<string>): Set<ModuleKey> {
   }
   return out;
 }
+
+/**
+ * Modules whose reads spec 039 guards; grown one module per 039 slice. Read by
+ * the 037 nav-instance guards (skip the module-view floor) and the 039 ratchet.
+ */
+export const DATASET_ENFORCED: readonly string[] = [];
