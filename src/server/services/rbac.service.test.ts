@@ -792,13 +792,17 @@ describe('Capabilities.explicitView — override rows only, no parent fallback',
     expect(buildCapabilities(['staff'], []).explicitView('page:k3x9q2')).toBeUndefined();
   });
   test('a can_view:false row -> false', () => {
-    expect(buildCapabilities(['viewer'], [row('viewer', false)]).explicitView('page:k3x9q2')).toBe(false);
+    expect(buildCapabilities(['viewer'], [row('viewer', false)]).explicitView('page:k3x9q2')).toBe(
+      false,
+    );
   });
   test('two roles, one granting -> true', () => {
     const caps = buildCapabilities(['viewer', 'staff'], [row('viewer', false), row('staff', true)]);
     expect(caps.explicitView('page:k3x9q2')).toBe(true);
   });
   test('a row for a role the member lacks is ignored', () => {
-    expect(buildCapabilities(['staff'], [row('viewer', false)]).explicitView('page:k3x9q2')).toBeUndefined();
+    expect(
+      buildCapabilities(['staff'], [row('viewer', false)]).explicitView('page:k3x9q2'),
+    ).toBeUndefined();
   });
 });
