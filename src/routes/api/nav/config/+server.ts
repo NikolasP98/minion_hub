@@ -36,10 +36,15 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
   });
   if (issues.length > 0) return json({ error: 'invalid_nav_config', issues }, { status: 400 });
   const stored = await writeNavConfig(ctx, body);
-  await deleteOrphanPageRules(ctx.tenantId, [
-    ...navPageKeys(body).map((l) => l.key),
-    ...body.sections.map((s) => `section:${s.id}`),
-  ]);
+  // The document is saved: a failed prune must not report the save as failed (the next PUT prunes).
+  try {
+    await deleteOrphanPageRules(ctx.tenantId, [
+      ...navPageKeys(body).map((l) => l.key),
+      ...body.sections.map((s) => `section:${s.id}`),
+    ]);
+  } catch (e) {
+    console.warn('[nav-config] orphan page-rule prune failed', e);
+  }
   await invalidateRbac(ctx.tenantId);
   return json(stored);
 };

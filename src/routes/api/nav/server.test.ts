@@ -134,6 +134,15 @@ describe('PUT /api/nav/config', () => {
     expect(deleteOrphanPageRules).toHaveBeenCalledWith('org-a', ['page:k3x9q2', 'section:st4ff1']);
     expect(invalidateRbac).toHaveBeenCalledWith('org-a');
   });
+
+  it('still answers 200 for a saved document when the orphan prune fails', async () => {
+    deleteOrphanPageRules.mockRejectedValueOnce(new Error('db down'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await put(doc());
+    expect(res.status).toBe(200);
+    expect(invalidateRbac).toHaveBeenCalledWith('org-a');
+    warn.mockRestore();
+  });
 });
 
 describe('GET /api/nav/resolve', () => {
