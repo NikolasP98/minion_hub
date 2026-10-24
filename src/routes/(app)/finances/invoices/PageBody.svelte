@@ -1,0 +1,225 @@
+<script lang="ts">
+  import type { PageData as LoadedPageData } from './$types';
+  import type { Granted } from '$lib/permissions';
+  import { goto } from '$lib/navigation';
+  import { page } from '$app/state';
+  import * as m from '$lib/paraglide/messages';
+  import { FileText } from 'lucide-svelte';
+  import { iconSizes, PageHeader, Button, Chip } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import ScopeBanner from '$lib/components/crm/ScopeBanner.svelte';
+  import DataTable from '$lib/components/data-table/DataTable.svelte';
+  import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { appLocale, formatMoney } from '$lib/utils/format';
+
+  type PageData = Granted<LoadedPageData['finance']>;
+  let { data }: { data: PageData } = $props();
+  const invoices = $derived(data.invoices);
+  type Row = (typeof invoices)[number];
+
+  // Status filter seeds from the URL so the finances dashboard KPIs can deep-link
+  // a pre-filtered view (?status=void). discounted=1 handled as a toolbar chip.
+  const qp = page.url.searchParams;
+  let discountedOnly = $state(qp.get('discounted') === '1');
+  const filtered = $derived(
+    discountedOnly ? invoices.filter((inv) => Number(inv.discount) > 0) : invoices,
+  );
+
+  const numOf = (s: string | null) => {
+    const n = Number(s);
+    return Number.isFinite(n) ? n : -Infinity;
+  };
+  const dateOf = (d: Date | null) => (d ? new Date(d).getTime() : -Infinity);
+  const labelOf = (r: Row) => r.number ?? r.documentId ?? '';
+
+  function fmtDate(d: Date | null) {
+    return d ? new Date(d).toLocaleDateString(appLocale()) : '—';
+  }
+  function fmtMoney(v: string | null) {
+    return formatMoney(v);
+  }
+  // Cross-report nav: jump to the CRM contact this invoice's client maps to.
+  function toContact(e: Event, id: string) {
+    e.stopPropagation();
+    void goto(`/crm/${id}`);
+  }
+
+  const statusOptions = $derived.by(() => {
+    const s = new Set<string>();
+    for (const inv of invoices) if (inv.status) s.add(inv.status);
+    return [...s].sort().map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }));
+  });
+
+  const columns: DataColumn<Row>[] = [
+    {
+      key: 'issued',
+      label: m.fin_col_issued_at(),
+      custom: true,
+      accessor: (r) => r.issuedAt,
+      sortFn: (a, b) => dateOf(a.issuedAt) - dateOf(b.issuedAt),
+      exportValue: (r) => (r.issuedAt ? new Date(r.issuedAt).toISOString().slice(0, 10) : ''),
+    },
+    { key: 'client', label: m.fin_col_client(), custom: true, accessor: (r) => r.clientName ?? '' },
+    { key: 'dni', label: m.fin_col_dni(), custom: true, accessor: (r) => r.clientDocNumber ?? '' },
+    {
+      key: 'total',
+      money: true,
+      label: m.fin_col_total(),
+      align: 'right',
+      custom: true,
+      accessor: (r) => numOf(r.total),
+      exportValue: (r) => numOf(r.total),
+    },
+    {
+      key: 'status',
+      label: m.fin_col_status(),
+      custom: true,
+      accessor: (r) => r.status ?? '',
+      filter: { options: () => statusOptions },
+    },
+  ];
+</script>
+
+<svelte:head><title>{m.fin_invoices_title()}</title></svelte:head>
+
+{#snippet issuedCell(r: Row)}
+  <span class="t-caption">{fmtDate(r.issuedAt)}</span>
+{/snippet}
+{#snippet clientCell(r: Row)}
+  <span class="cell-text truncate block max-w-[20rem]">{r.clientName ?? '—'}</span>
+{/snippet}
+{#snippet dniCell(r: Row)}
+  <!-- Same text box whether or not the row links to a contact: a linked
+       row used to render a padded button and an unlinked one a bare
+       span, so the "—" placeholders sat at different x positions. -->
+  {#if r.crmContactId && r.clientDocNumber}
+    <Button
+      variant="ghost"
+      size="sm"
+      class="invoice-link-cell cell-num"
+      onclick={(e) => toContact(e, r.crmContactId!)}>{r.clientDocNumber}</Button
+    >
+  {:else}
+    <span class="cell-text cell-num">{r.clientDocNumber ?? '—'}</span>
+  {/if}
+{/snippet}
+{#snippet totalCell(r: Row)}
+  <span class="tabular-nums">{fmtMoney(r.total)}</span>
+{/snippet}
+{#snippet statusCell(r: Row)}
+  <span class="status-pill" data-status={r.status ?? ''}>{r.status ?? '—'}</span>
+{/snippet}
+{#snippet pageChips()}
+  <Chip onRemove={() => (discountedOnly = false)}>{m.fin_kpi_discount_rate()}</Chip>
+{/snippet}
+
+<PageShell archetype="collection" scroll="region" labelledBy="finances-invoices-title">
+  <PageHeader
+    titleId="finances-invoices-title"
+    title={m.fin_invoices_title()}
+    subtitle={m.fin_invoices_subtitle()}
+  >
+    {#snippet leading()}<FileText size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
+  </PageHeader>
+
+  <DataTable
+    class="flex-1 min-h-0"
+    {columns}
+    data={filtered}
+    getRowId={(r) => r.id}
+    customProperties={{
+      bundle: data.customProperties,
+      recordId: (invoice) => invoice.id,
+      scopeKey: `${page.data.activeOrgId ?? ''}:finances.invoices`,
+    }}
+    tableId="finances.invoices"
+    idColumn={{ value: (r) => r.number }}
+    titleColumn={{ key: 'client', href: (r) => `/finances/invoices/${r.id}` }}
+    searchPlaceholder={m.fin_invoices_search()}
+    searchFields={(r) => `${labelOf(r)} ${r.clientName ?? ''} ${r.clientDocNumber ?? ''}`}
+    initialSort={{ key: 'issued', dir: 'desc' }}
+    exportable
+    exportName="invoices"
+    selectable
+    storageKey="finances-invoices"
+    emptyMessage={m.fin_invoices_empty()}
+    cells={{
+      issued: issuedCell,
+      client: clientCell,
+      dni: dniCell,
+      total: totalCell,
+      status: statusCell,
+    }}
+    chips={discountedOnly ? pageChips : undefined}
+  >
+    {#snippet toolbar()}
+      {#if data.contactName}<ScopeBanner
+          name={data.contactName}
+          contactId={data.contactId}
+          noun="invoices"
+        />{/if}
+    {/snippet}
+  </DataTable>
+</PageShell>
+
+<style>
+  /* Linked and unlinked cells share one text box: no button padding, same
+     size, same left edge — the link only adds colour and the icon. */
+  .cell-text,
+  :global(.invoice-link-cell) {
+    font-size: var(--font-size-body);
+    line-height: var(--control-height-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .cell-num,
+  :global(.invoice-link-cell.cell-num) {
+    font-size: var(--font-size-caption);
+  }
+  :global(.invoice-link-cell) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-1, 4px);
+    max-width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+  }
+  /* Button wraps slotted children in an inner justify-center inline-flex row;
+     left-align it too so the name reads from the left (not centered). */
+  :global(.invoice-link-cell > span) {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+  :global(.invoice-link-cell:hover) {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
+  .status-pill {
+    display: inline-block;
+    padding: var(--space-0-5, 2px) var(--space-2, 8px);
+    border-radius: var(--radius-full);
+    font-size: var(--font-size-caption, 12px);
+    font-weight: 500;
+    text-transform: capitalize;
+    background: color-mix(in srgb, var(--color-muted-foreground) 15%, transparent);
+    color: var(--color-muted-foreground);
+  }
+  .status-pill[data-status='paid'] {
+    background: color-mix(in srgb, var(--color-success) 15%, transparent);
+    color: var(--color-success);
+  }
+  .status-pill[data-status='partial'] {
+    background: color-mix(in srgb, var(--color-warning) 15%, transparent);
+    color: var(--color-warning);
+  }
+  .status-pill[data-status='void'] {
+    background: color-mix(in srgb, var(--color-destructive) 12%, transparent);
+    color: var(--color-destructive);
+  }
+</style>

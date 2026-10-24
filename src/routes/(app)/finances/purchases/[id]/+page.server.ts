@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import { getPurchase, listEntriesByPurchaseId } from '$server/services/purchases.service';
 
@@ -10,11 +10,11 @@ import { getPurchase, listEntriesByPurchaseId } from '$server/services/purchases
 // `hooks.server.ts`. Same as `/finances/invoices/[id]`'s own load.
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'finance');
+  if (isDenied(ctx)) return { finance: ctx }; // rendered by DataSource (spec 039)
   depends('finances:purchases');
   const purchase = await getPurchase(ctx, params.id);
   if (!purchase) throw error(404, 'Purchase not found');
   const entries = await listEntriesByPurchaseId(ctx, params.id);
-  return { purchase, entries };
+  return { finance: { purchase, entries } };
 };

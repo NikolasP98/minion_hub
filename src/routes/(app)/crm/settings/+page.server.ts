@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, viewableModules } from '$server/auth/dataset-ctx';
 import { listTags } from '$server/services/crm-contacts.service';
 import { getAccountScopeLive } from '$server/services/crm-channels.service';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
@@ -11,8 +10,8 @@ import {
 } from '$server/services/crm-cleanup.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'crm');
+  if (isDenied(ctx)) return { crm: ctx }; // rendered by DataSource (spec 039)
   depends('crm:tags');
   depends('crm:accounts');
   depends('crm:cleanup');
@@ -23,7 +22,11 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   // background instead of blocking every settings visit on the gateway. Kept
   // resilient (never rejects) so a slow/down gateway degrades, not errors.
   const tags = await listTags(ctx, 'crm');
-  const scope = getAccountScopeLive(ctx).catch(
+  // Channel accounts are CHANNELS data: own handle; denied => the legacy empty scope (spec 039).
+  const chan = await datasetCtx(locals, 'channels');
+  const scope = (
+    isDenied(chan) ? Promise.reject(new Error('channels denied')) : getAccountScopeLive(chan)
+  ).catch(
     () =>
       ({ added: [], available: [], legacy: true }) as Awaited<
         ReturnType<typeof getAccountScopeLive>
@@ -53,5 +56,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
           blanks: never[];
         },
     );
-  return { tags, scope, cleanup };
+  return { crm: { tags, scope, cleanup } };
 };

@@ -1,11 +1,14 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
-import { listConnections, listAssetsWithStatus, syncJobHistory } from '$server/services/meta/meta-insights.service';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
+import {
+  listConnections,
+  listAssetsWithStatus,
+  syncJobHistory,
+} from '$server/services/meta/meta-insights.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'ads');
+  if (isDenied(ctx)) return { ads: ctx }; // rendered by DataSource (spec 039)
   depends('ads:settings');
 
   const [connections, assets, jobs] = await Promise.all([
@@ -14,5 +17,5 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     syncJobHistory(ctx, { limit: 20 }),
   ]);
 
-  return { connections, assets, jobs };
+  return { ads: { connections, assets, jobs } };
 };

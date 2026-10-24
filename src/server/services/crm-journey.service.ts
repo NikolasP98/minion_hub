@@ -43,8 +43,12 @@ const JOURNEY_MODEL =
   'google/gemini-2.5-flash';
 
 /** Deterministic milestones from structured events (no model). Newest first. */
-async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise<Milestone[]> {
-  const finance = await bothEnabled(ctx, 'crm', 'finances');
+async function deterministicMilestones(
+  ctx: CoreCtx,
+  contactId: string,
+  allowFinance = true,
+): Promise<Milestone[]> {
+  const finance = allowFinance && (await bothEnabled(ctx, 'crm', 'finances'));
   // ONE settings read per call, and only when the finance branch below will
   // actually use it — a journey on an org with finances off costs no settings
   // query, so `rule != null` doubles as "finance is on".
@@ -184,8 +188,13 @@ async function deterministicMilestones(ctx: CoreCtx, contactId: string): Promise
  * The journey shown on the page: AI milestones (if a prior analyze run stored
  * them) merged with the live deterministic spine, deduped by id, newest first.
  */
-export async function contactJourney(ctx: CoreCtx, contactId: string): Promise<Milestone[]> {
-  const base = await deterministicMilestones(ctx, contactId);
+/** `allowFinance: false` (spec 039): the caller's role can't view finance — no invoice milestones. */
+export async function contactJourney(
+  ctx: CoreCtx,
+  contactId: string,
+  allowFinance = true,
+): Promise<Milestone[]> {
+  const base = await deterministicMilestones(ctx, contactId, allowFinance);
   const stored = await withOrgCore(ctx, async (tx) => {
     const [c] = await tx
       .select({ cf: crmContacts.customFields })

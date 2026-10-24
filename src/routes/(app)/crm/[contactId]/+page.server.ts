@@ -1,6 +1,6 @@
-import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import type { PageServerLoad } from './$types';
+import { datasetCtx, isDenied, viewableModules } from '$server/auth/dataset-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   getContact,
@@ -19,10 +19,24 @@ import { listAdultGuardianCandidates, listGuardians } from '$server/services/crm
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends, parent }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'crm');
+  if (isDenied(ctx)) return { crm: ctx }; // rendered by DataSource (spec 039)
   depends('crm:contact');
   const id = uuidParamOr404(params.contactId);
+  // Foreign datasets through their OWN handles (spec 039); a denied one degrades its section.
+  const fin = await datasetCtx(locals, 'finance');
+  const sched = await datasetCtx(locals, 'scheduling');
+  const viewable = await viewableModules(locals, [
+    'scheduling',
+    'stock',
+    'finance',
+    'sales',
+    'support',
+  ]);
+  // contactConnections keys groups by feature id ('finances' for the finance module).
+  const viewableFeatures = new Set<string>(
+    [...viewable].map((m) => (m === 'finance' ? 'finances' : m)),
+  );
   // Personal orgs get the ContactCashflow bridge (fin_transactions) instead of
   // the business ContactFinance summary (fin_invoices) — WP2.
   const { activeOrgKind } = await parent();
@@ -46,7 +60,13 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
     // Same principal scope as `getContact` above — an unscoped/masked `score`
     // row here would leak `_relationship` back to a masked caller even though
     // `getContact` correctly hid it (F1a).
-    rankContacts(ctx, { contactId: id, limit: 1, ownerId, maskSensitive: maskPii }),
+    rankContacts(ctx, {
+      contactId: id,
+      limit: 1,
+      ownerId,
+      maskSensitive: maskPii,
+      withoutFinance: isDenied(fin),
+    }),
   ]);
 
   // Auto-tags are derived live from the scored row (never stored as contact_tags).
@@ -67,16 +87,20 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
     guardianCandidates,
     customProperties,
   ] = await Promise.all([
-    isPersonal ? Promise.resolve(null) : contactFinanceSummary(ctx, id),
-    isPersonal ? contactCashflow(ctx, id) : Promise.resolve(null),
-    contactConnections(ctx, id, activeOrgKind),
-    contactJourney(ctx, id),
+    isPersonal || isDenied(fin) ? Promise.resolve(null) : contactFinanceSummary(fin, id),
+    isPersonal && !isDenied(fin) ? contactCashflow(fin, id) : Promise.resolve(null),
+    contactConnections(ctx, id, activeOrgKind, viewableFeatures),
+    contactJourney(ctx, id, !isDenied(fin)),
     // Fail-soft: scheduling can be disabled/absent for this org — the contact
     // page must not 500 over an optional section (mirrors the stock-accrual
     // try/catch in load-bookings-view.ts).
-    listBookings(ctx, { crmContactId: id, limit: 20, maskAttendeePii: maskBookingPii }).catch(
-      () => [],
-    ),
+    isDenied(sched)
+      ? Promise.resolve([])
+      : listBookings(sched, {
+          crmContactId: id,
+          limit: 20,
+          maskAttendeePii: maskBookingPii,
+        }).catch(() => []),
     listGuardians(ctx, id, ownerId),
     listAdultGuardianCandidates(ctx, id, ownerId),
     // Overview card custom properties (spec 2026-09-28 Bundle F).
@@ -84,24 +108,26 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
   ]);
 
   return {
-    contact: record.contact,
-    identities: record.identities,
-    stats: record.stats,
-    // Party-spine identity (doc_number / dob / derived age) — the authority for
-    // DNI + date of birth on this page, replacing custom_fields.dni / .edad.
-    party: record.party,
-    score,
-    timeline,
-    contactTags,
-    allTags,
-    autoTags,
-    finance,
-    cashflow,
-    connections,
-    journey,
-    bookings,
-    guardians,
-    guardianCandidates,
-    customProperties,
+    crm: {
+      contact: record.contact,
+      identities: record.identities,
+      stats: record.stats,
+      // Party-spine identity (doc_number / dob / derived age) — the authority for
+      // DNI + date of birth on this page, replacing custom_fields.dni / .edad.
+      party: record.party,
+      score,
+      timeline,
+      contactTags,
+      allTags,
+      autoTags,
+      finance,
+      cashflow,
+      connections,
+      journey,
+      bookings,
+      guardians,
+      guardianCandidates,
+      customProperties,
+    },
   };
 };

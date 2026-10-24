@@ -192,6 +192,8 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
 // ── Ranking (spec §6): on-read RFM over the ledger ───────────────────────────
 
 export interface RankFilters {
+  /** Spec 039: caller's role can't view finance — skip the finance bridge (no revenue/funnel purchases). */
+  withoutFinance?: boolean;
   /** Lifecycle stage(s) — a single value or a comma-joined list (the DataTable
    *  enum filter multi-select emits `"New,Engaged"`); any listed value matches. */
   stage?: string;
@@ -408,7 +410,7 @@ const LIFECYCLE_STAGE_EXPR = sql`coalesce(lifecycle_override,
  * only messaged recently is not mislabelled "New".
  */
 export async function rankContactsPage(ctx: CoreCtx, f: RankFilters = {}): Promise<RankedPage> {
-  return runRankQuery(ctx, f, await resolveFinanceBridge(ctx));
+  return runRankQuery(ctx, f, await resolveFinanceBridge(ctx, f.withoutFinance));
 }
 
 /**
@@ -428,7 +430,7 @@ export async function rankContactsPageCached(
   ctx: CoreCtx,
   f: RankFilters = {},
 ): Promise<RankedPage> {
-  const finance = await resolveFinanceBridge(ctx);
+  const finance = await resolveFinanceBridge(ctx, f.withoutFinance);
   // Normalize before fingerprinting so equivalent queries share one entry:
   // limit/offset get their effective defaults (the page load passes offset 0
   // where the API omits it), and maxLimit is dropped — it is a cap, and an
@@ -468,8 +470,9 @@ export async function rankContactsPageCached(
  * a larger pool only downgrades to a concurrency race. Resolve first, pass the
  * result in, open exactly one transaction.
  */
-async function resolveFinanceBridge(ctx: CoreCtx): Promise<FinanceBridge> {
-  const withFinance = await bothEnabled(ctx, 'crm', 'finances');
+async function resolveFinanceBridge(ctx: CoreCtx, deny = false): Promise<FinanceBridge> {
+  // `deny` (spec 039): the caller's role can't view finance — never join the finance bridge.
+  const withFinance = !deny && (await bothEnabled(ctx, 'crm', 'finances'));
   return { withFinance, depositRule: withFinance ? await resolveDepositRule(ctx) : null };
 }
 
@@ -524,6 +527,8 @@ export interface CrmDashboardStats {
 }
 
 interface CrmDashboardStatsOptions {
+  /** Spec 039: caller's role can't view finance — skip the finance bridge. */
+  withoutFinance?: boolean;
   ownerId?: string;
   from?: Date;
   to?: Date;
@@ -542,7 +547,7 @@ export async function getCrmDashboardStats(
   ctx: CoreCtx,
   opts: CrmDashboardStatsOptions = {},
 ): Promise<CrmDashboardStats> {
-  const finance = await resolveFinanceBridge(ctx);
+  const finance = await resolveFinanceBridge(ctx, opts.withoutFinance);
   const range =
     opts.from && opts.to
       ? { from: opts.from.toISOString(), to: opts.to.toISOString() }
