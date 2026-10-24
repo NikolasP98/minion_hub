@@ -36,7 +36,13 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // The org timezone rides on the resources, exactly like /pos/appointments —
   // the calendar views here must read the same local day as every other
   // calendar in the app.
-  const resources = await listResources(ctx);
+  // Timezone source is scheduling data, locks/timezone are finance data (spec 039): own handles;
+  // a denied one falls back to the default zone rather than failing the history page.
+  const [sched, fin] = await Promise.all([
+    datasetCtx(locals, 'scheduling'),
+    datasetCtx(locals, 'finance'),
+  ]);
+  const resources = isDenied(sched) ? [] : await listResources(sched);
   const orgTz = schedulingTimeZone(resources);
   const view = parseHistoryView(url.searchParams.get('view'));
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
@@ -64,7 +70,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     ),
     getPosSettings(ctx),
     listPeriodLocks(ctx),
-    getFinSettings(ctx),
+    isDenied(fin) ? Promise.resolve(null) : getFinSettings(fin),
   ]);
   const { byTicket, methodTotals } = foldPayments(payments);
   return {
@@ -77,7 +83,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       // Accountant locks (spec 2026-10-15 T4): months in the ACCOUNTING timezone,
       // so the lock icon on a shift row agrees with what the mutators refuse.
       lockedPeriods: locks.map((l) => l.period),
-      finTz: finSettings.timezone,
+      finTz: finSettings?.timezone ?? orgTz,
       // The month calendar view folds every row (refund counter-rows
       // included) by its own day — `payments-fold.ts`'s `dayTotals`.
       payments,

@@ -9,8 +9,9 @@ import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
  *  `posAppointments` module-toggle guard. The booking POST is gated separately
  *  by `scheduling:edit` under `/api/scheduling`. */
 export const load: PageServerLoad = async ({ locals }) => {
-  const ctx = await datasetCtx(locals, 'pos');
-  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
+  // Resources + event types are scheduling data: read through the scheduling handle (spec 039).
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte
 
   const [resources, eventTypes] = await Promise.all([listResources(ctx), listEventTypes(ctx)]);
 

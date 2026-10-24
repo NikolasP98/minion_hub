@@ -15,11 +15,13 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:accounts');
 
+  // Resources/event types are SCHEDULING data (spec 039): own handle, own marker.
+  const sched = await datasetCtx(locals, 'scheduling');
   const [accounts, sellables, resources, eventTypes] = await Promise.all([
     listClientAccounts(ctx),
     listSellables(ctx),
-    listResources(ctx),
-    listEventTypes(ctx),
+    isDenied(sched) ? Promise.resolve([]) : listResources(sched),
+    isDenied(sched) ? Promise.resolve([]) : listEventTypes(sched),
   ]);
 
   // `?client=party:<id>` from the till's customer card. The list holds MOVEMENTS,
@@ -47,13 +49,17 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
       >,
       // Draw-a-session form data (spec §4.2 gap: no screen could book a sold
       // package). Same shape `/pos/appointments/new` loads.
-      resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
-      eventTypes: eventTypes.map((e) => ({
-        id: e.id,
-        title: e.title,
-        productId: e.productId ?? null,
-        active: e.active,
-      })),
+      resources: isDenied(sched)
+        ? sched
+        : resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
+      eventTypes: isDenied(sched)
+        ? sched
+        : eventTypes.map((e) => ({
+            id: e.id,
+            title: e.title,
+            productId: e.productId ?? null,
+            active: e.active,
+          })),
       stockEnabled: locals.moduleStates?.stock ?? true,
     },
   };
