@@ -23,9 +23,21 @@
   import * as m from '$lib/paraglide/messages';
   import FinanceSyncBadge from '$lib/components/finance/FinanceSyncBadge.svelte';
   import { financeSync } from '$lib/state/features/finance-sync.svelte';
+  import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { loadingIndicator } from '$lib/state/ui/loading-indicator.svelte';
   // Full version of the connected server (e.g. 2026.6.14-dev), shown beside the
   // brand. Relocated from the agents-sidebar footer.
   const serverVersion = $derived(gw.hello?.server?.version ?? null);
+  // THE global busy signal (owner 2026-10-10: one subtle indicator; owner
+  // 2026-10-23: on the section icon or the header divider, per Appearance —
+  // spec 038). Fed by the action runtime (navigation + registered foreground
+  // actions) and the gateway reconnect. GlobalActivity owns the live region,
+  // so every visual here stays aria-hidden.
+  const actions = tryUseActions();
+  const busy = $derived(Boolean(actions?.indicatorVisible || conn.connecting));
+  const placement = $derived(loadingIndicator.placement);
 
   // Pass per-org enabled map so the derive re-runs when a plugin is toggled —
   // disabled-for-org plugin items render dimmed, reactively, with no reload.
@@ -231,7 +243,7 @@
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <div class="flex items-center gap-1">
       <div class="min-w-0 flex-1">
-        <ModuleSwitcher collapsed={collapsed || !isMd} onExpand={toggle} />
+        <ModuleSwitcher collapsed={collapsed || !isMd} onExpand={toggle} busy={busy && placement === 'icon-ring'} />
       </div>
       {#if !collapsed}
         <Tooltip
@@ -261,7 +273,13 @@
       <OrgPicker />
     </div>
   </div>
-  <div class="h-px bg-[var(--hairline)] mx-2 mb-1"></div>
+  {#if busy && placement === 'divider-bar'}
+    <div class="divider-bar mx-2 mb-1" aria-hidden="true">
+      <ProgressBar value={null} size="xs" />
+    </div>
+  {:else}
+    <div class="h-px bg-[var(--hairline)] mx-2 mb-1"></div>
+  {/if}
 
   <!-- Top utility row: Reliability + Marketplace. Active item expands inline.
        Hidden in module mode — those surfaces are the Platform module there. -->
@@ -694,6 +712,17 @@
   .brand-row:hover {
     opacity: 1;
     background: var(--color-surface-2);
+  }
+  /* Divider-bar placement: the hairline's exact 1px box carries the house
+     indeterminate sweep; under reduced motion the range becomes a still
+     full-width accent line instead of a parked 40% segment. */
+  .divider-bar {
+    height: 1px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .divider-bar :global(.prg-range.indeterminate) {
+      width: 100%;
+    }
   }
   .nav-row :global(.nav-icon) {
     opacity: 0.75;
