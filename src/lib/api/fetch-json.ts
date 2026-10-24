@@ -84,9 +84,10 @@ export async function fetchDataset<T>(
     return await fetchJson<T>(input, init);
   } catch (e) {
     const method = (init?.method ?? 'GET').toUpperCase();
-    const match = e instanceof ApiError && e.status === 403 && method === 'GET'
-      ? /^([a-z]+): view required$/.exec(e.message)
-      : null;
+    const match =
+      e instanceof ApiError && e.status === 403 && method === 'GET'
+        ? /^([a-z]+): view required$/.exec(e.message)
+        : null;
     if (match) return { denied: match[1] as DatasetDenied['denied'], verb: 'view' };
     throw e;
   }
