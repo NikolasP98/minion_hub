@@ -92,7 +92,7 @@ function pathnameOnly(path: string): string {
   return pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 }
 
-function patternMatches(pattern: string, pathname: string): boolean {
+export function patternMatches(pattern: string, pathname: string): boolean {
   const patternSegments = pathnameOnly(pattern).split('/').filter(Boolean);
   const pathSegments = pathnameOnly(pathname).split('/').filter(Boolean);
 

@@ -12,13 +12,17 @@
   // which mis-grouped it with the genuinely invoke-only overlays).
   import { type Snippet } from 'svelte';
   import { onMount, onDestroy, tick } from 'svelte';
-  import { beforeNavigate, afterNavigate } from '$lib/navigation';
+  import { beforeNavigate, afterNavigate, replaceState } from '$lib/navigation';
   import { provideViewMemory } from '$lib/shell/view-context';
   import { viewKey } from '$lib/shell/view-memory';
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { captureScroll, restoreScroll, type ScrollPosition } from '$lib/shell/scroll-memory';
   import { openRecord } from '$lib/records/peek.svelte';
   import { page } from '$app/state';
+  import { setInstanceMap } from '$lib/nav/alias-reroute';
+  import { canonicalInstancePath, mainPathFor, type NavConfig } from '$lib/nav/custom-sections';
+  import { navConfig } from '$lib/nav/nav-config.svelte';
+  import { localizePath } from '$lib/canonical-path';
   import { loadHosts } from '$lib/state/features/hosts.svelte';
   import { ensurePermissions } from '$lib/state/features/permissions.svelte';
   import { maybeRequestDailyKnock } from '$lib/state/features/notifications.svelte';
@@ -40,6 +44,7 @@
   let navigationEpoch = 0;
   viewMemory.reconcile(preferenceOwner());
   $effect.pre(() => viewMemory.reconcile(preferenceOwner()));
+  $effect.pre(() => setInstanceMap((page.data as { navConfig?: NavConfig }).navConfig));
   beforeNavigate(() => {
     navigationEpoch += 1;
     cancelRestore();
@@ -60,11 +65,23 @@
       peek: peek ? { href: peek.href, mode: peek.mode } : null,
     });
   });
+  // spec 037 I9/D8 — a moved page keeps rendering at its old URL and a stale slug still
+  // resolves; the address becomes the canonical instance path so nav highlights it.
+  // No remount, no goto. Returns true when the address was replaced.
+  function replaceWithCanonicalAddress(): boolean {
+    const canonical = canonicalPath(page.url.pathname);
+    const fixed =
+      mainPathFor(navConfig(), canonical) ?? canonicalInstancePath(navConfig(), canonical);
+    if (!fixed) return false;
+    replaceState(localizePath(fixed) + page.url.search + page.url.hash, page.state);
+    return true;
+  }
   // TODO(handoff): Qualify CRM/POS leave-return with an authenticated session
   // before release; the headless fixture proves shared primitives, not live
   // route loads. See meta proposal 2026-10-19-hub-module-state-keep-alive and
   // docs/verification/2026-10-20-app-backlog/README.md.
   afterNavigate(async (navigation) => {
+    if (replaceWithCanonicalAddress()) return;
     const epoch = ++navigationEpoch;
     const owner = preferenceOwner();
     const saved = viewMemory.read<{
@@ -103,6 +120,8 @@
   let idleReady = $state(false);
 
   onMount(() => {
+    // The first navigation event fired before this layout mounted; the router is ready one task later.
+    setTimeout(() => replaceWithCanonicalAddress());
     void ensurePermissions();
     void hydratePluginNav();
     // Assistant UI tools (navigate / pages / guide / choice) live for the app shell's lifetime.

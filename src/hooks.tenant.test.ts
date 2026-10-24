@@ -10,6 +10,11 @@ const mocks = vi.hoisted(() => ({
   hasCap: vi.fn(),
   cronEnv: { CRON_SECRET: 'synthetic-marketplace-cron' } as Record<string, string>,
   marketplaceSync: vi.fn(),
+  navConfig: vi.fn(),
+  perms: vi.fn(),
+  explicit: vi.fn(),
+  moduleStates: vi.fn(),
+  enforced: { list: [] as string[] },
 }));
 vi.mock('$server/env-hoist', () => ({}));
 vi.mock('$env/dynamic/private', () => ({ env: mocks.cronEnv }));
@@ -54,8 +59,22 @@ vi.mock('$server/services/ssrf-guard', () => ({
 vi.mock('$server/services/rbac.service', () => ({
   apiWriteCapability: mocks.writeCap,
   hasOrgCapability: mocks.hasCap,
+  resolveCapabilities: async () => ({ explicitView: mocks.explicit }),
 }));
-vi.mock('$server/services/modules.service', () => ({ listModuleStates: async () => ({}) }));
+vi.mock('$server/services/nav-config.service', () => ({ readNavConfig: mocks.navConfig }));
+vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: async () => ({ tenantId: 'member-org' }) }));
+vi.mock('$server/services/permissions.service', () => ({
+  loadPermissionsForUser: async () => ({ permissions: mocks.perms(), roles: [] }),
+}));
+vi.mock('$lib/permissions', async (orig) => ({
+  ...(await orig<typeof import('$lib/permissions')>()),
+  get DATASET_ENFORCED() {
+    return mocks.enforced.list;
+  },
+}));
+vi.mock('$server/services/modules.service', () => ({
+  listModuleStates: async () => mocks.moduleStates(),
+}));
 vi.mock('$lib/server/workforce-identity', () => ({ mintWorkforceIdentity: vi.fn() }));
 vi.mock('$lib/server/workforce-viewer', () => ({ trustedWorkforceViewerRoleKeys: vi.fn() }));
 vi.mock('$server/services/user-preferences.service', () => ({
@@ -136,6 +155,27 @@ beforeEach(() => {
   mocks.upsert.mockResolvedValue('synthetic-server');
   mocks.writeCap.mockReturnValue(null);
   mocks.hasCap.mockResolvedValue(false);
+  mocks.moduleStates.mockReturnValue({});
+  mocks.perms.mockReturnValue([]);
+  mocks.explicit.mockReturnValue(undefined);
+  mocks.enforced.list = [];
+  mocks.navConfig.mockResolvedValue({
+    version: 1,
+    sections: [
+      {
+        id: 'sec001',
+        slug: 'staff',
+        label: 'Staff',
+        pages: [{ id: 'k3x9q2', slug: 'sell', label: 'Sell', kind: 'link', target: '/pos/sell' }],
+      },
+    ],
+    builtinSections: {
+      appointments: [
+        { id: 'a1b2c3', slug: 'new', label: 'New', kind: 'main', target: '/appointments' },
+      ],
+    },
+    builtin: {},
+  });
 });
 
 describe('identity output through the actual hook and server POST', () => {
@@ -399,5 +439,64 @@ describe('plan operation cache and central capability boundaries', () => {
     expect(input.setHeaders).toHaveBeenCalledExactlyOnceWith({
       'cache-control': 'private, no-store',
     });
+  });
+});
+
+describe('spec 037 nav-instance guards (target path + page grant + floor)', () => {
+  async function page(path: string, routeId = '/(app)/[...rest]') {
+    mocks.identity.mockResolvedValue({
+      locals: { user, tenantCtx: ctx, orgKind: 'business' },
+      bypassGate: false,
+    });
+    const input = event(path, 'GET');
+    (input as { route: { id: string } }).route = { id: routeId };
+    const resolve = vi.fn(async () => new Response('ok'));
+    try {
+      const res = await runHook({ event: input, resolve });
+      return { status: res.status, resolved: resolve.mock.calls.length > 0 };
+    } catch (e) {
+      if (!(e as { status?: number }).status) throw e;
+      return { status: (e as { status: number }).status, resolved: false };
+    }
+  }
+  const sell = '/es/staff/sell~k3x9q2';
+
+  it('granted page + floor: 200', async () => {
+    mocks.perms.mockReturnValue(['page:k3x9q2:view', 'pos:view', 'pos:create']);
+    expect(await page(sell)).toEqual({ status: 200, resolved: true });
+  });
+  it('no page grant: 404', async () => {
+    mocks.perms.mockReturnValue(['pos:view', 'pos:create']);
+    expect((await page(sell)).status).toBe(404);
+  });
+  it('floor missing: 403, lifted when pos is dataset-enforced', async () => {
+    mocks.perms.mockReturnValue(['page:k3x9q2:view']);
+    expect((await page(sell)).status).toBe(403);
+    mocks.enforced.list = ['pos'];
+    expect(await page(sell)).toEqual({ status: 200, resolved: true });
+  });
+  it('module toggled off: 404', async () => {
+    mocks.perms.mockReturnValue(['page:k3x9q2:view', 'pos:view', 'pos:create']);
+    mocks.moduleStates.mockReturnValue({ pos: false });
+    expect((await page(sell)).status).toBe(404);
+  });
+  it('moved main: page string alone passes, none 404', async () => {
+    mocks.perms.mockReturnValue(['page:a1b2c3:view', 'pos:view']);
+    expect((await page('/es/appointments/new~a1b2c3')).resolved).toBe(true);
+    mocks.perms.mockReturnValue(['pos:view']);
+    expect((await page('/es/appointments/new~a1b2c3')).status).toBe(404);
+  });
+  it('non-instance unknown path is unchanged (kit 404s later)', async () => {
+    mocks.perms.mockReturnValue([]);
+    expect((await page('/es/staff/nothing', '/(app)/[...rest]')).resolved).toBe(true);
+  });
+  it('canonical path unchanged; explicit page row decides', async () => {
+    mocks.perms.mockReturnValue(['pos:view', 'pos:create']);
+    expect(await page('/es/pos/sell')).toEqual({ status: 200, resolved: true });
+    mocks.explicit.mockReturnValue(false);
+    expect((await page('/es/pos/sell')).status).toBe(403);
+    mocks.perms.mockReturnValue([]);
+    mocks.explicit.mockReturnValue(true);
+    expect((await page('/es/pos/sell')).resolved).toBe(true);
   });
 });

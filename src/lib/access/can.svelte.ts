@@ -3,6 +3,9 @@ import { can } from './policy';
 import { canAccessRoute, type RouteAccessContext } from '$lib/routes/route-access-policies';
 import { resolveModuleForPath } from '$lib/modules/availability';
 import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
+import { canonicalPath } from '$lib/canonical-path';
+import { instanceAllowed, resolveNavInstance } from '$lib/nav/custom-sections';
+import { navConfig } from '$lib/nav/nav-config.svelte';
 
 interface ClientAccessData {
   user?: { role?: 'user' | 'admin' } | null;
@@ -57,6 +60,15 @@ export function canAct(module: string, action: string): boolean {
  */
 export function canViewPath(path: string): boolean {
   const kind = accessData().activeOrgKind;
+  // Spec 037: an instance path is judged by its TARGET's kind visibility plus the
+  // page grant AND the module floor (same `instanceAllowed` resolve + guards use),
+  // so the sidebar never offers a link that would 403.
+  const hit = resolveNavInstance(navConfig(), canonicalPath(path.split(/[?#]/, 1)[0] || '/'));
+  if (hit) {
+    const m = resolveModuleForPath(hit.target);
+    if (m && !isModuleVisibleForKind(m.moduleId, kind)) return false;
+    return instanceAllowed(hit.page, new Set(accessData().permissions?.permissions ?? []));
+  }
   const match = resolveModuleForPath(path.split(/[?#]/, 1)[0] || '/');
   if (match && !isModuleVisibleForKind(match.moduleId, kind)) return false;
   return canAccessRoute(path, routeAccessContext());
