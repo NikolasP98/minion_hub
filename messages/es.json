@@ -7055,7 +7055,7 @@
   "data_denied_title": "Tu rol no puede ver {dataset}",
   "data_denied_hint": "Pide a un administrador el permiso Ver sobre estos datos",
   "rbac_verb_view": "Ver",
-  "rbac_verb_add": "Añadir",
+  "rbac_verb_add": "Agregar",
   "rbac_verb_edit": "Editar",
   "rbac_verb_remove": "Quitar",
   "rbac_advanced": "Avanzado"
