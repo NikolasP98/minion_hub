@@ -475,6 +475,13 @@ describe('spec 037 nav-instance guards (target path + page grant + floor)', () =
     mocks.enforced.list = ['pos'];
     expect(await page(sell)).toEqual({ status: 200, resolved: true });
   });
+  it('page grant does not skip a stricter policy on a deeper path', async () => {
+    mocks.enforced.list = ['pos']; // floor lifted: only the page grant + route policy remain
+    mocks.perms.mockReturnValue(['page:k3x9q2:view']);
+    expect(await page(sell)).toEqual({ status: 200, resolved: true });
+    // /pos/sell/<rest> is governed by its own (POS) rule, not /pos/sell's exact override.
+    expect((await page(`${sell}/x`)).resolved).toBe(false);
+  });
   it('module toggled off: 404', async () => {
     mocks.perms.mockReturnValue(['page:k3x9q2:view', 'pos:view', 'pos:create']);
     mocks.moduleStates.mockReturnValue({ pos: false });
