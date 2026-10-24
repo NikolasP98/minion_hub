@@ -1,13 +1,16 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import type { PageData } from './$types';
+import type { PageData as LoadedPageData } from './$types';
+import type { Granted } from '$lib/permissions';
+
+type PageData = Granted<LoadedPageData['pos']>;
 
 const invalidate = vi.fn().mockResolvedValue(undefined);
 vi.mock('$app/navigation', () => ({ invalidate }));
 vi.mock('$lib/access/can.svelte', () => ({ canAct: () => true }));
 
-const { default: SettingsPage } = await import('./+page.svelte');
+const { default: SettingsPage } = await import('./PageBody.svelte');
 
 const baseSettings = {
   methods: [

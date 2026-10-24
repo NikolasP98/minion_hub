@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listSellables, listBundleEdges } from '$server/services/pos.service';
 import { listItems, listAllComponentEdges } from '$server/services/stock.service';
 import { billingForProducts } from '$server/services/finance-products.service';
@@ -30,37 +29,47 @@ import { formulaInputsFromPosRows } from '$server/services/formula-properties.se
  *  reachable/reactivatable from the catalog instead of vanishing once
  *  toggled off. */
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:catalog');
 
   const stockEnabled = locals.moduleStates?.stock ?? true;
-  const [sellables, stockItems, componentEdges, bundleEdges, mask, categories] = await Promise.all([
-    listSellables(ctx, { includeInactive: true }),
-    // Recipe/ingredient picker — opt OUT of archived items (spec 2026-09-28
-    // Bundle F #5 followup: `listItems` default flipped to include archived).
-    stockEnabled ? listItems(ctx, { includeArchived: false }) : Promise.resolve([]),
-    // Recipe builder (#8): the whole org graph, so the editor can show nesting
-    // and offer only children that wouldn't close a loop — both need more than
-    // one item's direct children.
-    stockEnabled ? listAllComponentEdges(ctx) : Promise.resolve([]),
-    // Bundle (fin_product_components) edges, org-wide — feeds aggregateBundles
-    // below so a package row derives Stock/Cost/Margin from its children.
-    listBundleEdges(ctx),
-    shouldMaskSensitive(locals, 'finance'),
-    listProductCategories(ctx),
+  // Foreign datasets are read through their OWN handle (spec 039): the POS handle only
+  // authorizes POS. Denied stock => marker slots; denied finance/crm => masked / no tags.
+  const [stockCtx, financeCtx, crmCtx] = await Promise.all([
+    datasetCtx(locals, 'stock'),
+    datasetCtx(locals, 'finance'),
+    datasetCtx(locals, 'crm'),
   ]);
+  const stockOk = stockEnabled && !isDenied(stockCtx);
+  const [sellables, stockItems, componentEdges, bundleEdges, maskRule, categories] =
+    await Promise.all([
+      listSellables(ctx, { includeInactive: true }),
+      // Recipe/ingredient picker — opt OUT of archived items (spec 2026-09-28
+      // Bundle F #5 followup: `listItems` default flipped to include archived).
+      stockOk ? listItems(stockCtx, { includeArchived: false }) : Promise.resolve([]),
+      // Recipe builder (#8): the whole org graph, so the editor can show nesting
+      // and offer only children that wouldn't close a loop — both need more than
+      // one item's direct children.
+      stockOk ? listAllComponentEdges(stockCtx) : Promise.resolve([]),
+      // Bundle (fin_product_components) edges, org-wide — feeds aggregateBundles
+      // below so a package row derives Stock/Cost/Margin from its children.
+      listBundleEdges(ctx),
+      shouldMaskSensitive(locals, 'finance'),
+      listProductCategories(ctx),
+    ]);
 
+  // Cost/margin/revenue need finance AND stock: without either view they are masked, like RBAC masking.
+  const mask = maskRule || isDenied(financeCtx) || isDenied(stockCtx);
   const ids = sellables.map((s) => s.productId);
+  const noTags = new Map<string, { id: string; name: string; color: string | null }[]>();
   const [billing, costs, tagsByProduct, ingredientTags, catalogTags] = await Promise.all([
-    billingForProducts(ctx, ids),
-    costForProducts(ctx, ids),
-    getTagLinks(ctx, 'product', ids),
+    isDenied(financeCtx) ? Promise.resolve(new Map()) : billingForProducts(financeCtx, ids),
+    mask || isDenied(stockCtx) ? Promise.resolve(new Map()) : costForProducts(stockCtx, ids),
+    isDenied(crmCtx) ? Promise.resolve(noTags) : getTagLinks(crmCtx, 'product', ids),
     // Stock tags a product inherits from its recipe / consumed items.
-    stockEnabled
-      ? getProductIngredientTags(ctx, ids)
-      : Promise.resolve(new Map<string, { id: string; name: string; color: string | null }[]>()),
-    listTags(ctx, 'catalog'),
+    stockOk ? getProductIngredientTags(stockCtx, ids) : Promise.resolve(noTags),
+    isDenied(crmCtx) ? Promise.resolve([]) : listTags(crmCtx, 'catalog'),
   ]);
 
   const enriched = sellables.map((s) => {
@@ -126,15 +135,17 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     formulaNativeInputs: formulaInputsFromPosRows(finalSellables, {}),
   });
   return {
-    customProperties,
-    catalogTags: catalogTags
-      .filter((t) => t.kind === 'manual')
-      .map((t) => ({ id: t.id, name: t.name, color: t.color })),
-    tagOptions: [...tagOptions.values()],
-    sellables: finalSellables,
-    stockItems,
-    componentEdges,
-    stockEnabled,
-    categories,
+    pos: {
+      customProperties,
+      catalogTags: catalogTags
+        .filter((t) => t.kind === 'manual')
+        .map((t) => ({ id: t.id, name: t.name, color: t.color })),
+      tagOptions: [...tagOptions.values()],
+      sellables: finalSellables,
+      stockItems: isDenied(stockCtx) ? stockCtx : stockItems,
+      componentEdges: isDenied(stockCtx) ? stockCtx : componentEdges,
+      stockEnabled,
+      categories,
+    },
   };
 };

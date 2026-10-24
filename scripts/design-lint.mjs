@@ -240,6 +240,16 @@ function changedFiles(ref) {
   return [...new Set([...tracked, ...untracked])].filter((file) => /\.(svelte|css|ts)$/.test(file));
 }
 
+/** new path -> path it was moved/copied from (spec 039 page-body extraction): moved debt is not new debt. */
+function movedFrom(ref) {
+  const out = new Map();
+  for (const line of git(['diff', '-M', '-C', '--name-status', ref, '--', 'src']).split('\n')) {
+    const [status, from, to] = line.split('\t');
+    if (to && /^[RC]/.test(status)) out.set(to, from);
+  }
+  return out;
+}
+
 function textAtRef(ref, file) {
   try {
     return git(['show', `${ref}:${file}`]);
@@ -315,12 +325,13 @@ if (baseRef && refExists(baseRef)) {
     cwd: root,
     encoding: 'utf8',
   }).trim();
+  const moved = movedFrom(forkPoint);
   for (const file of changedFiles(forkPoint)) {
     const absolutePath = join(root, file);
     const now = existsSync(absolutePath)
       ? countText(file, readFileSync(absolutePath, 'utf8'))
       : countText(file, '');
-    const before = countText(file, textAtRef(forkPoint, file));
+    const before = countText(file, textAtRef(forkPoint, moved.get(file) ?? file));
     for (const key of Object.keys(RULES)) {
       if (now[key].governed > before[key].governed) {
         fileRegressions.push({

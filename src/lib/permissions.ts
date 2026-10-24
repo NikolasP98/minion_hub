@@ -260,13 +260,16 @@ export const DATA_VERBS = {
  * Modules whose (app) page reads go through `datasetCtx` (spec 039); grown one module per rollout
  * slice. Read by spec 037's transition floor (skip it) and by the dataset-read ratchet (zero bare reads).
  */
-export const DATASET_ENFORCED: readonly Module[] = [];
+export const DATASET_ENFORCED: readonly Module[] = ['pos'];
 
 /** A dataset the caller's role cannot view: returned in a load's data slot instead of throwing. */
 export interface DatasetDenied {
   denied: Module;
   verb: 'view';
 }
+
+/** A load's data once the whole-page `DatasetDenied` marker is excluded (the inner page body). */
+export type Granted<T> = Exclude<T, DatasetDenied>;
 
 /** Exact marker shape only: a data row that merely has a `denied` field is still data. */
 export function isDenied(v: unknown): v is DatasetDenied {

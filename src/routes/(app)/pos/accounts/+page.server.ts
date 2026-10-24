@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listClientAccounts, resolveClientAccount } from '$server/services/pos-accounts.service';
 import { listSellables } from '$server/services/pos.service';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
@@ -12,15 +11,17 @@ import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
  *  breakdown stays on `/api/pos/accounts/[clientKey]`: the drawer opens for one
  *  row at a time, so loading every client's ledger up front would be waste. */
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:accounts');
 
+  // Resources/event types are SCHEDULING data (spec 039): own handle, own marker.
+  const sched = await datasetCtx(locals, 'scheduling');
   const [accounts, sellables, resources, eventTypes] = await Promise.all([
     listClientAccounts(ctx),
     listSellables(ctx),
-    listResources(ctx),
-    listEventTypes(ctx),
+    isDenied(sched) ? Promise.resolve([]) : listResources(sched),
+    isDenied(sched) ? Promise.resolve([]) : listEventTypes(sched),
   ]);
 
   // `?client=party:<id>` from the till's customer card. The list holds MOVEMENTS,
@@ -38,22 +39,28 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // drawer would print uuids. The catalog is ~80 rows — one lookup map beats a
   // join the account query doesn't otherwise need.
   return {
-    accounts,
-    requestedClient,
-    orgTz: schedulingTimeZone(resources),
-    productNames: Object.fromEntries(sellables.map((s) => [s.productId, s.name])) as Record<
-      string,
-      string
-    >,
-    // Draw-a-session form data (spec §4.2 gap: no screen could book a sold
-    // package). Same shape `/pos/appointments/new` loads.
-    resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
-    eventTypes: eventTypes.map((e) => ({
-      id: e.id,
-      title: e.title,
-      productId: e.productId ?? null,
-      active: e.active,
-    })),
-    stockEnabled: locals.moduleStates?.stock ?? true,
+    pos: {
+      accounts,
+      requestedClient,
+      orgTz: schedulingTimeZone(resources),
+      productNames: Object.fromEntries(sellables.map((s) => [s.productId, s.name])) as Record<
+        string,
+        string
+      >,
+      // Draw-a-session form data (spec §4.2 gap: no screen could book a sold
+      // package). Same shape `/pos/appointments/new` loads.
+      resources: isDenied(sched)
+        ? sched
+        : resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
+      eventTypes: isDenied(sched)
+        ? sched
+        : eventTypes.map((e) => ({
+            id: e.id,
+            title: e.title,
+            productId: e.productId ?? null,
+            active: e.active,
+          })),
+      stockEnabled: locals.moduleStates?.stock ?? true,
+    },
   };
 };

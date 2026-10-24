@@ -1,11 +1,13 @@
 <script lang="ts">
-  import type { PageData } from './$types';
+  import type { PageData as LoadedPageData } from './$types';
+  import type { Granted } from '$lib/permissions';
   import * as m from '$lib/paraglide/messages';
   import { Badge } from '$lib/components/ui';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { appLocale, formatMoney } from '$lib/utils/format';
   import PaymentSummaryTable from './PaymentSummaryTable.svelte';
 
+  type PageData = Granted<LoadedPageData['pos']>;
   type Ticket = PageData['tickets'][number];
   type Shift = PageData['shifts'][number];
 

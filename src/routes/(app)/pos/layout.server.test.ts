@@ -7,11 +7,21 @@ import { describe, it, expect, vi } from 'vitest';
  * anywhere else in the app could never make it rerun. See
  * `+layout.server.ts` and the `onbooked` fix in `appointments/new/+page.svelte`.
  */
-vi.mock('$server/auth/core-ctx', () => ({
-  getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1', profileId: 'p-1' }),
+const posService = vi.hoisted(() => ({
+  getPosSettings: vi.fn(() => Promise.resolve({ methods: [] })),
+}));
+const denied = vi.hoisted(() => ({ value: false }));
+vi.mock('$server/auth/dataset-ctx', () => ({
+  datasetCtx: () =>
+    Promise.resolve(
+      denied.value
+        ? { denied: 'pos', verb: 'view' }
+        : { db: {}, tenantId: 'org-1', profileId: 'p-1' },
+    ),
+  isDenied: (v: unknown) => !!v && typeof v === 'object' && 'denied' in v,
 }));
 vi.mock('$server/services/pos.service', () => ({
-  getPosSettings: () => Promise.resolve({ methods: [] }),
+  getPosSettings: posService.getPosSettings,
   getOpenShift: () => Promise.resolve(null),
   listOpenShifts: () => Promise.resolve([]),
 }));
@@ -36,5 +46,19 @@ describe('/pos +layout.server load', () => {
     const data = await call((k) => keys.push(k));
     expect(keys).toContain('pos:pending');
     expect(data).toMatchObject({ posPendingWork: 3 });
+  });
+
+  it('a role without pos:view gets the marker in every POS slot and no service runs', async () => {
+    denied.value = true;
+    posService.getPosSettings.mockClear();
+    try {
+      const data = (await call(() => {})) as Record<string, unknown>;
+      for (const slot of [data.posSettings, data.openShift, data.openShifts, data.posPendingWork]) {
+        expect(slot).toEqual({ denied: 'pos', verb: 'view' });
+      }
+      expect(posService.getPosSettings).not.toHaveBeenCalled();
+    } finally {
+      denied.value = false;
+    }
   });
 });
