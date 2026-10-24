@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, viewableModules } from '$server/auth/dataset-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   rankContactsPageCached,
@@ -75,8 +74,8 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
 
 export const load: PageServerLoad = async ({ locals, depends, parent, url, setHeaders }) => {
   const timing = new ServerTiming();
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'crm');
+  if (isDenied(ctx)) return { crm: ctx }; // rendered by DataSource (spec 039)
   depends('crm:contacts');
 
   // Server-mode page (spec 2026-08-13 §S5): ONE page of rows, never the
@@ -86,7 +85,14 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url, setHe
   const [ownerId, maskSensitive] = await timing.measure('crm_authz', () =>
     Promise.all([ownerFilter(locals, 'crm'), shouldMaskSensitive(locals, 'crm')]),
   );
-  const filters: RankFilters = { ...filtersFromUrl(url.searchParams), ownerId, maskSensitive };
+  // Finance decoration is FINANCE data: without finance view the rank query never joins it (spec 039).
+  const finDenied = isDenied(await datasetCtx(locals, 'finance'));
+  const filters: RankFilters = {
+    ...filtersFromUrl(url.searchParams),
+    ownerId,
+    maskSensitive,
+    withoutFinance: finDenied,
+  };
 
   const [pageRes, tags, metaKeys, channels, parentData] = await Promise.all([
     timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
@@ -119,14 +125,16 @@ export const load: PageServerLoad = async ({ locals, depends, parent, url, setHe
   setHeaders({ 'Server-Timing': timing.headerValue() });
 
   return {
-    contacts,
-    customProperties,
-    total: pageRes.total ?? pageRes.rows.length,
-    tags,
-    metaKeys,
-    channels,
-    orgId: ctx.tenantId,
-    financeEnabled,
-    pageSize: PAGE_SIZE,
+    crm: {
+      contacts,
+      customProperties,
+      total: pageRes.total ?? pageRes.rows.length,
+      tags,
+      metaKeys,
+      channels,
+      orgId: ctx.tenantId,
+      financeEnabled,
+      pageSize: PAGE_SIZE,
+    },
   };
 };

@@ -1,0 +1,1063 @@
+<script lang="ts">
+  import { appLocale } from '$lib/utils/format';
+  import type { PageData as LoadedPageData } from './$types';
+  import type { Granted } from '$lib/permissions';
+  import { Settings2, RefreshCw, Plug, Coins, Lock } from 'lucide-svelte';
+  import { invalidate } from '$app/navigation';
+  import {
+    PageHeader,
+    Button,
+    Select,
+    Toggle,
+    ProgressBar,
+    Spinner,
+    iconSizes,
+  } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import * as m from '$lib/paraglide/messages';
+  import { financeSync } from '$lib/state/features/finance-sync.svelte';
+  import { tryUseActions } from '$lib/services/actions/context';
+  const actions = tryUseActions();
+
+  // ── Accounting period locks (spec 2026-10-15 T4) ──
+  let lockPeriod = $state('');
+  let lockNote = $state('');
+  let lockBusy = $state(false);
+  let lockErr = $state('');
+  const canLock = $derived(canAct('finance', 'manage'));
+  async function setLock(period: string, locked: boolean) {
+    lockBusy = true;
+    lockErr = '';
+    try {
+      const res = await fetch('/api/finances/period-locks', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ period, locked, note: locked ? lockNote || null : null }),
+      });
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        lockErr = d.error ?? m.fin_period_lock_failed();
+        return;
+      }
+      if (locked) {
+        lockPeriod = '';
+        lockNote = '';
+      }
+      await invalidate('finance:period-locks');
+    } finally {
+      lockBusy = false;
+    }
+  }
+  import { onMount } from 'svelte';
+  import { canAct } from '$lib/access/can.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+
+  type PageData = Granted<LoadedPageData['finance']>;
+  let { data }: { data: PageData } = $props();
+
+  // ── Connector card ────────────────────────────────────────────────────────
+  // svelte-ignore state_referenced_locally
+  const src = data.source;
+  let businessId = $state(
+    // svelte-ignore state_referenced_locally
+    typeof (src?.config as Record<string, unknown> | null | undefined)?.businessId === 'number'
+      ? String((src?.config as Record<string, unknown>).businessId)
+      : '',
+  );
+  // svelte-ignore state_referenced_locally
+  const hasCredentials = $state(src?.hasCredentials ?? false);
+  let secretUsername = $state('');
+  let secretPassword = $state('');
+  let connectorEnabled = $state(
+    // svelte-ignore state_referenced_locally
+    src?.enabled ?? true,
+  );
+  let connectorBusy = $state(false);
+  let connectorMsg = $state<{ ok: boolean; text: string } | null>(null);
+
+  async function saveConnector() {
+    connectorBusy = true;
+    connectorMsg = null;
+    try {
+      const res = await fetch('/api/finances/sources', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'susii',
+          config: { businessId: businessId ? Number(businessId) : null },
+          username: secretUsername,
+          password: secretPassword,
+          enabled: connectorEnabled,
+        }),
+      });
+      connectorMsg = res.ok
+        ? { ok: true, text: m.fin_connector_saved() }
+        : { ok: false, text: m.fin_connector_error() };
+    } catch {
+      connectorMsg = { ok: false, text: m.fin_connector_error() };
+    } finally {
+      connectorBusy = false;
+    }
+  }
+
+  // ── SUNAT (SIRE) connector card ─────────────────────────────────────────
+  // svelte-ignore state_referenced_locally
+  const sunatSrc = data.sunatSource;
+  const sunatConfig = sunatSrc?.config as Record<string, unknown> | null | undefined;
+  let sunatRuc = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.ruc === 'string' ? sunatConfig.ruc : '',
+  );
+  let sunatClientId = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.clientId === 'string' ? sunatConfig.clientId : '',
+  );
+  let sunatLegalName = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.legalName === 'string' ? sunatConfig.legalName : '',
+  );
+  let sunatUbigeo = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.ubigeo === 'string' ? sunatConfig.ubigeo : '',
+  );
+  let sunatAddress = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.address === 'string' ? sunatConfig.address : '',
+  );
+  let sunatStartPeriod = $state(
+    // svelte-ignore state_referenced_locally
+    typeof sunatConfig?.startPeriod === 'string' ? sunatConfig.startPeriod : '',
+  );
+  // svelte-ignore state_referenced_locally
+  let sunatHasCredentials = $state(sunatSrc?.hasCredentials ?? false);
+  let sunatSecretUser = $state('');
+  let sunatSecretPassword = $state('');
+  let sunatSecretClientSecret = $state('');
+  let sunatEnabled = $state(
+    // svelte-ignore state_referenced_locally
+    sunatSrc?.enabled ?? true,
+  );
+  let sunatBusy = $state(false);
+  let sunatMsg = $state<{ ok: boolean; text: string } | null>(null);
+  let sunatProbeBusy = $state(false);
+  let sunatProbeStatus = $state<string | null>(sunatSrc?.lastProbeStatus ?? null);
+  let sunatProbeAt = $state<Date | string | null>(sunatSrc?.lastProbeAt ?? null);
+
+  function sunatProbeLabel(status: string | null): string {
+    if (status === 'valid') return m.finance_settings_sunat_probe_valid();
+    if (status === 'invalid') return m.finance_settings_sunat_probe_invalid();
+    if (status === 'unavailable') return m.finance_settings_sunat_probe_unavailable();
+    return m.finance_settings_sunat_probe_never();
+  }
+
+  async function saveSunat() {
+    sunatBusy = true;
+    sunatMsg = null;
+    try {
+      const res = await fetch('/api/finances/sources', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'sunat-sire',
+          config: {
+            ruc: sunatRuc,
+            clientId: sunatClientId,
+            legalName: sunatLegalName,
+            ...(sunatUbigeo ? { ubigeo: sunatUbigeo } : {}),
+            ...(sunatAddress ? { address: sunatAddress } : {}),
+            ...(sunatStartPeriod ? { startPeriod: sunatStartPeriod } : {}),
+          },
+          username: sunatSecretUser,
+          password: sunatSecretPassword,
+          clientSecret: sunatSecretClientSecret,
+          enabled: sunatEnabled,
+        }),
+      });
+      if (res.ok) {
+        sunatHasCredentials = true;
+        sunatProbeStatus = null;
+        sunatProbeAt = null;
+        sunatSecretUser = '';
+        sunatSecretPassword = '';
+        sunatSecretClientSecret = '';
+        sunatMsg = { ok: true, text: m.fin_connector_saved() };
+      } else {
+        sunatMsg = { ok: false, text: m.fin_connector_error() };
+      }
+    } catch {
+      sunatMsg = { ok: false, text: m.fin_connector_error() };
+    } finally {
+      sunatBusy = false;
+    }
+  }
+
+  async function probeSunat() {
+    sunatProbeBusy = true;
+    sunatMsg = null;
+    try {
+      const result = await fetchJson<{ ok: boolean; status: string }>(
+        '/api/finances/sources/probe',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ provider: 'sunat-sire' }),
+        },
+      );
+      sunatProbeStatus = result.status;
+      sunatProbeAt = new Date();
+      sunatMsg = { ok: result.ok, text: sunatProbeLabel(result.status) };
+    } catch {
+      sunatMsg = { ok: false, text: m.finance_settings_sunat_probe_error() };
+    } finally {
+      sunatProbeBusy = false;
+    }
+  }
+
+  // finance-sync.svelte.ts holds single-provider module state (used by the
+  // susii Sync card above) — the sunat sync status is tracked page-locally so
+  // it never clobbers the susii card, per spec.
+  type SourceSyncState = {
+    active: boolean;
+    status: string | null;
+    total: number | null;
+    processed: number;
+    error: string | null;
+  };
+  let sunatSync = $state<SourceSyncState>({
+    active: false,
+    status: null,
+    total: null,
+    processed: 0,
+    error: null,
+  });
+  let sunatSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function fetchSunatSyncStatus() {
+    try {
+      const res = await fetch('/api/finances/sync/status?provider=sunat-sire');
+      if (!res.ok) return;
+      const d = (await res.json()) as Partial<SourceSyncState>;
+      sunatSync.active = d.active ?? false;
+      sunatSync.status = d.status ?? null;
+      sunatSync.total = d.total ?? null;
+      sunatSync.processed =
+        sunatSync.total == null ? (d.processed ?? 0) : Math.min(d.processed ?? 0, sunatSync.total);
+      sunatSync.error = d.error ?? null;
+    } catch {
+      /* transient; keep last state */
+    }
+  }
+
+  function scheduleSunatPoll() {
+    if (sunatSyncTimer) clearTimeout(sunatSyncTimer);
+    sunatSyncTimer = setTimeout(async () => {
+      await fetchSunatSyncStatus();
+      if (sunatSync.active) scheduleSunatPoll();
+    }, 1500);
+  }
+
+  const sunatSyncPercent = $derived(
+    sunatSync.total && sunatSync.total > 0
+      ? Math.round((sunatSync.processed / sunatSync.total) * 100)
+      : 0,
+  );
+
+  async function startSunatSync() {
+    sunatSync.error = null;
+    try {
+      await fetchJson<{ ok?: boolean }>('/api/finances/sync', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'sunat-sire' }),
+      });
+      sunatSync.active = true;
+      sunatSync.status = 'running';
+      scheduleSunatPoll();
+      await fetchSunatSyncStatus();
+    } catch (cause) {
+      if (sunatSyncTimer) clearTimeout(sunatSyncTimer);
+      sunatSync.active = false;
+      sunatSync.status = 'error';
+      sunatSync.error = cause instanceof Error ? cause.message : 'Unable to start finance sync';
+    }
+  }
+
+  async function cancelSunatSync() {
+    try {
+      await fetchJson<{ ok?: boolean }>('/api/finances/sync/cancel', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: 'sunat-sire' }),
+      });
+      await fetchSunatSyncStatus();
+    } catch (cause) {
+      sunatSync.error = cause instanceof Error ? cause.message : 'Unable to cancel finance sync';
+    }
+  }
+
+  // ── Currency / Tax / Exchange-rate card ───────────────────────────────────
+  // svelte-ignore state_referenced_locally
+  const s0 = data.settings;
+  // svelte-ignore state_referenced_locally
+  let currency = $state(s0.currency);
+  // Tax rate is a fraction in the DB (0.18); edited as a percent here.
+  // svelte-ignore state_referenced_locally
+  let taxPct = $state(String(Math.round(s0.taxRate * 10000) / 100));
+  // svelte-ignore state_referenced_locally
+  let fxManual = $state(s0.fxMode === 'manual');
+  // svelte-ignore state_referenced_locally
+  let fxManualRate = $state(s0.fxManualRate != null ? String(s0.fxManualRate) : '');
+  let fxAutoRate = $state(s0.fxAutoRate);
+  let fxUpdatedAt = $state(s0.fxUpdatedAt);
+  let fxBase = $state(s0.fxBase);
+  let fxQuote = $state(s0.fxQuote);
+  let settingsBusy = $state(false);
+  let fxBusy = $state(false);
+  let settingsMsg = $state<{ ok: boolean; text: string } | null>(null);
+
+  const effectiveFx = $derived(fxManual ? Number(fxManualRate) || null : fxAutoRate);
+
+  async function saveFinSettings() {
+    settingsBusy = true;
+    settingsMsg = null;
+    try {
+      const taxRate = Number(taxPct) / 100;
+      const res = await fetch('/api/finances/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          currency,
+          taxRate,
+          fxMode: fxManual ? 'manual' : 'auto',
+          fxManualRate: fxManual && fxManualRate ? Number(fxManualRate) : null,
+        }),
+      });
+      settingsMsg = res.ok
+        ? { ok: true, text: m.fin_settings_saved() }
+        : { ok: false, text: m.fin_settings_error() };
+    } catch {
+      settingsMsg = { ok: false, text: m.fin_settings_error() };
+    } finally {
+      settingsBusy = false;
+    }
+  }
+
+  async function refreshFx() {
+    fxBusy = true;
+    settingsMsg = null;
+    try {
+      const { settings } = await fetchJson<{
+        settings: { fxAutoRate: number | null; fxUpdatedAt: string | null };
+      }>('/api/finances/settings', { method: 'POST' });
+      fxAutoRate = settings.fxAutoRate;
+      fxUpdatedAt = settings.fxUpdatedAt;
+      settingsMsg = { ok: true, text: m.fin_fx_refreshed() };
+    } catch {
+      settingsMsg = { ok: false, text: m.fin_fx_error() };
+    } finally {
+      fxBusy = false;
+    }
+  }
+
+  onMount(() => {
+    financeSync.refresh('susii', actions);
+    fetchSunatSyncStatus().then(() => {
+      if (sunatSync.active) scheduleSunatPoll();
+    });
+    return () => {
+      if (sunatSyncTimer) clearTimeout(sunatSyncTimer);
+    };
+  });
+
+  function syncStatusLabel(status: string | null): string {
+    switch (status) {
+      case 'running':
+      case 'queued':
+        return m.fin_sync_status_running();
+      case 'succeeded':
+        return m.fin_sync_status_succeeded();
+      case 'failed':
+        return m.fin_sync_status_failed();
+      case 'cancelled':
+        return m.fin_sync_status_cancelled();
+      default:
+        return '';
+    }
+  }
+</script>
+
+<svelte:head><title>{m.fin_settings_title()}</title></svelte:head>
+
+<PageShell archetype="form" scroll="region" labelledBy="finances-settings-title">
+  <PageHeader
+    titleId="finances-settings-title"
+    title={m.fin_settings_title()}
+    subtitle={m.fin_settings_subtitle()}
+  >
+    {#snippet leading()}
+      <Settings2 size={iconSizes.md} class="text-accent shrink-0" />
+    {/snippet}
+  </PageHeader>
+
+  <PageBody padding="compact" scroll="region">
+    <div class="grid gap-4 max-w-2xl">
+      <!-- ── Connector card ─────────────────────────────────────────────── -->
+      <section class="card">
+        <header class="card-h">
+          <Plug size={iconSizes.sm} />
+          <span>{m.fin_connector_card()}</span>
+        </header>
+
+        <div class="field">
+          <span class="t-caption">{m.fin_connector_provider()}</span>
+          <span class="mono-val">susii</span>
+        </div>
+
+        <label class="field">
+          <span class="t-caption">{m.fin_connector_business_id()}</span>
+          <input
+            class="inp"
+            type="number"
+            min="1"
+            bind:value={businessId}
+            placeholder={m.fin_connector_business_id_ph()}
+          />
+        </label>
+
+        {#if hasCredentials}
+          <p class="t-caption cred-hint">{m.fin_connector_credentials_hint()}</p>
+        {/if}
+
+        <label class="field">
+          <span class="t-caption">{m.fin_connector_secret_username()}</span>
+          <input class="inp" type="text" autocomplete="username" bind:value={secretUsername} />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.fin_connector_secret_password()}</span>
+          <input
+            class="inp"
+            type="password"
+            autocomplete="new-password"
+            bind:value={secretPassword}
+          />
+        </label>
+
+        <div class="field">
+          <Toggle bind:checked={connectorEnabled} label={m.fin_connector_enabled()} />
+        </div>
+
+        {#if src?.lastSyncAt}
+          <div class="meta-row">
+            <span class="t-caption">{m.fin_connector_last_sync()}</span>
+            <span class="mono-val">{new Date(src.lastSyncAt).toLocaleString(appLocale())}</span>
+          </div>
+        {/if}
+        {#if src?.lastStatus}
+          <div class="meta-row">
+            <span class="t-caption">{m.fin_connector_last_status()}</span>
+            <span class="mono-val">{src.lastStatus}</span>
+          </div>
+        {/if}
+        {#if src?.watermark}
+          <div class="meta-row">
+            <span class="t-caption">{m.fin_connector_watermark()}</span>
+            <span class="mono-val">{src.watermark}</span>
+          </div>
+        {/if}
+
+        {#if connectorMsg}
+          <p class={connectorMsg.ok ? 'ok-msg' : 'err-msg'}>{connectorMsg.text}</p>
+        {/if}
+
+        <div class="actions">
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={saveConnector}
+            disabled={connectorBusy || !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+          >
+            {m.fin_connector_save()}
+          </Button>
+        </div>
+      </section>
+
+      <!-- ── SUNAT (SIRE) connector card ────────────────────────────────── -->
+      <section class="card">
+        <header class="card-h">
+          <Plug size={iconSizes.sm} />
+          <span>{m.finance_settings_sunat_card()}</span>
+        </header>
+
+        <div class="field">
+          <span class="t-caption">{m.fin_connector_provider()}</span>
+          <span class="mono-val">sunat-sire</span>
+        </div>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_ruc()}</span>
+          <input
+            class="inp"
+            type="text"
+            inputmode="numeric"
+            pattern="\d{11}"
+            maxlength="11"
+            bind:value={sunatRuc}
+            placeholder={m.finance_settings_sunat_ruc_ph()}
+          />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_client_id()}</span>
+          <input
+            class="inp"
+            type="text"
+            bind:value={sunatClientId}
+            placeholder={m.finance_settings_sunat_client_id_ph()}
+          />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_legal_name()}</span>
+          <input class="inp" type="text" bind:value={sunatLegalName} />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_ubigeo()}</span>
+          <input
+            class="inp"
+            type="text"
+            inputmode="numeric"
+            pattern="\d{6}"
+            maxlength="6"
+            bind:value={sunatUbigeo}
+          />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_address()}</span>
+          <input class="inp" type="text" bind:value={sunatAddress} />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_start_period()}</span>
+          <input
+            class="inp"
+            type="text"
+            inputmode="numeric"
+            pattern="\d{6}"
+            maxlength="6"
+            bind:value={sunatStartPeriod}
+            placeholder={m.finance_settings_sunat_start_period_ph()}
+          />
+          <span class="t-caption hint">{m.finance_settings_sunat_start_period_hint()}</span>
+        </label>
+
+        {#if sunatHasCredentials}
+          <p class="t-caption cred-hint">{m.fin_connector_credentials_hint()}</p>
+        {/if}
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_sol_user()}</span>
+          <input class="inp" type="text" autocomplete="username" bind:value={sunatSecretUser} />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_sol_password()}</span>
+          <input
+            class="inp"
+            type="password"
+            autocomplete="new-password"
+            bind:value={sunatSecretPassword}
+          />
+        </label>
+
+        <label class="field">
+          <span class="t-caption">{m.finance_settings_sunat_client_secret()}</span>
+          <input
+            class="inp"
+            type="password"
+            autocomplete="new-password"
+            bind:value={sunatSecretClientSecret}
+          />
+        </label>
+
+        <div class="field">
+          <Toggle bind:checked={sunatEnabled} label={m.fin_connector_enabled()} />
+        </div>
+
+        {#if sunatSrc?.lastSyncAt}
+          <div class="meta-row">
+            <span class="t-caption">{m.fin_connector_last_sync()}</span>
+            <span class="mono-val">{new Date(sunatSrc.lastSyncAt).toLocaleString(appLocale())}</span
+            >
+          </div>
+        {/if}
+        {#if sunatSrc?.lastStatus}
+          <div class="meta-row">
+            <span class="t-caption">{m.fin_connector_last_status()}</span>
+            <span class="mono-val">{sunatSrc.lastStatus}</span>
+          </div>
+        {/if}
+        {#if sunatSrc?.watermark}
+          <div class="meta-row">
+            <span class="t-caption">{m.fin_connector_watermark()}</span>
+            <span class="mono-val">{sunatSrc.watermark}</span>
+          </div>
+        {/if}
+        <div class="meta-row">
+          <span class="t-caption">{m.finance_settings_sunat_probe_status()}</span>
+          <span class="mono-val">{sunatProbeLabel(sunatProbeStatus)}</span>
+        </div>
+        {#if sunatProbeAt}
+          <div class="meta-row">
+            <span class="t-caption">{m.finance_settings_sunat_probe_last()}</span>
+            <span class="mono-val">{new Date(sunatProbeAt).toLocaleString(appLocale())}</span>
+          </div>
+        {/if}
+
+        {#if sunatMsg}
+          <p class={sunatMsg.ok ? 'ok-msg' : 'err-msg'}>{sunatMsg.text}</p>
+        {/if}
+
+        <div class="actions">
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={saveSunat}
+            disabled={sunatBusy || !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+          >
+            {m.fin_connector_save()}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={probeSunat}
+            disabled={sunatBusy ||
+              sunatProbeBusy ||
+              !sunatHasCredentials ||
+              !sunatEnabled ||
+              !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+          >
+            {#if sunatProbeBusy}<Spinner size="xs" />{/if}
+            {sunatProbeBusy ? m.finance_settings_sunat_probing() : m.finance_settings_sunat_probe()}
+          </Button>
+        </div>
+
+        {#if sunatSync.active || sunatSync.status}
+          <ProgressBar
+            class="mb-3"
+            value={sunatSync.total == null ? null : sunatSync.processed}
+            max={sunatSync.total ?? 100}
+            label={syncStatusLabel(sunatSync.status)}
+            detail={sunatSync.total != null
+              ? `${m.fin_sync_progress({
+                  processed: sunatSync.processed,
+                  total: sunatSync.total,
+                })} · ${sunatSyncPercent}%`
+              : String(sunatSync.processed)}
+          />
+        {/if}
+
+        {#if sunatSync.status === 'failed' && sunatSync.error}
+          <p class="err-msg">{sunatSync.error}</p>
+        {/if}
+
+        {#if financeSync.outcomeUnknown}
+          <p class="err-msg">{m.fin_sync_unknown()}</p>
+        {/if}
+
+        <div class="actions sync-actions">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={startSunatSync}
+            disabled={sunatSync.active || !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+          >
+            {#if sunatSync.active}
+              <Spinner size="xs" />
+            {:else}
+              <RefreshCw size={iconSizes.sm} />
+            {/if}
+            {sunatSync.active ? m.fin_sync_running() : m.fin_sync_now()}
+          </Button>
+          {#if sunatSync.active}
+            <Button variant="ghost" size="sm" onclick={cancelSunatSync}
+              >{m.fin_sync_cancel()}</Button
+            >
+          {/if}
+        </div>
+      </section>
+
+      <!-- ── Currency / Tax / Exchange-rate card ────────────────────────── -->
+      <section class="card">
+        <header class="card-h">
+          <Coins size={iconSizes.sm} />
+          <span>{m.fin_money_card()}</span>
+        </header>
+
+        <Select
+          fieldClass="field"
+          label={m.fin_money_currency()}
+          bind:value={currency}
+          options={[
+            { value: 'PEN', label: 'PEN — S/ (Sol)' },
+            { value: 'USD', label: 'USD — $ (Dollar)' },
+            { value: 'EUR', label: 'EUR — € (Euro)' },
+          ]}
+        />
+
+        <label class="field">
+          <span class="t-caption">{m.fin_money_tax_rate()}</span>
+          <div class="pct-wrap">
+            <input class="inp" type="number" min="0" max="99.99" step="0.01" bind:value={taxPct} />
+            <span class="pct-suffix">%</span>
+          </div>
+          <span class="t-caption hint">{m.fin_money_tax_hint()}</span>
+        </label>
+
+        <div class="field">
+          <span class="t-caption">{m.fin_fx_rate({ base: fxBase, quote: fxQuote })}</span>
+          <div class="fx-row">
+            <Toggle bind:checked={fxManual} label={m.fin_fx_manual()} />
+          </div>
+          {#if fxManual}
+            <div class="pct-wrap mt-2">
+              <span class="pct-prefix">1 {fxBase} =</span>
+              <input
+                class="inp"
+                type="number"
+                min="0"
+                step="0.0001"
+                bind:value={fxManualRate}
+                placeholder="3.7500"
+              />
+              <span class="pct-suffix">{fxQuote}</span>
+            </div>
+          {:else}
+            <div class="fx-auto mt-2">
+              <span class="mono-val">
+                {#if fxAutoRate != null}1 {fxBase} = {fxAutoRate}
+                  {fxQuote}{:else}{m.fin_fx_none()}{/if}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={refreshFx}
+                disabled={fxBusy || !canAct('finance', 'edit')}
+                loading={fxBusy}
+              >
+                <RefreshCw size={iconSizes.sm} />
+                {m.fin_fx_refresh()}
+              </Button>
+            </div>
+            {#if fxUpdatedAt}
+              <span class="t-caption hint"
+                >{m.fin_fx_updated({
+                  when: new Date(fxUpdatedAt).toLocaleString(appLocale()),
+                })}</span
+              >
+            {/if}
+          {/if}
+          {#if effectiveFx != null}
+            <span class="t-caption hint">{m.fin_fx_effective({ rate: String(effectiveFx) })}</span>
+          {/if}
+        </div>
+
+        {#if settingsMsg}
+          <p class={settingsMsg.ok ? 'ok-msg' : 'err-msg'}>{settingsMsg.text}</p>
+        {/if}
+
+        <div class="actions">
+          <Button
+            variant="primary"
+            size="sm"
+            onclick={saveFinSettings}
+            disabled={settingsBusy || !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+          >
+            {m.fin_connector_save()}
+          </Button>
+        </div>
+      </section>
+
+      <!-- ── Sync card ──────────────────────────────────────────────────── -->
+      <section class="card">
+        <header class="card-h">
+          <Lock size={iconSizes.sm} />
+          <span>{m.fin_period_locks_title()}</span>
+        </header>
+        <p class="t-caption mb-3">{m.fin_period_locks_hint()}</p>
+        {#if data.periodLocks.length}
+          <ul class="lock-list">
+            {#each data.periodLocks as lock (lock.id)}
+              <li class="lock-row">
+                <span class="lock-period tabular-nums">{lock.period}</span>
+                <span class="t-caption lock-meta">
+                  {m.fin_period_locked_by({
+                    name: lock.lockedByName ?? '—',
+                    date: new Date(lock.lockedAt).toLocaleDateString(appLocale()),
+                  })}{#if lock.note}
+                    · {lock.note}{/if}
+                </span>
+                {#if canLock}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    type="button"
+                    disabled={lockBusy}
+                    onclick={() => setLock(lock.period, false)}>{m.fin_period_unlock()}</Button
+                  >
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="t-caption">{m.fin_period_locks_empty()}</p>
+        {/if}
+        {#if lockErr}
+          <p class="err-msg">{lockErr}</p>
+        {/if}
+        {#if canLock}
+          <div class="actions lock-form">
+            <input
+              type="month"
+              class="lock-input"
+              bind:value={lockPeriod}
+              aria-label={m.fin_period_month()}
+            />
+            <input
+              type="text"
+              class="lock-input lock-note"
+              bind:value={lockNote}
+              placeholder={m.fin_period_note()}
+              maxlength="500"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              type="button"
+              disabled={lockBusy || !lockPeriod}
+              onclick={() => setLock(lockPeriod, true)}
+            >
+              <Lock size={iconSizes.sm} />
+              {m.fin_period_lock_cta()}
+            </Button>
+          </div>
+        {/if}
+      </section>
+
+      <section class="card">
+        <header class="card-h">
+          <RefreshCw size={iconSizes.sm} />
+          <span>{m.fin_sync_card()}</span>
+        </header>
+
+        <p class="t-caption mb-3">{m.fin_sync_description()}</p>
+
+        {#if financeSync.active || financeSync.status}
+          <ProgressBar
+            class="mb-3"
+            value={financeSync.total == null ? null : financeSync.processed}
+            max={financeSync.total ?? 100}
+            label={syncStatusLabel(financeSync.status)}
+            detail={financeSync.total != null
+              ? `${m.fin_sync_progress({
+                  processed: financeSync.processed,
+                  total: financeSync.total,
+                })} · ${financeSync.percent}%`
+              : String(financeSync.processed)}
+          />
+        {/if}
+
+        {#if financeSync.error && !financeSync.outcomeUnknown}
+          <p class="err-msg">{financeSync.error}</p>
+        {/if}
+
+        {#if financeSync.outcomeUnknown}
+          <p class="err-msg">{m.fin_sync_unknown()}</p>
+        {/if}
+
+        <div class="actions sync-actions">
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={() => financeSync.start('susii', actions)}
+            disabled={financeSync.active ||
+              financeSync.outcomeUnknown ||
+              !canAct('finance', 'edit')}
+            title={canAct('finance', 'edit') ? undefined : m.no_permission()}
+            loading={financeSync.active}
+          >
+            <RefreshCw size={iconSizes.sm} />
+            {financeSync.active ? m.fin_sync_running() : m.fin_sync_now()}
+          </Button>
+          {#if financeSync.outcomeUnknown}
+            <Button variant="ghost" size="sm" onclick={() => financeSync.refresh('susii', actions)}
+              >{m.fin_sync_check_status()}</Button
+            >
+          {/if}
+          {#if financeSync.active}
+            <Button variant="ghost" size="sm" onclick={() => financeSync.cancel('susii')}
+              >{m.fin_sync_cancel()}</Button
+            >
+          {/if}
+        </div>
+      </section>
+    </div>
+  </PageBody>
+</PageShell>
+
+<style>
+  .card {
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-lg);
+    background: var(--color-card);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .card-h {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+    font-size: var(--font-size-caption, 12px);
+    font-weight: 600;
+    color: var(--color-muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: var(--space-3, 12px);
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-field-gap, 8px);
+    margin-bottom: var(--space-3, 12px);
+  }
+  .inp {
+    height: var(--control-height-md);
+    padding: 0 var(--space-2);
+    font-size: var(--font-size-body, 14px);
+    border-radius: var(--radius-md);
+    background: var(--color-bg3);
+    border: 1px solid var(--hairline);
+  }
+  .mono-val {
+    font-size: var(--font-size-body, 14px);
+    font-family: var(--font-mono, monospace);
+    color: var(--color-muted-foreground);
+  }
+  .meta-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    margin-bottom: var(--space-2, 8px);
+    font-size: var(--font-size-body, 14px);
+  }
+  .meta-row .t-caption {
+    min-width: 9rem;
+  }
+  .actions {
+    margin-top: var(--space-3, 12px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+  }
+  .ok-msg {
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-success, var(--color-emerald));
+    margin-bottom: var(--space-2, 8px);
+  }
+  .lock-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .lock-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .lock-period {
+    font-weight: 600;
+  }
+  .lock-meta {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lock-form {
+    align-items: center;
+  }
+  .lock-input {
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    background: var(--color-canvas);
+    color: var(--color-foreground);
+    font-size: var(--font-size-body);
+  }
+  .lock-note {
+    flex: 1;
+    min-width: 8rem;
+  }
+  .err-msg {
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-destructive);
+    margin-bottom: var(--space-2, 8px);
+  }
+  .cred-hint {
+    font-size: var(--font-size-caption, 12px);
+    color: var(--color-muted-foreground);
+    margin-bottom: var(--space-2, 8px);
+    font-style: italic;
+  }
+  .sync-actions {
+    display: flex;
+    gap: var(--space-2, 8px);
+    align-items: center;
+  }
+  .hint {
+    font-style: italic;
+    margin-top: var(--space-1, 4px);
+  }
+  .pct-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2, 8px);
+  }
+  .pct-wrap .inp {
+    flex: 1;
+    min-width: 0;
+  }
+  .pct-prefix,
+  .pct-suffix {
+    font-size: var(--font-size-body, 14px);
+    color: var(--color-muted-foreground);
+    white-space: nowrap;
+  }
+  .fx-row {
+    display: flex;
+    align-items: center;
+  }
+  .fx-auto {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3, 12px);
+  }
+  .mt-2 {
+    margin-top: var(--space-2, 8px);
+  }
+</style>

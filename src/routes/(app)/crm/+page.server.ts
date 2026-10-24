@@ -1,8 +1,9 @@
 import type { PageServerLoad } from './$types';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, viewableModules } from '$server/auth/dataset-ctx';
 import { ownerFilter } from '$server/services/rbac.service';
 import { getCrmDashboardStats } from '$server/services/crm-contacts.service';
 import { getFinSettings } from '$server/services/finance.service';
+import { DEFAULT_SCHEDULING_TIME_ZONE } from '$lib/components/scheduling/calendar-window';
 import {
   checkedZonedDayWindow,
   dateKeyAddDays,
@@ -59,7 +60,9 @@ function resolveRange(
 }
 
 export const load: PageServerLoad = async ({ locals, url, depends, parent }) => {
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await datasetCtx(locals, 'crm');
+  if (isDenied(ctx)) return { crm: ctx }; // rendered by DataSource (spec 039)
+  const crmCtx = ctx; // narrowed handle for the streamed closure
   depends('crm:contacts');
   // Personal orgs de-emphasize the sales funnel (WP2) — skip computing the
   // funnel/revenue payloads the dashboard won't render for them.
@@ -69,7 +72,11 @@ export const load: PageServerLoad = async ({ locals, url, depends, parent }) => 
   // Record-level RBAC stays synchronous. The aggregate returns no contact PII,
   // so field masking is irrelevant and no second authz read is needed.
   const owner = await ownerFilter(locals, 'crm');
-  const settings = await getFinSettings(ctx);
+  // Timezone + revenue are FINANCE data: own handle; denied => default tz, no revenue (spec 039).
+  const fin = await datasetCtx(locals, 'finance');
+  const settings = isDenied(fin)
+    ? { timezone: DEFAULT_SCHEDULING_TIME_ZONE }
+    : await getFinSettings(fin);
 
   // Acquisition-date cohort filter is cheap (no DB access) — resolve it now so
   // the page shell can render the range picker immediately, without waiting
@@ -91,20 +98,23 @@ export const load: PageServerLoad = async ({ locals, url, depends, parent }) => 
             from: Number.isFinite(fromTs) ? new Date(fromTs) : new Date('1970-01-01T00:00:00Z'),
             to: Number.isFinite(toTs) ? new Date(toTs) : new Date(),
           };
-    return getCrmDashboardStats(ctx, {
+    return getCrmDashboardStats(crmCtx, {
       ownerId: owner ?? undefined,
       ...bounded,
-      includeRevenue: !isPersonal,
+      includeRevenue: !isPersonal && !isDenied(fin),
+      withoutFinance: isDenied(fin),
     });
   }
 
   return {
-    range,
-    from,
-    to,
-    timeZone: settings.timezone,
-    streamed: {
-      stats: computeStats(),
+    crm: {
+      range,
+      from,
+      to,
+      timeZone: settings.timezone,
+      streamed: {
+        stats: computeStats(),
+      },
     },
   };
 };
