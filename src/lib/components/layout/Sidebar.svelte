@@ -243,7 +243,11 @@
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <div class="flex items-center gap-1">
       <div class="min-w-0 flex-1">
-        <ModuleSwitcher collapsed={collapsed || !isMd} onExpand={toggle} busy={busy && placement === 'icon-ring'} />
+        <ModuleSwitcher
+          collapsed={collapsed || !isMd}
+          onExpand={toggle}
+          busy={busy && placement === 'icon-ring'}
+        />
       </div>
       {#if !collapsed}
         <Tooltip
