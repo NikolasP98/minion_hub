@@ -2,9 +2,14 @@ import { page } from '$app/state';
 import { canonicalPath } from '$lib/canonical-path';
 import { EMPTY_NAV_CONFIG, resolveNavInstance, type NavConfig } from './custom-sections';
 
+/** Optimistic view while a context-menu save is in flight (set/cleared by nav-edit). */
+export const navOptimistic = $state<{ config: NavConfig | null }>({ config: null });
+
 /** The member's filtered nav config (roles stripped), loaded once by the app layout. */
 export function navConfig(): NavConfig {
-  return (page.data as { navConfig?: NavConfig }).navConfig ?? EMPTY_NAV_CONFIG;
+  return (
+    navOptimistic.config ?? (page.data as { navConfig?: NavConfig }).navConfig ?? EMPTY_NAV_CONFIG
+  );
 }
 
 /**

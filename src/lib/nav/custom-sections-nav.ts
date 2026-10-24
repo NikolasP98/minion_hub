@@ -29,8 +29,14 @@ export function nativeIconFor(target: string): ModuleNavItem['icon'] | undefined
   return undefined;
 }
 
+// NavIcon renders an emoji string as text; icon-map keys resolve to a component.
+const isEmoji = (s: string) => /^\p{Extended_Pictographic}/u.test(s);
 const pageIcon = (page: NavPage): ModuleNavItem['icon'] =>
-  page.icon ? resolvePluginIcon(page.icon) : (nativeIconFor(page.target) ?? LayoutGrid);
+  page.icon
+    ? isEmoji(page.icon)
+      ? page.icon
+      : resolvePluginIcon(page.icon)
+    : (nativeIconFor(page.target) ?? LayoutGrid);
 
 /** Sections with a usable slug, and the pages in them that are shown and point at a real screen. */
 function usable(config: NavConfig): { section: NavSection; pages: NavPage[] }[] {
