@@ -268,6 +268,9 @@ export interface DatasetDenied {
   verb: 'view';
 }
 
+/** Exact marker shape only: a data row that merely has a `denied` field is still data. */
 export function isDenied(v: unknown): v is DatasetDenied {
-  return !!v && typeof v === 'object' && 'denied' in v;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.denied === 'string' && o.verb === 'view' && Object.keys(o).length === 2;
 }
