@@ -15,7 +15,7 @@
     label?: string | Snippet;
     /** Trailing meta text — counts, percentage, ETA. */
     detail?: string | Snippet;
-    /** `xs` = 1px hairline track / no gap (sidebar divider bar), `sm` = 4px track / tight gap, `md` = 6px track. */
+    /** `xs` = 2px track / no gap (sidebar divider bar), `sm` = 4px track / tight gap, `md` = 6px track. */
     size?: ProgressBarSize;
     class?: string;
   }
@@ -113,7 +113,7 @@
     overflow: hidden;
   }
   .prg-xs .prg-track {
-    height: 1px;
+    height: 2px;
   }
   .prg-sm .prg-track {
     height: 4px;

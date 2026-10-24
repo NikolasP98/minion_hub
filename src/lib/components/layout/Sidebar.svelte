@@ -274,7 +274,7 @@
     </div>
   </div>
   {#if busy && placement === 'divider-bar'}
-    <div class="divider-bar mx-2 mb-1" aria-hidden="true">
+    <div class="divider-bar mx-2" aria-hidden="true">
       <ProgressBar value={null} size="xs" />
     </div>
   {:else}
@@ -713,11 +713,13 @@
     opacity: 1;
     background: var(--color-surface-2);
   }
-  /* Divider-bar placement: the hairline's exact 1px box carries the house
+  /* Divider-bar placement: a 2px box (owner 2026-10-23) carries the house
      indeterminate sweep; under reduced motion the range becomes a still
      full-width accent line instead of a parked 40% segment. */
   .divider-bar {
-    height: 1px;
+    height: 2px;
+    /* 2px bar + (space-1 − 1px) = the idle 1px hairline + space-1: no shift. */
+    margin-bottom: calc(var(--space-1) - 1px);
   }
   @media (prefers-reduced-motion: reduce) {
     .divider-bar :global(.prg-range.indeterminate) {
