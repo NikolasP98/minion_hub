@@ -7051,5 +7051,12 @@
   "pulse_feedbackRecorded": "Recorded: {reason}",
   "pulse_feedbackExport": "Export my feedback",
   "pulse_digestNextStep": "Suggested next step:",
-  "pulse_digestEvidence": "Public source evidence"
+  "pulse_digestEvidence": "Public source evidence",
+  "data_denied_title": "Your role can't view {dataset}",
+  "data_denied_hint": "Ask an admin for View on this dataset",
+  "rbac_verb_view": "View",
+  "rbac_verb_add": "Add",
+  "rbac_verb_edit": "Edit",
+  "rbac_verb_remove": "Remove",
+  "rbac_advanced": "Advanced"
 }

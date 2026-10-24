@@ -28,6 +28,7 @@ export { default as StatusDot } from './StatusDot.svelte';
 export { default as ProgressBar } from './ProgressBar.svelte';
 export { default as Chip } from './Chip.svelte';
 export { default as Avatar } from './Avatar.svelte';
+export { default as DataSource } from './DataSource.svelte';
 export { iconSizes, type IconSize } from './icon-sizes';
 export type {
   ButtonVariant,
