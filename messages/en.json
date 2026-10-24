@@ -7323,5 +7323,14 @@
   "admin_plans_reason_not_in_plan": "Not in plan",
   "admin_plans_reason_rule_false": "Rule not met",
   "admin_plans_kind_business": "Business",
-  "admin_plans_kind_personal": "Personal"
+  "admin_plans_kind_personal": "Personal",
+  "nav_access_menu": "Access…",
+  "nav_access_title": "Who can open {label}",
+  "nav_access_inherit": "Inherit",
+  "nav_access_allow": "Allow",
+  "nav_access_deny": "Deny",
+  "nav_access_inherit_hint": "Inherits the section's rule, then the page's own rule",
+  "nav_access_saved": "Access updated",
+  "nav_access_saving": "Saving access…",
+  "nav_access_fixed": "Always has access"
 }
