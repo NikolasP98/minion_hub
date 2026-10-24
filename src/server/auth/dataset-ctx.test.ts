@@ -7,7 +7,7 @@ vi.mock('$server/services/rbac.service', () => ({
   resolveCapabilities: (...a: unknown[]) => resolveCapabilities(...a),
 }));
 
-import { datasetCtx, readDataset } from './dataset-ctx';
+import { datasetCtx, isDenied, readDataset } from './dataset-ctx';
 
 const ctx = { db: {}, tenantId: 't', profileId: 'p' };
 const member = { user: { role: 'member', supabaseId: 'p' } } as unknown as App.Locals;
@@ -66,5 +66,15 @@ describe('readDataset', () => {
     const fn = vi.fn().mockResolvedValue([1]);
     expect(await readDataset(member, 'pos', fn)).toEqual([1]);
     expect(fn).toHaveBeenCalledWith(ctx);
+  });
+});
+
+describe('isDenied', () => {
+  it('matches only the exact marker, never a data row with a denied field', () => {
+    expect(isDenied({ denied: 'pos', verb: 'view' })).toBe(true);
+    expect(isDenied({ id: 1, denied: 'pos', verb: 'view' })).toBe(false);
+    expect(isDenied({ denied: true })).toBe(false);
+    expect(isDenied([{ denied: 'pos', verb: 'view' }])).toBe(false);
+    expect(isDenied(null)).toBe(false);
   });
 });
