@@ -1,6 +1,5 @@
-import { error } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { getPosSettings, getOpenShift, listOpenShifts } from '$server/services/pos.service';
 import { getUserNames } from '$server/services/user.service';
 import { countPosPendingWork } from '$server/services/pos-accounts.service';
@@ -20,11 +19,22 @@ export const load: LayoutServerLoad = async ({ locals, depends }) => {
   // and nothing schedule-related touches that).
   depends('pos:pending');
 
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
 
   const stockEnabled = locals.moduleStates?.stock ?? true;
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
+  // Denied role: every POS slot carries the marker (the banner/nav render it), no service runs.
+  if (isDenied(ctx)) {
+    return {
+      stockEnabled,
+      schedulingEnabled,
+      posSettings: ctx,
+      openShift: ctx,
+      openerName: null,
+      openShifts: ctx,
+      posPendingWork: ctx,
+    };
+  }
   const profileId = ctx.profileId ?? null;
   const [posSettings, openShift, allOpenShifts, posPendingWork] = await Promise.all([
     getPosSettings(ctx),

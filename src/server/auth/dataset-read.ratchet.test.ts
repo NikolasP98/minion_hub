@@ -57,9 +57,10 @@ describe('dataset-read ratchet (spec 039)', () => {
       );
       const counts = collect();
       expect(counts[rel]).toBe(1);
-      expect(messages('unknown', counts)).toEqual([
+      // 'enforced' once the module is rolled out, 'unknown' before: same message either way.
+      expect(violations(counts, baseline, enforced).map((v) => v.msg)).toContain(
         `${rel}: 1 bare tenant read(s) — use datasetCtx(locals, 'pos') / readDataset (spec 039 J1)`,
-      ]);
+      );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

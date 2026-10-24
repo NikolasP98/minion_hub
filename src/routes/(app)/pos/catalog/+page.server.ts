@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listSellables, listBundleEdges } from '$server/services/pos.service';
 import { listItems, listAllComponentEdges } from '$server/services/stock.service';
 import { billingForProducts } from '$server/services/finance-products.service';
@@ -30,8 +29,8 @@ import { formulaInputsFromPosRows } from '$server/services/formula-properties.se
  *  reachable/reactivatable from the catalog instead of vanishing once
  *  toggled off. */
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:catalog');
 
   const stockEnabled = locals.moduleStates?.stock ?? true;
@@ -126,15 +125,17 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     formulaNativeInputs: formulaInputsFromPosRows(finalSellables, {}),
   });
   return {
-    customProperties,
-    catalogTags: catalogTags
-      .filter((t) => t.kind === 'manual')
-      .map((t) => ({ id: t.id, name: t.name, color: t.color })),
-    tagOptions: [...tagOptions.values()],
-    sellables: finalSellables,
-    stockItems,
-    componentEdges,
-    stockEnabled,
-    categories,
+    pos: {
+      customProperties,
+      catalogTags: catalogTags
+        .filter((t) => t.kind === 'manual')
+        .map((t) => ({ id: t.id, name: t.name, color: t.color })),
+      tagOptions: [...tagOptions.values()],
+      sellables: finalSellables,
+      stockItems,
+      componentEdges,
+      stockEnabled,
+      categories,
+    },
   };
 };

@@ -1,15 +1,13 @@
 <script lang="ts">
   import type { PageData } from './$types';
-  import SellableEditorPage from '$lib/components/pos/SellableEditorPage.svelte';
+  import DataSource from '$lib/components/ui/DataSource.svelte';
+  import PageBody from './PageBody.svelte';
 
   let { data }: { data: PageData } = $props();
 </script>
 
-<SellableEditorPage
-  stockEnabled={data.stockEnabled}
-  stockItems={data.stockItems}
-  consumption={data.consumption}
-  categories={data.categories}
-  takenCodes={data.takenCodes}
-  tags={data.tags}
-/>
+<DataSource value={data.pos} module="pos">
+  {#snippet children(body)}
+    <PageBody data={body} />
+  {/snippet}
+</DataSource>

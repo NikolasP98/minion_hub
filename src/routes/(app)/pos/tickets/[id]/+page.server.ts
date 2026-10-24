@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { getPosSettings, getTicket } from '$server/services/pos.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
@@ -13,8 +13,8 @@ import { uuidParamOr404 } from '$server/utils/uuid-param';
  */
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:ticket');
 
   const [ticket, settings] = await Promise.all([getTicket(ctx, params.id), getPosSettings(ctx)]);
@@ -24,5 +24,5 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const methods = settings.methods
     .filter((method) => method.enabled)
     .map((method) => ({ id: method.id, label: method.label }));
-  return { ...ticket, methods, emissionMode: settings.emission.mode };
+  return { pos: { ...ticket, methods, emissionMode: settings.emission.mode } };
 };

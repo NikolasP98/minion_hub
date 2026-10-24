@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listBundleEdges,
   listPaymentsFor,
@@ -22,16 +21,19 @@ import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
  *  reads `/pos/appointments/new` does). Skipped entirely when the scheduling
  *  module is off: that step then never renders, so fetching for it is waste. */
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
   depends('pos:sell');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
+  // Resources/event types are SCHEDULING data: a role may sell without viewing them, so that
+  // step gets its own marker instead of the till failing.
+  const schedCtx = await datasetCtx(locals, 'scheduling');
 
   const schedulingEnabled = locals.moduleStates?.scheduling ?? true;
   const [rawSellables, bundleEdges, resources, eventTypes] = await Promise.all([
     listSellables(ctx),
     listBundleEdges(ctx),
-    schedulingEnabled ? listResources(ctx) : Promise.resolve([]),
-    schedulingEnabled ? listEventTypes(ctx) : Promise.resolve([]),
+    schedulingEnabled && !isDenied(schedCtx) ? listResources(schedCtx) : Promise.resolve([]),
+    schedulingEnabled && !isDenied(schedCtx) ? listEventTypes(schedCtx) : Promise.resolve([]),
   ]);
   // A package's stock is derived from its children (⌊child stock / qty⌋, the
   // catalog's `aggregateBundles`); the raw row carries null, which the till
@@ -70,21 +72,27 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   const { byTicket } = foldPayments(payments);
 
   return {
-    sellables,
-    todayTickets: todayTickets.map((t) => ({ ...t, payments: byTicket.get(t.id) ?? [] })),
-    todayShifts: shifts.map((s) => ({
-      ...s,
-      openedByName: (s.openedBy && openerNames.get(s.openedBy)) || null,
-    })),
-    schedulingEnabled,
-    orgTz,
-    stockEnabled: locals.moduleStates?.stock ?? true,
-    resources: resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
-    eventTypes: eventTypes.map((e) => ({
-      id: e.id,
-      title: e.title,
-      productId: e.productId ?? null,
-      active: e.active,
-    })),
+    pos: {
+      sellables,
+      todayTickets: todayTickets.map((t) => ({ ...t, payments: byTicket.get(t.id) ?? [] })),
+      todayShifts: shifts.map((s) => ({
+        ...s,
+        openedByName: (s.openedBy && openerNames.get(s.openedBy)) || null,
+      })),
+      schedulingEnabled,
+      orgTz,
+      stockEnabled: locals.moduleStates?.stock ?? true,
+      resources: isDenied(schedCtx)
+        ? schedCtx
+        : resources.filter((r) => r.active).map((r) => ({ id: r.id, name: r.name })),
+      eventTypes: isDenied(schedCtx)
+        ? schedCtx
+        : eventTypes.map((e) => ({
+            id: e.id,
+            title: e.title,
+            productId: e.productId ?? null,
+            active: e.active,
+          })),
+    },
   };
 };
