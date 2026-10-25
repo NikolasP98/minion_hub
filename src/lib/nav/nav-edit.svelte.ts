@@ -1,4 +1,4 @@
-import { canClient } from '$lib/access/can.svelte';
+import { can } from '$lib/state/features/permissions.svelte';
 import { invalidate } from '$lib/navigation';
 import { toastAsync } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
@@ -16,8 +16,8 @@ export const navClipboard = $state<{
   item: { target: string; label: string; icon?: string } | null;
 }>({ item: null });
 
-export const canEditNav = (): boolean => canClient('settings:manage');
-export const canEditAccess = (): boolean => canClient('users:manage');
+export const canEditNav = (): boolean => can('settings:manage');
+export const canEditAccess = (): boolean => can('users:manage');
 
 export const navValidationCtx = () => ({
   reserved: reservedSectionSlugs(),

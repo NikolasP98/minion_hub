@@ -18,7 +18,6 @@ vi.mock('$app/state', () => ({
   },
 }));
 vi.mock('$app/navigation', () => ({ invalidate: vi.fn(async () => {}), goto: vi.fn() }));
-vi.mock('$lib/access/can.svelte', () => ({ canClient: (k: string) => state.perms.has(k) }));
 
 import NavContextMenu from './NavContextMenu.svelte';
 import { navClipboard } from '$lib/nav/nav-edit.svelte';
@@ -49,7 +48,8 @@ const rows = async () => {
 
 function setup(perms: string[], navConfig: NavConfig = CONFIG) {
   state.perms = new Set(perms);
-  state.data = { navConfig, preferences: { preferences: {} } };
+  // Real permission path: the layout bundle's `permissions.permissions` strings (not a mocked gate).
+  state.data = { navConfig, preferences: { preferences: {} }, permissions: { permissions: perms } };
 }
 
 beforeEach(() => {
