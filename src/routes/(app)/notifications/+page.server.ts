@@ -4,7 +4,7 @@ import { error } from '@sveltejs/kit';
 import { listPendingRequests } from '$server/services/join/requests.service';
 import type { JoinRequestRow } from '$server/services/join/requests.service';
 import { isModuleVisibleForKind } from '$lib/org-kind';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, requireDataset } from '$server/auth/dataset-ctx';
 import { listPending } from '$server/services/pulse.service';
 import type { PulseProposalView } from '$server/services/pulse.service';
 import { hasOrgCapability } from '$server/services/rbac.service';
@@ -28,7 +28,9 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
   // Pulse is hidden for business orgs (see ORG_KIND_POLICY) — same rule the
   // /pulse page itself 404s on. Business orgs just get no pulse section here.
   const { activeOrgKind } = await parent();
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await requireDataset(locals, 'overview');
+  // Pulse proposals are PULSE data: own handle; denied => none (spec 039).
+  const pulse = await datasetCtx(locals, 'pulse');
   // Pulse review is an admin surface like the join-request review above —
   // the pre-inbox page required admin for both (security review 2026-10-10).
   let pulseProposals: PulseProposalView[] = [];
@@ -37,7 +39,7 @@ export const load: PageServerLoad = async ({ locals, parent, depends }) => {
     isModuleVisibleForKind('pulse', activeOrgKind) &&
     (await hasOrgCapability(locals, 'pulse', 'view'))
   ) {
-    pulseProposals = await listPending(ctx);
+    pulseProposals = isDenied(pulse) ? [] : await listPending(pulse);
   }
 
   const { items: inboxItems } = await listFeed(ctx, { includeResolved: false, limit: 50 });

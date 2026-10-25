@@ -12,7 +12,8 @@ const LOADS_DIR = 'src/routes/(app)';
 export const BASELINE_PATH = path.join(ROOT, 'scripts/.dataset-read-baseline.json');
 const LOAD_FILE = /^\+(page|layout)\.server\.ts$/;
 // `getCoreDb\(` sits outside the trailing \b: the spec's `(…|getCoreDb\(|…)\b` never matches `getCoreDb()`.
-const BARE = /\b(?:getCoreCtx|requireCoreCtx|getTenantCtx|requireTenantCtx|withOrgCore)\b|\bgetCoreDb\(/g;
+const BARE =
+  /\b(?:getCoreCtx|requireCoreCtx|getTenantCtx|requireTenantCtx|withOrgCore)\b|\bgetCoreDb\(/g;
 
 // Route prefix -> RBAC module. Duplicated from src/lib/modules/availability.ts (MODULE_MANIFEST
 // appPrefixes), which a .mjs cannot import; the ratchet test asserts every manifest prefix is here.
@@ -62,7 +63,8 @@ function walk(dir, out) {
 const strip = (s) =>
   s
     .replace(/^\s*import\s[\s\S]*?from\s+['"][^'"]+['"];?/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 /** repo-relative load file -> bare-handle count (files with 0 omitted), sorted. */
 export function collect() {
@@ -74,14 +76,63 @@ export function collect() {
   return out;
 }
 
+const readRaw = () => JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
+/** Load-read baseline (everything but the `apiGets` key). */
 export function readBaseline() {
-  return JSON.parse(fs.readFileSync(BASELINE_PATH, 'utf8'));
+  const { apiGets: _api, ...loads } = readRaw();
+  return loads;
+}
+/** API GET baseline: repo-relative `+server.ts` -> 1 (decrease-only). */
+export function readApiBaseline() {
+  return readRaw().apiGets ?? {};
+}
+
+// API GET bucket (T025): `src/routes/api/**/+server.ts` exporting GET with none of these guards.
+// Heuristic by design (name match after comment stripping): it measures the unguarded-read surface so
+// it can only shrink; it does not prove a handler is safe or unsafe.
+const API_DIR = 'src/routes/api';
+const GUARD = /\b(?:requireOrgCapability|requireAuth|requireAdmin|requireServerToken)\b/;
+const EXPORTS_GET =
+  /export\s+(?:const|async\s+function|function)\s+GET\b|export\s*\{[^}]*\bGET\b[^}]*\}/;
+function walkApi(dir, out) {
+  for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
+    const rel = path.posix.join(dir, e.name);
+    if (e.isDirectory()) walkApi(rel, out);
+    else if (e.name === '+server.ts') out.push(rel);
+  }
+  return out;
+}
+export function collectApiGets() {
+  const out = {};
+  for (const f of walkApi(API_DIR, []).sort()) {
+    const src = strip(fs.readFileSync(path.join(ROOT, f), 'utf8'));
+    if (EXPORTS_GET.test(src) && !GUARD.test(src)) out[f] = 1;
+  }
+  return out;
+}
+
+/** Rule violations for the API GET bucket: new files and stale keys. */
+export function apiViolations(current, baseline) {
+  const v = [];
+  for (const f of Object.keys(current)) {
+    if (!(f in baseline))
+      v.push({
+        rule: 'api-new',
+        msg: `${f}: unguarded API GET — add requireOrgCapability/requireAuth or datasetCtx (spec 039 K3)`,
+      });
+  }
+  for (const f of Object.keys(baseline)) {
+    if (!(f in current))
+      v.push({ rule: 'api-stale', msg: `${f}: baseline entry is stale — run --update` });
+  }
+  return v;
 }
 
 /** Ratchet rules; each violation carries its rule id so the test can assert per rule. */
 export function violations(counts, baseline, enforced) {
   const v = [];
-  const hint = (f) => `use datasetCtx(locals, '${moduleForLoadPath(f)}') / readDataset (spec 039 J1)`;
+  const hint = (f) =>
+    `use datasetCtx(locals, '${moduleForLoadPath(f)}') / readDataset (spec 039 J1)`;
   for (const [f, n] of Object.entries(counts)) {
     const msg = `${f}: ${n} bare tenant read(s) — ${hint(f)}`;
     if (enforced.includes(moduleForLoadPath(f))) v.push({ rule: 'enforced', msg });
@@ -101,16 +152,33 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const arg = process.argv[2];
   if (arg === '--print') {
     for (const [f, n] of Object.entries(counts)) console.log(`${f}: ${n}`);
-    console.log(`# ${Object.keys(counts).length} files, ${Object.values(counts).reduce((a, b) => a + b, 0)} reads`);
+    console.log(
+      `# ${Object.keys(counts).length} files, ${Object.values(counts).reduce((a, b) => a + b, 0)} reads`,
+    );
+    console.log(`# api GETs without a guard: ${Object.keys(collectApiGets()).length}`);
   } else if (arg === '--update') {
-    const old = fs.existsSync(BASELINE_PATH) ? readBaseline() : null;
+    const old = fs.existsSync(BASELINE_PATH) ? readRaw() : null;
     const raised = old ? Object.entries(counts).filter(([f, n]) => n > (old[f] ?? 0)) : [];
     if (raised.length) {
-      console.error('Refusing to raise the baseline:\n' + raised.map(([f, n]) => `  ${f}: ${old[f] ?? 0} -> ${n}`).join('\n'));
+      console.error(
+        'Refusing to raise the baseline:\n' +
+          raised.map(([f, n]) => `  ${f}: ${old[f] ?? 0} -> ${n}`).join('\n'),
+      );
       process.exit(1);
     }
-    fs.writeFileSync(BASELINE_PATH, JSON.stringify(counts, null, 2) + '\n');
-    console.log(`baseline written: ${Object.keys(counts).length} files`);
+    const api = collectApiGets();
+    const oldApi = old ? (old.apiGets ?? null) : null;
+    const apiRaised = oldApi ? Object.keys(api).filter((f) => !(f in oldApi)) : [];
+    if (apiRaised.length) {
+      console.error(
+        'Refusing to add unguarded API GETs:\n' + apiRaised.map((f) => `  ${f}`).join('\n'),
+      );
+      process.exit(1);
+    }
+    fs.writeFileSync(BASELINE_PATH, JSON.stringify({ ...counts, apiGets: api }, null, 2) + '\n');
+    console.log(
+      `baseline written: ${Object.keys(counts).length} load files, ${Object.keys(api).length} api GETs`,
+    );
   } else {
     console.error('usage: dataset-read-baseline.mjs --print | --update');
     process.exit(2);

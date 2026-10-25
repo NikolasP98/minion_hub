@@ -12,7 +12,7 @@ import { loadHostsForUser } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied, shellCtx } from '$server/auth/dataset-ctx';
 import { listBrainAgentIds } from '$server/services/brain-agents.service';
 import { readTableConfig } from '$server/services/table-config.service';
 import type { TableConfig } from '$lib/tables/registry';
@@ -124,8 +124,6 @@ export const load: LayoutServerLoad = async ({
     locals.orgId ?? locals.tenantCtx?.tenantId ?? '',
   ].join(':');
 
-  // Org shell config (table + nav), not a dataset: one ctx read for both.
-  const shellCtx = () => getCoreCtx(locals);
   const [permissions, organizations, coreBundle] = await Promise.all([
     traceLayoutLoad('permissions', loadPermissionsForUser(locals, user.id)),
     traceLayoutLoad('organizations', loadOrganizationsForUser(locals, user.id)),
@@ -148,15 +146,16 @@ export const load: LayoutServerLoad = async ({
               // never let a brains-table hiccup break the whole app shell's load.
               traceLayoutLoad(
                 'brain-agent-ids',
-                getCoreCtx(locals)
-                  .then((ctx) => (ctx ? listBrainAgentIds(ctx) : []))
+                // Brain assignment is BRAINS data: own handle; denied => none (spec 039).
+                datasetCtx(locals, 'brains')
+                  .then((ctx) => (isDenied(ctx) ? [] : listBrainAgentIds(ctx)))
                   .catch(() => [] as string[]),
               ),
               // Org table config (ID prefixes, field overrides) for every
               // DataTable on the page. Fail-soft: defaults render on a hiccup.
               traceLayoutLoad(
                 'table-config',
-                shellCtx()
+                shellCtx(locals)
                   .then((ctx) => (ctx ? readTableConfig(ctx) : ({} as TableConfig)))
                   .catch(() => ({}) as TableConfig),
               ),
@@ -164,7 +163,7 @@ export const load: LayoutServerLoad = async ({
               // Fail-soft: no custom sections on a hiccup.
               traceLayoutLoad(
                 'nav-config',
-                shellCtx()
+                shellCtx(locals)
                   .then((ctx) => (ctx ? readNavConfig(ctx) : EMPTY_NAV_CONFIG))
                   .catch(() => EMPTY_NAV_CONFIG),
               ),
@@ -214,7 +213,7 @@ export const load: LayoutServerLoad = async ({
     personalAgent.agent.provisioningStatus !== 'active' ||
     !personalAgent.agent.serverId
   ) {
-    const coreCtx = await getCoreCtx(locals);
+    const coreCtx = await shellCtx(locals);
     const healed = coreCtx
       ? await traceLayoutLoad(
           'personal-agent-self-heal',

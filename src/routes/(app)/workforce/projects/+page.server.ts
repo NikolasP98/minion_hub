@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import {
   listProjects,
@@ -32,8 +32,7 @@ type WorkforceProjectListItem = {
  */
 export const load: PageServerLoad = async (event) => {
   const { locals, depends } = event;
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await requireDataset(locals, 'projects');
   if (!(await isModuleEnabled(ctx, 'projects'))) throw error(404, 'Projects module disabled');
   depends('projects:list');
   const { companyId, workforceAvailable } = await event.parent();

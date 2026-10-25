@@ -24,9 +24,19 @@ type Meta = {
   openStatuses: string[] | null; // null = no status column (all owned rows are open)
 };
 const DOC_META: Record<string, Meta> = {
-  support_issue: { table: supportIssues, titleCol: 'subject', href: '/support', openStatuses: ['open', 'replied', 'on_hold'] },
+  support_issue: {
+    table: supportIssues,
+    titleCol: 'subject',
+    href: '/support',
+    openStatuses: ['open', 'replied', 'on_hold'],
+  },
   crm_contact: { table: crmContacts, titleCol: 'displayName', href: '/crm', openStatuses: null },
-  sales_order: { table: salesOrders, titleCol: 'customerName', href: '/sales', openStatuses: ['draft', 'confirmed'] },
+  sales_order: {
+    table: salesOrders,
+    titleCol: 'customerName',
+    href: '/sales',
+    openStatuses: ['draft', 'confirmed'],
+  },
 };
 
 export function isDocTypeAllowed(t: string): boolean {
@@ -61,11 +71,18 @@ export function pickAssignee(
 }
 
 /** Open-doc counts per owner for a doc type (least_open input). */
-async function openCounts(tx: CoreTx, docType: string, owners: string[]): Promise<Record<string, number>> {
+async function openCounts(
+  tx: CoreTx,
+  docType: string,
+  owners: string[],
+): Promise<Record<string, number>> {
   if (!owners.length) return {};
   const meta = DOC_META[docType];
   const t = meta.table;
-  const conds = [eq(t.orgId, sql`current_setting('app.current_org_id', true)`), inArray(t.ownerId, owners)];
+  const conds = [
+    eq(t.orgId, sql`current_setting('app.current_org_id', true)`),
+    inArray(t.ownerId, owners),
+  ];
   if (meta.openStatuses) conds.push(inArray((t as typeof supportIssues).status, meta.openStatuses));
   const rows = await tx
     .select({ owner: t.ownerId, n: sql<number>`count(*)::int` })
@@ -93,7 +110,13 @@ export async function autoAssign(
     const rules = await tx
       .select()
       .from(assignmentRules)
-      .where(and(eq(assignmentRules.orgId, ctx.tenantId), eq(assignmentRules.docType, docType), eq(assignmentRules.enabled, true)))
+      .where(
+        and(
+          eq(assignmentRules.orgId, ctx.tenantId),
+          eq(assignmentRules.docType, docType),
+          eq(assignmentRules.enabled, true),
+        ),
+      )
       .orderBy(assignmentRules.createdAt);
     const rule = rules.find((r) => evaluateCondition((r.condition as Filter[]) ?? [], doc));
     if (!rule) return null;
@@ -111,7 +134,10 @@ export async function autoAssign(
       .returning({ id: t.id });
     if (!claimed) return null;
 
-    await tx.update(assignmentRules).set({ cursor: nextCursor, updatedAt: new Date() }).where(eq(assignmentRules.id, rule.id));
+    await tx
+      .update(assignmentRules)
+      .set({ cursor: nextCursor, updatedAt: new Date() })
+      .where(eq(assignmentRules.id, rule.id));
     return assigneeId;
   }).then(async (assigneeId) => {
     if (assigneeId)
@@ -142,14 +168,20 @@ export async function reassign(
   }
   const t = DOC_META[docType].table;
   const [prev] = await withOrgCore(ctx, (tx) =>
-    tx.select({ owner: t.ownerId }).from(t).where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
+    tx
+      .select({ owner: t.ownerId })
+      .from(t)
+      .where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
   );
   if (!prev) return 'not_found';
   // Only an admin or the current owner may reassign — a non-owner can't grab or
   // dump another user's work.
   if (!actor.isAdmin && prev.owner !== actor.id) return 'forbidden';
   await withOrgCore(ctx, (tx) =>
-    tx.update(t).set({ ownerId: newOwner }).where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
+    tx
+      .update(t)
+      .set({ ownerId: newOwner })
+      .where(and(eq(t.id, docId), eq(t.orgId, ctx.tenantId))),
   );
   await recordAudit(ctx, {
     refType: docType,
@@ -175,7 +207,13 @@ export interface WorkItem {
 function toItem(
   docType: string,
   href: string,
-  r: { id: string; humanId: string | null; title: string | null; status: string | null; createdAt: Date },
+  r: {
+    id: string;
+    humanId: string | null;
+    title: string | null;
+    status: string | null;
+    createdAt: Date;
+  },
 ): WorkItem {
   return {
     docType,
@@ -190,24 +228,68 @@ function toItem(
 
 /** Open docs owned by `userId` across all assignable doc types, newest first.
  *  Per-table selects (columns differ) — kept explicit rather than reflecting. */
-export async function listMyWork(ctx: CoreCtx, userId: string): Promise<WorkItem[]> {
+export async function listMyWork(
+  ctx: CoreCtx,
+  userId: string,
+  /** Spec 039: modules the caller's role can view; omitted = all (guarded API callers). A doc type
+   *  from a module outside the set is never read. */
+  viewable?: ReadonlySet<string>,
+): Promise<WorkItem[]> {
+  const can = (m: string) => !viewable || viewable.has(m);
+  const none = Promise.resolve([] as never[]);
   return withOrgCore(ctx, async (tx) => {
     const [tickets, leads, orders] = await Promise.all([
-      tx
-        .select({ id: supportIssues.id, humanId: supportIssues.humanId, title: supportIssues.subject, status: supportIssues.status, createdAt: supportIssues.createdAt })
-        .from(supportIssues)
-        .where(and(eq(supportIssues.orgId, ctx.tenantId), eq(supportIssues.ownerId, userId), inArray(supportIssues.status, DOC_META.support_issue.openStatuses!)))
-        .limit(200),
-      tx
-        .select({ id: crmContacts.id, humanId: crmContacts.humanId, title: crmContacts.displayName, status: sql<string | null>`null`, createdAt: crmContacts.createdAt })
-        .from(crmContacts)
-        .where(and(eq(crmContacts.orgId, ctx.tenantId), eq(crmContacts.ownerId, userId)))
-        .limit(200),
-      tx
-        .select({ id: salesOrders.id, humanId: salesOrders.humanId, title: salesOrders.customerName, status: salesOrders.status, createdAt: salesOrders.createdAt })
-        .from(salesOrders)
-        .where(and(eq(salesOrders.orgId, ctx.tenantId), eq(salesOrders.ownerId, userId), inArray(salesOrders.status, DOC_META.sales_order.openStatuses!)))
-        .limit(200),
+      !can('support')
+        ? none
+        : tx
+            .select({
+              id: supportIssues.id,
+              humanId: supportIssues.humanId,
+              title: supportIssues.subject,
+              status: supportIssues.status,
+              createdAt: supportIssues.createdAt,
+            })
+            .from(supportIssues)
+            .where(
+              and(
+                eq(supportIssues.orgId, ctx.tenantId),
+                eq(supportIssues.ownerId, userId),
+                inArray(supportIssues.status, DOC_META.support_issue.openStatuses!),
+              ),
+            )
+            .limit(200),
+      !can('crm')
+        ? none
+        : tx
+            .select({
+              id: crmContacts.id,
+              humanId: crmContacts.humanId,
+              title: crmContacts.displayName,
+              status: sql<string | null>`null`,
+              createdAt: crmContacts.createdAt,
+            })
+            .from(crmContacts)
+            .where(and(eq(crmContacts.orgId, ctx.tenantId), eq(crmContacts.ownerId, userId)))
+            .limit(200),
+      !can('sales')
+        ? none
+        : tx
+            .select({
+              id: salesOrders.id,
+              humanId: salesOrders.humanId,
+              title: salesOrders.customerName,
+              status: salesOrders.status,
+              createdAt: salesOrders.createdAt,
+            })
+            .from(salesOrders)
+            .where(
+              and(
+                eq(salesOrders.orgId, ctx.tenantId),
+                eq(salesOrders.ownerId, userId),
+                inArray(salesOrders.status, DOC_META.sales_order.openStatuses!),
+              ),
+            )
+            .limit(200),
     ]);
     const out = [
       ...tickets.map((r) => toItem('support_issue', DOC_META.support_issue.href, r)),
@@ -222,7 +304,11 @@ export async function listMyWork(ctx: CoreCtx, userId: string): Promise<WorkItem
 // ── Rule CRUD (settings) ──────────────────────────────────────────────────────
 export function listRules(ctx: CoreCtx): Promise<AssignmentRule[]> {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(assignmentRules).where(eq(assignmentRules.orgId, ctx.tenantId)).orderBy(assignmentRules.createdAt),
+    tx
+      .select()
+      .from(assignmentRules)
+      .where(eq(assignmentRules.orgId, ctx.tenantId))
+      .orderBy(assignmentRules.createdAt),
   );
 }
 
@@ -234,12 +320,19 @@ export type NewRuleInput = Omit<
 export async function createRule(ctx: CoreCtx, input: NewRuleInput): Promise<AssignmentRule> {
   if (!isDocTypeAllowed(input.docType)) throw new Error('doc_type not allowed');
   const [row] = await withOrgCore(ctx, (tx) =>
-    tx.insert(assignmentRules).values({ ...input, orgId: ctx.tenantId }).returning(),
+    tx
+      .insert(assignmentRules)
+      .values({ ...input, orgId: ctx.tenantId })
+      .returning(),
   );
   return row;
 }
 
-export async function updateRule(ctx: CoreCtx, id: string, patch: Partial<NewRuleInput>): Promise<AssignmentRule | null> {
+export async function updateRule(
+  ctx: CoreCtx,
+  id: string,
+  patch: Partial<NewRuleInput>,
+): Promise<AssignmentRule | null> {
   if (patch.docType && !isDocTypeAllowed(patch.docType)) throw new Error('doc_type not allowed');
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
@@ -253,12 +346,17 @@ export async function updateRule(ctx: CoreCtx, id: string, patch: Partial<NewRul
 
 export async function deleteRule(ctx: CoreCtx, id: string): Promise<void> {
   await withOrgCore(ctx, (tx) =>
-    tx.delete(assignmentRules).where(and(eq(assignmentRules.id, id), eq(assignmentRules.orgId, ctx.tenantId))),
+    tx
+      .delete(assignmentRules)
+      .where(and(eq(assignmentRules.id, id), eq(assignmentRules.orgId, ctx.tenantId))),
   );
 }
 
 /** Orgs with at least one enabled rule (bypass-RLS, for any future cron use). */
 export async function listEnabledAssignmentOrgs(): Promise<string[]> {
-  const rows = await getCoreDb().selectDistinct({ orgId: assignmentRules.orgId }).from(assignmentRules).where(eq(assignmentRules.enabled, true));
+  const rows = await getCoreDb()
+    .selectDistinct({ orgId: assignmentRules.orgId })
+    .from(assignmentRules)
+    .where(eq(assignmentRules.enabled, true));
   return rows.map((r) => r.orgId);
 }

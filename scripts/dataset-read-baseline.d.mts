@@ -8,3 +8,9 @@ export function violations(
   baseline: Record<string, number>,
   enforced: readonly string[],
 ): { rule: 'enforced' | 'raised' | 'unknown' | 'stale'; msg: string }[];
+export function readApiBaseline(): Record<string, number>;
+export function collectApiGets(): Record<string, number>;
+export function apiViolations(
+  current: Record<string, number>,
+  baseline: Record<string, number>,
+): { rule: 'api-new' | 'api-stale'; msg: string }[];

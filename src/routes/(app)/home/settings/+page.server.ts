@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { getPersonalAgent } from '$server/services/personal-agent.service';
 import { getChannelIdentitiesForUser } from '$server/services/channel-identity.service';
 import { getDb } from '$server/db/client';
-import { getCoreDb } from '$server/db/pg-client';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { redirect } from '@sveltejs/kit';
 
 export const load: PageServerLoad = async ({ locals }) => {
@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
   const tenantId = locals.orgId ?? 'default';
   // personal_agents lives on Supabase (pg); channel identities still on Turso.
-  const coreCtx = { db: getCoreDb(), tenantId };
+  const coreCtx = await requireDataset(locals, 'overview');
   const tenantCtx = { db: getDb(), tenantId };
 
   // Independent reads on separate db handles (pg + Turso) — run them in parallel.

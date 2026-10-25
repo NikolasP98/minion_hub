@@ -174,6 +174,25 @@ describe('(app)/+layout.server load', () => {
     );
   });
 
+  it('keeps the org table config for a role denied every dataset (shell read, spec 039)', async () => {
+    const { readTableConfig } = await import('$server/services/table-config.service');
+    vi.mocked(readTableConfig).mockResolvedValueOnce({ crm: { hidden: ['x'] } } as never);
+    // No supabaseId + non-admin => datasetCtx denies every module.
+    const user = {
+      id: 'u-2',
+      email: 'c@d.com',
+      role: 'member',
+      onboardedAt: '2026-01-01T00:00:00Z',
+    };
+    const ev = makeEvent({
+      user,
+      session: { activeOrganizationId: 'tenant-x', id: 's2' },
+    }) as unknown as Parameters<typeof load>[0];
+    const out = (await load(ev)) as { tableConfig: unknown; brainAgentIds: unknown };
+    expect(out.tableConfig).toEqual({ crm: { hidden: ['x'] } });
+    expect(out.brainAgentIds).toEqual([]);
+  });
+
   it('skips the redundant organizations lookup when the hook already resolved this org (debloat-b §2)', async () => {
     const { getTenant } = await import('$server/services/tenant.service');
     const user = {

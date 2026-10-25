@@ -44,3 +44,25 @@ export async function viewableModules(
   for (const m of modules) if (!isDenied(await datasetCtx(locals, m))) out.add(m);
   return out;
 }
+
+/**
+ * `datasetCtx` for loads that cannot render a marker (settings/admin pages behind a capability gate,
+ * layouts whose shape every page depends on): a denied dataset becomes a K3-shaped 403
+ * (`<module>: view required`), exactly what the route guard already answers for these paths.
+ * TODO(handoff): spec 039 — these remaining loads still hard-403 instead of rendering `DataSource`;
+ * convert them (page body -> PageBody.svelte + marker slot) if page roles ever expose them to roles
+ * without the module's view. Tracked in the S5 PR body / meta proposal.
+ */
+export async function requireDataset(locals: App.Locals, module: Module): Promise<CoreCtx> {
+  const c = await datasetCtx(locals, module);
+  if (isDenied(c)) throw error(403, `${module}: view required`);
+  return c;
+}
+
+/**
+ * Org shell reads that belong to no dataset (the org's table config, the user's own personal
+ * agent): every page depends on them, so no module's view may hide them. Not for business data.
+ */
+export function shellCtx(locals: App.Locals): Promise<CoreCtx | null> {
+  return getCoreCtx(locals);
+}

@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import {
   getProject,
   listTasks,
@@ -14,7 +14,11 @@ import {
   type PartyLite,
 } from '$server/services/projects.service';
 import { workforceRawFetch, workforceServerClient } from '$lib/server/workforce-fetch';
-import { harnessAgentIds, normalizeHarnessBatch, type HarnessSummary } from '$lib/workforce/harness';
+import {
+  harnessAgentIds,
+  normalizeHarnessBatch,
+  type HarnessSummary,
+} from '$lib/workforce/harness';
 import { listEntityTimeline } from '$server/services/activity.service';
 import type { Project, Issue, Pipeline } from '@minion-stack/workforce-client';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
@@ -22,8 +26,7 @@ import { uuidParamOr404 } from '$server/utils/uuid-param';
 export const load: PageServerLoad = async (event) => {
   const { locals, params, depends } = event;
   uuidParamOr404(params.id);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await requireDataset(locals, 'projects');
   depends('projects:detail');
   const { companyId, workforceAvailable } = await event.parent();
 
@@ -31,7 +34,11 @@ export const load: PageServerLoad = async (event) => {
   if (!project) throw error(404, 'Project not found');
 
   // Mirror workforce agents into the spine so the assignee picker lists them (best-effort).
-  await syncAgentParties(ctx, { id: ctx.profileId ?? null, name: locals.user?.displayName ?? null, email: locals.user?.email ?? null });
+  await syncAgentParties(ctx, {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? null,
+    email: locals.user?.email ?? null,
+  });
 
   const [tasks, progress, timesheets, agents, timeline] = await Promise.all([
     listTasks(ctx, { projectId: params.id, includeMilestones: true }),
@@ -42,7 +49,11 @@ export const load: PageServerLoad = async (event) => {
   ]);
 
   const selfPartyId = ctx.profileId
-    ? await ensureSelfParty(ctx, { id: ctx.profileId, email: locals.user?.email, name: locals.user?.displayName })
+    ? await ensureSelfParty(ctx, {
+        id: ctx.profileId,
+        email: locals.user?.email,
+        name: locals.user?.displayName,
+      })
     : null;
 
   const refIds = [
@@ -59,13 +70,31 @@ export const load: PageServerLoad = async (event) => {
   // When linked, surface the workforce project's workspaces/issues/goals inline.
   // When not linked, offer the org's workforce projects for linking. All best-effort.
   const workforceProjectId = workforceProjectIdOf(project);
-  let execution: { project: Project; issues: Issue[]; agentNames: Record<string, string> } | null = null;
+  let execution: { project: Project; issues: Issue[]; agentNames: Record<string, string> } | null =
+    null;
   let linkable: Array<{ id: string; name: string }> = [];
   let pipelines: Pipeline[] = [];
-  let harnessRoster: Array<HarnessSummary & { name: string }> = [...new Set(tasks.map((task) => task.assigneePartyId).filter((id): id is string => !!id))]
+  let harnessRoster: Array<HarnessSummary & { name: string }> = [
+    ...new Set(tasks.map((task) => task.assigneePartyId).filter((id): id is string => !!id)),
+  ]
     .map((partyId) => partyMap[partyId])
     .filter((party): party is PartyLite => !!party?.agentId)
-    .map((party) => ({ agentId: party.agentId!, name: party.name ?? 'Agent', revision: null, hash: null, roleClass: null, runtimeClass: null, activePrimary: null, activeFallbacks: [], recommendedPrimary: null, recommendedFallbacks: [], tools: [], skills: [], learningPolicy: null, performance: { successRate: null, avgScore: null, runCount: null, costCents: null } }));
+    .map((party) => ({
+      agentId: party.agentId!,
+      name: party.name ?? 'Agent',
+      revision: null,
+      hash: null,
+      roleClass: null,
+      runtimeClass: null,
+      activePrimary: null,
+      activeFallbacks: [],
+      recommendedPrimary: null,
+      recommendedFallbacks: [],
+      tools: [],
+      skills: [],
+      learningPolicy: null,
+      performance: { successRate: null, avgScore: null, runCount: null, costCents: null },
+    }));
 
   if (companyId && workforceAvailable) {
     const client = workforceServerClient(event);
@@ -75,7 +104,9 @@ export const load: PageServerLoad = async (event) => {
           client.projects.get(workforceProjectId, companyId),
           client.issues.list(companyId, { projectId: workforceProjectId }),
           client.agents.list(companyId),
-          client.pipelines.list(companyId, { projectId: workforceProjectId }).catch(() => [] as Pipeline[]),
+          client.pipelines
+            .list(companyId, { projectId: workforceProjectId })
+            .catch(() => [] as Pipeline[]),
         ]);
         const agentNames: Record<string, string> = {};
         for (const a of wfAgents) agentNames[a.id] = a.name;
@@ -83,10 +114,27 @@ export const load: PageServerLoad = async (event) => {
         pipelines = wfPipelines;
         const rosterIds = harnessAgentIds(wfPipelines, issues);
         if (rosterIds.length) {
-          const batch = await workforceRawFetch<unknown>(event, `/api/companies/${companyId}/agent-harnesses?agentIds=${encodeURIComponent(rosterIds.join(','))}`).catch(() => []);
+          const batch = await workforceRawFetch<unknown>(
+            event,
+            `/api/companies/${companyId}/agent-harnesses?agentIds=${encodeURIComponent(rosterIds.join(','))}`,
+          ).catch(() => []);
           const harnesses = normalizeHarnessBatch(batch);
           harnessRoster = rosterIds.map((agentId) => ({
-            ...(harnesses[agentId] ?? { agentId, revision: null, hash: null, roleClass: null, runtimeClass: null, activePrimary: null, activeFallbacks: [], recommendedPrimary: null, recommendedFallbacks: [], tools: [], skills: [], learningPolicy: null, performance: { successRate: null, avgScore: null, runCount: null, costCents: null } }),
+            ...(harnesses[agentId] ?? {
+              agentId,
+              revision: null,
+              hash: null,
+              roleClass: null,
+              runtimeClass: null,
+              activePrimary: null,
+              activeFallbacks: [],
+              recommendedPrimary: null,
+              recommendedFallbacks: [],
+              tools: [],
+              skills: [],
+              learningPolicy: null,
+              performance: { successRate: null, avgScore: null, runCount: null, costCents: null },
+            }),
             name: agentNames[agentId] ?? `${agentId.slice(0, 8)}…`,
           }));
         }
@@ -102,5 +150,20 @@ export const load: PageServerLoad = async (event) => {
     }
   }
 
-  return { project, tasks, progress, timesheets, agents, selfPartyId, partyMap, workforceProjectId, execution, linkable, pipelines, timeline, workforceAvailable, harnessRoster };
+  return {
+    project,
+    tasks,
+    progress,
+    timesheets,
+    agents,
+    selfPartyId,
+    partyMap,
+    workforceProjectId,
+    execution,
+    linkable,
+    pipelines,
+    timeline,
+    workforceAvailable,
+    harnessRoster,
+  };
 };

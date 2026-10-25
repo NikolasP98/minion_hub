@@ -3,8 +3,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   PREFIX_MODULES,
+  apiViolations,
   collect,
+  collectApiGets,
   moduleForLoadPath,
+  readApiBaseline,
   readBaseline,
   violations,
 } from '../../../scripts/dataset-read-baseline.mjs';
@@ -19,6 +22,20 @@ const messages = (rule: string, counts = collect()) =>
     .map((v) => v.msg);
 
 describe('dataset-read ratchet (spec 039)', () => {
+  it('load baseline is empty (SC-001)', () => {
+    expect(baseline).toEqual({});
+  });
+
+  it('every module with a route prefix is enforced', () => {
+    const mapped = new Set<string>([...Object.values(PREFIX_MODULES), 'overview']);
+    expect([...mapped].filter((m) => !enforced.includes(m))).toEqual([]);
+  });
+
+  it('API GET handlers: no new unguarded file, no stale baseline entry', () => {
+    const v = apiViolations(collectApiGets(), readApiBaseline());
+    expect(v.map((x) => x.msg)).toEqual([]);
+  });
+
   it('enforced modules have zero bare tenant reads', () => {
     expect(messages('enforced')).toEqual([]);
   });
