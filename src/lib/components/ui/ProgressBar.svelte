@@ -1,7 +1,7 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
 
-  export type ProgressBarSize = 'sm' | 'md';
+  export type ProgressBarSize = 'xs' | 'sm' | 'md';
 
   export interface ProgressBarProps {
     /**
@@ -15,7 +15,7 @@
     label?: string | Snippet;
     /** Trailing meta text — counts, percentage, ETA. */
     detail?: string | Snippet;
-    /** `sm` = 4px track / tight gap, `md` = 6px track. */
+    /** `xs` = 2px track / no gap (sidebar divider bar), `sm` = 4px track / tight gap, `md` = 6px track. */
     size?: ProgressBarSize;
     class?: string;
   }
@@ -87,6 +87,9 @@
     display: flex;
     flex-direction: column;
   }
+  .prg-xs {
+    gap: 0;
+  }
   .prg-sm {
     gap: var(--space-1);
   }
@@ -108,6 +111,9 @@
     border-radius: var(--radius-full);
     background: var(--color-surface-3);
     overflow: hidden;
+  }
+  .prg-xs .prg-track {
+    height: 2px;
   }
   .prg-sm .prg-track {
     height: 4px;

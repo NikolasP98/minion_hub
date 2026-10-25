@@ -9,3 +9,4 @@ export * from './bug-reporter.svelte';
 export * from './preference-sync.svelte';
 export * from './nav-mode.svelte';
 export * from './density.svelte';
+export * from './loading-indicator.svelte';
