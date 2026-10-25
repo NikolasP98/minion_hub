@@ -62,6 +62,7 @@ export async function saveNavConfig(op: (c: NavConfig) => NavConfig): Promise<vo
   const issues = newIssues(view, guess);
   if (issues.length) throw new NavSaveError(issues[0].message, issues);
   navOptimistic.config = guess;
+  let refresh: Promise<unknown> | undefined;
   try {
     await toastAsync(
       (async () => {
@@ -77,7 +78,8 @@ export async function saveNavConfig(op: (c: NavConfig) => NavConfig): Promise<vo
           throw new NavSaveError(list[0]?.message ?? m.common_error(), list, true);
         }
         if (!res.ok) throw new Error(m.common_error());
-        await Promise.all([invalidate('app:nav-config'), invalidate('app:permissions')]);
+        // Saved: don't hold the dialog on the reload (app:permissions reruns the whole app layout).
+        refresh = Promise.all([invalidate('app:nav-config'), invalidate('app:permissions')]);
       })(),
       {
         loading: m.nav_saving(),
@@ -85,7 +87,10 @@ export async function saveNavConfig(op: (c: NavConfig) => NavConfig): Promise<vo
         onError: (e) => ({ title: e instanceof Error ? e.message : m.common_error() }),
       },
     );
-  } finally {
+  } catch (e) {
     navOptimistic.config = null;
+    throw e;
   }
+  // The optimistic view bridges until the reloaded config lands.
+  void refresh?.catch(() => {}).finally(() => (navOptimistic.config = null));
 }

@@ -142,4 +142,18 @@ describe('NavContextMenu', () => {
     const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
   });
+
+  it('(g) a saved New section closes its dialog even while the app reload is still pending', async () => {
+    const { invalidate } = await import('$app/navigation');
+    vi.mocked(invalidate).mockImplementation(() => new Promise<void>(() => {})); // reload never lands
+    setup(['settings:manage']);
+    mount({ kind: 'area' });
+    await fireEvent.contextMenu(screen.getByTestId('row'));
+    await fireEvent.click(screen.getByRole('menuitem', { name: /New section/ }));
+    await fireEvent.input(await screen.findByLabelText(/Label/), {
+      target: { value: 'Front desk' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save' })).toBeNull());
+  });
 });

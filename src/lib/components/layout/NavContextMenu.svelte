@@ -337,7 +337,7 @@
       return void run((c) =>
         pageId
           ? duplicatePage(c, { pageId })
-          : duplicatePage(c, { target: bt!, module: bt!.split('/')[1] }),
+          : duplicatePage(c, { target: bt!, module: bt!.split('/')[1], label }),
       );
     }
     if (id === 'hide') {
