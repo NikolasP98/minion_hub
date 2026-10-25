@@ -21,6 +21,7 @@ vi.mock('$app/navigation', () => ({ invalidate: vi.fn(async () => {}), goto: vi.
 
 import NavContextMenu from './NavContextMenu.svelte';
 import { navClipboard } from '$lib/nav/nav-edit.svelte';
+import { navConfig } from '$lib/nav/nav-config.svelte';
 
 const CONFIG: NavConfig = {
   ...EMPTY_NAV_CONFIG,
@@ -155,5 +156,7 @@ describe('NavContextMenu', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Save' })).toBeNull());
+    // The optimistic view stays up until the reload lands; the next edit must still be able to copy it.
+    expect(() => structuredClone(navConfig())).not.toThrow();
   });
 });
