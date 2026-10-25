@@ -1,3 +1,5 @@
+import type { DatasetDenied } from '$lib/permissions';
+
 export type ApiErrorKind =
   | 'unauthorized'
   | 'forbidden'
@@ -68,4 +70,25 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
     );
   }
   return body as T;
+}
+
+/**
+ * GET a dataset lazily (spec 039, K3): a 403 "<module>: view required" resolves to the same
+ * `DatasetDenied` marker a load returns, so the host renders `DataSource`. Other errors still throw.
+ */
+export async function fetchDataset<T>(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<T | DatasetDenied> {
+  try {
+    return await fetchJson<T>(input, init);
+  } catch (e) {
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const match =
+      e instanceof ApiError && e.status === 403 && method === 'GET'
+        ? /^([a-z]+): view required$/.exec(e.message)
+        : null;
+    if (match) return { denied: match[1] as DatasetDenied['denied'], verb: 'view' };
+    throw e;
+  }
 }
