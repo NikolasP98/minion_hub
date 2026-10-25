@@ -52,9 +52,15 @@
    *  a redeemed line plus a paid one) share a productId, and so does a booked
    *  session next to a walk-in sale of the same treatment — the booking id
    *  keeps those apart (a collision here is a hard `each_key_duplicate` crash
-   *  that left /pos/sell blank after "Take payment in POS"). */
+   *  that left /pos/sell blank after "Take payment in POS"). A booking charged
+   *  from the calendar also brings the products it consumed under the SAME
+   *  bookingId, so the product rides in the key too (2026-10-13 prod crash). */
   export function lineKey(l: CartLine): string {
-    return l.redemptionId ?? l.planId ?? (l.bookingId ? `b:${l.bookingId}` : l.sellable.productId);
+    return (
+      l.redemptionId ??
+      l.planId ??
+      (l.bookingId ? `b:${l.bookingId}:${l.sellable.productId}` : l.sellable.productId)
+    );
   }
 </script>
 
