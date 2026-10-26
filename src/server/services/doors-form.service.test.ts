@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   resolvePublicDoor: vi.fn(),
   bumpDoorStat: vi.fn(),
   ensureCrmContact: vi.fn(),
+  upsertNotification: vi.fn(),
 }));
 
 vi.mock('$server/db/with-org-core', () => ({
@@ -15,6 +16,7 @@ vi.mock('./doors.service', () => ({
   resolvePublicDoor: mocks.resolvePublicDoor,
   bumpDoorStat: mocks.bumpDoorStat,
 }));
+vi.mock('./inbox/inbox.service', () => ({ upsertNotification: mocks.upsertNotification }));
 vi.mock('./crm-contact-ensure', () => ({ ensureCrmContact: mocks.ensureCrmContact }));
 
 import { listSubmissions, maskSubmissionValues, submitFormDoor } from './doors-form.service';
@@ -51,6 +53,7 @@ const door = (over: Record<string, unknown> = {}) => ({
     orgId: 'org-1',
     kind: 'form',
     slug: 'qa-intake',
+    title: 'Intake',
     active: true,
     config,
     ...over,
@@ -114,6 +117,7 @@ describe('submitFormDoor', () => {
       firstTouch: attribution,
     });
     expect(inserted()).toEqual({
+      id: expect.any(String),
       orgId: 'org-1',
       doorId: DOOR,
       contactId: CONTACT,
@@ -122,6 +126,15 @@ describe('submitFormDoor', () => {
       consentText: 'Acepto.',
       attribution,
     });
+    const n = mocks.upsertNotification.mock.calls[0]![1];
+    expect(n).toMatchObject({
+      scope: 'role',
+      capability: 'crm:manage',
+      kind: 'crm.door_submission',
+    });
+    expect(n.subjectId).toBe(inserted().id);
+    expect(n.body).toBe('Intake · Ana Prueba');
+    expect(JSON.stringify(n)).not.toMatch(/penicilina|900 000 041/);
     expect(mocks.bumpDoorStat).toHaveBeenCalledWith(
       expect.anything(),
       `door:${DOOR}`,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -5,6 +6,7 @@ import { crmDoorSubmissions } from '$server/db/pg-doors-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
 import { ensureCrmContact } from './crm-contact-ensure';
 import { bumpDoorStat, resolvePublicDoor } from './doors.service';
+import { upsertNotification } from './inbox/inbox.service';
 import {
   configSchema,
   contactFromValues,
@@ -59,6 +61,7 @@ export async function submitFormDoor(
       : { door: doorKey, at: now.toISOString() };
   const who = contactFromValues(config.fields, checked.values);
 
+  const submissionId = randomUUID();
   await withOrgCore(ctx, async (tx) => {
     const contact = await ensureCrmContact(tx, ctx.tenantId, {
       ...who,
@@ -66,6 +69,7 @@ export async function submitFormDoor(
       firstTouch: attribution,
     });
     await tx.insert(crmDoorSubmissions).values({
+      id: submissionId,
       orgId: ctx.tenantId,
       doorId: door.id,
       contactId: contact?.id ?? null,
@@ -76,6 +80,24 @@ export async function submitFormDoor(
     });
   });
   await bumpDoorStat(ctx, doorKey, 'submissions', now);
+  // Owners/admins (crm:manage) hear about it once. Body = door + contact name only: the free-text answers may be clinical.
+  // shortcut: fixed Spanish strings, no per-viewer locale (same as the inbox rules).
+  try {
+    await upsertNotification(ctx, {
+      scope: 'role',
+      orgId: ctx.tenantId,
+      capability: 'crm:manage',
+      kind: 'crm.door_submission',
+      title: 'Nuevo envío de formulario',
+      body: `${door.title} · ${who.name ?? 'Sin nombre'}`,
+      href: `/crm/doors/${door.id}`,
+      subjectType: 'door_submission',
+      subjectId: submissionId,
+      dedupeKey: `door-submission:${submissionId}`,
+    });
+  } catch (e) {
+    console.warn('[doors] submission notification failed', door.slug, (e as Error)?.message);
+  }
   return { status: 'ok', message: config.successMessage ?? null };
 }
 

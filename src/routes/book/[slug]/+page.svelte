@@ -200,7 +200,7 @@
     ? `${currentStepIndex + 1} / ${steps.length} · ${steps[currentStepIndex]?.label ?? ''}`
     : 'Public booking'}
   title={data.title}
-  description={data.description ?? 'Choose a service and reserve an available time.'}
+  description={data.description ?? m.sched_book_subtitle()}
   tone={step === 'done' ? 'success' : 'default'}
   icon={taskIcon}
   size="medium"

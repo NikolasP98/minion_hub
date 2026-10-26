@@ -154,9 +154,9 @@ export async function seed(ctx: SeedContext): Promise<void> {
     const day = new Date(now.getTime() - back * 86_400_000).toISOString().slice(0, 10);
     for (const key of [`door:${DOOR_FORM}`, `book:${DOOR_BOOK_LINK}`]) {
       await sql`
-        insert into crm_door_stats_daily (org_id, door_key, day, views, submissions)
-        values (${ORG_BUSINESS}, ${key}, ${day}::date, ${5 + back}, ${back === 0 ? 1 : 0})
-        on conflict (org_id, door_key, day) do update set views = excluded.views, submissions = excluded.submissions
+        insert into crm_door_stats_daily (org_id, door_key, day, views, submissions, clicks)
+        values (${ORG_BUSINESS}, ${key}, ${day}::date, ${5 + back}, ${back === 0 ? 1 : 0}, ${back})
+        on conflict (org_id, door_key, day) do update set views = excluded.views, submissions = excluded.submissions, clicks = excluded.clicks
       `;
     }
   }

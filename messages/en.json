@@ -7279,5 +7279,12 @@
   "nav_warning_target_gone": "Target page no longer exists",
   "nav_saving": "Saving navigation…",
   "nav_saved": "Navigation updated",
-  "nav_dialog_path": "Path"
+  "nav_dialog_path": "Path",
+  "crm_origin": "Origin: {origin}",
+  "crm_origin_direct": "Direct",
+  "crm_no_auto_messages": "No automatic messages",
+  "crm_no_auto_messages_hint": "Stops automatic follow-ups and reminders to this contact.",
+  "crm_no_auto_messages_forbidden": "Your role can't change this setting.",
+  "doors_col_clicks": "Clicks",
+  "sched_book_subtitle": "Choose a service and reserve an available time."
 }
