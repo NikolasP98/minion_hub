@@ -73,7 +73,9 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   // visit.unpaid, shift.open_after_hours; Slice 4 added stock.low,
   // service.paid_unscheduled, package.expiring, plan.overdue,
   // finance.sync_failed, crm.dni_pending, crm.birthday) — same route, no
-  // new crontab line.
+  // new crontab line. Since spec 041 S4 also sends door follow-ups (one
+  // WhatsApp per form-door lead after the door's delay, min 15 min > this
+  // cadence) — same route, no new crontab line.
   { path: '/api/jobs/tick', key: 'jobs', cadence: 'ten_minutes', wiring: 'netcup' },
 
   // Box-local controller, not a hub API route — no path/allowlist entry

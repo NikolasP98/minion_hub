@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { runTick } from '$server/services/bg-runtime';
 import { evaluateInboxRules } from '$server/services/inbox/evaluate';
+import { runDoorFollowUps } from '$server/services/doors-followup.service';
 // Importing the service registers its bg-runtime handler (side effect).
 import '$server/services/groupchat.service';
 import '$server/services/brains.service';
@@ -17,7 +18,8 @@ import '$server/services/finance-statements.service';
  * the inbox evaluator (spec 2026-10-10-hub-inbox-notifications-reminders
  * Slice 2) — a per-org sweep, not a bg_jobs row, so it runs independently of
  * `runTick` and never lets one org's failure affect another's or the job
- * runtime's own result.
+ * runtime's own result. Spec 041 S4 adds the door follow-up sweep the same way:
+ * isolated, capped (25 sends, 40 s), independent of `?jobs=1`.
  * Wire on netcup: per-minute crontab line hitting this URL with the secret
  * (same shape as the other ticks). NOTE: this path must also be in the
  * hooks.server.ts unauth allowlist.
@@ -47,5 +49,12 @@ export const GET: RequestHandler = async ({ request }) => {
     console.error('[jobs/tick] inbox evaluator failed', err);
     inbox = { error: err instanceof Error ? err.message : String(err) };
   }
-  return json({ ...res, inbox });
+  let followUps: Awaited<ReturnType<typeof runDoorFollowUps>> | { error: string };
+  try {
+    followUps = await runDoorFollowUps(new Date());
+  } catch (err) {
+    console.error('[jobs/tick] door follow-ups failed', err instanceof Error ? err.name : 'error');
+    followUps = { error: 'door_follow_ups_failed' };
+  }
+  return json({ ...res, inbox, followUps });
 };
