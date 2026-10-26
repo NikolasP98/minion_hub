@@ -1,5 +1,6 @@
 import {
   setLanguageTag,
+  languageTag,
   availableLanguageTags,
   type AvailableLanguageTag,
 } from '$lib/paraglide/runtime';
@@ -47,12 +48,15 @@ function saveLocale(tag: AvailableLanguageTag) {
 
 let current = $state<AvailableLanguageTag>(loadLocale());
 
-// Initialize paraglide runtime with the stored locale
-setLanguageTag(() => current);
+// Server-rendered routes (public doors) import this module too. There, paraglide's
+// i18n.handle owns the tag per request; a module-level setter would pin every
+// later request in the process to this one shared value.
+const onServer = typeof window === 'undefined';
+if (!onServer) setLanguageTag(() => current);
 
 export const locale = {
   get current() {
-    return current;
+    return onServer ? languageTag() : current;
   },
   get available() {
     return availableLanguageTags as readonly AvailableLanguageTag[];

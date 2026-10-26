@@ -13,9 +13,6 @@
     faq.whatsappNumber ? `https://wa.me/${faq.whatsappNumber.replace(/\D/g, '')}` : null,
   );
   // faqJsonLd escapes `<`, so no answer can close the script tag.
-  // TODO(handoff): the hub root layout is `ssr = false`, so this JSON-LD is injected
-  // client-side and crawlers that don't run JS never see it. Needs SSR (or a prerendered
-  // shell) for /d/[slug]; proposal 2026-10-24-hub-collection-points-followups §9.
   const jsonLd = $derived(`<script type="application/ld+json">${faqJsonLd(entries)}</` + `script>`);
 </script>
 
