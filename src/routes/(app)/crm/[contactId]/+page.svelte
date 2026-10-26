@@ -33,6 +33,7 @@
   import { financeFloorStage } from '$lib/components/crm/crm-funnel';
   import ContactChat from '$lib/components/crm/ContactChat.svelte';
   import CrmSimilarWins from '$lib/components/crm/CrmSimilarWins.svelte';
+  import CrmNextOffers from '$lib/components/crm/CrmNextOffers.svelte';
   import Connections from '$lib/components/crm/Connections.svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
@@ -555,6 +556,7 @@
       isPersonal && data.cashflow ? { id: 'cashflow', w: 2, h: 2 } : null,
       data.finance ? { id: 'financials', w: 2, h: 2 } : null,
       data.finance ? { id: 'wins', w: 2, h: 2 } : null,
+      isPersonal ? null : { id: 'offers', w: 2, h: 2 },
       { id: 'bookings', w: 2, h: 2 },
       { id: 'attachments', w: 2, h: 2 },
     ].filter((x): x is { id: string; w: number; h: number } => x !== null),
@@ -1036,6 +1038,8 @@
     {/if}
   {:else if idv === 'wins'}
     {#if data.finance}<CrmSimilarWins contactId={c.id} />{/if}
+  {:else if idv === 'offers'}
+    {#if !isPersonal}<CrmNextOffers contactId={c.id} />{/if}
   {:else if idv === 'bookings'}
     <section class="card">
       <header class="card-h">
@@ -1134,6 +1138,7 @@
               guardians: m.crm_guardians(),
               funnel: m.crm_funnel_title(),
               wins: m.crm_similar_title(),
+              offers: m.crm_offers_title(),
               score: m.crm_engagement_score(),
               lifecycle: m.crm_lifecycle(),
               identities: m.crm_identities(),

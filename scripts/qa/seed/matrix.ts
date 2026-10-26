@@ -448,6 +448,11 @@ export const MATRIX: readonly MatrixEntry[] = [
   { id: 'pos.emission.rejected', domain: 'pos', why: "status='rejected'" },
   { id: 'pos.emission.error', domain: 'pos', why: "status='error'" },
   {
+    id: 'pos.next-offers.contact-x',
+    domain: 'pos',
+    why: 'bought only P1; C1-C3 bought P1+P2, a voided ticket holds P3 (spec 041 S3)',
+  },
+  {
     id: 'activity.bookings.90d',
     domain: 'activity',
     why: '~150-250 Mon-Sat 09:00-19:59 Lima bookings over the last 90 days (spec 015)',
