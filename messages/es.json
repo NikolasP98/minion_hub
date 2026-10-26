@@ -7239,5 +7239,12 @@
   "settings_loadingIndicator": "Indicador de carga",
   "settings_loadingIndicatorDescription": "Dónde se muestra que la app está trabajando: el icono de la sección se convierte en un anillo, o la línea bajo tu organización se vuelve de color acento.",
   "settings_loadingIndicatorIconRing": "Icono de sección",
-  "settings_loadingIndicatorDividerBar": "Divisor del menú"
+  "settings_loadingIndicatorDividerBar": "Divisor del menú",
+  "crm_origin": "Origen: {origin}",
+  "crm_origin_direct": "Directo",
+  "crm_no_auto_messages": "No enviar mensajes automáticos",
+  "crm_no_auto_messages_hint": "Detiene los seguimientos y recordatorios automáticos a este contacto.",
+  "crm_no_auto_messages_forbidden": "Tu rol no puede cambiar este ajuste.",
+  "doors_col_clicks": "Clics",
+  "sched_book_subtitle": "Elige un servicio y reserva un horario disponible."
 }

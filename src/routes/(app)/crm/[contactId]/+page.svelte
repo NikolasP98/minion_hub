@@ -21,9 +21,9 @@
     MessageCircle,
     Bookmark,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Select, Badge, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Select, Badge, Toggle, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
-  import { appLocale, formatMoney } from '$lib/utils/format';
+  import { appLocale, formatDate, formatMoney } from '$lib/utils/format';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import MathFormula from '$lib/components/ui/MathFormula.svelte';
@@ -67,6 +67,7 @@
   } from '$lib/realtime/org-events';
 
   const stageOpt = createOptimistic<string>();
+  const optOutOpt = createOptimistic<boolean>();
   let { data }: { data: PageData } = $props();
   const back = createBackNav('/crm/customers', m.crm_back_to_contacts);
   const c = $derived(data.contact);
@@ -382,6 +383,42 @@
     });
     if (!ok) toastError(m.common_error());
   }
+  async function setOptOut(next: boolean) {
+    const ok = await optOutOpt.run(c.id, next, async () => {
+      const res = await fetch(`/api/crm/contacts/${c.id}/reminders-opt-out`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ optOut: next }),
+      });
+      // 403 first: the role cannot do this, which is not a generic failure.
+      if (res.status === 403) {
+        toastError(m.crm_no_auto_messages_forbidden());
+        return false;
+      }
+      if (!res.ok) {
+        toastError(m.common_error());
+        return false;
+      }
+      await invalidate('crm:contact');
+      return true;
+    });
+    return ok;
+  }
+  const optedOut = $derived(
+    ['', 'false', '0'].includes(String(fields['_reminders_opt_out'] ?? '')) === false,
+  );
+  const origin = $derived(data.origin);
+  const originText = $derived(
+    origin
+      ? [
+          origin.source ?? m.crm_origin_direct(),
+          origin.where,
+          origin.at ? formatDate(origin.at, { dateStyle: 'medium' }) : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : null,
+  );
   /** The picker reports the whole selection; diff it against what is applied
    *  and drive the contact's existing add/remove endpoints. */
   async function saveTags(ids: string[]) {
@@ -937,6 +974,17 @@
           </TagChip>
         {/each}
       </div>
+      {#if originText}<p class="t-caption origin">{m.crm_origin({ origin: originText })}</p>{/if}
+      <div class="optout">
+        <Toggle
+          label={m.crm_no_auto_messages()}
+          description={m.crm_no_auto_messages_hint()}
+          checked={optOutOpt.get(c.id, optedOut)}
+          pending={optOutOpt.isPending(c.id)}
+          disabled={!canAct('crm', 'edit')}
+          onchange={setOptOut}
+        />
+      </div>
     </section>
   {:else if idv === 'funnel'}
     <CrmFunnel
@@ -1383,6 +1431,13 @@
     border-radius: var(--radius-lg);
     background: var(--color-card);
     padding: var(--space-3, 12px) var(--space-4, 16px);
+  }
+  .origin {
+    margin: var(--space-3) 0 0;
+    color: var(--color-text-secondary);
+  }
+  .optout {
+    margin-top: var(--space-3);
   }
   .card-h {
     display: flex;
