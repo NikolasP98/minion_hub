@@ -785,6 +785,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'doors',
     why: 'three days of anonymous view/submission counters for the form door and booking link',
   },
+  {
+    id: 'doors.rate-limit.stale-window',
+    domain: 'doors',
+    why: 'public_rate_limits bucket at the 5-hit cap but with an expired window: the next qa-intake submit from that visitor resets it instead of answering 429',
+  },
 ] as const;
 
 export function matrixById(): ReadonlyMap<string, MatrixEntry> {

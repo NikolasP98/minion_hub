@@ -1,7 +1,7 @@
 <script lang="ts">
   import { MessageCircle, CalendarCheck } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { languageTag } from '$lib/paraglide/runtime';
+  import { formatMoney } from '$lib/utils/format';
   import { Button, iconSizes } from '$lib/components/ui';
   import type { DoorPublicProps } from '$lib/doors/types';
 
@@ -24,8 +24,6 @@
         : c;
   const bookingSlug = $derived((data.bookingSlug as string | null) ?? null);
 
-  const money = (n: number) =>
-    new Intl.NumberFormat(languageTag(), { style: 'currency', currency }).format(n);
   const ask = (name: string) =>
     `${waUrl}?text=${encodeURIComponent(m.doors_offer_wa_text({ name }))}`;
 
@@ -43,7 +41,8 @@
           {#if item.category}<span class="t-caption muted">{categoryLabel(item.category)}</span
             >{/if}
         </div>
-        {#if item.price != null}<span class="t-body-strong offer-price">{money(item.price)}</span
+        {#if item.price != null}<span class="t-body-strong offer-price"
+            >{formatMoney(item.price, currency)}</span
           >{/if}
         {#if waUrl}
           <Button

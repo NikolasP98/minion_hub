@@ -5,6 +5,14 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 import { insertMessages, type IngestRow } from './messages.service';
 
+/** The gateway accepted the message but the timeline (ledger) insert failed: it WAS sent. */
+export class SentNotRecordedError extends Error {
+  constructor(cause: unknown) {
+    super('Message sent but not recorded on the timeline', { cause });
+    this.name = 'SentNotRecordedError';
+  }
+}
+
 /** Build the outbound ledger row for a CRM-sent message. Pure → testable. */
 export function buildOutboundRow(args: {
   contactId: string;
@@ -90,17 +98,21 @@ export async function sendContactMessage(
     idempotencyKey: clientId ?? randomUUID(),
   });
 
-  await insertMessages(ctx.tenantId, gatewayId, [
-    buildOutboundRow({
-      contactId,
-      channel,
-      to,
-      accountId,
-      text: body,
-      occurredAt: Date.now(),
-      clientId,
-    }),
-  ]);
+  try {
+    await insertMessages(ctx.tenantId, gatewayId, [
+      buildOutboundRow({
+        contactId,
+        channel,
+        to,
+        accountId,
+        text: body,
+        occurredAt: Date.now(),
+        clientId,
+      }),
+    ]);
+  } catch (err) {
+    throw new SentNotRecordedError(err);
+  }
 
   return { ok: true };
 }

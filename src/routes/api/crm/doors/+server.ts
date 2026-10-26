@@ -11,6 +11,7 @@ import {
   listDoorsWithFunnel,
   resolveDoorRange,
 } from '$server/services/doors.service';
+import { resolveOrgTimezone } from '$server/services/inbox/daily-feed.service';
 import { DOOR_KINDS } from '$lib/doors/types';
 
 const createSchema = z.object({
@@ -24,9 +25,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   await requireOrgCapability(locals, 'crm', 'view');
-  const range = resolveDoorRange(url.searchParams);
+  const tz = await resolveOrgTimezone(ctx);
+  const range = resolveDoorRange(url.searchParams, tz);
   try {
-    return json({ range, doors: await listDoorsWithFunnel(ctx, range) });
+    return json({ range, doors: await listDoorsWithFunnel(ctx, range, tz) });
   } catch (e) {
     return doorErrorResponse(e);
   }

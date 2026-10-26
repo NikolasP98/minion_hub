@@ -14,6 +14,10 @@ vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: mocks.getCoreCtx }));
 vi.mock('$server/services/rbac.service', () => ({
   requireOrgCapability: mocks.requireOrgCapability,
 }));
+vi.mock('$server/services/inbox/daily-feed.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$server/services/inbox/daily-feed.service')>()),
+  resolveOrgTimezone: async () => 'America/Lima',
+}));
 vi.mock('$server/services/doors.service', async (importOriginal) => ({
   ...(await importOriginal<typeof import('$server/services/doors.service')>()),
   createDoor: mocks.createDoor,

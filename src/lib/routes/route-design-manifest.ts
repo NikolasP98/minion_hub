@@ -482,7 +482,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/crm/customers', 'Customers', 'business-operations', 'collection'),
   screen('/crm/doors', 'Doors', 'business-operations', 'collection'),
   screen('/crm/doors/[id]', 'Door', 'business-operations', 'record-detail', {
-    params: { id: 'audit-door' },
+    fixtureId: 'door-detail',
   }),
   screen('/crm/insights', 'CRM insights', 'business-operations', 'dashboard'),
   screen('/crm/settings', 'CRM settings', 'business-operations', 'form-settings'),
