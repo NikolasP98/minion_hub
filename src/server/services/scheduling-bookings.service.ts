@@ -88,6 +88,7 @@ import {
 } from './pos-packages.service';
 import { getPlan, type PlanDetail } from './pos-accounts.service';
 import { ensureCrmContact } from './crm-contact-ensure';
+import type { Attribution } from '$lib/doors/attribution';
 import { grantToday } from './pos-accounts.logic';
 import { getFinSettings } from './finance.service';
 import type { Actor } from './pos/actor';
@@ -219,6 +220,8 @@ export interface CreateBookingInput {
    *  no crmContactId is given; a party without a contact falls back to phone/email. */
   partyId?: string | null;
   source?: 'public_link' | 'internal' | 'import';
+  /** Public-link attribution; written to the contact only when this booking creates it. */
+  firstTouch?: Attribution | null;
   /** Prefer this resource if it's free for the slot. */
   preferredResourceId?: string | null;
   /** Idempotency / reschedule ref. Generated when absent. */
@@ -441,6 +444,7 @@ async function bookOccurrenceInTx(
           phone: input.attendeePhone,
           email: input.attendeeEmail,
           source: 'booking',
+          firstTouch: input.firstTouch ?? null,
         })
       )?.id ?? null;
 

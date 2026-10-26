@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
 import { publicBook } from '$server/services/scheduling-public.service';
 import { SlotUnavailableError } from '$server/services/scheduling-bookings.service';
+import { attributionSchema } from '$lib/doors/attribution';
 import { checkRateLimit } from '$server/auth/rate-limit';
 
 // Unauthenticated, unlimited write otherwise: every booking inserts a CRM
@@ -29,6 +30,7 @@ const publicBookSchema = z.object({
   ),
   phone: z.preprocess((v) => (v ? v : null), z.string().trim().max(40).nullable().optional()),
   notes: z.preprocess((v) => (v ? v : null), z.string().max(2000).nullable().optional()),
+  attribution: attributionSchema.optional(),
 });
 
 /** Public, unauthenticated booking creation behind a scheduling-link slug. */
@@ -55,6 +57,7 @@ export const POST: RequestHandler = async (event) => {
       email: b.email ?? null,
       phone: b.phone ?? null,
       notes: b.notes ?? null,
+      attribution: b.attribution ?? null,
     });
     if (!booking) throw error(404, 'link or service not found');
     return json({ ok: true, uid: booking.uid, status: booking.status });
