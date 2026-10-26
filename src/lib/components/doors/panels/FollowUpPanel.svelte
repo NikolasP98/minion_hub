@@ -97,6 +97,7 @@
         bought: m.doors_followup_reason_bought,
         booked: m.doors_followup_reason_booked,
         replied: m.doors_followup_reason_replied,
+        staff_replied: m.doors_followup_reason_staff_replied,
       }) as Record<string, () => string>
     )[r ?? '']?.() ?? null;
 

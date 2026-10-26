@@ -41,6 +41,9 @@ export async function resolveCrmContact(
     return rows.length ? rows[0].contact_id : null;
   } catch {
     // CRM tables absent / disabled — booking still succeeds without the bridge.
+    // TODO(handoff): inside a caller's tx this catch leaves the tx aborted (same flaw F2
+    // fixed for the insert); only reachable if the CRM tables are missing. Proposal
+    // 2026-10-24-hub-collection-points-followups §6.
     return null;
   }
 }
@@ -79,48 +82,47 @@ export async function ensureCrmContact(
   const em = email ? email.trim().toLowerCase() : '';
   if (digits.length < 8 && !em) return null; // nothing to identify them by
   try {
-    const [c] = await tx
-      .insert(crmContacts)
-      .values({
-        orgId,
-        displayName: name?.trim() || null,
-        source,
-        ...(firstTouch ? { firstTouch } : {}),
-      })
-      .returning({ id: crmContacts.id });
-    const identities: Array<typeof crmContactIdentities.$inferInsert> = [];
-    if (digits.length >= 8)
-      identities.push({
-        orgId,
-        contactId: c.id,
-        channel: 'whatsapp',
-        externalId: `+${digits}`,
-        handle: name?.trim() || null,
-      });
-    if (em)
-      identities.push({
-        orgId,
-        contactId: c.id,
-        channel: 'email',
-        externalId: em,
-        handle: name?.trim() || null,
-      });
-    if (identities.length)
-      await tx
-        .insert(crmContactIdentities)
-        .values(identities)
-        .onConflictDoNothing({
-          target: [
-            crmContactIdentities.orgId,
-            crmContactIdentities.channel,
-            crmContactIdentities.externalId,
-          ],
+    // Savepoint: a failed insert rolls back only this block, so the caller's
+    // transaction stays usable (a bare catch left it aborted, 25P02).
+    return await tx.transaction(async (sp) => {
+      const [c] = await sp
+        .insert(crmContacts)
+        .values({
+          orgId,
+          displayName: name?.trim() || null,
+          source,
+          ...(firstTouch ? { firstTouch } : {}),
+        })
+        .returning({ id: crmContacts.id });
+      const identities: Array<typeof crmContactIdentities.$inferInsert> = [];
+      if (digits.length >= 8)
+        identities.push({
+          orgId,
+          contactId: c.id,
+          channel: 'whatsapp',
+          externalId: `+${digits}`,
+          handle: name?.trim() || null,
         });
-    return { id: c.id, created: true };
-  } catch {
-    // TODO(handoff): catch inside tx aborts the tx — in Postgres a failed
-    // statement aborts the surrounding transaction, so the caller's next
-    // statement fails anyway; see proposal 2026-10-24-hub-collection-points-followups.
+      if (em)
+        identities.push({
+          orgId,
+          contactId: c.id,
+          channel: 'email',
+          externalId: em,
+          handle: name?.trim() || null,
+        });
+      // No ON CONFLICT: a concurrent request that claimed the identity first must
+      // abort this savepoint (dropping our contact) instead of leaving a twin.
+      if (identities.length) await sp.insert(crmContactIdentities).values(identities);
+      return { id: c.id, created: true };
+    });
+  } catch (e) {
+    const err = e as { code?: string; cause?: { code?: string } };
+    if (err?.code === '23505' || err?.cause?.code === '23505') {
+      // Lost the race on crm_contact_identity_uniq: the winner's contact is committed now.
+      const winner = await resolveCrmContact(tx, orgId, phone, email);
+      return winner ? { id: winner, created: false } : null;
+    }
     // CRM tables absent / disabled — booking still succeeds without the bridge.
     return null;
   }

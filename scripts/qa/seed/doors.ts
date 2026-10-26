@@ -1,12 +1,14 @@
 /**
  * Doors — collection points (spec 041 S0, pairs with migration
- * 20261025100000_crm_doors.sql). One active booking link (the scheduling seed
+ * 20261025100000_crm_doors.sql and, for the shared rate limit, 20261025110000_public_rate_limits.sql).
+ * One active booking link (the scheduling seed
  * has only an expired one), one door per kind, a switched-off door, one form
  * submission, three days of anonymous counters and one contact whose
  * `first_touch` names the form door — so `/crm/doors` shows numbers on a
  * fresh stack. Configs follow contracts/data-model.md so S2/S5/S6 render them
  * unchanged once their kind modules land.
  */
+import { createHash } from 'node:crypto';
 import { matrixUuid, humanId } from './ids';
 import { ORG_BUSINESS } from './tenancy';
 import { EVENT_TYPE_PLAIN } from './scheduling';
@@ -162,4 +164,13 @@ export async function seed(ctx: SeedContext): Promise<void> {
     table: 'crm_door_stats_daily',
     where: { org_id: ORG_BUSINESS, door_key: `door:${DOOR_FORM}` },
   });
+
+  // Same key shape and hash as src/server/auth/shared-rate-limit.ts + the submit route.
+  const bucket = createHash('sha256').update('door-submit:203.0.113.41:qa-intake').digest('hex');
+  await sql`
+    insert into public_rate_limits (bucket, window_start, hits)
+    values (${bucket}, now() - interval '10 minutes', 5)
+    on conflict (bucket) do update set window_start = excluded.window_start, hits = excluded.hits
+  `;
+  register('doors.rate-limit.stale-window', { table: 'public_rate_limits', where: { bucket } });
 }

@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 
+const modules = vi.hoisted(() => ({ scheduling: true }));
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (ctx: { db: unknown }, fn: (tx: unknown) => unknown) => fn(ctx.db),
+}));
+vi.mock('$server/services/modules.service', () => ({
+  isModuleEnabled: async (_ctx: unknown, id: string) => id !== 'scheduling' || modules.scheduling,
 }));
 
 import { publicView } from './offer.server';
@@ -58,6 +62,22 @@ describe('offer publicView', () => {
       waUrl: null,
       bookingSlug: null,
     });
+  });
+
+  it('hides Reservar when the org has the scheduling module off', async () => {
+    modules.scheduling = false;
+    try {
+      const { db, resolveSequence } = createMockDb();
+      resolveSequence([[{ id: A, name: 'Alfa', category: null, unitPrice: '10' }], []]);
+      const v = await publicView(
+        { db, tenantId: 'org-1' } as unknown as CoreCtx,
+        door({ productIds: [A], whatsappNumber: '', bookingLinkId: LINK }),
+      );
+      expect(v.bookingSlug).toBeNull();
+      expect(db.select).toHaveBeenCalledTimes(2); // products + settings; the link is never read
+    } finally {
+      modules.scheduling = true;
+    }
   });
 
   it('returns an empty view for an invalid stored config', async () => {

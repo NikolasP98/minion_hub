@@ -4,7 +4,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { getChannelCatalog } from './crm-channels.service';
-import { sendContactMessage } from './crm-send.service';
+import { SentNotRecordedError, sendContactMessage } from './crm-send.service';
 import { isModuleEnabled } from './modules.service';
 
 /**
@@ -33,7 +33,8 @@ export type FollowUp = z.infer<typeof followUpSchema>;
 export type StoredFollowUp = FollowUp & { enabledAt?: string };
 
 export type FollowUpStatus = 'sending' | 'sent' | 'failed' | 'skipped';
-export type FollowUpSkipReason = 'opted_out' | 'no_identity' | 'bought' | 'booked' | 'replied';
+export type FollowUpSkipReason =
+  'opted_out' | 'no_identity' | 'bought' | 'booked' | 'replied' | 'staff_replied';
 
 export interface FollowUpRunResult {
   orgs: number;
@@ -68,17 +69,18 @@ interface CandidateRow {
   bought: boolean;
   booked: boolean;
   replied: boolean;
+  staff_replied: boolean;
 }
 
 /** First skip rule that applies, else null (send). Order = most explicit signal first.
- * TODO(handoff): no UI writes `_reminders_opt_out` yet, and a staff OUTBOUND message
- * after the submission does not skip (only inbound does). See proposal 2026-10-24-hub-collection-points-followups. */
+ * TODO(handoff): no UI writes `_reminders_opt_out` yet (F3 item 2). See proposal 2026-10-24-hub-collection-points-followups. */
 export function skipReason(c: CandidateRow): FollowUpSkipReason | null {
   if (c.opted_out) return 'opted_out';
   if (!c.phone) return 'no_identity';
   if (c.bought) return 'bought';
   if (c.booked) return 'booked';
   if (c.replied) return 'replied';
+  if (c.staff_replied) return 'staff_replied';
   return null;
 }
 
@@ -128,7 +130,12 @@ async function dueCandidates(ctx: CoreCtx, now: Date, limit: number): Promise<Ca
                join messages m on m.org_id = ${org} and m.channel = mi.channel and m.chat_id = mi.external_id
                where mi.org_id = ${org} and mi.contact_id = l.contact_id
                  and m.is_bot is not true and m.direction = 'inbound'
-                 and coalesce(m.occurred_at, m.created_at) > l.created_at) as replied
+                 and coalesce(m.occurred_at, m.created_at) > l.created_at) as replied,
+             exists (select 1 from crm_contact_identities oi
+               join messages m on m.org_id = ${org} and m.channel = oi.channel and m.chat_id = oi.external_id
+               where oi.org_id = ${org} and oi.contact_id = l.contact_id
+                 and m.direction = 'outbound'
+                 and coalesce(m.occurred_at, m.created_at) > l.created_at) as staff_replied
       from latest l
       join crm_doors d on d.id = l.door_id and d.org_id = ${org}
       join crm_contacts c on c.id = l.contact_id and c.org_id = ${org} and c.deleted_at is null
@@ -225,11 +232,16 @@ async function runOrg(
           accountId: c.account_id,
         },
       );
-      // shortcut: a ledger-insert failure after a successful gateway send lands
-      // as `failed` (sendContactMessage throws); upgrade if the panel misleads.
       await finalize(ctx, c, 'sent', { recipient, content });
       result.sent += 1;
     } catch (err) {
+      if (err instanceof SentNotRecordedError) {
+        // The person got the message: never show it as failed (staff would resend).
+        console.error('[door-followups] sent but timeline insert failed', ctx.tenantId);
+        await finalize(ctx, c, 'sent', { recipient, content });
+        result.sent += 1;
+        continue;
+      }
       const error = (err instanceof Error ? err.message : String(err)).slice(0, 500);
       await finalize(ctx, c, 'failed', { recipient, content, error });
       result.failed += 1;

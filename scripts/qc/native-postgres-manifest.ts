@@ -770,6 +770,21 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/services/crm-next-offers.sql.integration.test.ts',
+      minimumAssertions: 1,
+      requiredBehaviors: [
+        'next offers native SQL ranks co-bought products, skips owned, inactive, voided and foreign rows, and counts party tickets',
+      ],
+    },
+    {
+      file: 'src/server/services/doors-hardening.sql.integration.test.ts',
+      minimumAssertions: 2,
+      requiredBehaviors: [
+        'doors hardening native SQL a contact upsert that loses the identity race resolves to the winner and leaves the outer transaction usable',
+        'doors hardening native SQL the 6th form-door POST in a minute gets 429 even when the posts land on different instances',
+      ],
+    },
+    {
       file: 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
       minimumAssertions: 4,
       requiredBehaviors: [

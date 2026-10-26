@@ -5,6 +5,8 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmDoors, type CrmDoor } from '$server/db/pg-doors-schema';
 import { schedLinks } from '$server/db/pg-scheduling-schema';
 import { isModuleEnabled } from './modules.service';
+import { orgLocalDateString, resolveOrgTimezone } from './inbox/daily-feed.service';
+import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 import { isUniqueViolation } from './pos/db-errors';
 import { getDoorKind } from '$lib/doors/kinds';
 import type { DoorKind, DoorListRow, DoorRow } from '$lib/doors/types';
@@ -74,14 +76,6 @@ export async function resolvePublicDoor(
   return door?.active ? { ctx, door } : null;
 }
 
-/** Day key in UTC (`YYYY-MM-DD`).
- * TODO(handoff): counters and the funnel window bucket by UTC day, not the org's business
- * timezone (a 19:30 Lima visit lands on the next day); see proposal
- * 2026-10-24-hub-collection-points-followups §10. */
-function utcDay(now: Date): string {
-  return now.toISOString().slice(0, 10);
-}
-
 /**
  * +1 on today's anonymous counter for `doorKey` (`door:<id>` | `book:<id>`).
  * Fail-soft: a counter must never break the page or the submission.
@@ -92,10 +86,11 @@ export async function bumpDoorStat(
   field: 'views' | 'submissions',
   now: Date = new Date(),
 ): Promise<void> {
-  const day = utcDay(now);
   const views = field === 'views' ? 1 : 0;
   const submissions = field === 'submissions' ? 1 : 0;
   try {
+    // The org's business day, so a 23:30 Lima visit counts on the Lima day.
+    const day = orgLocalDateString(await resolveOrgTimezone(ctx), now);
     await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
         insert into crm_door_stats_daily (org_id, door_key, day, views, submissions)
@@ -206,10 +201,11 @@ export const DOOR_RANGE_DAYS = [7, 30, 90] as const;
 
 /**
  * Funnel range from `?from&to` (inclusive days) or `?days=7|30|90` (default 30,
- * ending today, UTC).
+ * ending today in the org's timezone `tz`).
  */
 export function resolveDoorRange(
   params: URLSearchParams,
+  tz: string,
   now: Date = new Date(),
 ): { from: string; to: string; days: number | null } {
   const from = params.get('from');
@@ -217,22 +213,32 @@ export function resolveDoorRange(
   if (from && to && DAY_RE.test(from) && DAY_RE.test(to)) return { from, to, days: null };
   const asked = Number(params.get('days'));
   const days = (DOOR_RANGE_DAYS as readonly number[]).includes(asked) ? asked : 30;
-  const start = new Date(now.getTime() - (days - 1) * 86_400_000);
-  return { from: utcDay(start), to: utcDay(now), days };
+  const today = orgLocalDateString(tz, now);
+  const start = new Date(Date.parse(`${today}T00:00:00Z`) - (days - 1) * 86_400_000);
+  return { from: start.toISOString().slice(0, 10), to: today, days };
 }
 
 type Counts = { views: number; submissions: number; contacts: number; customers: number };
 
 /**
  * Doors + booking links with their funnel for `[from, to]` (inclusive
- * `YYYY-MM-DD` days; contacts use the half-open UTC window `[from, to + 1 day)`).
+ * `YYYY-MM-DD` days in the org's timezone `tz`; contacts use the instants bracketing them).
  * One grouped query per metric family, never one per door.
  */
 export async function listDoorsWithFunnel(
   ctx: CoreCtx,
   range: { from: string; to: string },
+  tz: string,
 ): Promise<DoorListRow[]> {
   if (!DAY_RE.test(range.from) || !DAY_RE.test(range.to)) throw new DoorError('invalid_range', 400);
+  let window: { from: Date | null; to: Date | null };
+  try {
+    window = zonedDayWindow(range.from, range.to, tz);
+  } catch {
+    throw new DoorError('invalid_range', 400); // e.g. 2026-02-31
+  }
+  const since = (window.from as Date).toISOString();
+  const until = (window.to as Date).toISOString();
   const withLinks = await isModuleEnabled(ctx, 'scheduling');
   const { doors, links, stats, people } = await withOrgCore(ctx, async (tx) => {
     const doors = await tx
@@ -273,7 +279,7 @@ export async function listDoorsWithFunnel(
              )::int as customers
       from crm_contacts c
       where c.org_id = ${ctx.tenantId} and c.deleted_at is null and c.first_touch is not null
-        and c.created_at >= ${range.from}::date and c.created_at < ${range.to}::date + 1
+        and c.created_at >= ${since}::timestamptz and c.created_at < ${until}::timestamptz
       group by 1
     `)) as unknown as Array<{ door_key: string; contacts: number; customers: number }>;
     return { doors, links, stats, people };

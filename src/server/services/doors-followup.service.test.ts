@@ -17,12 +17,14 @@ vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => h.db }));
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (ctx: { db: unknown }, fn: (tx: unknown) => unknown) => fn(ctx.db),
 }));
-vi.mock('./crm-send.service', () => ({
+vi.mock('./crm-send.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./crm-send.service')>()),
   sendContactMessage: (...a: unknown[]) => h.send(...a),
 }));
 vi.mock('./crm-channels.service', () => ({ getChannelCatalog: () => h.catalog() }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => h.crmOn }));
 
+import { SentNotRecordedError } from './crm-send.service';
 import {
   FOLLOW_UP_CAP,
   followUpSchema,
@@ -48,6 +50,7 @@ const cand = (contact: string, over: Cand = {}): Cand => ({
   bought: false,
   booked: false,
   replied: false,
+  staff_replied: false,
   ...over,
 });
 
@@ -161,6 +164,7 @@ describe('runDoorFollowUps', () => {
     ['bought', { bought: true }],
     ['booked', { booked: true }],
     ['replied', { replied: true }],
+    ['staff_replied', { staff_replied: true }],
   ])('skips with reason %s and sends nothing', async (reason, over) => {
     const f = fakeDb(['org-1'], [cand('c1', over)]);
     h.db = f.db;
@@ -241,6 +245,18 @@ describe('runDoorFollowUps', () => {
     });
     await runDoorFollowUps();
     expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('a send that reached the person but missed the timeline stays sent and is logged', async () => {
+    const f = fakeDb(['org-1'], [cand('c1')]);
+    h.db = f.db;
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    h.send.mockRejectedValueOnce(new SentNotRecordedError(new Error('ledger down')));
+    expect(await runDoorFollowUps()).toMatchObject({ sent: 1, failed: 0 });
+    expect(f.claims.get(`org-1|${DOOR}|c1`)).toMatchObject({ status: 'sent', error: null });
+    expect(log).toHaveBeenCalledWith('[door-followups] sent but timeline insert failed', 'org-1');
+    expect(JSON.stringify(log.mock.calls)).not.toContain('+51900000041');
+    log.mockRestore();
   });
 
   it(`caps a run at ${FOLLOW_UP_CAP} claims across orgs`, async () => {
