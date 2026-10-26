@@ -18,6 +18,7 @@ const UUID = {
   metaPostInsight: '00000000-0000-4000-8000-000000000210',
   metaAdInsight: '00000000-0000-4000-8000-000000000211',
   scheduleLink: '00000000-0000-4000-8000-000000000212',
+  door: '00000000-0000-4000-8000-000000000213',
 } as const;
 
 const personas = [
@@ -79,6 +80,7 @@ const REQUIRED_SCHEMA: ReadonlyArray<readonly [table: string, columns: string]> 
     'id,org_id,ad_account_id,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,date,spend,impressions,reach,clicks,currency',
   ],
   ['sched_links', 'id,org_id,slug,title,description,event_type_ids,active'],
+  ['crm_doors', 'id,org_id,kind,slug,title,active,config'],
   ['join_link', 'token,organization_id,role,created_by,revoked,uses_count'],
 ];
 
@@ -419,6 +421,26 @@ async function seedCoreRows(admin: SupabaseClient, ownerId: string): Promise<voi
       },
     },
     {
+      // Spec 041: one live form door for /d/[slug] and /crm/doors/[id].
+      table: 'crm_doors',
+      row: {
+        id: UUID.door,
+        org_id: AUDIT_ORG_ID,
+        kind: 'form',
+        slug: 'ui-audit-door',
+        title: 'UI Audit Door',
+        active: true,
+        config: {
+          fields: [
+            { key: 'nombre', label: 'Nombre', type: 'text', required: true },
+            { key: 'telefono', label: 'Teléfono', type: 'phone', required: true },
+          ],
+          consentText: 'Acepto que me contacten sobre mi consulta.',
+          consentRequired: true,
+        },
+      },
+    },
+    {
       table: 'join_link',
       conflict: 'token',
       row: {
@@ -494,6 +516,8 @@ function dynamicFixtures() {
       'ui-audit-workforce-project',
     ),
     one('public-booking-link', '/book/[slug]', 'slug', 'ui-audit-booking'),
+    one('public-door', '/d/[slug]', 'slug', 'ui-audit-door'),
+    one('door-detail', '/crm/doors/[id]', 'id', UUID.door),
     one(
       'channel-link-code',
       '/link/[code]',

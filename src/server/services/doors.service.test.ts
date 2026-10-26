@@ -12,6 +12,10 @@ vi.mock('$server/db/with-org-core', () => ({
 vi.mock('./modules.service', () => ({
   isModuleEnabled: async (_ctx: unknown, id: string) => moduleOn[id] ?? true,
 }));
+vi.mock('./inbox/daily-feed.service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./inbox/daily-feed.service')>()),
+  resolveOrgTimezone: async () => 'America/Lima',
+}));
 vi.mock('$lib/doors/kinds', () => ({
   getDoorKind: (kind: string) =>
     kind === 'form'
@@ -23,12 +27,15 @@ vi.mock('$lib/doors/kinds', () => ({
       : undefined,
 }));
 
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import {
   DoorError,
   bumpDoorStat,
   createDoor,
   isLikelyBot,
   listDoorsWithFunnel,
+  resolveDoorRange,
   resolvePublicDoor,
   updateDoor,
 } from './doors.service';
@@ -102,7 +109,24 @@ describe('resolvePublicDoor', () => {
   });
 });
 
+const dialect = new PgDialect();
+/** 23:30 on 2026-10-25 in Lima (UTC-5) = 04:30Z on the 26th. */
+const LIMA_LATE = new Date('2026-10-26T04:30:00Z');
+
 describe('bumpDoorStat', () => {
+  it('counts a 23:30 Lima visit on the Lima day, not the UTC one', async () => {
+    const execute = vi.fn(async () => []);
+    await bumpDoorStat(
+      { db: { execute }, tenantId: 'org-1' } as never,
+      `door:${ID}`,
+      'views',
+      LIMA_LATE,
+    );
+    const { params } = dialect.sqlToQuery((execute.mock.calls[0] as unknown[])[0] as SQL);
+    expect(params).toContain('2026-10-25');
+    expect(params).not.toContain('2026-10-26');
+  });
+
   it('never throws', async () => {
     const db = { execute: vi.fn().mockRejectedValue(new Error('down')) };
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -177,11 +201,42 @@ describe('updateDoor', () => {
   });
 });
 
+describe('resolveDoorRange', () => {
+  it('ends the default 30 days on the org-local today', () => {
+    expect(resolveDoorRange(new URLSearchParams(), 'America/Lima', LIMA_LATE)).toEqual({
+      from: '2026-09-26',
+      to: '2026-10-25',
+      days: 30,
+    });
+    expect(resolveDoorRange(new URLSearchParams('days=7'), 'UTC', LIMA_LATE).to).toBe('2026-10-26');
+  });
+});
+
 describe('listDoorsWithFunnel', () => {
+  it('windows new contacts by the org-local days', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[], []]);
+    const execute = vi.fn().mockResolvedValue([]);
+    (db as unknown as { execute: unknown }).execute = execute;
+    await listDoorsWithFunnel(
+      { db, tenantId: 'org-1' } as never,
+      { from: '2026-10-25', to: '2026-10-25' },
+      'America/Lima',
+    );
+    const { params } = dialect.sqlToQuery((execute.mock.calls[1] as unknown[])[0] as SQL);
+    expect(params).toEqual(
+      expect.arrayContaining(['2026-10-25T05:00:00.000Z', '2026-10-26T05:00:00.000Z']),
+    );
+  });
+
   it('rejects malformed ranges', async () => {
     const { db } = createMockDb();
     await expect(
-      listDoorsWithFunnel({ db, tenantId: 'org-1' } as never, { from: 'x', to: '2026-10-25' }),
+      listDoorsWithFunnel(
+        { db, tenantId: 'org-1' } as never,
+        { from: 'x', to: '2026-10-25' },
+        'America/Lima',
+      ),
     ).rejects.toMatchObject({ code: 'invalid_range' });
   });
 
@@ -209,10 +264,14 @@ describe('listDoorsWithFunnel', () => {
         { door_key: `door:${ID}`, views: 5, submissions: 2 },
       ])
       .mockResolvedValueOnce([{ door_key: `door:${ID}`, contacts: 2, customers: 1 }]);
-    const rows = await listDoorsWithFunnel({ db, tenantId: 'org-1' } as never, {
-      from: '2026-09-26',
-      to: '2026-10-25',
-    });
+    const rows = await listDoorsWithFunnel(
+      { db, tenantId: 'org-1' } as never,
+      {
+        from: '2026-09-26',
+        to: '2026-10-25',
+      },
+      'America/Lima',
+    );
     expect(rows).toEqual([
       expect.objectContaining({
         key: `book:${LINK}`,
@@ -240,10 +299,14 @@ describe('listDoorsWithFunnel', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[doorRow()]]);
     (db as unknown as { execute: unknown }).execute = vi.fn().mockResolvedValue([]);
-    const rows = await listDoorsWithFunnel({ db, tenantId: 'org-1' } as never, {
-      from: '2026-10-25',
-      to: '2026-10-25',
-    });
+    const rows = await listDoorsWithFunnel(
+      { db, tenantId: 'org-1' } as never,
+      {
+        from: '2026-10-25',
+        to: '2026-10-25',
+      },
+      'America/Lima',
+    );
     expect(rows.map((r) => r.kind)).toEqual(['form']);
   });
 });

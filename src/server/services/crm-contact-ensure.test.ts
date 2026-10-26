@@ -3,20 +3,22 @@ import { crmContacts, crmContactIdentities } from '$server/db/pg-crm-schema';
 import type { CoreTx } from '$server/db/with-org-core';
 import { ensureCrmContact, resolveCrmContact } from './crm-contact-ensure';
 
-/** Minimal tx: `execute` answers the identity lookup, `insert` records values. */
+/** Minimal tx: `execute` answers the identity lookup, `insert` records values,
+ *  `transaction` (the savepoint) runs its callback on the same fake. */
 function fakeTx(matchId: string | null) {
   const inserts: Array<{ table: unknown; values: unknown }> = [];
   const execute = vi.fn(async () => (matchId ? [{ contact_id: matchId }] : []));
   const insert = vi.fn((table: unknown) => ({
     values: (values: unknown) => {
       inserts.push({ table, values });
-      return {
+      return Object.assign(Promise.resolve(undefined), {
         returning: async () => [{ id: 'new-contact' }],
-        onConflictDoNothing: async () => undefined,
-      };
+      });
     },
   }));
-  return { tx: { execute, insert } as unknown as CoreTx, execute, inserts };
+  const tx = { execute, insert } as Record<string, unknown>;
+  tx.transaction = vi.fn(async (fn: (sp: unknown) => unknown) => fn(tx));
+  return { tx: tx as unknown as CoreTx, execute, inserts };
 }
 
 const TOUCH = {
@@ -82,5 +84,25 @@ describe('ensureCrmContact', () => {
       await ensureCrmContact(tx, 'org', { name: 'X', phone: '12', source: 'booking' }),
     ).toBeNull();
     expect(inserts).toEqual([]);
+  });
+
+  it('a lost identity race resolves to the winner, without a twin contact', async () => {
+    const { tx, execute } = fakeTx(null);
+    execute.mockResolvedValueOnce([]).mockResolvedValueOnce([{ contact_id: 'winner' }]);
+    (tx as unknown as { transaction: ReturnType<typeof vi.fn> }).transaction.mockRejectedValueOnce(
+      Object.assign(new Error('duplicate key'), { code: '23505' }),
+    );
+    expect(await ensureCrmContact(tx, 'org', { phone: '900000041', source: 'booking' })).toEqual({
+      id: 'winner',
+      created: false,
+    });
+  });
+
+  it('any other insert failure returns null (the savepoint already rolled back)', async () => {
+    const { tx } = fakeTx(null);
+    (tx as unknown as { transaction: ReturnType<typeof vi.fn> }).transaction.mockRejectedValueOnce(
+      Object.assign(new Error('relation does not exist'), { code: '42P01' }),
+    );
+    expect(await ensureCrmContact(tx, 'org', { phone: '900000041', source: 'booking' })).toBeNull();
   });
 });

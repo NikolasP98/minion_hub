@@ -3,6 +3,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { finProducts, finSettings } from '$server/db/pg-finance-schema';
 import { schedLinks } from '$server/db/pg-scheduling-schema';
+import { isModuleEnabled } from '$server/services/modules.service';
 import { configSchema, whatsappDigits } from '$lib/doors/kinds/offer';
 import type { DoorRow, PublicDoorData } from '$lib/doors/types';
 
@@ -17,7 +18,12 @@ export const kind = 'offer' as const;
 export async function publicView(ctx: CoreCtx, door: DoorRow): Promise<PublicDoorData> {
   const cfg = configSchema.safeParse(door.config);
   if (!cfg.success) return { items: [], currency: 'PEN', waUrl: null, bookingSlug: null };
-  const { productIds, whatsappNumber, bookingLinkId } = cfg.data;
+  const { productIds, whatsappNumber } = cfg.data;
+  // /book/<slug> 404s while scheduling is off, so the button must not show either.
+  const bookingLinkId =
+    cfg.data.bookingLinkId && (await isModuleEnabled(ctx, 'scheduling'))
+      ? cfg.data.bookingLinkId
+      : null;
 
   const { products, settings, link } = await withOrgCore(ctx, async (tx) => {
     const products = productIds.length

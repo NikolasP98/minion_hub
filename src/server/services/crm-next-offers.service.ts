@@ -115,7 +115,8 @@ export async function getNextOffers(ctx: CoreCtx, contactId: string): Promise<Ne
         where t.org_id = current_setting('app.current_org_id', true)
           and t.status = 'submitted' and l.fin_product_id in (select pid from mine)
           and coalesce(t.party_id::text, t.crm_contact_id::text) is not null
-          and not ${mine}
+          -- "is not true", not "not": a NULL party or contact column made it NULL and dropped the buyer.
+          and ${mine} is not true
       )
       select p.id::text as id, p.name, p.category, p.unit_price,
         (select count(distinct coalesce(t.party_id::text, t.crm_contact_id::text))

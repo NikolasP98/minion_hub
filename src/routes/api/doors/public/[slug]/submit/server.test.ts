@@ -2,6 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ submitFormDoor: vi.fn() }));
 vi.mock('$server/services/doors-form.service', () => ({ submitFormDoor: mocks.submitFormDoor }));
+// No database here: the shared limiter falls back to the per-instance one. The
+// shared store itself is proven in doors-hardening.sql.integration.test.ts.
+vi.mock('$server/db/pg-client', () => ({
+  getCoreDb: () => {
+    throw new Error('no database in unit tests');
+  },
+}));
 
 import { POST } from './+server';
 
@@ -21,6 +28,7 @@ const values = { nombre: 'Ana Prueba', telefono: '+51 900 000 041' };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
   mocks.submitFormDoor.mockResolvedValue({ status: 'ok', message: 'Gracias' });
 });
 

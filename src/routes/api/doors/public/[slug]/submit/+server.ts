@@ -1,14 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
-import { checkRateLimit } from '$server/auth/rate-limit';
+import { checkSharedRateLimit } from '$server/auth/shared-rate-limit';
 import { submitFormDoor } from '$server/services/doors-form.service';
 import { attributionSchema } from '$lib/doors/attribution';
 
 // Unauthenticated write of personal (possibly clinical) data. This handler is
 // the trust boundary: the body is re-validated against the door's stored
 // config, and no response, log line or error ever carries a submitted value.
-// shortcut: the limiter is per lambda (rate-limit.ts), same as /book; move to Valkey if abuse shows.
+// Shared across lambda instances (public_rate_limits): 5 per minute per visitor per door.
 const SUBMIT_LIMIT = 5;
 
 const bodySchema = z
@@ -31,7 +31,7 @@ export const POST: RequestHandler = async (event) => {
   } catch {
     // unavailable in some test/adapter contexts
   }
-  if (!checkRateLimit(`door-submit:${ip}:${params.slug}`, SUBMIT_LIMIT))
+  if (!(await checkSharedRateLimit(`door-submit:${ip}:${params.slug}`, SUBMIT_LIMIT)))
     return fail(429, 'too_many');
 
   let raw: unknown;
