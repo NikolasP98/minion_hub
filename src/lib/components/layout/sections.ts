@@ -23,6 +23,8 @@ import { resolvePluginIcon } from '$lib/plugins/icon-map';
 import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
 import { isModuleVisibleForKind } from '$lib/org-kind';
 import * as m from '$lib/paraglide/messages';
+import { EMPTY_NAV_CONFIG, type NavConfig } from '$lib/nav/custom-sections';
+import { applyBuiltinOverrides, customSections } from '$lib/nav/custom-sections-nav';
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
 type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
@@ -509,17 +511,22 @@ export function getNavSections(
   orgKind: 'business' | 'personal' | undefined,
   entries: PluginUiManifestOccupant[],
   enabledByPluginId: Record<string, boolean> = {},
+  navConfig: NavConfig = EMPTY_NAV_CONFIG,
 ): Section[] {
-  const staticSections = getSections(orgKind);
+  const custom = customSections(navConfig);
+  const staticSections = getSections(orgKind).map((s) => ({
+    ...s,
+    items: applyBuiltinOverrides(s.items, navConfig),
+  }));
   const pluginSections = getDynamicPluginsSections(entries, enabledByPluginId, orgKind);
-  if (orgKind !== 'personal') return [...staticSections, ...pluginSections];
+  if (orgKind !== 'personal') return [...staticSections, ...pluginSections, ...custom];
 
   const myPlugins = pluginSections.find((s) => s.id === 'plugins:my-space');
   const rest = pluginSections.filter((s) => s.id !== 'plugins:my-space');
-  if (!myPlugins) return [...staticSections, ...rest];
+  if (!myPlugins) return [...staticSections, ...rest, ...custom];
 
   const merged = staticSections.map((s) =>
     s.id === 'organization' ? { ...s, items: [...s.items, ...myPlugins.items] } : s,
   );
-  return [...merged, ...rest];
+  return [...merged, ...rest, ...custom];
 }

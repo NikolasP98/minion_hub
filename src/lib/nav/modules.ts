@@ -58,6 +58,8 @@ import { getSections } from '$lib/components/layout/sections';
 import { resolvePluginIcon } from '$lib/plugins/icon-map';
 import type { LucideIcon } from '$lib/nav/routes';
 import * as m from '$lib/paraglide/messages';
+import { EMPTY_NAV_CONFIG, type NavConfig } from '$lib/nav/custom-sections';
+import { applyBuiltinOverrides, customModules } from '$lib/nav/custom-sections-nav';
 
 export type ModuleNavItem = {
   id: string;
@@ -97,6 +99,8 @@ export type ModuleNavData = {
   orgKind?: 'business' | 'personal';
   /** Installed plugin control centers (pluginNavState.controlCenters). */
   plugins?: Array<{ pluginId: string; title: string; icon?: unknown }>;
+  /** Member's filtered custom nav config (spec 037): moved/hidden/relabelled built-ins + custom modules. */
+  navConfig?: NavConfig;
 };
 
 /** Default matcher: the page itself plus everything nested under it. */
@@ -109,6 +113,10 @@ const own = (href: string) => (p: string) => p === href || p.startsWith(`${href}
 export type AreaId = 'pos' | 'crm' | 'socials' | 'scheduling' | 'stock' | 'finances' | 'workforce';
 
 export function getAreaItems(area: AreaId, data: ModuleNavData = {}): ModuleNavItem[] {
+  return applyBuiltinOverrides(areaItems(area, data), data.navConfig ?? EMPTY_NAV_CONFIG, area);
+}
+
+function areaItems(area: AreaId, data: ModuleNavData): ModuleNavItem[] {
   switch (area) {
     case 'pos':
       return [
@@ -454,7 +462,10 @@ function sectionItems(id: 'agents' | 'organization', data: ModuleNavData): Modul
 
 /** All modules with a defined page list, in display order. */
 export function getModules(data: ModuleNavData = {}): ModuleDef[] {
-  return [
+  const cfg = data.navConfig ?? EMPTY_NAV_CONFIG;
+  // Area-backed modules already got overrides in getAreaItems; the hand-listed ones get them here.
+  const NON_AREA = new Set(['agents', 'operations', 'support', 'organization', 'platform']);
+  const modules: ModuleDef[] = [
     {
       id: 'pos',
       label: m.nav_pos(),
@@ -660,6 +671,12 @@ export function getModules(data: ModuleNavData = {}): ModuleDef[] {
           },
         ]
       : []),
+  ];
+  return [
+    ...modules.map((mod) =>
+      NON_AREA.has(mod.id) ? { ...mod, items: applyBuiltinOverrides(mod.items, cfg, mod.id) } : mod,
+    ),
+    ...customModules(cfg),
   ];
 }
 

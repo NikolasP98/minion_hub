@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { canonicalPath } from '$lib/canonical-path';
+  import { navPath, navConfig } from '$lib/nav/nav-config.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
   import { SectionNav, type SectionNavGroup } from '$lib/components/ui/foundations';
@@ -13,6 +13,7 @@
   const items = $derived(
     getAreaItems('pos', {
       schedulingEnabled: page.data.schedulingEnabled,
+      navConfig: navConfig(),
       posPendingWork: posPendingWork(),
     }).filter((i) => canViewPath(i.href)),
   );
@@ -31,7 +32,7 @@
     return groups;
   });
 
-  const pathname = $derived(canonicalPath(page.url.pathname));
+  const pathname = $derived(navPath());
   const activeId = $derived(items.find((i) => i.matcher(pathname))?.id);
 </script>
 
