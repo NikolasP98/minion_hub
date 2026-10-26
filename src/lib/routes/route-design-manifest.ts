@@ -473,13 +473,17 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: MUTATING_DETAIL_STATES,
   }),
 
-  // CRM, finance, sales, support and work (15)
+  // CRM, finance, sales, support and work (17)
   screen('/crm', 'CRM', 'business-operations', 'dashboard'),
   screen('/crm/[contactId]', 'Contact', 'business-operations', 'record-detail', {
     fixtureId: 'crm-contact-detail',
     states: OWNER_DESTRUCTIVE_DETAIL_STATES,
   }),
   screen('/crm/customers', 'Customers', 'business-operations', 'collection'),
+  screen('/crm/doors', 'Doors', 'business-operations', 'collection'),
+  screen('/crm/doors/[id]', 'Door', 'business-operations', 'record-detail', {
+    params: { id: 'audit-door' },
+  }),
   screen('/crm/insights', 'CRM insights', 'business-operations', 'dashboard'),
   screen('/crm/settings', 'CRM settings', 'business-operations', 'form-settings'),
   screen('/finances', 'Finances', 'business-operations', 'dashboard'),
@@ -640,7 +644,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     states: ['default', 'submitting', 'complete', 'recoverable-error'],
   }),
 
-  // Public, auth, joining and onboarding (9)
+  // Public, auth, joining and onboarding (10)
   screen('/auth/reset', 'Reset password', 'public-auth', 'public-auth', {
     nav: 'hidden',
     states: [
@@ -664,6 +668,11 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
       'not-found',
       'recoverable-error',
     ],
+  }),
+  screen('/d/[slug]', 'Door', 'public-auth', 'public-auth', {
+    fixtureId: 'public-door',
+    nav: 'hidden',
+    states: ['default', 'not-found'],
   }),
   screen('/invite/accept', 'Accept invitation', 'public-auth', 'public-auth', {
     nav: 'hidden',

@@ -171,6 +171,15 @@ const definitions = [
     description: 'Public booking link with slots, no-slot and confirmation variants.',
   },
   {
+    // TODO(handoff): `qa-intake` exists in the QA seed (scripts/qa/seed/doors.ts) but
+    // scripts/ui-audit-seed.ts does not provision a door yet; proposal
+    // 2026-10-24-hub-collection-points-followups §12.
+    id: 'public-door',
+    params: { slug: 'qa-intake' },
+    description:
+      'Active public form door (spec 041) plus switched-off and unknown-slug 404 variants.',
+  },
+  {
     id: 'channel-link-code',
     params: { code: 'audit-channel-link-code' },
     description: 'Future-expiry channel/user payload plus invalid and expired variants.',

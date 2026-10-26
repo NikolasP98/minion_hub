@@ -82,7 +82,9 @@ describe('route design contracts', () => {
     // platform-reliability surface.
     // /sandbox (spec 010-hub-sandbox-pages) adds one more Wave-A
     // platform-reliability surface.
-    expect(counts).toEqual({ A: 36, B: 75, C: 17, D: 23, E: 9 });
+    // /crm/doors + /crm/doors/[id] (spec 041 S0) add two Wave-B surfaces and
+    // the public /d/[slug] adds one Wave-E public surface.
+    expect(counts).toEqual({ A: 36, B: 77, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');
@@ -119,6 +121,7 @@ describe('route design contracts', () => {
         'not-found',
         'recoverable-error',
       ],
+      '/d/[slug]': ['default', 'not-found'],
       '/invite/accept': ['default'],
       '/join': ['default', 'validation-error', 'submitting', 'recoverable-error'],
       '/join/sent': ['complete'],
@@ -137,6 +140,7 @@ describe('route design contracts', () => {
     expect([...PUBLIC_ROUTE_PATTERNS].sort()).toEqual([
       '/auth/reset',
       '/book/[slug]',
+      '/d/[slug]',
       '/invite/accept',
       '/login',
       '/login/forgot',
