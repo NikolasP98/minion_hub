@@ -124,6 +124,8 @@ export const load: LayoutServerLoad = async ({
     locals.orgId ?? locals.tenantCtx?.tenantId ?? '',
   ].join(':');
 
+  // Org shell config (table + nav), not a dataset: one ctx read for both.
+  const shellCtx = () => getCoreCtx(locals);
   const [permissions, organizations, coreBundle] = await Promise.all([
     traceLayoutLoad('permissions', loadPermissionsForUser(locals, user.id)),
     traceLayoutLoad('organizations', loadOrganizationsForUser(locals, user.id)),
@@ -154,7 +156,7 @@ export const load: LayoutServerLoad = async ({
               // DataTable on the page. Fail-soft: defaults render on a hiccup.
               traceLayoutLoad(
                 'table-config',
-                getCoreCtx(locals)
+                shellCtx()
                   .then((ctx) => (ctx ? readTableConfig(ctx) : ({} as TableConfig)))
                   .catch(() => ({}) as TableConfig),
               ),
@@ -162,7 +164,7 @@ export const load: LayoutServerLoad = async ({
               // Fail-soft: no custom sections on a hiccup.
               traceLayoutLoad(
                 'nav-config',
-                getCoreCtx(locals)
+                shellCtx()
                   .then((ctx) => (ctx ? readNavConfig(ctx) : EMPTY_NAV_CONFIG))
                   .catch(() => EMPTY_NAV_CONFIG),
               ),
