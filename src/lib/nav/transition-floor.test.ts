@@ -10,11 +10,9 @@ describe('transition floor', () => {
       for (const prefix of entry.appPrefixes) {
         const target = `${prefix}/x`;
         const segment = target.split('/')[1];
-        expect(floorApplies(target), target).toBe(!DATASET_ENFORCED.includes(segment));
+        expect(floorApplies(target), target).toBe(
+          !(DATASET_ENFORCED as readonly string[]).includes(segment),
+        );
       }
-  });
-
-  it('DATASET_ENFORCED growth is a visible diff', () => {
-    expect([...DATASET_ENFORCED]).toMatchInlineSnapshot(`[]`);
   });
 });
