@@ -27,6 +27,15 @@
   const ask = (name: string) =>
     `${waUrl}?text=${encodeURIComponent(m.doors_offer_wa_text({ name }))}`;
 
+  // Fire-and-forget click beacon; a failure must never block the link.
+  const beacon = (kind: 'whatsapp' | 'book') => {
+    try {
+      navigator.sendBeacon(`/api/doors/public/${door.slug}/click`, JSON.stringify({ kind }));
+    } catch {
+      // counting is best-effort
+    }
+  };
+
   // TODO(handoff): online payment link (Culqi / Mercado Pago) — no credentials yet; see proposal 2026-10-24-hub-collection-points-followups
 </script>
 
@@ -51,6 +60,7 @@
             rel="noopener noreferrer"
             variant="outline"
             size="sm"
+            onclick={() => beacon('whatsapp')}
           >
             <MessageCircle size={iconSizes.sm} aria-hidden="true" />
             {m.doors_offer_ask_whatsapp()}
@@ -63,7 +73,7 @@
 
 {#if bookingSlug}
   <div class="offer-book">
-    <Button href={`/book/${bookingSlug}`}>
+    <Button href={`/book/${bookingSlug}`} onclick={() => beacon('book')}>
       <CalendarCheck size={iconSizes.sm} aria-hidden="true" />
       {m.doors_offer_book()}
     </Button>

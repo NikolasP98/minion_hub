@@ -16,6 +16,7 @@ import { contactJourney } from '$server/services/crm-journey.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import { listAdultGuardianCandidates, listGuardians } from '$server/services/crm-guardians.service';
+import { describeFirstTouch } from '$server/services/doors.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, params, depends, parent }) => {
@@ -107,8 +108,11 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
     loadCustomPropertyBundle(locals, ctx, 'crm.customers', [id]),
   ]);
 
+  const origin = await describeFirstTouch(ctx, record.contact.firstTouch).catch(() => null);
+
   return {
     crm: {
+      origin,
       contact: record.contact,
       identities: record.identities,
       stats: record.stats,

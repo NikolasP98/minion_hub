@@ -112,6 +112,7 @@ export const crmDoorStatsDaily = pgTable(
     day: date('day').notNull(),
     views: integer('views').notNull().default(0),
     submissions: integer('submissions').notNull().default(0),
+    clicks: integer('clicks').notNull().default(0),
   },
   (t) => ({ pk: primaryKey({ columns: [t.orgId, t.doorKey, t.day] }) }),
 );

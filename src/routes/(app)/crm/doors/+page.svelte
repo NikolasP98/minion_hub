@@ -203,6 +203,7 @@
     },
     count('views', m.doors_col_views()),
     count('submissions', m.doors_col_submissions(), 130),
+    count('clicks', m.doors_col_clicks()),
     count('contacts', m.doors_col_contacts(), 130),
     count('customers', m.doors_col_customers()),
   ]);

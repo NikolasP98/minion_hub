@@ -72,8 +72,7 @@ interface CandidateRow {
   staff_replied: boolean;
 }
 
-/** First skip rule that applies, else null (send). Order = most explicit signal first.
- * TODO(handoff): no UI writes `_reminders_opt_out` yet (F3 item 2). See proposal 2026-10-24-hub-collection-points-followups. */
+/** First skip rule that applies, else null (send). Order = most explicit signal first. */
 export function skipReason(c: CandidateRow): FollowUpSkipReason | null {
   if (c.opted_out) return 'opted_out';
   if (!c.phone) return 'no_identity';

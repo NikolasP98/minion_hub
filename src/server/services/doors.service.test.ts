@@ -260,8 +260,8 @@ describe('listDoorsWithFunnel', () => {
     (db as unknown as { execute: unknown }).execute = vi
       .fn()
       .mockResolvedValueOnce([
-        { door_key: `book:${LINK}`, views: 3, submissions: 1 },
-        { door_key: `door:${ID}`, views: 5, submissions: 2 },
+        { door_key: `book:${LINK}`, views: 3, submissions: 1, clicks: 0 },
+        { door_key: `door:${ID}`, views: 5, submissions: 2, clicks: 4 },
       ])
       .mockResolvedValueOnce([{ door_key: `door:${ID}`, contacts: 2, customers: 1 }]);
     const rows = await listDoorsWithFunnel(
@@ -288,6 +288,7 @@ describe('listDoorsWithFunnel', () => {
         active: false,
         views: 5,
         submissions: 2,
+        clicks: 4,
         contacts: 2,
         customers: 1,
       }),

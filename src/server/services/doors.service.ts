@@ -83,21 +83,23 @@ export async function resolvePublicDoor(
 export async function bumpDoorStat(
   ctx: CoreCtx,
   doorKey: string,
-  field: 'views' | 'submissions',
+  field: 'views' | 'submissions' | 'clicks',
   now: Date = new Date(),
 ): Promise<void> {
   const views = field === 'views' ? 1 : 0;
   const submissions = field === 'submissions' ? 1 : 0;
+  const clicks = field === 'clicks' ? 1 : 0;
   try {
     // The org's business day, so a 23:30 Lima visit counts on the Lima day.
     const day = orgLocalDateString(await resolveOrgTimezone(ctx), now);
     await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
-        insert into crm_door_stats_daily (org_id, door_key, day, views, submissions)
-        values (${ctx.tenantId}, ${doorKey}, ${day}::date, ${views}, ${submissions})
+        insert into crm_door_stats_daily (org_id, door_key, day, views, submissions, clicks)
+        values (${ctx.tenantId}, ${doorKey}, ${day}::date, ${views}, ${submissions}, ${clicks})
         on conflict (org_id, door_key, day) do update set
           views = crm_door_stats_daily.views + excluded.views,
-          submissions = crm_door_stats_daily.submissions + excluded.submissions
+          submissions = crm_door_stats_daily.submissions + excluded.submissions,
+          clicks = crm_door_stats_daily.clicks + excluded.clicks
       `),
     );
   } catch (e) {
@@ -218,7 +220,13 @@ export function resolveDoorRange(
   return { from: start.toISOString().slice(0, 10), to: today, days };
 }
 
-type Counts = { views: number; submissions: number; contacts: number; customers: number };
+type Counts = {
+  views: number;
+  submissions: number;
+  clicks: number;
+  contacts: number;
+  customers: number;
+};
 
 /**
  * Doors + booking links with their funnel for `[from, to]` (inclusive
@@ -263,11 +271,16 @@ export async function listDoorsWithFunnel(
           .orderBy(asc(schedLinks.title))
       : [];
     const stats = (await tx.execute(sql`
-      select door_key, sum(views)::int as views, sum(submissions)::int as submissions
+      select door_key, sum(views)::int as views, sum(submissions)::int as submissions, sum(clicks)::int as clicks
       from crm_door_stats_daily
       where org_id = ${ctx.tenantId} and day >= ${range.from}::date and day <= ${range.to}::date
       group by door_key
-    `)) as unknown as Array<{ door_key: string; views: number; submissions: number }>;
+    `)) as unknown as Array<{
+      door_key: string;
+      views: number;
+      submissions: number;
+      clicks: number;
+    }>;
     const people = (await tx.execute(sql`
       select c.first_touch->>'door' as door_key,
              count(*)::int as contacts,
@@ -288,14 +301,19 @@ export async function listDoorsWithFunnel(
   const counts = new Map<string, Counts>();
   const at = (key: string) => {
     let c = counts.get(key);
-    if (!c) counts.set(key, (c = { views: 0, submissions: 0, contacts: 0, customers: 0 }));
+    if (!c)
+      counts.set(key, (c = { views: 0, submissions: 0, clicks: 0, contacts: 0, customers: 0 }));
     return c;
   };
   for (const s of stats)
-    Object.assign(at(s.door_key), { views: Number(s.views), submissions: Number(s.submissions) });
+    Object.assign(at(s.door_key), {
+      views: Number(s.views),
+      submissions: Number(s.submissions),
+      clicks: Number(s.clicks),
+    });
   for (const p of people)
     Object.assign(at(p.door_key), { contacts: Number(p.contacts), customers: Number(p.customers) });
-  const zero: Counts = { views: 0, submissions: 0, contacts: 0, customers: 0 };
+  const zero: Counts = { views: 0, submissions: 0, clicks: 0, contacts: 0, customers: 0 };
 
   return [
     ...links.map((l): DoorListRow => {
@@ -329,4 +347,42 @@ export async function listDoorsWithFunnel(
       };
     }),
   ];
+}
+
+/**
+ * "Where did this contact come from" for the contact page, from `first_touch`
+ * (stored by doors and booking links). Null when the contact has none.
+ */
+export async function describeFirstTouch(
+  ctx: CoreCtx,
+  firstTouch: unknown,
+): Promise<{ source: string | null; where: string | null; at: string | null } | null> {
+  const t = firstTouch as Partial<{
+    door: string;
+    utm_source: string;
+    referrer_host: string;
+    at: string;
+  }> | null;
+  if (!t || typeof t !== 'object') return null;
+  const m = /^(book|door):([0-9a-f-]{36})$/i.exec(t.door ?? '');
+  let where: string | null = null;
+  if (m) {
+    const id = m[2];
+    where = await withOrgCore(ctx, async (tx) => {
+      const [r] =
+        m[1] === 'door'
+          ? await tx
+              .select({ title: crmDoors.title })
+              .from(crmDoors)
+              .where(and(eq(crmDoors.id, id), eq(crmDoors.orgId, ctx.tenantId)))
+              .limit(1)
+          : await tx
+              .select({ title: schedLinks.title })
+              .from(schedLinks)
+              .where(and(eq(schedLinks.id, id), eq(schedLinks.orgId, ctx.tenantId)))
+              .limit(1);
+      return r?.title ?? null;
+    });
+  }
+  return { source: t.utm_source ?? t.referrer_host ?? null, where, at: t.at ?? null };
 }

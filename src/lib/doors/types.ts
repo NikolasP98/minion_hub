@@ -59,6 +59,8 @@ export interface DoorListRow {
   views: number;
   /** Form submissions, or bookings for a booking link. */
   submissions: number;
+  /** Offer doors: WhatsApp + Reservar button clicks (beacon, approximate). */
+  clicks: number;
   /** Contacts this door created in the range (`first_touch.door`). */
   contacts: number;
   /** Of those, with ≥1 submitted POS ticket or completed booking. */
