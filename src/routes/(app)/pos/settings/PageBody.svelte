@@ -1,0 +1,780 @@
+<script lang="ts">
+  import type { PageData as LoadedPageData } from './$types';
+  import type { Granted } from '$lib/permissions';
+  import { invalidate } from '$app/navigation';
+  import { CreditCard, Plus, Trash2, Send } from 'lucide-svelte';
+  import {
+    Badge,
+    Button,
+    Input,
+    Select,
+    Toggle,
+    PageHeader,
+    SegmentedControl,
+    iconSizes,
+  } from '$lib/components/ui';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import * as m from '$lib/paraglide/messages';
+  import { canAct } from '$lib/access/can.svelte';
+  import { decimalToNumber } from '$lib/money/decimal';
+  import { moneyDraft } from '$lib/components/pos/checkout-money';
+  import {
+    REQUIREMENT_KINDS,
+    normalizeRequirements,
+    type PosRequirements,
+    type RequirementKind,
+  } from '$lib/pos/requirements';
+  import { createAutosave } from '$lib/records/autosave.svelte';
+  import { createSaveStatus } from '$lib/records/save-status.svelte';
+  import { fetchJson } from '$lib/api/fetch-json';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import SaveIndicator from '$lib/records/SaveIndicator.svelte';
+
+  type PageData = Granted<LoadedPageData['pos']>;
+  let { data }: { data: PageData } = $props();
+
+  // Local editable draft — a working copy the user edits row-by-row before
+  // hitting Save (same pattern as BrainAccessPanel's addRow/removeRow/save).
+  interface MethodRowEdit {
+    /** '' for a not-yet-saved row: id is auto-slugged from `label` on save. */
+    id: string;
+    label: string;
+    enabled: boolean;
+    takesTendered: boolean;
+    creditMode: '' | 'external' | 'wallet';
+    sunat: boolean;
+    surchargeType: 'percent' | 'fixed' | '';
+    surchargeAmount: string;
+  }
+
+  function toRow(mth: PageData['settings']['methods'][number]): MethodRowEdit {
+    return {
+      id: mth.id,
+      label: mth.label,
+      enabled: mth.enabled,
+      takesTendered: mth.takesTendered,
+      creditMode:
+        mth.requiresCreditDecision || mth.drawsOnCredit === null
+          ? ''
+          : mth.drawsOnCredit
+            ? 'wallet'
+            : 'external',
+      sunat: mth.sunat !== false,
+      surchargeType: mth.surcharge?.type ?? '',
+      surchargeAmount: mth.surcharge ? String(mth.surcharge.amount) : '',
+    };
+  }
+
+  // svelte-ignore state_referenced_locally -- seeding the editable draft once
+  // from the loaded `settings` prop; converting to $derived would wipe in-progress edits.
+  let rows = $state<MethodRowEdit[]>(data.settings.methods.map(toRow));
+  let saving = $state(false);
+  let err = $state('');
+  /** What the cashier's tenders mean for SUNAT, in one line above the list. */
+  const notDeclared = $derived(
+    rows.filter((r) => r.enabled && !r.sunat).map((r) => r.label.trim() || '—'),
+  );
+
+  // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
+  let emissionMode = $state<'off' | 'shadow'>(data.settings.emission.mode);
+  // svelte-ignore state_referenced_locally
+  let emissionDocTypeDefault = $state<'03' | '01'>(data.settings.emission.docTypeDefault);
+  // svelte-ignore state_referenced_locally -- editable legacy value; a supported selection repairs it.
+  let currency = $state(data.settings.currency);
+  // svelte-ignore state_referenced_locally -- refreshed from the authoritative PUT response after save.
+  let supportedCurrencies = $state<readonly string[]>(data.settings.supportedCurrencies);
+  const currencyInvalid = $derived(!supportedCurrencies.includes(currency));
+  const currencyOptions = $derived([
+    ...(currencyInvalid
+      ? [
+          {
+            value: currency,
+            label: `${currency} — ${m.pos_settings_currency_unsupported()}`,
+            disabled: true,
+          },
+        ]
+      : []),
+    ...supportedCurrencies.map((code) => ({ value: code, label: code })),
+  ]);
+
+  // Ticket requirements. FACES needs a DNI/RUC per invoice; other orgs turn it
+  // off — which is exactly why this is org config and not a hardcoded rule.
+  // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
+  let requirements = $state<PosRequirements>(normalizeRequirements(data.settings.requirements));
+  const requirementLabel: Record<RequirementKind, () => string> = {
+    identityDocument: m.pos_settings_req_identity,
+    phone: m.pos_settings_req_phone,
+  };
+  const requirementHint: Record<RequirementKind, () => string> = {
+    identityDocument: m.pos_settings_req_identity_hint,
+    phone: m.pos_settings_req_phone_hint,
+  };
+
+  // autosave (policy O): each requirement level PATCHes on its own, debounced
+  // to 0 since a Select commits a full decision per change; the PUT merges
+  // `requirements` partially server-side (pos.service PosSettingsPatch), so
+  // the other kind + emission/methods fields are untouched.
+  const requirementsStatus = createSaveStatus();
+  const saveActions = tryUseActions();
+  // Stale-write token: every settings write refreshes it from the response.
+  // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
+  let settingsUpdatedAt = $state<string | Date | null>(data.settings.updatedAt);
+  async function reviewSettings() {
+    const scope = saveActions?.scopeVersion;
+    await invalidate('pos:settings');
+    if (scope !== saveActions?.scopeVersion) return;
+    settingsUpdatedAt = data.settings.updatedAt;
+    requirements = normalizeRequirements(data.settings.requirements);
+  }
+  const requirementAutosaves = Object.fromEntries(
+    REQUIREMENT_KINDS.map((kind) => [
+      kind,
+      createAutosave({
+        committed: () => requirements[kind],
+        scope: () => 'pos-settings',
+        prepare: (value, isCurrent) => {
+          return async () => {
+            // Read at dispatch: a queued edit must carry the token its predecessor produced.
+            const expectedUpdatedAt = settingsUpdatedAt;
+            const result = await fetchJson<{ settings: PageData['settings'] }>(
+              '/api/pos/settings',
+              {
+                method: 'PUT',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ requirements: { [kind]: value }, expectedUpdatedAt }),
+              },
+            );
+            if (!isCurrent()) return;
+            settingsUpdatedAt = result.settings.updatedAt;
+            requirements = normalizeRequirements(result.settings.requirements);
+          };
+        },
+        status: requirementsStatus,
+        debounceMs: 0,
+      }),
+    ]),
+  ) as Record<RequirementKind, ReturnType<typeof createAutosave<PosRequirements[RequirementKind]>>>;
+
+  const canManage = $derived(canAct('pos', 'manage'));
+
+  function slugId(label: string): string {
+    return label
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  function addRow() {
+    rows = [
+      ...rows,
+      {
+        id: '',
+        label: '',
+        enabled: true,
+        takesTendered: false,
+        creditMode: 'external',
+        sunat: true,
+        surchargeType: '',
+        surchargeAmount: '',
+      },
+    ];
+  }
+
+  function removeRow(i: number) {
+    rows = rows.filter((_, idx) => idx !== i);
+  }
+
+  function surchargeValue(row: MethodRowEdit): number | null | undefined {
+    if (!row.surchargeType) return null;
+    try {
+      if (row.surchargeType === 'fixed') {
+        const parsed = moneyDraft(row.surchargeAmount, { exact: true, nonnegative: true });
+        return parsed.ok ? parsed.value.number : undefined;
+      }
+      const value = decimalToNumber(row.surchargeAmount);
+      return value >= 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const surchargeInvalid = $derived(rows.some((row) => surchargeValue(row) === undefined));
+  const creditDecisionMissing = $derived(rows.some((row) => row.creditMode === ''));
+  const creditTenderConflict = $derived(
+    rows.some((row) => row.creditMode === 'wallet' && row.takesTendered),
+  );
+  const methodsReady = $derived(
+    canManage &&
+      !currencyInvalid &&
+      !surchargeInvalid &&
+      !creditDecisionMissing &&
+      !creditTenderConflict &&
+      !saving,
+  );
+  const policyReady = $derived(canManage && !saving);
+
+  async function save(kind: 'methods' | 'policy') {
+    if (kind === 'methods' && !methodsReady) {
+      if (currencyInvalid) err = m.pos_settings_currency_issue();
+      else if (surchargeInvalid) err = m.pos_settings_surcharge_invalid();
+      else if (creditDecisionMissing) err = m.pos_settings_credit_decision_required();
+      else if (creditTenderConflict) err = m.pos_settings_credit_tender_conflict();
+      return;
+    }
+    if (kind === 'policy' && !policyReady) return;
+    saving = true;
+    err = '';
+    try {
+      const methods =
+        kind === 'methods'
+          ? rows.map((r) => {
+              const surcharge = surchargeValue(r);
+              if (surcharge === undefined) throw new Error(m.pos_settings_surcharge_invalid());
+              return {
+                id: r.id || slugId(r.label),
+                label: r.label.trim(),
+                enabled: r.enabled,
+                takesTendered: r.takesTendered,
+                drawsOnCredit: r.creditMode === 'wallet',
+                sunat: r.sunat,
+                ...(r.surchargeType && surcharge != null
+                  ? { surcharge: { type: r.surchargeType, amount: surcharge } }
+                  : {}),
+              };
+            })
+          : undefined;
+      const res = await fetch('/api/pos/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          ...(kind === 'methods' ? { methods: methods ?? [], currency } : {}),
+          ...(kind === 'policy'
+            ? {
+                // requirements autosave independently (requirementAutosaves below)
+                emission: { mode: emissionMode, docTypeDefault: emissionDocTypeDefault },
+              }
+            : {}),
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        err = (body as { error?: string }).error ?? `Error ${res.status}`;
+        return;
+      }
+      // 'pos:shift' is the (app)/pos/+layout.server.ts dependency key that
+      // feeds posSettings to PosNav/ShiftBanner/sell — both need refreshing.
+      await Promise.all([invalidate('pos:shift'), invalidate('pos:settings')]);
+      const saved = (await res.json()).settings as PageData['settings'];
+      settingsUpdatedAt = saved.updatedAt;
+      rows = saved.methods.map(toRow);
+      emissionMode = saved.emission.mode;
+      emissionDocTypeDefault = saved.emission.docTypeDefault;
+      currency = saved.currency;
+      supportedCurrencies = saved.supportedCurrencies;
+      requirements = normalizeRequirements(saved.requirements);
+    } finally {
+      saving = false;
+    }
+  }
+</script>
+
+<svelte:head><title>{m.pos_settings_title()}</title></svelte:head>
+
+<PageShell archetype="form" scroll="region" labelledBy="pos-settings-title">
+  <PageHeader
+    titleId="pos-settings-title"
+    title={m.pos_settings_title()}
+    subtitle={m.pos_settings_subtitle()}
+  >
+    {#snippet leading()}
+      <CreditCard size={iconSizes.md} class="text-accent shrink-0" />
+    {/snippet}
+  </PageHeader>
+
+  <PageBody padding="compact" scroll="region">
+    <section class="card max-w-4xl">
+      <header class="card-h">
+        <span>{m.pos_settings_methods_card()}</span>
+        <Button variant="secondary" size="sm" disabled={!canManage} onclick={addRow}>
+          {#snippet icon()}<Plus size={iconSizes.sm} />{/snippet}
+          {m.pos_settings_add_method()}
+        </Button>
+      </header>
+
+      <div class="currency-row">
+        <Select
+          fieldClass="currency-field"
+          size="sm"
+          label={m.pos_settings_currency()}
+          helper={m.pos_settings_currency_hint()}
+          error={currencyInvalid ? m.pos_settings_currency_issue() : undefined}
+          disabled={!canManage}
+          bind:value={currency}
+          options={currencyOptions}
+        />
+      </div>
+
+      <p class="sunat-line" class:warn={notDeclared.length > 0}>
+        <Send size={iconSizes.sm} aria-hidden="true" />
+        {notDeclared.length
+          ? m.pos_settings_sunat_excluded({ names: notDeclared.join(', ') })
+          : m.pos_settings_sunat_all()}
+      </p>
+      <p class="hint">{m.pos_settings_sunat_hint()}</p>
+
+      <div class="rows">
+        <div class="row head t-caption" aria-hidden="true">
+          <span>{m.pos_settings_label()}</span>
+          <span>{m.pos_settings_enabled()}</span>
+          <span>{m.pos_settings_col_cash()}</span>
+          <span>{m.pos_settings_credit_behavior()}</span>
+          <span>{m.pos_settings_col_sunat()}</span>
+          <span>{m.pos_settings_surcharge_type()}</span>
+          <span></span>
+        </div>
+        {#each rows as row, i (i)}
+          <div class="row" class:off={!row.enabled}>
+            <div class="cell">
+              <Input
+                class="lbl-field"
+                aria-label={m.pos_settings_label()}
+                placeholder={m.pos_settings_label_ph()}
+                size="sm"
+                disabled={!canManage}
+                bind:value={row.label}
+              />
+            </div>
+            <div class="cell">
+              <Toggle
+                size="sm"
+                bind:checked={row.enabled}
+                disabled={!canManage}
+                ariaLabel={m.pos_settings_enabled()}
+              />
+            </div>
+            <div class="cell">
+              <Toggle
+                size="sm"
+                bind:checked={row.takesTendered}
+                disabled={!canManage}
+                ariaLabel={m.pos_settings_takes_tendered()}
+              />
+            </div>
+            <div class="cell credit-cell">
+              <Select
+                fieldClass="credit-field"
+                size="sm"
+                aria-label={m.pos_settings_credit_behavior()}
+                disabled={!canManage}
+                error={row.creditMode === ''
+                  ? m.pos_settings_credit_decision_required()
+                  : row.creditMode === 'wallet' && row.takesTendered
+                    ? m.pos_settings_credit_tender_conflict()
+                    : undefined}
+                bind:value={row.creditMode}
+                options={[
+                  ...(row.creditMode === ''
+                    ? [
+                        {
+                          value: '',
+                          label: m.pos_settings_credit_unresolved(),
+                          disabled: true,
+                        },
+                      ]
+                    : []),
+                  { value: 'external', label: m.pos_settings_credit_external() },
+                  { value: 'wallet', label: m.pos_settings_credit_wallet() },
+                ]}
+              />
+            </div>
+            <div class="cell">
+              <Toggle
+                size="sm"
+                bind:checked={row.sunat}
+                disabled={!canManage}
+                ariaLabel={m.pos_settings_sunat()}
+              />
+              <Badge variant="semantic" value={row.sunat ? 'success' : 'warning'} size="sm">
+                {row.sunat ? m.pos_settings_sunat_yes() : m.pos_settings_sunat_no()}
+              </Badge>
+            </div>
+            <div class="cell">
+              <Select
+                fieldClass="surcharge-type-field"
+                size="sm"
+                disabled={!canManage}
+                bind:value={row.surchargeType}
+                options={[
+                  { value: '', label: m.pos_settings_surcharge_none() },
+                  { value: 'percent', label: m.pos_settings_surcharge_percent() },
+                  { value: 'fixed', label: m.pos_settings_surcharge_fixed() },
+                ]}
+              />
+              {#if row.surchargeType}
+                <Input
+                  class="amount-field"
+                  aria-label={m.pos_settings_surcharge_amount()}
+                  placeholder={m.pos_settings_surcharge_amount()}
+                  type="number"
+                  size="sm"
+                  disabled={!canManage}
+                  error={surchargeValue(row) === undefined
+                    ? m.pos_settings_surcharge_invalid()
+                    : undefined}
+                  bind:value={row.surchargeAmount}
+                />
+              {/if}
+            </div>
+            <div class="cell rm-cell">
+              <Button
+                variant="ghost"
+                size="sm"
+                shape="icon"
+                class="rm"
+                disabled={!canManage}
+                aria-label={m.common_remove()}
+                onclick={() => removeRow(i)}
+              >
+                <Trash2 size={iconSizes.sm} />
+              </Button>
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      {#if err}<p class="err-msg">{err}</p>{/if}
+
+      <div class="actions">
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!methodsReady}
+          title={canManage ? undefined : m.no_permission()}
+          onclick={() => save('methods')}
+        >
+          {m.pos_settings_save()}
+        </Button>
+      </div>
+    </section>
+
+    <section class="card max-w-4xl req-card">
+      <header class="card-h">
+        <span>{m.pos_settings_requirements_card()}</span>
+        <SaveIndicator
+          status={requirementsStatus.status}
+          message={requirementsStatus.message}
+          onRetry={requirementsStatus.retry}
+          onReview={reviewSettings}
+        />
+      </header>
+      <p class="emission-subtitle">{m.pos_settings_requirements_subtitle()}</p>
+      <div class="req-list">
+        {#each REQUIREMENT_KINDS as kind (kind)}
+          <div class="req-row">
+            <Select
+              fieldClass="doc-type-field"
+              label={requirementLabel[kind]()}
+              size="sm"
+              disabled={!canManage}
+              bind:value={requirementAutosaves[kind].value}
+              options={[
+                { value: 'off', label: m.pos_settings_req_off() },
+                { value: 'optional', label: m.pos_settings_req_optional() },
+                { value: 'required', label: m.pos_settings_req_required() },
+              ]}
+            />
+            <p class="req-hint">{requirementHint[kind]()}</p>
+          </div>
+        {/each}
+      </div>
+    </section>
+
+    <section class="card max-w-4xl emission-card">
+      <header class="card-h">
+        <span>{m.pos_settings_emission_card()}</span>
+      </header>
+      <p class="emission-subtitle">{m.pos_settings_emission_subtitle()}</p>
+
+      <div class="emission-controls">
+        <div class="emission-field">
+          <span class="emission-field-label">{m.pos_settings_emission_mode()}</span>
+          <SegmentedControl
+            aria-label={m.pos_settings_emission_mode()}
+            bind:value={emissionMode}
+            items={[
+              { value: 'off', label: m.pos_settings_emission_mode_off(), disabled: !canManage },
+              {
+                value: 'shadow',
+                label: m.pos_settings_emission_mode_shadow(),
+                disabled: !canManage,
+              },
+            ]}
+          />
+        </div>
+        <Select
+          fieldClass="doc-type-field"
+          label={m.pos_settings_emission_doc_type_default()}
+          size="sm"
+          disabled={!canManage || emissionMode === 'off'}
+          bind:value={emissionDocTypeDefault}
+          options={[
+            { value: '03', label: m.pos_settings_document_boleta() },
+            { value: '01', label: m.pos_settings_document_factura() },
+          ]}
+        />
+      </div>
+
+      <h3 class="series-title">
+        <Send size={iconSizes.sm} class="text-secondary shrink-0" />
+        {m.pos_settings_emission_series_card()}
+      </h3>
+      {#if data.series.length === 0}
+        <p class="series-empty">{m.pos_settings_emission_series_empty()}</p>
+      {:else}
+        <div class="series-table">
+          <div class="series-row series-head">
+            <span>{m.pos_settings_emission_series_doc_type()}</span>
+            <span>{m.pos_settings_emission_series_serie()}</span>
+            <span>{m.pos_settings_emission_series_next()}</span>
+            <span>{m.pos_settings_emission_series_environment()}</span>
+          </div>
+          {#each data.series as s (s.id)}
+            <div class="series-row">
+              <span
+                >{s.docType === '01'
+                  ? m.pos_settings_document_factura()
+                  : m.pos_settings_document_boleta()}</span
+              >
+              <span class="series-code">{s.serie}</span>
+              <span>{s.nextNumber}</span>
+              <span>{s.environment}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      <div class="actions">
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!policyReady}
+          title={canManage ? undefined : m.no_permission()}
+          onclick={() => save('policy')}
+        >
+          {m.common_save()}
+        </Button>
+      </div>
+    </section>
+  </PageBody>
+</PageShell>
+
+<style>
+  .req-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .card {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-2);
+    padding: var(--space-3) var(--space-4);
+  }
+  .card-h {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
+  }
+  .card-h > span {
+    font-size: var(--font-size-caption);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .currency-row {
+    max-width: 18rem;
+    margin-bottom: var(--space-3);
+  }
+  .currency-row :global(.currency-field) {
+    width: 100%;
+  }
+  .sunat-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-1);
+    font-size: var(--font-size-body);
+    font-weight: 500;
+    color: var(--color-success-fg);
+  }
+  .sunat-line.warn {
+    color: var(--color-warning-fg);
+  }
+  .hint {
+    margin: 0 0 var(--space-3);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  /* ONE set of column tracks for the header and every row: the list owns
+     the grid, each row is a subgrid spanning it. A per-row grid let a row
+     with a surcharge amount widen ITS surcharge column and push its other
+     controls out of line with the rows above and below (shipped 2026-09-20).
+     Narrow screens scroll the block sideways rather than folding columns. */
+  .rows {
+    display: grid;
+    grid-template-columns:
+      minmax(8rem, 1fr) 3.5rem 5rem minmax(10rem, auto) 10rem minmax(7.5rem, auto)
+      1.75rem;
+    column-gap: var(--space-3);
+    row-gap: var(--space-2);
+  }
+  .row {
+    display: grid;
+    grid-template-columns: subgrid;
+    grid-column: 1 / -1;
+    align-items: center;
+    column-gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+  }
+  .row.head {
+    border-color: transparent;
+    background: transparent;
+    padding-block: 0 var(--space-1);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .row.off {
+    opacity: 0.6;
+  }
+  .cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+  .rm-cell {
+    justify-content: flex-end;
+  }
+  .row :global(.lbl-field) {
+    width: 100%;
+  }
+  .row :global(.surcharge-type-field),
+  .row :global(.credit-field) {
+    width: 7.5rem;
+  }
+  .row :global(.amount-field) {
+    width: 5rem;
+  }
+  .row :global(.rm) {
+    color: var(--color-text-secondary);
+  }
+  .row :global(.rm:hover) {
+    color: var(--color-danger-fg);
+  }
+  .err-msg {
+    font-size: var(--font-size-body);
+    color: var(--color-danger-fg);
+    margin-top: var(--space-2);
+  }
+  .actions {
+    margin-top: var(--space-3);
+  }
+  .req-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .req-row {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    align-items: end;
+    gap: var(--space-3);
+  }
+  .req-hint {
+    margin: 0 0 var(--space-1);
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  @media (max-width: 640px) {
+    .req-row {
+      grid-template-columns: 1fr;
+    }
+  }
+  .emission-card {
+    margin-top: var(--space-4);
+  }
+  .emission-subtitle {
+    font-size: var(--font-size-body);
+    color: var(--color-text-secondary);
+    margin-bottom: var(--space-3);
+  }
+  .emission-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+  }
+  .emission-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .emission-field-label {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+  }
+  .emission-controls :global(.doc-type-field) {
+    width: 12rem;
+  }
+  .series-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--font-size-caption);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: var(--space-2);
+  }
+  .series-empty {
+    font-size: var(--font-size-body);
+    color: var(--color-text-secondary);
+  }
+  .series-table {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .series-row {
+    display: grid;
+    grid-template-columns: 6rem 6rem 8rem 1fr;
+    gap: var(--space-3);
+    padding: var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-body);
+  }
+  .series-head {
+    color: var(--color-text-secondary);
+    font-size: var(--font-size-caption);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .series-row:not(.series-head) {
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border);
+  }
+  .series-code {
+    font-family: var(--font-mono);
+  }
+</style>

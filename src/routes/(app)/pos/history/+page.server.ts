@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   getPosSettings,
   listPeriodLocks,
@@ -30,14 +29,20 @@ function parseHistoryView(value: string | null): HistoryView {
 /** View perm (`pos:view`, the module's default prefix — this page has no
  *  MODULE_SUBRESOURCES row, so it inherits the module's own view gate). */
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'pos');
+  if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:history');
 
   // The org timezone rides on the resources, exactly like /pos/appointments —
   // the calendar views here must read the same local day as every other
   // calendar in the app.
-  const resources = await listResources(ctx);
+  // Timezone source is scheduling data, locks/timezone are finance data (spec 039): own handles;
+  // a denied one falls back to the default zone rather than failing the history page.
+  const [sched, fin] = await Promise.all([
+    datasetCtx(locals, 'scheduling'),
+    datasetCtx(locals, 'finance'),
+  ]);
+  const resources = isDenied(sched) ? [] : await listResources(sched);
   const orgTz = schedulingTimeZone(resources);
   const view = parseHistoryView(url.searchParams.get('view'));
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
@@ -65,31 +70,33 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     ),
     getPosSettings(ctx),
     listPeriodLocks(ctx),
-    getFinSettings(ctx),
+    isDenied(fin) ? Promise.resolve(null) : getFinSettings(fin),
   ]);
   const { byTicket, methodTotals } = foldPayments(payments);
   return {
-    orgTz,
-    view,
-    day,
-    methodTotals,
-    emissionMode: settings.emission.mode,
-    // Accountant locks (spec 2026-10-15 T4): months in the ACCOUNTING timezone,
-    // so the lock icon on a shift row agrees with what the mutators refuse.
-    lockedPeriods: locks.map((l) => l.period),
-    finTz: finSettings.timezone,
-    // The month calendar view folds every row (refund counter-rows
-    // included) by its own day — `payments-fold.ts`'s `dayTotals`.
-    payments,
-    tickets: tickets.map((t) => ({
-      ...t,
-      cashier: t.createdBy ? (names[t.createdBy] ?? null) : null,
-      payments: byTicket.get(t.id) ?? [],
-      emission: emission[t.id] ?? null,
-    })),
-    shifts: shifts.map((s) => ({
-      ...s,
-      openedByName: s.openedBy ? (names[s.openedBy] ?? null) : null,
-    })),
+    pos: {
+      orgTz,
+      view,
+      day,
+      methodTotals,
+      emissionMode: settings.emission.mode,
+      // Accountant locks (spec 2026-10-15 T4): months in the ACCOUNTING timezone,
+      // so the lock icon on a shift row agrees with what the mutators refuse.
+      lockedPeriods: locks.map((l) => l.period),
+      finTz: finSettings?.timezone ?? orgTz,
+      // The month calendar view folds every row (refund counter-rows
+      // included) by its own day — `payments-fold.ts`'s `dayTotals`.
+      payments,
+      tickets: tickets.map((t) => ({
+        ...t,
+        cashier: t.createdBy ? (names[t.createdBy] ?? null) : null,
+        payments: byTicket.get(t.id) ?? [],
+        emission: emission[t.id] ?? null,
+      })),
+      shifts: shifts.map((s) => ({
+        ...s,
+        openedByName: s.openedBy ? (names[s.openedBy] ?? null) : null,
+      })),
+    },
   };
 };
