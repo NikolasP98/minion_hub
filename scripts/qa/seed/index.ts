@@ -34,6 +34,7 @@ import * as formulaVariables from './formula-variables';
 import * as inbox from './inbox';
 import * as release from './release';
 import * as pulse from './pulse';
+import * as doors from './doors';
 
 const MODULES: ReadonlyArray<{
   domain: string;
@@ -66,6 +67,7 @@ const MODULES: ReadonlyArray<{
   { domain: 'inbox', label: 'inbox', seed: inbox.seed },
   { domain: 'release', label: 'release', seed: release.seed },
   { domain: 'pulse', label: 'pulse decisions and disabled digest', seed: pulse.seed },
+  { domain: 'doors', label: 'doors (collection points)', seed: doors.seed },
   // Not a matrix domain — keeps the ui-audit-seed.ts personas alive on the same stack.
   { domain: 'ui-audit', label: 'ui-audit-compat', seed: uiAuditCompat.seed },
 ];

@@ -37,7 +37,7 @@ import {
   schedBookingStatusLog,
   schedBookingProducts,
 } from '$server/db/pg-scheduling-schema';
-import { crmContacts, crmContactIdentities, tagLinks } from '$server/db/pg-crm-schema';
+import { crmContacts, tagLinks } from '$server/db/pg-crm-schema';
 import { profiles } from '@minion-stack/db/pg';
 import type {
   SchedBooking,
@@ -87,6 +87,7 @@ import {
   type GrantView,
 } from './pos-packages.service';
 import { getPlan, type PlanDetail } from './pos-accounts.service';
+import { ensureCrmContact } from './crm-contact-ensure';
 import { grantToday } from './pos-accounts.logic';
 import { getFinSettings } from './finance.service';
 import type { Actor } from './pos/actor';
@@ -253,102 +254,6 @@ export interface CreateBookingInput {
   metadata?: Record<string, unknown>;
   /** Who is acting. Stamped on the redemption and on the status-log row. */
   actor?: Actor;
-}
-
-/** Last-9-digit (Peru) phone normalizer, matching crm-finance.service. */
-function phone9(raw: string): string {
-  return raw.replace(/\D/g, '').slice(-9);
-}
-
-/** Resolve a CRM contact by phone (whatsapp identity) or email. Null if no match. */
-async function resolveCrmContact(
-  tx: CoreTx,
-  orgId: string,
-  phone: string | null | undefined,
-  email: string | null | undefined,
-): Promise<string | null> {
-  const p9 = phone ? phone9(phone) : '';
-  const em = email ? email.trim().toLowerCase() : '';
-  if (p9.length < 8 && !em) return null;
-  try {
-    const rows = (await tx.execute(sql`
-      select contact_id from crm_contact_identities
-      where org_id = ${orgId}
-        and (
-          (channel = 'whatsapp' and length(regexp_replace(coalesce(external_id,''),'\\D','','g')) >= 8
-            and right(regexp_replace(coalesce(external_id,''),'\\D','','g'), 9) = ${p9} and ${p9} <> '')
-          or (channel = 'email' and lower(external_id) = ${em} and ${em} <> '')
-        )
-      limit 1
-    `)) as unknown as Array<{ contact_id: string }>;
-    return rows.length ? rows[0].contact_id : null;
-  } catch {
-    // CRM tables absent / disabled — booking still succeeds without the bridge.
-    return null;
-  }
-}
-
-/**
- * Resolve a CRM contact by phone/email, or CREATE one from the booking form so
- * every booker lands in the CRM. The resolve-first step is the dedup guard:
- * an existing customer is matched (last-9 phone or email) and reused, never
- * duplicated. Identities are stored E.164 (`+digits`) to match the ledger
- * harvest's `external_id` shape so a later WhatsApp message folds into the same
- * contact via the unique (org, channel, external_id) index.
- * ponytail: 9-digit local input (no country code) can still diverge from the
- * harvest's `+51…`; resolve's last-9 match keeps future bookings deduped, the
- * rare format-mismatch harvest dupe is the CRM cleanup tool's job.
- */
-async function ensureCrmContact(
-  tx: CoreTx,
-  orgId: string,
-  name: string | null | undefined,
-  phone: string | null | undefined,
-  email: string | null | undefined,
-): Promise<string | null> {
-  const existing = await resolveCrmContact(tx, orgId, phone, email);
-  if (existing) return existing;
-  const digits = phone ? phone.replace(/\D/g, '') : '';
-  const em = email ? email.trim().toLowerCase() : '';
-  if (digits.length < 8 && !em) return null; // nothing to identify them by
-  try {
-    const [c] = await tx
-      .insert(crmContacts)
-      .values({ orgId, displayName: name?.trim() || null, source: 'booking' })
-      .returning({ id: crmContacts.id });
-    const identities: Array<typeof crmContactIdentities.$inferInsert> = [];
-    if (digits.length >= 8)
-      identities.push({
-        orgId,
-        contactId: c.id,
-        channel: 'whatsapp',
-        externalId: `+${digits}`,
-        handle: name?.trim() || null,
-      });
-    if (em)
-      identities.push({
-        orgId,
-        contactId: c.id,
-        channel: 'email',
-        externalId: em,
-        handle: name?.trim() || null,
-      });
-    if (identities.length)
-      await tx
-        .insert(crmContactIdentities)
-        .values(identities)
-        .onConflictDoNothing({
-          target: [
-            crmContactIdentities.orgId,
-            crmContactIdentities.channel,
-            crmContactIdentities.externalId,
-          ],
-        });
-    return c.id;
-  } catch {
-    // CRM tables absent / disabled — booking still succeeds without the bridge.
-    return null;
-  }
 }
 
 /** Where one occurrence lands, plus the series bookkeeping it carries. */
@@ -529,13 +434,15 @@ async function bookOccurrenceInTx(
     if (hit) crmContactId = hit.id;
   }
   if (!crmContactId)
-    crmContactId = await ensureCrmContact(
-      tx,
-      ctx.tenantId,
-      input.attendeeName,
-      input.attendeePhone,
-      input.attendeeEmail,
-    );
+    crmContactId =
+      (
+        await ensureCrmContact(tx, ctx.tenantId, {
+          name: input.attendeeName,
+          phone: input.attendeePhone,
+          email: input.attendeeEmail,
+          source: 'booking',
+        })
+      )?.id ?? null;
 
   // Same rule as crmContactId: a client-supplied plan id is a hint, not
   // authority. A foreign/stale one is dropped rather than stored as a dangling

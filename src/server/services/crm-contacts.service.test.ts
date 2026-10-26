@@ -45,6 +45,7 @@ async function createRealCrmContactsDb() {
       lifecycle_override text,
       source text not null default 'harvested',
       custom_fields jsonb not null default '{}'::jsonb,
+      first_touch jsonb,
       deleted_at timestamptz,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()

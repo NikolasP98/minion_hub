@@ -6,6 +6,7 @@ import { SCREEN_DESIGN_MANIFEST } from './route-design-manifest';
 const WAVE_E_SCREENS = {
   '/auth/reset': 'src/routes/auth/reset/+page.svelte',
   '/book/[slug]': 'src/routes/book/[slug]/+page.svelte',
+  '/d/[slug]': 'src/routes/d/[slug]/+page.svelte',
   '/invite/accept': 'src/routes/invite/accept/+page.svelte',
   '/join': 'src/routes/join/+page.svelte',
   '/join/sent': 'src/routes/join/sent/+page.svelte',
@@ -22,7 +23,7 @@ describe('Wave E public and auth composition', () => {
     expect(manifestRoutes.map((route) => route.pattern).sort()).toEqual(
       Object.keys(WAVE_E_SCREENS).sort(),
     );
-    expect(manifestRoutes).toHaveLength(9);
+    expect(manifestRoutes).toHaveLength(10);
     expect(manifestRoutes.every((route) => route.archetype === 'public-auth')).toBe(true);
   });
 
@@ -58,6 +59,7 @@ describe('Wave E public and auth composition', () => {
     const rootLayoutSource = readFileSync(join(process.cwd(), 'src/routes/+layout.svelte'), 'utf8');
 
     expect(rootLayoutSource).toContain("current.startsWith('/book/')");
+    expect(rootLayoutSource).toContain("current.startsWith('/d/')");
     expect(rootLayoutSource).toContain("current === '/invite/accept'");
   });
 });

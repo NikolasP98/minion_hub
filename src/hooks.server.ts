@@ -193,7 +193,16 @@ const cloudPasskeyHandle: Handle = async ({ event, resolve }) => {
   return response;
 };
 
-const UNPROTECTED_PREFIXES = ['/login', '/api/', '/invite/', '/.well-known/', '/auth/', '/book'];
+const UNPROTECTED_PREFIXES = [
+  '/login',
+  '/api/',
+  '/invite/',
+  '/.well-known/',
+  '/auth/',
+  '/book',
+  // Public doors (spec 041): /d/<slug> resolves its own org from the slug.
+  '/d/',
+];
 
 /**
  * Carry the caller's selected build channel for the whole request (spec §D4).
@@ -348,6 +357,10 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // which already (correctly) excludes this same prefix from capability
     // checks; this tenant gate needs the matching exclusion.
     '/api/scheduling/public',
+    // Anonymous door submissions (spec 041 S2: /api/doors/public/[slug]/submit).
+    // The handler resolves the org from the slug and enforces its own rate
+    // limit, honeypot and validation; no capability prefix maps here.
+    '/api/doors/public',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
     // Organization switching remains reachable after revocation; only this

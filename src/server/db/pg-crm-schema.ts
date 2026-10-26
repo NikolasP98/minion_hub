@@ -64,6 +64,8 @@ export const crmContacts = pgTable(
     source: text('source').notNull().default('harvested'),
     /** Custom-field escape hatch (admin "+ Add property" — editor is v2). */
     customFields: jsonb('custom_fields').notNull().default({}),
+    /** Door + UTM that CREATED this contact (spec 041 `Attribution`). Set once on INSERT, never overwritten. */
+    firstTouch: jsonb('first_touch'),
     /** Soft-delete for right-to-erasure; hard-delete path also exists (spec §9). */
     deletedAt: timestamp('deleted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -36,7 +36,8 @@ export interface MatrixEntry {
     | 'ui-audit'
     | 'inbox'
     | 'release'
-    | 'pulse';
+    | 'pulse'
+    | 'doors';
   readonly why: string;
 }
 
@@ -727,6 +728,47 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'release.app_release.qa',
     domain: 'release',
     why: '/changelog + the release-notes route tests need a readable release row',
+  },
+  // ── Doors / collection points (spec 041 S0) ─────────────────────────
+  {
+    id: 'doors.book-link.active',
+    domain: 'doors',
+    why: 'active booking link qa-door-book listed as a door of kind book (the scheduling seed has only an expired link)',
+  },
+  {
+    id: 'doors.form.active',
+    domain: 'doors',
+    why: 'active form door qa-intake: 4 fields + required consent (S2 renders it)',
+  },
+  {
+    id: 'doors.faq.mixed-entries',
+    domain: 'doors',
+    why: 'active FAQ door qa-faq with 2 approved + 1 draft entry (drafts never public, S5)',
+  },
+  {
+    id: 'doors.offer.two-products',
+    domain: 'doors',
+    why: 'active offer door qa-offer over 2 catalog products + the qa-door-book link (S6)',
+  },
+  {
+    id: 'doors.door.inactive',
+    domain: 'doors',
+    why: 'switched-off door qa-door-off: its public URL must 404',
+  },
+  {
+    id: 'doors.contact.first-touch',
+    domain: 'doors',
+    why: 'contact created by the form door: first_touch names door:qa-intake (funnel "new contacts")',
+  },
+  {
+    id: 'doors.submission.one',
+    domain: 'doors',
+    why: 'one consented form submission linked to the first-touch contact',
+  },
+  {
+    id: 'doors.stats.three-days',
+    domain: 'doors',
+    why: 'three days of anonymous view/submission counters for the form door and booking link',
   },
 ] as const;
 

@@ -46,6 +46,7 @@ export const MODULE_SUBRESOURCES: Readonly<Record<string, readonly SubResource[]
     { key: 'crm.insights', label: 'Insights', route: '/crm/insights' },
     { key: 'crm.cleanup', label: 'Data Cleanup', route: '/crm/cleanup' },
     { key: 'crm.settings', label: 'Settings', route: '/crm/settings' },
+    { key: 'crm.doors', label: 'Doors', route: '/crm/doors' },
   ],
   finance: [
     dashboard('finance', '/finances'),
@@ -105,6 +106,7 @@ export interface RouteAccessRule {
 export const PUBLIC_ROUTE_PATTERNS = [
   '/auth/reset',
   '/book/[slug]',
+  '/d/[slug]',
   '/invite/accept',
   '/login',
   '/login/forgot',
