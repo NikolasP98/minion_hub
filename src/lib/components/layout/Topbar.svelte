@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NavContextMenu from './NavContextMenu.svelte';
   import { createModuleNavigation } from '$lib/shell/module-navigation';
   const moduleNavigation = createModuleNavigation();
   import { useDropRegistry } from '$lib/shell/drop-context.svelte';
@@ -379,12 +380,13 @@
         {/if}
       </div>
     {/snippet}
-    <nav
-      data-part="navigation"
-      class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
-    >
-      <div class="flex-1 min-w-0">
-        <!-- Mobile is ALWAYS module-scoped, regardless of navMode.isModule
+    <NavContextMenu kind="area">
+      <nav
+        data-part="navigation"
+        class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
+      >
+        <div class="flex-1 min-w-0">
+          <!-- Mobile is ALWAYS module-scoped, regardless of navMode.isModule
              (which only gates the desktop Sidebar's full-vs-module view).
              `moduleItems` reads `navMode.activeModule` unconditionally — the
              module the CURRENT ROUTE belongs to, falling back to the last
@@ -393,27 +395,32 @@
              role does; the header picker is the only way to see another
              module's pages. Same item derivation Sidebar's module view uses
              (`navMode.activeModule.items`), no forked list. -->
-        {#each moduleItems as item, i (item.id)}
-          {#if item.group && item.group !== moduleItems[i - 1]?.group}
-            <div
-              class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
-            >
-              {item.group}
-            </div>
-          {/if}
-          <a
-            use:moduleNavigation.link
-            href={item.href}
-            aria-current={isActive(item) ? 'page' : undefined}
-            class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item) ? 'active' : ''}"
-            onclick={closeMobileMenu}
-          >
-            <NavIcon icon={item.icon} size={iconSizes.md} />
-            <span>{item.label}</span>
-          </a>
-        {/each}
-      </div>
-    </nav>
+          {#each moduleItems as item, i (item.id)}
+            {#if item.group && item.group !== moduleItems[i - 1]?.group}
+              <div
+                class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+              >
+                {item.group}
+              </div>
+            {/if}
+            <NavContextMenu kind="item" href={item.href} label={item.label}>
+              <a
+                use:moduleNavigation.link
+                href={item.href}
+                aria-current={isActive(item) ? 'page' : undefined}
+                class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item)
+                  ? 'active'
+                  : ''}"
+                onclick={closeMobileMenu}
+              >
+                <NavIcon icon={item.icon} size={iconSizes.md} />
+                <span>{item.label}</span>
+              </a>
+            </NavContextMenu>
+          {/each}
+        </div>
+      </nav>
+    </NavContextMenu>
   </Sheet>
 </header>
 

@@ -293,6 +293,9 @@ describe('operations', () => {
     const m = duplicatePage(cfg([]), { target: '/pos/appointments', module: 'pos' });
     expect(m.builtinSections.pos[0]).toMatchObject({ kind: 'link', target: '/pos/appointments' });
     expect(m.builtinSections.pos[0].id).toMatch(/^[a-z0-9]{6}$/);
+    // The copy keeps the nav row's label, not the screen title ("Point of sale").
+    const s = duplicatePage(cfg([]), { target: '/pos/sell', module: 'pos', label: 'Sell' });
+    expect(s.builtinSections.pos[0]).toMatchObject({ label: 'Sell', slug: 'sell' });
   });
   it('moveBuiltin removes a previous main and appends the new one', () => {
     const c = cfg([section('aaaaaa', 'one'), section('bbbbbb', 'two')]);

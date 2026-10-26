@@ -451,7 +451,7 @@ export function addLink(
 /** Link copy next to a source entry, or (for a built-in main) into `builtinSections[module]`. */
 export function duplicatePage(
   config: NavConfig,
-  ref: { pageId: string } | { target: string; module: string },
+  ref: { pageId: string } | { target: string; module: string; label?: string },
 ): NavConfig {
   const next = structuredClone(config);
   const id = freshId(config);
@@ -462,7 +462,7 @@ export function duplicatePage(
     at.list.splice(at.index + 1, 0, { ...src, id, kind: 'link' });
     return next;
   }
-  const label = clip(next.builtin[ref.target]?.label ?? titleOf(ref.target));
+  const label = clip(next.builtin[ref.target]?.label ?? ref.label ?? titleOf(ref.target));
   (next.builtinSections[ref.module] ??= []).push({
     id,
     kind: 'link',

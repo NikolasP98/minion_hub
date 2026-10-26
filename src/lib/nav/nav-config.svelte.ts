@@ -2,9 +2,19 @@ import { page } from '$app/state';
 import { canonicalPath } from '$lib/canonical-path';
 import { EMPTY_NAV_CONFIG, resolveNavInstance, type NavConfig } from './custom-sections';
 
+/**
+ * Optimistic view while a context-menu save is in flight (set/cleared by nav-edit).
+ * Raw, not deep state: edits `structuredClone` the current config, which a proxy refuses.
+ */
+export const navOptimistic = new (class {
+  config = $state.raw<NavConfig | null>(null);
+})();
+
 /** The member's filtered nav config (roles stripped), loaded once by the app layout. */
 export function navConfig(): NavConfig {
-  return (page.data as { navConfig?: NavConfig }).navConfig ?? EMPTY_NAV_CONFIG;
+  return (
+    navOptimistic.config ?? (page.data as { navConfig?: NavConfig }).navConfig ?? EMPTY_NAV_CONFIG
+  );
 }
 
 /**
