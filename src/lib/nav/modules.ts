@@ -45,6 +45,7 @@ import {
   Settings2,
   ShoppingCart,
   Sparkles,
+  DoorOpen,
   Store,
   Target,
   Users,
@@ -205,7 +206,15 @@ function areaItems(area: AreaId, data: ModuleNavData): ModuleNavItem[] {
               p !== '/crm' &&
               !p.startsWith('/crm/settings') &&
               !p.startsWith('/crm/cleanup') &&
+              !p.startsWith('/crm/doors') &&
               !p.startsWith('/crm/insights')),
+        },
+        {
+          id: 'doors',
+          href: '/crm/doors',
+          label: m.doors_nav(),
+          icon: DoorOpen,
+          matcher: (p) => p.startsWith('/crm/doors'),
         },
         {
           id: 'settings',

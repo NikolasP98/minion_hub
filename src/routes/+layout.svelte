@@ -109,6 +109,7 @@
       current.startsWith('/login/') ||
       current.startsWith('/auth/') ||
       current.startsWith('/book/') ||
+      current.startsWith('/d/') ||
       current === '/invite/accept';
 
     if (!userState.user) {

@@ -33,11 +33,14 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // (proposal 2026-10-12-hub-onboarding-org-user) — 1 fewer screen+endpoint.
   // /sandbox added (spec 010-hub-sandbox-pages S2 — the admin-only sandbox
   // element grid) — 1 more screen+endpoint.
-  endpoints: 160,
+  // /crm/doors, /crm/doors/[id] and the public /d/[slug] added (spec 041 hub
+  // collection points S0) — 3 more screens+endpoints + 1 more fixture
+  // (`public-door`).
+  endpoints: 163,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 149,
+  screens: 152,
   redirects: 11,
-  fixtures: 28,
+  fixtures: 29,
   viewports: ['compact', 'medium', 'wide'] as const,
 });
 
