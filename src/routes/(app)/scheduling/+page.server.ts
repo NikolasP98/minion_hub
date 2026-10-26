@@ -1,13 +1,16 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
-import { schedulingSummary, utilizationHeatmap, revenueByResource } from '$server/services/scheduling-analytics.service';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
+import {
+  schedulingSummary,
+  utilizationHeatmap,
+  revenueByResource,
+} from '$server/services/scheduling-analytics.service';
 
 const DAY = 86_400_000;
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return { scheduling: ctx }; // rendered by DataSource (spec 039)
   depends('scheduling:data');
 
   // A 4-week window centred near "now": last 7 days + next 21 days, INCLUSIVE of
@@ -30,17 +33,24 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     resourceCount: 0,
     eventTypeCount: 0,
   };
+  // The revenue overlay joins CRM identities x finance invoices: it needs BOTH datasets' view (spec 039).
+  const fin = await datasetCtx(locals, 'finance');
+  const crm = await datasetCtx(locals, 'crm');
   const [summary, utilization, revenue] = await Promise.all([
     schedulingSummary(ctx, from, to).catch(() => EMPTY_SUMMARY),
     utilizationHeatmap(ctx, from, to).catch(() => []),
-    revenueByResource(ctx, from, to).catch(() => []),
+    isDenied(fin) || isDenied(crm)
+      ? Promise.resolve([])
+      : revenueByResource(ctx, from, to).catch(() => []),
   ]);
 
   return {
-    summary,
-    utilization,
-    revenue,
-    from: from.toISOString(),
-    to: to.toISOString(),
+    scheduling: {
+      summary,
+      utilization,
+      revenue,
+      from: from.toISOString(),
+      to: to.toISOString(),
+    },
   };
 };

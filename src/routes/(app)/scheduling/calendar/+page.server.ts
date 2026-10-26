@@ -1,6 +1,5 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listResources,
   listEventTypes,
@@ -29,9 +28,13 @@ import {
  *  booking projection, identical tag/colour resolution. `pos: false` drops the
  *  POS-only halves (submitted tickets + stock-accrual chips). */
 export const load: PageServerLoad = async ({ locals, depends, url, parent }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'scheduling');
+  if (isDenied(ctx)) return { scheduling: ctx }; // rendered by DataSource (spec 039)
   depends('scheduling:data');
+  // Foreign slices of the window (colours, tags) come through THEIR handles; denied => degraded.
+  const pos = await datasetCtx(locals, 'pos');
+  const stock = await datasetCtx(locals, 'stock');
+  const crm = await datasetCtx(locals, 'crm');
 
   // Reuse the (app) layout's already-loaded preferences bundle (no extra query).
   const { preferences } = await parent();
@@ -68,12 +71,13 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
     to,
     eventTypes,
     pos: false,
+    foreign: { pos, stock, crm },
   });
 
   // The `category` colour source's VALUE list (previewed in the colour picker).
   // Fail-soft for the same reason POS's is: a missing POS module must never
   // cost the operator the calendar.
-  const categories = await listProductCategories(ctx).catch(() => []);
+  const categories = isDenied(pos) ? [] : await listProductCategories(pos).catch(() => []);
 
   // Off-hours shading envelope per resource: weekday → [earliest open, latest
   // close] in minutes, from the weekly (date-less) rules. Single-date overrides
@@ -99,40 +103,42 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
   });
 
   return {
-    day,
-    orgTz,
-    calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
-    view,
-    pageView,
-    staff,
-    kindId,
-    showInheritedTags,
-    /** Event-scope registry + every tag present on a shown event — the filter's options. */
-    tagOptions,
-    bookings,
-    resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
-    hours,
-    eventTypes: eventTypes.map((e) => ({
-      id: e.id,
-      title: e.title,
-      productId: e.productId ?? null,
-      active: e.active,
-      length: e.length,
-      /** Catalog list price (`fin_products.unit_price` through `productId`) and
-       *  the org currency — the create tray's Services table Price column. */
-      price: e.price,
-      currency: e.currency,
-      /** The service's assignees — the create tray's Team picker is limited to
-       *  them, or forcing a non-assignee always answers 409. */
-      resourceIds: e.resourceIds,
-      /** Both are event-colour sources (see `booking-color.ts`). */
-      color: e.color,
-      kindId: e.kindId,
-    })),
-    /** Org event kinds with their colours — the `kind` colour source AND the
-     *  toolbar's kind filter. */
-    kinds: kinds.map((k) => ({ id: k.id, name: k.name, color: k.color, isDefault: k.isDefault })),
-    /** `fin_product_categories` for the org — the `category` source's values. */
-    categories: categories.map((c) => ({ name: c.name, color: c.color })),
+    scheduling: {
+      day,
+      orgTz,
+      calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
+      view,
+      pageView,
+      staff,
+      kindId,
+      showInheritedTags,
+      /** Event-scope registry + every tag present on a shown event — the filter's options. */
+      tagOptions,
+      bookings,
+      resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
+      hours,
+      eventTypes: eventTypes.map((e) => ({
+        id: e.id,
+        title: e.title,
+        productId: e.productId ?? null,
+        active: e.active,
+        length: e.length,
+        /** Catalog list price (`fin_products.unit_price` through `productId`) and
+         *  the org currency — the create tray's Services table Price column. */
+        price: e.price,
+        currency: e.currency,
+        /** The service's assignees — the create tray's Team picker is limited to
+         *  them, or forcing a non-assignee always answers 409. */
+        resourceIds: e.resourceIds,
+        /** Both are event-colour sources (see `booking-color.ts`). */
+        color: e.color,
+        kindId: e.kindId,
+      })),
+      /** Org event kinds with their colours — the `kind` colour source AND the
+       *  toolbar's kind filter. */
+      kinds: kinds.map((k) => ({ id: k.id, name: k.name, color: k.color, isDefault: k.isDefault })),
+      /** `fin_product_categories` for the org — the `category` source's values. */
+      categories: categories.map((c) => ({ name: c.name, color: c.color })),
+    },
   };
 };

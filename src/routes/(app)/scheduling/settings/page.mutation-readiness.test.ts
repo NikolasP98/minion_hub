@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { page } from '$app/state';
-import type { PageData } from './$types';
+import type { ComponentProps } from 'svelte';
 import { createActionRuntime } from '$lib/services/actions/runtime.svelte';
 import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
@@ -11,8 +11,8 @@ vi.mock('$app/navigation', () => ({ invalidate }));
 const tryUseActions = vi.hoisted(() => vi.fn());
 vi.mock('$lib/services/actions/context', () => ({ tryUseActions }));
 
-const { default: SchedulingSettingsPage } = await import('./+page.svelte');
-const emptyData = { kinds: [] } as unknown as PageData;
+const { default: SchedulingSettingsPage } = await import('./PageBody.svelte');
+const emptyData = { kinds: [] } as unknown as ComponentProps<typeof SchedulingSettingsPage>['data'];
 
 afterEach(() => {
   cleanup();
@@ -104,7 +104,7 @@ describe('scheduling event-kind mutation readiness', () => {
             { id: 'a', name: 'Kind A', color: '#112233', isDefault: false },
             { id: 'b', name: 'Kind B', color: '#445566', isDefault: false },
           ],
-        } as unknown as PageData,
+        } as unknown as ComponentProps<typeof SchedulingSettingsPage>['data'],
       },
     });
     await fireEvent.click(screen.getAllByRole('button', { name: /delete/i })[0]);

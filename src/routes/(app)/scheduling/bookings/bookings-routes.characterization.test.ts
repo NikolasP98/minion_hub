@@ -79,12 +79,9 @@ vi.mock('$server/services/stock-accruals.service', () => ({
     mocks.accrualSummaryForSources(ctx, source, ids),
 }));
 
-// Dataset-enforced loads return `{ <dataset>: body }` (spec 039): unwrap that single slot;
-// a load not yet converted returns its keys flat.
-const body = (r: unknown) => {
-  const slots = Object.values(r as Record<string, unknown>);
-  return (slots.length === 1 ? slots[0] : r) as Record<string, unknown>;
-};
+// Loads return `{ <dataset>: body }` (spec 039): unwrap the single slot.
+const body = (r: unknown) =>
+  Object.values(r as Record<string, unknown>)[0] as Record<string, unknown>;
 
 const DAY = 86_400_000;
 const NOW = new Date('2026-08-18T12:00:00.000Z');

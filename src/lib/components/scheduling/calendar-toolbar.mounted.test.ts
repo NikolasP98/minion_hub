@@ -45,7 +45,7 @@ vi.mock('$app/state', async (original) => {
   return { ...actual, page: reactivePage({ ...actual.page }) };
 });
 const { default: Calendar } =
-  await import('../../../routes/(app)/scheduling/calendar/+page.svelte');
+  await import('../../../routes/(app)/scheduling/calendar/PageBody.svelte');
 
 const calendarScope = calendarWindowScope('org-a', FIXTURE_TIME_ZONE);
 const data = () =>

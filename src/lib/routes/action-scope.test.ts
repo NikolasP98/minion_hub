@@ -20,11 +20,11 @@ function primaryActionsSnippet(source: string): string {
 }
 
 const PILOTS = [
-  'stock/+page.svelte',
-  'stock/items/+page.svelte',
+  'stock/PageBody.svelte',
+  'stock/items/PageBody.svelte',
   'crm/+page.svelte',
   'crm/customers/+page.svelte',
-  'scheduling/calendar/+page.svelte',
+  'scheduling/calendar/PageBody.svelte',
 ] as const;
 
 describe('action scope on the pilots', () => {
@@ -42,7 +42,7 @@ describe('action scope on the pilots', () => {
     expect(calendar).toContain('class="cal-toolbar" data-action-scope="collection"');
     expect(calendar).toContain('class="cal-tools" data-action-scope="collection"');
     expect(calendar).toContain('class="hc-actions" data-action-scope="row"');
-    expect(routeSource('scheduling/calendar/+page.svelte')).toContain(
+    expect(routeSource('scheduling/calendar/PageBody.svelte')).toContain(
       'class="dv-bar view-toolbar" data-action-scope="collection"',
     );
   });
@@ -60,7 +60,7 @@ describe('collapse by purpose on the pilots', () => {
   });
 
   it('filter bar → Sheet: the calendar mounts its filters through CollapsibleFilters in every view', () => {
-    const page = routeSource('scheduling/calendar/+page.svelte');
+    const page = routeSource('scheduling/calendar/PageBody.svelte');
     expect((page.match(/<CollapsibleFilters /g) ?? []).length).toBe(2);
     expect(page).toContain('activeCount={activeFilterCount}');
     expect(componentSource('data-table/CollapsibleFilters.svelte')).toContain(
