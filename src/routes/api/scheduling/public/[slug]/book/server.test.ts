@@ -59,4 +59,34 @@ describe('POST /api/scheduling/public/[slug]/book', () => {
     const body = await res.json();
     expect(body).toEqual({ ok: true, uid: 'bk-1', status: 'confirmed' });
   });
+
+  const ATTR = {
+    door: 'book:11111111-1111-1111-1111-111111111111',
+    utm_source: 'instagram',
+    at: '2026-10-25T10:00:00.000Z',
+  };
+
+  it('passes a valid attribution through to publicBook', async () => {
+    await POST(makeEvent({ body: { ...VALID_BODY, attribution: ATTR } }));
+    expect(mocks.publicBook).toHaveBeenCalledWith(
+      'faces-sculptors',
+      expect.objectContaining({ attribution: ATTR }),
+    );
+  });
+
+  it('400s on an unknown key inside attribution', async () => {
+    await expect(
+      POST(makeEvent({ body: { ...VALID_BODY, attribution: { ...ATTR, ip: '1.2.3.4' } } })),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(mocks.publicBook).not.toHaveBeenCalled();
+  });
+
+  it('still books without attribution', async () => {
+    const res = await POST(makeEvent({}));
+    expect(res.status).toBe(200);
+    expect(mocks.publicBook).toHaveBeenCalledWith(
+      'faces-sculptors',
+      expect.objectContaining({ attribution: null }),
+    );
+  });
 });

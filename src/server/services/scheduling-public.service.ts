@@ -8,6 +8,8 @@ import { getSlotsForEventType } from './scheduling-slots.service';
 import { createBooking } from './scheduling-bookings.service';
 import type { SchedBooking } from '$server/db/pg-scheduling-schema';
 import { isModuleEnabled } from './modules.service';
+import { bumpDoorStat } from './doors.service';
+import type { Attribution } from '$lib/doors/attribution';
 
 /**
  * Public (unauthenticated) booking flow for /book/[slug].
@@ -26,7 +28,13 @@ import { isModuleEnabled } from './modules.service';
 
 export interface PublicLinkData {
   ctx: CoreCtx;
-  link: { id: string; slug: string; title: string; description: string | null; resourceId: string | null };
+  link: {
+    id: string;
+    slug: string;
+    title: string;
+    description: string | null;
+    resourceId: string | null;
+  };
   eventTypes: SchedEventType[];
 }
 
@@ -76,7 +84,13 @@ export async function resolvePublicLink(slug: string): Promise<PublicLinkData | 
 
   return {
     ctx,
-    link: { id: link.id, slug: link.slug, title: link.title, description: link.description, resourceId: link.resourceId },
+    link: {
+      id: link.id,
+      slug: link.slug,
+      title: link.title,
+      description: link.description,
+      resourceId: link.resourceId,
+    },
     eventTypes,
   };
 }
@@ -101,14 +115,23 @@ export interface PublicBookInput {
   email?: string | null;
   phone?: string | null;
   notes?: string | null;
+  attribution?: Attribution | null;
 }
 
 /** Public booking creation behind a link. Returns the booking or null if invalid. */
-export async function publicBook(slug: string, input: PublicBookInput): Promise<SchedBooking | null> {
+export async function publicBook(
+  slug: string,
+  input: PublicBookInput,
+): Promise<SchedBooking | null> {
   const resolved = await resolvePublicLink(slug);
   if (!resolved) return null;
   if (!resolved.eventTypes.some((e) => e.id === input.eventTypeId)) return null;
-  return createBooking(resolved.ctx, {
+  // The door key is client-carried: pin it to the resolved link so one link's
+  // bookings can never be credited to another's funnel.
+  const attribution = input.attribution
+    ? { ...input.attribution, door: `book:${resolved.link.id}` as const }
+    : null;
+  const booking = await createBooking(resolved.ctx, {
     eventTypeId: input.eventTypeId,
     start: new Date(input.start),
     attendeeName: input.name,
@@ -117,5 +140,8 @@ export async function publicBook(slug: string, input: PublicBookInput): Promise<
     notes: input.notes ?? null,
     source: 'public_link',
     preferredResourceId: resolved.link.resourceId,
+    ...(attribution ? { metadata: { attribution }, firstTouch: attribution } : {}),
   });
+  await bumpDoorStat(resolved.ctx, `book:${resolved.link.id}`, 'submissions');
+  return booking;
 }

@@ -166,6 +166,7 @@
           name,
           email: email || null,
           phone: phone || null,
+          attribution: data.attribution,
         }),
       });
       if (response.status === 409) {
