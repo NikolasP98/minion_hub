@@ -1,6 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   financeSummary,
   maskFinanceSummary,
@@ -14,7 +13,9 @@ import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { parsePeriod, resolvePeriodWindow } from '$lib/finance/period';
 
 export const load: PageServerLoad = async ({ locals, url, depends }) => {
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await datasetCtx(locals, 'finance');
+  if (isDenied(ctx)) return { finance: ctx }; // rendered by DataSource (spec 039)
+  const finCtx = ctx; // narrowed handle for the streamed closure
   depends('finances:data');
   // A calendar day is LOCAL. Resolve the picked days to instants in the org's
   // business timezone so an evening sale isn't reported on the next day.
@@ -32,22 +33,24 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
   // instantly with skeletons instead of blocking on this.
   async function computeData() {
     const [rawSummary, series, products, clients] = await Promise.all([
-      financeSummary(ctx, period, locals.orgKind, locals.moduleStates),
-      revenueSeries(ctx, period, locals.orgKind, locals.moduleStates),
-      topProducts(ctx, period, { limit: 15 }),
-      topClients(ctx, period, { limit: 10 }),
+      financeSummary(finCtx, period, locals.orgKind, locals.moduleStates),
+      revenueSeries(finCtx, period, locals.orgKind, locals.moduleStates),
+      topProducts(finCtx, period, { limit: 15 }),
+      topClients(finCtx, period, { limit: 10 }),
     ]);
     const summary = maskCost ? maskFinanceSummary(rawSummary) : rawSummary;
     return { summary, series, products, clients, hasData: summary.invoiceCount > 0 };
   }
 
   return {
-    timeZone: settings.timezone,
-    // The UI shows the days the user picked; the services get resolved instants.
-    period: picked,
-    dataSpan,
-    streamed: {
-      data: computeData(),
+    finance: {
+      timeZone: settings.timezone,
+      // The UI shows the days the user picked; the services get resolved instants.
+      period: picked,
+      dataSpan,
+      streamed: {
+        data: computeData(),
+      },
     },
   };
 };

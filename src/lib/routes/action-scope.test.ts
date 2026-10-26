@@ -22,8 +22,8 @@ function primaryActionsSnippet(source: string): string {
 const PILOTS = [
   'stock/PageBody.svelte',
   'stock/items/PageBody.svelte',
-  'crm/+page.svelte',
-  'crm/customers/+page.svelte',
+  'crm/PageBody.svelte',
+  'crm/customers/PageBody.svelte',
   'scheduling/calendar/PageBody.svelte',
 ] as const;
 

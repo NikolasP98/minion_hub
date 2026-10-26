@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import {
   adDataExtent,
@@ -13,8 +13,8 @@ import { listCampaignLeads } from '$server/services/meta/attribution.service';
 
 export const load: PageServerLoad = async ({ locals, params, url, depends }) => {
   uuidParamOr404(params.campaignId);
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'ads');
+  if (isDenied(ctx)) return { ads: ctx }; // rendered by DataSource (spec 039)
   depends('ads:data');
 
   // Same range semantics as the campaigns list page: explicit ?from=&to= wins,
@@ -23,7 +23,10 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   const hasExplicitRange = url.searchParams.has('from') || url.searchParams.has('to');
   const defaultRange = extentToRange(extent);
   const range: DateRange = hasExplicitRange
-    ? { from: url.searchParams.get('from') || defaultRange.from, to: url.searchParams.get('to') || defaultRange.to }
+    ? {
+        from: url.searchParams.get('from') || defaultRange.from,
+        to: url.searchParams.get('to') || defaultRange.to,
+      }
     : defaultRange;
 
   const campaign = await getCampaignDetail(ctx, params.campaignId, range);
@@ -32,7 +35,9 @@ export const load: PageServerLoad = async ({ locals, params, url, depends }) => 
   // CRM leads attributed to this campaign's ads (webhook referral + icebreaker
   // heuristic) — all-time, not range-scoped: a lead acquired by the ad stays a
   // lead of the campaign regardless of the metrics window above.
-  const leads = await listCampaignLeads(ctx, params.campaignId);
+  // Leads are CRM contacts: own handle; denied => none (spec 039).
+  const crm = await datasetCtx(locals, 'crm');
+  const leads = isDenied(crm) ? [] : await listCampaignLeads(crm, params.campaignId);
 
-  return { campaign, leads, range, currency: extent.currency };
+  return { ads: { campaign, leads, range, currency: extent.currency } };
 };

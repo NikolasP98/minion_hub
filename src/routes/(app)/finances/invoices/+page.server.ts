@@ -1,20 +1,21 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listInvoices } from '$server/services/finance.service';
 import { getContact } from '$server/services/crm-contacts.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'finance');
+  if (isDenied(ctx)) return { finance: ctx }; // rendered by DataSource (spec 039)
   depends('finances:data');
   // Load the full set (capped) so the page can sort/filter client-side like the
   // CRM customers view; rendering is windowed on the client for paint cost.
   const contactId = url.searchParams.get('contact') ?? undefined;
+  // The contact's NAME is CRM data: own handle; denied => no name (spec 039).
+  const crm = await datasetCtx(locals, 'crm');
   const [{ rows, total }, contactRec] = await Promise.all([
     listInvoices(ctx, { limit: 10_000, contactId }),
-    contactId ? getContact(ctx, contactId) : Promise.resolve(null),
+    contactId && !isDenied(crm) ? getContact(crm, contactId) : Promise.resolve(null),
   ]);
   const customProperties = await loadCustomPropertyBundle(
     locals,
@@ -23,10 +24,12 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
     rows.map((row) => row.id),
   );
   return {
-    invoices: rows,
-    customProperties,
-    total,
-    contactId: contactId ?? null,
-    contactName: contactRec?.contact?.displayName ?? null,
+    finance: {
+      invoices: rows,
+      customProperties,
+      total,
+      contactId: contactId ?? null,
+      contactName: contactRec?.contact?.displayName ?? null,
+    },
   };
 };

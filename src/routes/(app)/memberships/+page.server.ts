@@ -1,12 +1,11 @@
-import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listPlans, listMemberships } from '$server/services/membership.service';
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await getCoreCtx(locals);
-  if (!ctx) throw error(401, 'Authentication required');
+  const ctx = await datasetCtx(locals, 'memberships');
+  if (isDenied(ctx)) return { memberships: ctx }; // rendered by DataSource (spec 039)
   depends('memberships:list');
   const [plans, members] = await Promise.all([listPlans(ctx), listMemberships(ctx)]);
-  return { plans, members, isAdmin: locals.user?.role === 'admin' };
+  return { memberships: { plans, members, isAdmin: locals.user?.role === 'admin' } };
 };
