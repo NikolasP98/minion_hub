@@ -11,6 +11,7 @@ import {
   PRODUCT_BUNDLE_CHILD_B,
   PRODUCT_TRACKED,
   PRODUCT_RAW_MATERIAL_LINK,
+  PRODUCT_ALIASES_AND_ZONE,
 } from './catalog';
 import { CONTACT_DNI_VERIFIED } from './crm';
 import type { SeedContext } from './db';
@@ -51,6 +52,7 @@ async function ticket(
     orgId: string;
     shiftId: string;
     partyId?: string | null;
+    crmContactId?: string | null;
     subtotal: string;
     total: string;
     status?: 'submitted' | 'voided';
@@ -59,13 +61,13 @@ async function ticket(
 ) {
   const { sql, register, now } = ctx;
   await sql`
-    insert into pos_tickets (id, org_id, human_id, shift_id, party_id, status, subtotal, total, created_by, submitted_at, voided_at, voided_by)
+    insert into pos_tickets (id, org_id, human_id, shift_id, party_id, crm_contact_id, status, subtotal, total, created_by, submitted_at, voided_at, voided_by)
     values (
-      ${opts.id}, ${opts.orgId}, ${humanId('TKT', opts.matrixId)}, ${opts.shiftId}, ${opts.partyId ?? null},
+      ${opts.id}, ${opts.orgId}, ${humanId('TKT', opts.matrixId)}, ${opts.shiftId}, ${opts.partyId ?? null}, ${opts.crmContactId ?? null},
       ${opts.status ?? 'submitted'}, ${opts.subtotal}, ${opts.total}, ${userId('tenancy.user.owner')},
       ${now.toISOString()}, ${opts.voided ? now.toISOString() : null}, ${opts.voided ? userId('tenancy.user.owner') : null}
     )
-    on conflict (id) do update set status = excluded.status, voided_at = excluded.voided_at
+    on conflict (id) do update set status = excluded.status, voided_at = excluded.voided_at, crm_contact_id = excluded.crm_contact_id
   `;
   register(opts.matrixId, { table: 'pos_tickets', where: { id: opts.id } });
 }
@@ -464,4 +466,65 @@ export async function seed(ctx: SeedContext): Promise<void> {
     values (${matrixUuid('pos.ticket.product-on-event', 'pay')}, ${ORG_BUSINESS}, ${ticketProductOnEventId}, ${SHIFT_OPEN}, 'cash', 40.00, 40.00)
     on conflict (id) do nothing
   `;
+
+  // ── Next offers (spec 041 S3): C1-C3 bought P1+P2, X bought only P1, and a
+  // voided ticket holds P3 so the void-excluded rule is observable. Contacts
+  // are plain (no party): tickets link through crm_contact_id.
+  const offerContacts = [
+    ['pos.next-offers.contact-x', 'QA Offers Contact X'],
+    ['pos.next-offers.contact-c1', 'QA Offers Contact C1'],
+    ['pos.next-offers.contact-c2', 'QA Offers Contact C2'],
+    ['pos.next-offers.contact-c3', 'QA Offers Contact C3'],
+  ] as const;
+  for (const [mid, name] of offerContacts) {
+    await sql`
+      insert into crm_contacts (id, org_id, human_id, display_name, owner_id, source)
+      values (${matrixUuid(mid)}, ${ORG_BUSINESS}, ${humanId('CONT', mid)}, ${name}, ${owner}, 'manual')
+      on conflict (id) do update set display_name = excluded.display_name
+    `;
+  }
+  register('pos.next-offers.contact-x', {
+    table: 'crm_contacts',
+    where: { id: matrixUuid('pos.next-offers.contact-x') },
+  });
+  const offerTickets: Array<[string, string, string[]]> = [
+    ['pos.next-offers.ticket-x', 'pos.next-offers.contact-x', [PRODUCT_SERVICE_PLAIN]],
+    [
+      'pos.next-offers.ticket-c1',
+      'pos.next-offers.contact-c1',
+      [PRODUCT_SERVICE_PLAIN, PRODUCT_TRACKED],
+    ],
+    [
+      'pos.next-offers.ticket-c2',
+      'pos.next-offers.contact-c2',
+      [PRODUCT_SERVICE_PLAIN, PRODUCT_TRACKED],
+    ],
+    [
+      'pos.next-offers.ticket-c3',
+      'pos.next-offers.contact-c3',
+      [PRODUCT_SERVICE_PLAIN, PRODUCT_TRACKED],
+    ],
+    ['pos.next-offers.ticket-void', 'pos.next-offers.contact-c1', [PRODUCT_ALIASES_AND_ZONE]],
+  ];
+  for (const [mid, contactMid, products] of offerTickets) {
+    const voided = mid.endsWith('-void');
+    await ticket(ctx, {
+      matrixId: mid,
+      id: matrixUuid(mid),
+      orgId: ORG_BUSINESS,
+      shiftId: SHIFT_OPEN,
+      crmContactId: matrixUuid(contactMid),
+      subtotal: '10.00',
+      total: '10.00',
+      status: voided ? 'voided' : 'submitted',
+      voided,
+    });
+    for (const [i, productId] of products.entries()) {
+      await sql`
+        insert into pos_ticket_lines (id, org_id, ticket_id, kind, fin_product_id, booking_id, description, qty, unit_price, total, line_no)
+        values (${matrixUuid(mid, 'line-' + i)}, ${ORG_BUSINESS}, ${matrixUuid(mid)}, 'service', ${productId}, null, 'QA next offers line', 1, 10.00, 10.00, ${i})
+        on conflict (id) do nothing
+      `;
+    }
+  }
 }
