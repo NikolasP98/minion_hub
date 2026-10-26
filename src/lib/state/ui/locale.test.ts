@@ -44,3 +44,12 @@ describe('locale URL persistence', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 });
+
+describe('locale on the server (no window)', () => {
+  it('follows the per-request paraglide tag instead of pinning its own', async () => {
+    const runtime = await import('$lib/paraglide/runtime');
+    runtime.setLanguageTag(() => 'es');
+
+    expect(locale.current).toBe('es');
+  });
+});

@@ -4,6 +4,9 @@ import { resolvePublicLink } from '$server/services/scheduling-public.service';
 import { bumpDoorStat, isLikelyBot } from '$server/services/doors.service';
 import { parseAttribution } from '$lib/doors/attribution';
 
+// Server-rendered like public doors (root is `ssr = false`): an unknown link is a real HTTP 404.
+export const ssr = true;
+
 /** Public, unauthenticated booking page. Resolves the org from the link slug. */
 export const load: PageServerLoad = async ({ params, url, request }) => {
   const resolved = await resolvePublicLink(params.slug);

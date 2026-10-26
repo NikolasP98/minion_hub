@@ -11,10 +11,12 @@ import { parseAttribution, type DoorKey } from '$lib/doors/attribution';
  * kind: unknown, switched-off, CRM-disabled and unregistered-kind doors all
  * 404 the same way. Never cached, so switching a door off takes effect on the
  * next request (SC-003).
- * TODO(handoff): the root layout sets `ssr = false`, so this page (and S5's FAQ
- * JSON-LD) renders client-side only; crawlers that do not run JS see no content.
- * See proposal 2026-10-24-hub-collection-points-followups §9.
  */
+
+// The hub is client-rendered (root `ssr = false`); doors opt back in so a
+// missing door is a real HTTP 404 and FAQ JSON-LD reaches crawlers without JS.
+export const ssr = true;
+
 export const load: PageServerLoad = async ({ params, url, request, setHeaders }) => {
   setHeaders({ 'cache-control': 'no-store' });
   const resolved = await resolvePublicDoor(params.slug);
