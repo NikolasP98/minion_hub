@@ -5,7 +5,7 @@ import { checkRateLimit } from '$server/auth/rate-limit';
 import { bumpDoorStat, resolvePublicDoor } from '$server/services/doors.service';
 
 // Anonymous click beacon for offer doors. Counts only; nothing about the visitor is stored.
-// shortcut: per-lambda limiter, same as the form door; counts are approximate by design.
+// shortcut: per-lambda limiter (the form door uses the shared one); counts are approximate by design.
 const CLICK_LIMIT = 30;
 const bodySchema = z.object({ kind: z.enum(['whatsapp', 'book']) }).strip();
 

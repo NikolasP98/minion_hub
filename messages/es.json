@@ -7286,5 +7286,7 @@
   "crm_no_auto_messages_hint": "Detiene los seguimientos y recordatorios automáticos a este contacto.",
   "crm_no_auto_messages_forbidden": "Tu rol no puede cambiar este ajuste.",
   "doors_col_clicks": "Clics",
-  "sched_book_subtitle": "Elige un servicio y reserva un horario disponible."
+  "sched_book_subtitle": "Elige un servicio y reserva un horario disponible.",
+  "inboxKind_crm_door_submission": "Envío de puerta",
+  "sched_book_eyebrow": "Reserva en línea"
 }

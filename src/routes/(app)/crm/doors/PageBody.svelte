@@ -178,14 +178,14 @@
       custom: true,
       accessor: (r) => r.title,
       fill: true,
-      width: 140,
+      width: 100,
     },
     {
       key: 'kind',
       label: m.doors_col_kind(),
       custom: true,
       accessor: (r) => doorKindLabel(r.kind),
-      width: 150,
+      width: 130,
     },
     {
       key: 'link',
@@ -193,7 +193,7 @@
       custom: true,
       accessor: (r) => r.slug,
       sortable: false,
-      width: 200,
+      width: 196,
     },
     {
       key: 'active',
@@ -202,11 +202,11 @@
       accessor: (r) => (r.active ? 1 : 0),
       width: 72,
     },
-    count('views', m.doors_col_views()),
+    count('views', m.doors_col_views(), 72),
     count('submissions', m.doors_col_submissions(), 130),
-    count('clicks', m.doors_col_clicks()),
-    count('contacts', m.doors_col_contacts(), 130),
-    count('customers', m.doors_col_customers()),
+    count('clicks', m.doors_col_clicks(), 64),
+    count('contacts', m.doors_col_contacts(), 120),
+    count('customers', m.doors_col_customers(), 80),
   ]);
 </script>
 
