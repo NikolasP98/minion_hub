@@ -47,6 +47,7 @@ const KIND_LABELS: Record<string, () => string> = {
   'finance.sync_failed': () => m.inboxKind_finance_sync_failed(),
   'crm.dni_pending': () => m.inboxKind_crm_dni_pending(),
   'crm.birthday': () => m.inboxKind_crm_birthday(),
+  'crm.door_submission': () => m.inboxKind_crm_door_submission(),
   'daily.feed': () => m.inbox_daily_title(),
   'app.update': () => m.changelog_title(),
 };

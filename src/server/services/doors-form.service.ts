@@ -88,7 +88,8 @@ export async function submitFormDoor(
       orgId: ctx.tenantId,
       capability: 'crm:manage',
       kind: 'crm.door_submission',
-      title: 'Nuevo envío de formulario',
+      // The bell shows the title only, so it names the door and the contact.
+      title: `Nuevo envío · ${door.title} · ${who.name ?? 'Sin nombre'}`,
       body: `${door.title} · ${who.name ?? 'Sin nombre'}`,
       href: `/crm/doors/${door.id}`,
       subjectType: 'door_submission',

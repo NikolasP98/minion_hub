@@ -198,7 +198,7 @@
 <PublicTaskShell
   eyebrow={data.eventTypes.length > 0
     ? `${currentStepIndex + 1} / ${steps.length} · ${steps[currentStepIndex]?.label ?? ''}`
-    : 'Public booking'}
+    : m.sched_book_eyebrow()}
   title={data.title}
   description={data.description ?? m.sched_book_subtitle()}
   tone={step === 'done' ? 'success' : 'default'}
