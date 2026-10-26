@@ -9,7 +9,12 @@ const boundary = vi.hoisted(() => ({
   join: vi.fn(),
 }));
 vi.mock('$server/auth/authorize', () => ({ requireAuth: () => ({ id: 'authenticated' }) }));
-vi.mock('$server/auth/core-ctx', () => ({ requireCoreCtx: boundary.ctx }));
+// The page reads through the spec 039 dataset boundary; its role check is covered by dataset-ctx tests.
+vi.mock('$server/auth/dataset-ctx', async () => ({
+  datasetCtx: boundary.ctx,
+  requireDataset: boundary.ctx,
+  isDenied: (await import('$lib/permissions')).isDenied,
+}));
 vi.mock('$server/services/rbac.service', () => ({
   hasOrgCapability: async (_locals: unknown, module: string) =>
     module === 'users' ? boundary.canReview : boundary.canPulse,
