@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { requireAuth } from '$server/auth/authorize';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { requireOrgCapability, shouldMaskSensitive } from '$server/services/rbac.service';
 import { getDailyFeedView } from '$server/services/inbox/daily-feed.service';
 
@@ -12,7 +12,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   requireAuth(locals);
   await requireOrgCapability(locals, 'scheduling', 'view');
   await requireOrgCapability(locals, 'pos', 'view');
-  const ctx = await requireCoreCtx(locals);
+  // The feed aggregates appointments (scheduling) and the register (pos): both handles must view.
+  await requireDataset(locals, 'scheduling');
+  const ctx = await requireDataset(locals, 'pos');
   const view = await getDailyFeedView(ctx, url.searchParams.get('date') ?? undefined);
   const maskMoney = await shouldMaskSensitive(locals, 'finance');
   return {

@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { listBrains, resolvePrincipal } from '$server/services/brains.service';
 
 /**
@@ -8,7 +8,7 @@ import { listBrains, resolvePrincipal } from '$server/services/brains.service';
  * has real data to render (agent column is an em-dash placeholder client-side).
  */
 export const load: PageServerLoad = async ({ locals, depends }) => {
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await requireDataset(locals, 'brains');
   depends('brains:list');
   const principal = await resolvePrincipal(ctx);
   const brains = await listBrains(ctx, principal);

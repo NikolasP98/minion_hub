@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { requireTenantCtx } from '$server/auth/authorize';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { listAreas } from '$server/services/org-areas.service';
 import { listUsers } from '$server/services/user.service';
 import { listOrgSubscriptionEdges } from '$server/services/shared-identity.service';
@@ -13,7 +13,9 @@ import { listOrgSubscriptionEdges } from '$server/services/shared-identity.servi
  */
 export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('app:org-areas');
-  const ctx = requireTenantCtx(locals);
+  await requireDataset(locals, 'overview'); // view check + 401 (spec 039)
+  const ctx = locals.tenantCtx;
+  if (!ctx) throw error(401, 'Authentication required');
 
   const [areas, users, subscriptions] = await Promise.all([
     listAreas(ctx).catch(() => []),

@@ -3,7 +3,7 @@ import { error } from '@sveltejs/kit';
 import { listAvailableSharedIdentities } from '$server/services/shared-identity.service';
 import { getGoogleCredential } from '$server/services/identity.service';
 import { probeGoogleToken, type GoogleTokenHealth } from '$server/services/google-token-health';
-import { getCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import {
   getRetentionDays,
   listEntries,
@@ -94,7 +94,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   });
 
   // Ledger (Supabase-PG, org-scoped): retention setting + recent processed rows.
-  const coreCtx = await getCoreCtx(locals);
+  const coreCtx = await requireDataset(locals, 'channels');
   const [retentionDays, entries] = coreCtx
     ? await Promise.all([
         getRetentionDays(coreCtx).catch(() => DEFAULT_RETENTION_DAYS),

@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
+import { requireDataset, viewableModules } from '$server/auth/dataset-ctx';
 import type { PageServerLoad } from './$types';
-import { getCoreCtx } from '$server/auth/core-ctx';
 import {
   listMyWork,
   listRules,
@@ -13,8 +13,10 @@ import { workforceWorkItems, type WorkforceWorkItem } from '$lib/workforce/work-
 
 export const load: PageServerLoad = async (event) => {
   const { locals } = event;
-  const ctx = await getCoreCtx(locals);
-  if (!ctx?.profileId) throw error(401, 'Authentication required');
+  const ctx = await requireDataset(locals, 'projects');
+  if (!ctx.profileId) throw error(401, 'Authentication required');
+  // The queue aggregates support/crm/sales docs: each only if the role can view that dataset.
+  const viewable = await viewableModules(locals, ['support', 'crm', 'sales']);
   event.depends('work:queue');
 
   const isAdmin = locals.user?.role === 'admin';
@@ -26,7 +28,7 @@ export const load: PageServerLoad = async (event) => {
       : Promise.reject(new Error('Workforce identity unavailable'));
 
   const [items, users, rules, workforceResult] = await Promise.all([
-    listMyWork(ctx, ctx.profileId),
+    listMyWork(ctx, ctx.profileId, viewable),
     listUsers(ctx).catch(() => []),
     isAdmin ? listRules(ctx) : Promise.resolve([]),
     workforceInbox.then(

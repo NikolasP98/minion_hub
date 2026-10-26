@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error, isHttpError } from '@sveltejs/kit';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import {
   listDocuments,
   listAccess,
@@ -21,7 +21,7 @@ import { uuidParamOr404 } from '$server/utils/uuid-param';
  */
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await requireDataset(locals, 'brains');
   depends('brains:detail');
   const principal = await resolvePrincipal(ctx);
 

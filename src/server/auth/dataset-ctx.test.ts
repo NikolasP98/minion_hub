@@ -7,7 +7,7 @@ vi.mock('$server/services/rbac.service', () => ({
   resolveCapabilities: (...a: unknown[]) => resolveCapabilities(...a),
 }));
 
-import { datasetCtx, isDenied, readDataset } from './dataset-ctx';
+import { datasetCtx, isDenied, readDataset, requireDataset, viewableModules } from './dataset-ctx';
 
 const ctx = { db: {}, tenantId: 't', profileId: 'p' };
 const member = { user: { role: 'member', supabaseId: 'p' } } as unknown as App.Locals;
@@ -76,5 +76,30 @@ describe('isDenied', () => {
     expect(isDenied({ denied: true })).toBe(false);
     expect(isDenied([{ denied: 'pos', verb: 'view' }])).toBe(false);
     expect(isDenied(null)).toBe(false);
+  });
+});
+
+describe('requireDataset / viewableModules', () => {
+  beforeEach(() => {
+    getCoreCtx.mockReset().mockResolvedValue(ctx);
+    resolveCapabilities.mockReset();
+  });
+
+  it('requireDataset throws a K3-shaped 403 when the role cannot view', async () => {
+    resolveCapabilities.mockResolvedValue({ can: vi.fn().mockReturnValue(false) });
+    await expect(requireDataset(member, 'brains')).rejects.toMatchObject({
+      status: 403,
+      body: { message: 'brains: view required' },
+    });
+  });
+
+  it('requireDataset returns the handle when allowed', async () => {
+    resolveCapabilities.mockResolvedValue({ can: vi.fn().mockReturnValue(true) });
+    expect(await requireDataset(member, 'brains')).toBe(ctx);
+  });
+
+  it('viewableModules keeps only the viewable modules', async () => {
+    resolveCapabilities.mockResolvedValue({ can: (m: string) => m === 'crm' });
+    expect([...(await viewableModules(member, ['crm', 'sales']))]).toEqual(['crm']);
   });
 });

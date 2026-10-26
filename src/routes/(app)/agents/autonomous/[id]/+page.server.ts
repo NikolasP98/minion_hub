@@ -1,13 +1,13 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { loadSystemAgentVMs } from '$lib/server/system-agents/registry';
 import { getArtifactsForAgent } from '$lib/server/artifacts/registry';
 import { listExportToggles } from '$lib/server/flows/exports-store';
 import { getHealthMetrics } from '$lib/server/agents/health-metrics';
 
 export const load: PageServerLoad = async ({ locals, params }) => {
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await requireDataset(locals, 'agents');
   const isAdmin = locals.user?.role === 'admin';
   const vms = await loadSystemAgentVMs(ctx).catch(() => []);
   const agent = vms.find((v) => v.id === params.id);
@@ -19,5 +19,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
     flowTogglesByFlow[agent.flowId] = await listExportToggles(ctx, agent.flowId).catch(() => ({}));
   }
   const health = await getHealthMetrics(ctx, agent);
-  return { agent, artifacts: await getArtifactsForAgent(ctx, agent.id), isAdmin, flowTogglesByFlow, health };
+  return {
+    agent,
+    artifacts: await getArtifactsForAgent(ctx, agent.id),
+    isAdmin,
+    flowTogglesByFlow,
+    health,
+  };
 };

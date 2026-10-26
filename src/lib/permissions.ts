@@ -270,6 +270,12 @@ export const DATASET_ENFORCED: readonly Module[] = [
   'support',
   'memberships',
   'ads',
+  'pulse',
+  'projects',
+  'brains',
+  'agents',
+  'channels',
+  'overview',
 ];
 
 /** A dataset the caller's role cannot view: returned in a load's data slot instead of throwing. */

@@ -1,5 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { requireCoreCtx } from '$server/auth/core-ctx';
+import { requireDataset } from '$server/auth/dataset-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import {
   getBrainEnrichmentPlatformState,
@@ -10,7 +10,7 @@ import {
 
 export const load: PageServerLoad = async ({ locals, depends }) => {
   await requireOrgCapability(locals, 'brains', 'manage');
-  const ctx = await requireCoreCtx(locals);
+  const ctx = await requireDataset(locals, 'brains');
   depends('brains:settings');
   return {
     enrichment: await getBrainEnrichmentSettingsState(ctx),
