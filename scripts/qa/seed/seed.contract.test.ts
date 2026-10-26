@@ -207,6 +207,31 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     expect(element.created_by).toBe(userId('tenancy.user.owner'));
   });
 
+  it('tenancy.nav.staff-section holds a Sell link and the moved Appointments main', async () => {
+    const [row] = await sql<
+      {
+        value: {
+          sections: { slug: string; pages: { id: string; kind: string; target: string }[] }[];
+        };
+      }[]
+    >`
+      select value from app_nav_config where org_id = ${ORG_BUSINESS}
+    `;
+    const [staff] = row.value.sections;
+    expect(staff.slug).toBe('staff');
+    expect(staff.pages.map((p) => p.id)).toEqual(['k3x9q2', 'a1b2c3']);
+    expect(staff.pages.map((p) => p.kind)).toEqual(['link', 'main']);
+    expect(staff.pages.map((p) => p.target)).toEqual(['/pos/sell', '/pos/appointments']);
+  });
+
+  it('tenancy.nav.staff-sell-viewer-rule denies view', async () => {
+    const [row] = await sql<{ can_view: boolean }[]>`
+      select can_view from permission_rules
+      where org_id = ${ORG_BUSINESS} and role_key = 'viewer' and module = 'page:k3x9q2'
+    `;
+    expect(row.can_view).toBe(false);
+  });
+
   it('att.file.near-quota sits within 1% under orgQuotaBytes', async () => {
     const quota = Number(process.env.ATTACHMENT_ORG_QUOTA_BYTES) || 2 * 1024 * 1024 * 1024;
     const ref = registered.get('att.file.near-quota')!;

@@ -194,6 +194,12 @@ export interface Capabilities {
    * with SENSITIVE_FIELD_LEVEL to decide whether to mask PII / cost / margin.
    */
   fieldLevel(module: Module | string): number;
+  /**
+   * Explicit override only — `can()` falls back to the parent module, which is
+   * wrong for `nav.*` link keys (spec 037). `undefined` = no override row under
+   * any of the member's roles; otherwise true when any such row has `can_view`.
+   */
+  explicitView(key: string): boolean | undefined;
 }
 
 export interface CapabilityOverrideRow {
@@ -279,6 +285,10 @@ export function buildCapabilities(
     visibleModules: () => MODULES.filter((m) => can(m, 'view')),
     ownerScoped,
     fieldLevel,
+    explicitView: (key) =>
+      roles.some((rk) => ovr.has(`${rk}:${key}`))
+        ? roles.some((rk) => ovr.get(`${rk}:${key}`)?.view === true)
+        : undefined,
   };
 }
 
@@ -1114,6 +1124,8 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/work', 'projects'],
   ['/api/workforce', 'projects'],
   ['/api/modules', 'settings'],
+  // nav config (spec 037); GET resolve is a read and stays ungated
+  ['/api/nav', 'settings'],
   ['/api/plugins', 'settings'],
   // Sandbox element writes are already `requireAdmin` at each handler; this
   // prefix is the central belt-and-suspenders if that is ever relaxed

@@ -16,6 +16,8 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { listBrainAgentIds } from '$server/services/brain-agents.service';
 import { readTableConfig } from '$server/services/table-config.service';
 import type { TableConfig } from '$lib/tables/registry';
+import { readNavConfig } from '$server/services/nav-config.service';
+import { EMPTY_NAV_CONFIG, visibleNavConfig } from '$lib/nav/custom-sections';
 import { dev } from '$app/environment';
 import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
@@ -84,6 +86,7 @@ export const load: LayoutServerLoad = async ({
     'app:hosts',
     'app:preferences',
     'app:table-config',
+    'app:nav-config',
   );
 
   const user = requireAuth(locals);
@@ -121,6 +124,8 @@ export const load: LayoutServerLoad = async ({
     locals.orgId ?? locals.tenantCtx?.tenantId ?? '',
   ].join(':');
 
+  // Org shell config (table + nav), not a dataset: one ctx read for both.
+  const shellCtx = () => getCoreCtx(locals);
   const [permissions, organizations, coreBundle] = await Promise.all([
     traceLayoutLoad('permissions', loadPermissionsForUser(locals, user.id)),
     traceLayoutLoad('organizations', loadOrganizationsForUser(locals, user.id)),
@@ -151,9 +156,17 @@ export const load: LayoutServerLoad = async ({
               // DataTable on the page. Fail-soft: defaults render on a hiccup.
               traceLayoutLoad(
                 'table-config',
-                getCoreCtx(locals)
+                shellCtx()
                   .then((ctx) => (ctx ? readTableConfig(ctx) : ({} as TableConfig)))
                   .catch(() => ({}) as TableConfig),
+              ),
+              // Org custom nav sections (spec 037), filtered per member below.
+              // Fail-soft: no custom sections on a hiccup.
+              traceLayoutLoad(
+                'nav-config',
+                shellCtx()
+                  .then((ctx) => (ctx ? readNavConfig(ctx) : EMPTY_NAV_CONFIG))
+                  .catch(() => EMPTY_NAV_CONFIG),
               ),
             ]),
           2_000,
@@ -161,7 +174,8 @@ export const load: LayoutServerLoad = async ({
       ),
     ),
   ]);
-  const [workspaces, personalAgent, hosts, preferences, brainAgentIds, tableConfig] = coreBundle;
+  const [workspaces, personalAgent, hosts, preferences, brainAgentIds, tableConfig, navConfigFull] =
+    coreBundle;
 
   const activeOrgId = organizations.activeOrgId;
   // `locals.orgKind` was already resolved for this exact org by the request
@@ -269,5 +283,10 @@ export const load: LayoutServerLoad = async ({
     preferences,
     brainAgentIds,
     tableConfig,
+    navConfig: visibleNavConfig(
+      navConfigFull,
+      new Set(permissions.permissions),
+      permissions.permissions.includes('settings:manage'),
+    ),
   };
 };

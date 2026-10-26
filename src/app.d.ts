@@ -1,6 +1,7 @@
 import type { TenantContext } from '$server/services/base';
 import type { OrgKind } from '$lib/org-kind';
 import type { ModuleStates } from '$lib/modules/availability';
+import type { NavConfig } from '$lib/nav/custom-sections';
 import type { PeekState } from '$lib/records/peek.svelte';
 
 declare global {
@@ -56,6 +57,10 @@ declare global {
        * aren't in reach. */
       buildChannel?: 'dev' | 'prd';
       tenantCtx?: TenantContext;
+      /** Full org nav config, set by hooks.server.ts finishApp for app page requests; consumed by the alias guards (spec 037). */
+      navConfig?: NavConfig;
+      /** Set by effectiveGuardPath: true = an instance's page rule already decided navigation, false = an explicit built-in page row denies, undefined = run the registry decision (spec 037 Amendment B). */
+      pageRule?: boolean;
       // serverId is set for metrics Bearer-token auth
       serverId?: string;
       /**
