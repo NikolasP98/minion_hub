@@ -44,7 +44,10 @@ export function buildOutboundRow(args: {
  * Send a message to a contact from the CRM detail page.
  * Resolves the recipient + originating account from the contact's identity and
  * existing thread, dispatches via the gateway, and records the outbound row so
- * it appears in the timeline immediately.
+ * it appears in the timeline immediately. `opts.accountId` replaces the
+ * inferred account: a contact with no thread yet (a new door lead) infers none,
+ * and automated sends must never guess which account speaks for the org.
+ * `clientId` doubles as the gateway idempotency key.
  */
 export async function sendContactMessage(
   ctx: CoreCtx,
@@ -52,6 +55,7 @@ export async function sendContactMessage(
   channel: string,
   text: string,
   clientId?: string,
+  opts?: { accountId?: string },
 ): Promise<{ ok: true }> {
   const body = text.trim();
   if (!body) throw new Error('Message text is required');
@@ -75,7 +79,7 @@ export async function sendContactMessage(
 
   const to = resolved[0]?.to;
   if (!to) throw new Error(`Contact has no ${channel} identity`);
-  const accountId = resolved[0]?.account_id ?? null;
+  const accountId = opts?.accountId ?? resolved[0]?.account_id ?? null;
   const gatewayId = resolved[0]?.gateway_id ?? null;
 
   await gatewayCall('channels.send', {
