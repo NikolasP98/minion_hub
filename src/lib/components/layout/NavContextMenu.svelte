@@ -450,16 +450,16 @@
   }
 
   // Move picker rows ────────────────────────────────────────────────────────
-  type Dest = { id: string; title: string; path: string; sectionId?: string; module?: string };
+  type Dest = { id: string; title: string; place: string; sectionId?: string; module?: string };
   const destinations = $derived.by<Dest[]>(() => {
     const rows: Dest[] = config.sections
       .filter((s) => s.id !== instance?.sectionId)
-      .map((s) => ({ id: `s:${s.id}`, title: s.label, path: `/${s.slug}`, sectionId: s.id }));
+      .map((s) => ({ id: `s:${s.id}`, title: s.label, place: `/${s.slug}`, sectionId: s.id }));
     // Built-in modules can receive instances; a built-in main-to-be needs a custom section.
     if (instance)
       for (const mod of getModules())
         if (mod.id !== instance.sectionSlug)
-          rows.push({ id: `m:${mod.id}`, title: mod.label, path: `/${mod.id}`, module: mod.id });
+          rows.push({ id: `m:${mod.id}`, title: mod.label, place: `/${mod.id}`, module: mod.id });
     return rows;
   });
   function moveTo(d: Dest) {
@@ -580,7 +580,7 @@
     ]}
     rows={destinations}
     getRowId={(r) => r.id}
-    searchText={(r) => `${r.title} ${r.path}`}
+    searchText={(r) => `${r.title} ${r.place}`}
     selectionMode="single"
     onPick={moveTo}
     onclose={closeDlg}
