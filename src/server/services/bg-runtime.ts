@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
 import { bgJobs } from '$server/db/pg-schema/bg-jobs';
 import { withAiUsageOrg } from '$server/ai-usage';
-import { isEnforced, orgAllows, skippedField } from '$server/services/entitlements.service';
+import { isEnforced, orgFeatureCheck, skippedField } from '$server/services/entitlements.service';
 
 export type BgJob = typeof bgJobs.$inferSelect;
 export type JobTransaction = Parameters<
@@ -383,11 +383,13 @@ async function advanceAdmittedJob(
           abort.abort();
           return invoked;
         }
-        if (
-          handler.feature &&
-          isEnforced() &&
-          !(await orgAllows(job.tenantId, handler.feature, `job:${job.type}`))
-        ) {
+        const denied =
+          handler.feature && isEnforced()
+            ? await orgFeatureCheck(job.tenantId, handler.feature, `job:${job.type}`)
+            : null;
+        // A failed plan lookup is transient: leave the lease to expire so a later tick retries.
+        if (denied === 'lookup_error') return invoked;
+        if (denied) {
           // Finishes the job as failed with a named reason, so it is not re-leased.
           if (stats) stats.skipped += 1;
           result = { done: true, error: 'skipped_by_entitlement' };

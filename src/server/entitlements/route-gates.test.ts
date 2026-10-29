@@ -138,6 +138,9 @@ beforeEach(() => {
   h.execute.mockResolvedValue([{ kind: 'business', plan_key: null }]); // Base
 });
 
+// Route modules import slowly on a cold, parallel run; the default 5 s timed out in the audit.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe('gated routes refuse a Base org when enforced', () => {
   it.each(GATED)('%s → 403 premium_required (%s)', async (route, feature, only) => {
     const list = await handlers(route, only);

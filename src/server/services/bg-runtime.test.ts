@@ -5,10 +5,10 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const entry = vi.hoisted(() => ({ db: vi.fn() }));
-const ent = vi.hoisted(() => ({ enforced: false, allows: vi.fn() }));
+const ent = vi.hoisted(() => ({ enforced: false, check: vi.fn() }));
 vi.mock('$server/services/entitlements.service', () => ({
   isEnforced: () => ent.enforced,
-  orgAllows: ent.allows,
+  orgFeatureCheck: ent.check,
   skippedField: (n: number) => (n ? { skippedByEntitlement: n } : {}),
 }));
 vi.mock('$server/db/pg-client', () => ({
@@ -328,17 +328,17 @@ describe('heartbeat lifecycle', () => {
 describe('entitlement skips (spec 043)', () => {
   afterEach(() => {
     ent.enforced = false;
-    ent.allows.mockReset();
+    ent.check.mockReset();
   });
   it('finishes an AI job of an org without the feature as skipped and never re-leases it', async () => {
     ent.enforced = true;
-    ent.allows.mockResolvedValue(false);
+    ent.check.mockResolvedValue('not_in_plan');
     const advance = vi.fn();
     registerJobHandler({ type: 'ai-fixture', feature: 'ai.proactive', advance });
     const id = await seed('ai-fixture');
     expect(await runTick(5_000)).toEqual({ advanced: 0, skippedByEntitlement: 1 });
     expect(advance).not.toHaveBeenCalled();
-    expect(ent.allows).toHaveBeenCalledWith('tenant-a', 'ai.proactive', 'job:ai-fixture');
+    expect(ent.check).toHaveBeenCalledWith('tenant-a', 'ai.proactive', 'job:ai-fixture');
     const finished = (await row(id)) as Awaited<ReturnType<typeof row>> & { error: string };
     expect(finished.status).toBe('failed');
     expect(finished.error).toBe('skipped_by_entitlement');
@@ -346,7 +346,7 @@ describe('entitlement skips (spec 043)', () => {
   });
   it('runs the AI job when the org has the feature, and a featureless job is never checked', async () => {
     ent.enforced = true;
-    ent.allows.mockResolvedValue(true);
+    ent.check.mockResolvedValue(null);
     const ai = vi.fn(async () => ({ done: true }));
     const finance = vi.fn(async () => ({ done: true }));
     registerJobHandler({ type: 'ai-fixture', feature: 'ai.proactive', advance: ai });
@@ -356,7 +356,19 @@ describe('entitlement skips (spec 043)', () => {
     expect(await runTick(5_000)).toEqual({ advanced: 2 });
     expect((await row(aiId)).status).toBe('done');
     expect((await row(financeId)).status).toBe('done');
-    expect(ent.allows).toHaveBeenCalledTimes(1);
+    expect(ent.check).toHaveBeenCalledTimes(1);
+  });
+  it('a plan lookup error neither runs nor finishes the job: it stays resumable', async () => {
+    ent.enforced = true;
+    ent.check.mockResolvedValue('lookup_error');
+    const advance = vi.fn();
+    registerJobHandler({ type: 'ai-fixture', feature: 'ai.proactive', advance });
+    const id = await seed('ai-fixture');
+    expect(await runTick(5_000)).toEqual({ advanced: 0 });
+    expect(advance).not.toHaveBeenCalled();
+    const after = (await row(id)) as Awaited<ReturnType<typeof row>> & { error: string | null };
+    expect(after.status).not.toBe('failed');
+    expect(after.error ?? null).toBeNull();
   });
 });
 

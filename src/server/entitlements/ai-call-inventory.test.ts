@@ -73,6 +73,22 @@ const AI_CALL_SITES: Record<string, { kind: Kind; reason?: string }> = {
     kind: 'browser-gateway',
     reason: 'playground.complete; the workshop page is hidden',
   },
+  'src/lib/services/gateway/chat-rpc.ts': {
+    kind: 'browser-gateway',
+    reason: 'chat.send; refused by the gateway allowlist for Base sessions (S4)',
+  },
+  'src/lib/services/my-agent-rpc.ts': {
+    kind: 'browser-gateway',
+    reason: 'myAgent.emailSummary/emailDraftReply; gateway allowlist (S4), controls hidden (S3)',
+  },
+  'src/lib/services/gateway-rpc.ts': {
+    kind: 'browser-gateway',
+    reason: 'agent.install from the marketplace page; gateway allowlist (S4), page hidden (S3)',
+  },
+  'src/lib/workshop/gateway-bridge.ts': {
+    kind: 'browser-gateway',
+    reason: 'chat.send from the workshop canvas; the workshop page is hidden',
+  },
   // Reached only through a gated route or job
   'src/lib/server/artifacts/builder.ts': {
     kind: 'backstop-only',
@@ -103,6 +119,10 @@ const AI_CALL_SITES: Record<string, { kind: Kind; reason?: string }> = {
     reason:
       'the embeddings chokepoint (assertAiCallAllowed); brains, agent-memories, vectorize tick',
   },
+  'src/server/services/builder-agent-publisher.ts': {
+    kind: 'backstop-only',
+    reason: 'agents.create, reached only from api/builder/agents/[id] (route-gate)',
+  },
   'src/server/services/brain-agents.service.ts': {
     kind: 'backstop-only',
     reason:
@@ -120,8 +140,10 @@ const AI_CALL_SITES: Record<string, { kind: Kind; reason?: string }> = {
 };
 
 const ROOT = process.cwd();
-const AI_METHODS = /['"](media\.transcribe|playground\.complete|agents\.create|agents\.delete)['"]/;
-const GATEWAY_CALL = /\b(gatewayCall|gatewayCallToInstance|sendRequest)\b/;
+// Any literal of an AI gateway method counts, however the caller names its RPC helper
+// (gatewayCall, sendRequest, beginRequest, an injected `rpc`/`call`).
+const AI_METHODS =
+  /['"](media\.transcribe|playground\.complete|agents\.create|agents\.delete|chat\.send|myAgent\.emailSummary|myAgent\.emailDraftReply|agent\.install)['"]/;
 const DIRECT_AI = /getOpenRouterModel\(|openrouter\.ai|elevenlabs\.io/;
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -138,7 +160,7 @@ function scan(): string[] {
     .filter((file) => !file.includes('/src/lib/paraglide/'))
     .filter((file) => {
       const text = readFileSync(file, 'utf8');
-      return DIRECT_AI.test(text) || (AI_METHODS.test(text) && GATEWAY_CALL.test(text));
+      return DIRECT_AI.test(text) || AI_METHODS.test(text);
     })
     .map((file) => relative(ROOT, file))
     .sort();

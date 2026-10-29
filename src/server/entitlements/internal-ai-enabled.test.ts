@@ -87,6 +87,21 @@ describe('/api/internal/channels/resolved', () => {
     ]);
     expect(h.execute).toHaveBeenCalledTimes(2); // once per distinct org
   });
+  it('a lookup error never demotes: the last answer, else true, and logs lookup_error', async () => {
+    h.env.ENTITLEMENTS_ENFORCED = 'true';
+    await channelsOf(); // base-org and premium-org answered once
+    h.rows = [wa('a', 'base-org'), wa('b', 'premium-org'), wa('d', 'unseen-org')];
+    h.execute.mockRejectedValue(new Error('db down'));
+    expect(await channelsOf()).toEqual([
+      ['a', false],
+      ['b', true],
+      ['d', true],
+    ]);
+    expect(console.warn).toHaveBeenCalledWith(
+      'entitlement.lookup_error',
+      expect.stringContaining('unseen-org'),
+    );
+  });
 });
 
 describe('/api/internal/flows/[id]', () => {

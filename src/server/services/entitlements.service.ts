@@ -61,14 +61,19 @@ async function loadPlan(orgId: string): Promise<PlanLookup> {
   };
 }
 
+/** The last successful lookup per org on this instance, for config paths (see orgAllowsForConfig). */
+const lastAnswer = new Map<string, PlanLookup>();
+
 /** The cached plan lookup; null on any DB or cache error (logged as lookup_error). */
 async function lookupPlan(orgId: string): Promise<PlanLookup | null> {
   try {
-    return await cached(
+    const lookup = await cached(
       keys.hub('entitlements', { t: orgId }),
       { ttl: '5m', swr: '1m', tags: entitlementTags(orgId) },
       () => loadPlan(orgId),
     );
+    lastAnswer.set(orgId, lookup);
+    return lookup;
   } catch (err) {
     console.error('[entitlements] lookup_error', { orgId, err });
     return null;
@@ -146,13 +151,20 @@ async function checkFeature(
     if (enforced) throw error(401, 'Authentication required');
     return;
   }
+  if (!enforced) {
+    // Shadow log only: a request never waits on the plan lookup while the flag is off.
+    void denyReason(orgId, feature).then(({ reason, plan }) => {
+      if (reason)
+        console.warn(
+          'entitlement.would_deny',
+          JSON.stringify({ feature, orgId, plan, reason, surface }),
+        );
+    });
+    return;
+  }
   const { reason, plan } = await denyReason(orgId, feature);
   if (!reason) return;
-  console.warn(
-    enforced ? 'entitlement.denied' : 'entitlement.would_deny',
-    JSON.stringify({ feature, orgId, plan, reason, surface }),
-  );
-  if (!enforced) return;
+  console.warn('entitlement.denied', JSON.stringify({ feature, orgId, plan, reason, surface }));
   captureDenial(orgId, feature, reason, surface, locals?.user?.id);
   if (reason === 'lookup_error') {
     throw error(503, { message: 'Plan lookup unavailable', code: 'entitlements_unavailable' });
@@ -169,11 +181,39 @@ async function checkFeature(
  * Flag off → true with no lookup. A lookup error denies. Logs the skip; never sends PostHog.
  */
 export async function orgAllows(orgId: string, feature: string, surface: string): Promise<boolean> {
-  if (!isEnforced()) return true;
+  return !(await orgFeatureCheck(orgId, feature, surface));
+}
+
+/** `orgAllows` with the reason, so a job can tell a transient `lookup_error` from a real denial. */
+export async function orgFeatureCheck(
+  orgId: string,
+  feature: string,
+  surface: string,
+): Promise<DenyReason | null> {
+  if (!isEnforced()) return null;
   const { reason, plan } = await denyReason(orgId, feature);
-  if (!reason) return true;
-  console.warn('entitlement.skipped', JSON.stringify({ feature, orgId, plan, reason, surface }));
-  return false;
+  if (reason)
+    console.warn('entitlement.skipped', JSON.stringify({ feature, orgId, plan, reason, surface }));
+  return reason;
+}
+
+/**
+ * Config paths (the gateway channel mirror): like `orgAllows`, but a lookup error never demotes a
+ * paying org (resolution decision 1). It answers from this instance's last answer, else `true`.
+ */
+export async function orgAllowsForConfig(
+  orgId: string,
+  feature: string,
+  surface: string,
+): Promise<boolean> {
+  const reason = await orgFeatureCheck(orgId, feature, surface);
+  if (reason !== 'lookup_error') return !reason;
+  const last = lastAnswer.get(orgId);
+  console.warn(
+    'entitlement.lookup_error',
+    JSON.stringify({ feature, orgId, surface, fallback: last ? 'last_answer' : 'allow' }),
+  );
+  return last ? isEntitled(last, feature).allowed : true;
 }
 
 /** `{skippedByEntitlement}` only when something was skipped, so flag-off tick responses keep their shape. */

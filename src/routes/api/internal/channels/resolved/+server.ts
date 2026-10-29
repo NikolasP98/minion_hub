@@ -5,7 +5,7 @@ import { channels } from '@minion-stack/db/pg';
 import { getCoreDb } from '$server/db/pg-client';
 import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import { toResolvedChannels } from '$server/services/channel-publish.service';
-import { isEnforced, orgAllows } from '$server/services/entitlements.service';
+import { isEnforced, orgAllowsForConfig } from '$server/services/entitlements.service';
 
 /**
  * Internal gateway→hub hydration (ticket P1-T1). The gateway PULLS its resolved
@@ -49,14 +49,14 @@ export const GET: RequestHandler = async ({ locals }) => {
     .from(channels)
     .where(eq(channels.gatewayId, gatewayId));
 
-  // Spec 043: one entitlement lookup per owning org. Flag off → every org true.
-  // TODO(handoff): a plan lookup error answers aiEnabled=false (G1: a failed lookup never grants), so a DB
-  // blip stops replies for paying orgs until the next 5-minute mirror tick. The spec names no channel
-  // exception; owner to confirm or add one. See meta proposals/2026-10-29-hub-org-entitlements-followups.md.
+  // Spec 043: one entitlement lookup per owning org. Flag off → every org true. A lookup error never
+  // demotes a paying org (owner decision): the last answer on this instance, else true.
   const orgIds = [...new Set(rows.map((r) => r.tenantId).filter((t): t is string => !!t))];
   const aiEnabled = new Map(
     await Promise.all(
-      orgIds.map(async (org) => [org, await orgAllows(org, 'ai', 'channels.resolved')] as const),
+      orgIds.map(
+        async (org) => [org, await orgAllowsForConfig(org, 'ai', 'channels.resolved')] as const,
+      ),
     ),
   );
   if (isEnforced()) {
