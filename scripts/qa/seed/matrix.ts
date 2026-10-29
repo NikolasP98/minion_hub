@@ -37,7 +37,8 @@ export interface MatrixEntry {
     | 'inbox'
     | 'release'
     | 'pulse'
-    | 'doors';
+    | 'doors'
+    | 'entitlements';
   readonly why: string;
 }
 
@@ -789,6 +790,17 @@ export const MATRIX: readonly MatrixEntry[] = [
     id: 'doors.rate-limit.stale-window',
     domain: 'doors',
     why: 'public_rate_limits bucket at the 5-hit cap but with an expired window: the next qa-intake submit from that visitor resets it instead of answering 429',
+  },
+  // ── Org entitlements (spec 043 S1) ───────────────────────────────────
+  {
+    id: 'entitlements.org.premium',
+    domain: 'entitlements',
+    why: 'main QA business org on the Premium plan (org_plans row; inert while ENTITLEMENTS_ENFORCED is off)',
+  },
+  {
+    id: 'entitlements.org.base',
+    domain: 'entitlements',
+    why: 'modules-off QA org explicitly on Base: contrast for the gates S2+ add',
   },
 ] as const;
 

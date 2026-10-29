@@ -154,6 +154,7 @@ export const SEEDED_TABLES: readonly string[] = [
   'crm_door_followups',
   'crm_door_stats_daily',
   'public_rate_limits',
+  'org_plans',
 ];
 
 /** Sum of row counts across every seeded table — cheap, table-shaped proxy for

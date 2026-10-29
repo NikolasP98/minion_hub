@@ -396,6 +396,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/account/security', 'Security', 'organization', 'form-settings'),
   screen('/memberships', 'Memberships', 'organization', 'collection'),
   screen('/orgs', 'Organizations', 'organization', 'collection'),
+  screen('/orgs/plans', 'Plans', 'organization', 'collection'),
   screen('/team', 'Team', 'organization', 'collection'),
   screen('/users', 'Users', 'organization', 'collection'),
   screen('/users/join-requests', 'Join requests', 'organization', 'collection'),
