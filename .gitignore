@@ -63,6 +63,9 @@ sdd/
 # scripts/sweep-hub-transactions.ts --apply pre-delete row snapshots (real tenant data)
 /.sweep-snapshots/
 
+# scripts/entitlements/backfill-launch-plans.ts --apply org_plans snapshots (real tenant data)
+/scripts/entitlements/snapshots/
+
 # Supabase CLI runtime state (local QA stack)
 supabase/.temp/
 supabase/.branches/
