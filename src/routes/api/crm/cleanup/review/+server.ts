@@ -7,6 +7,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { recentNameFixes } from '$server/services/crm-cleanup.service';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const reviewItemSchema = z.object({
   i: z.number(),
@@ -41,6 +42,7 @@ const postSchema = z.object({
 });
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
 
@@ -111,7 +113,8 @@ ${list}`;
     .map((p) => ({
       id: items[p.i].id,
       name: typeof p.name === 'string' ? p.name.trim() : (items[p.i].proposed ?? ''),
-      action: p.action === 'flag' || p.action === 'adjust' || p.action === 'keep' ? p.action : 'keep',
+      action:
+        p.action === 'flag' || p.action === 'adjust' || p.action === 'keep' ? p.action : 'keep',
       note: typeof p.note === 'string' ? p.note.slice(0, 200) : '',
     }));
 

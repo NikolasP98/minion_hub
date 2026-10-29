@@ -6,6 +6,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { vectorizeTick } from '$server/services/crm-conversation-vectors.service';
 import { withAiUsageOrg } from '$server/ai-usage';
+import { orgAllows, skippedField } from '$server/services/entitlements.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -33,10 +34,16 @@ export const GET: RequestHandler = async ({ request, url }) => {
   }[];
 
   const totals = { orgs: 0, processed: 0, dirty: 0, remaining: 0, skippedLocked: 0, errors: 0 };
+  let skippedByEntitlement = 0;
   for (const { id: orgId } of orgs) {
     // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
     // the ledger cannot attribute this pipeline's embedding spend to anyone.
     await withAiUsageOrg(orgId, 'crm.conversations.vectorize', async () => {
+      // Spec 043: proactive AI only for orgs whose plan includes it; skips are counted.
+      if (!(await orgAllows(orgId, 'ai.proactive', 'tick:crm.conversations.vectorize'))) {
+        skippedByEntitlement += 1;
+        return;
+      }
       const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
       try {
         if (!(await isModuleEnabled(ctx, 'crm'))) return;
@@ -55,5 +62,5 @@ export const GET: RequestHandler = async ({ request, url }) => {
       }
     });
   }
-  return json({ ok: true, full, ...totals });
+  return json({ ok: true, full, ...totals, ...skippedField(skippedByEntitlement) });
 };

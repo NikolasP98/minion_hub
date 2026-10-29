@@ -7,6 +7,7 @@ import { parseBody } from '$server/api/validate';
 import { searchBrainHybrid } from '$server/services/brain-hybrid-retrieval.service';
 import { brainSourceAccess } from '$server/services/brains.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { requireOrgFeature } from '$server/services/entitlements.service';
 
 const postSchema = z.object({
   brainId: z.string().uuid(),
@@ -33,6 +34,7 @@ const postSchema = z.object({
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { principalId, orgId, capabilities } = await resolveAssistantPrincipal(locals, url);
+  await requireOrgFeature(orgId, 'ai', 'gateway.brain-search');
   if (!capabilities.can('brains', 'view')) {
     return json(
       { error: 'Your role does not permit reading this organization’s brains.' },

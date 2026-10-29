@@ -5,10 +5,12 @@ import { requireCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
 import { getTemplate, updateTemplate, fanOutTemplate } from '$server/services/brain-agents.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /** GET /api/brains/template — the org's Brain Agent Template. Gated
  *  `brains:manage` (stricter than the generic `brains:edit` write gate). */
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireFeature(locals, 'ai');
   await requireOrgCapability(locals, 'brains', 'manage');
   const ctx = await requireCoreCtx(locals);
   return json({ template: await getTemplate(ctx) });
@@ -28,10 +30,14 @@ const putSchema = z.object({
  * Fan-out failures are returned per-agent, never abort the save.
  */
 export const PUT: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   await requireOrgCapability(locals, 'brains', 'manage');
   const ctx = await requireCoreCtx(locals);
   const body = await parseBody(request, putSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   const template = await updateTemplate(ctx, body, actor);
   const fanOut = await fanOutTemplate(ctx);
   return json({ template, fanOut });

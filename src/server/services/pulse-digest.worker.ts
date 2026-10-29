@@ -206,4 +206,9 @@ export async function advancePulseDigest(
     };
   }
 }
-registerJobHandler({ type: 'pulse_digest', pulseRetry: true, advance: advancePulseDigest });
+registerJobHandler({
+  type: 'pulse_digest',
+  pulseRetry: true,
+  feature: 'ai.proactive',
+  advance: advancePulseDigest,
+});

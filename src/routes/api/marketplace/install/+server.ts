@@ -10,8 +10,10 @@ import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { captureServerEvent } from '$lib/server/posthog';
 import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
+import { requireFeature } from '$server/services/entitlements.service';
 
 export const POST: RequestHandler = async ({ locals, request, route }) => {
+  await requireFeature(locals, 'marketplace');
   const tenantCtx = await getTenantCtx(locals);
   if (!tenantCtx) throw error(401, 'No tenant configured');
   // The marketplace catalog + installs live on the relational-core (Supabase) DB.

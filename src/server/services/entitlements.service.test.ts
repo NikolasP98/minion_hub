@@ -46,10 +46,12 @@ vi.mock('$server/db/pg-client', () => {
 });
 
 import {
+  orgAllows,
   requireFeature,
   requireOrgFeature,
   resolveEntitlements,
   setOrgPlan,
+  skippedField,
 } from './entitlements.service';
 import { orgPlans, orgPlanEvents } from '$server/db/pg-schema/entitlements';
 
@@ -175,5 +177,25 @@ describe('setOrgPlan', () => {
     await expect(setOrgPlan(member(), ORG, 'premium')).rejects.toMatchObject({ status: 403 });
     await expect(setOrgPlan(admin(), ORG, 'gold')).rejects.toMatchObject({ status: 400 });
     expect(h.inserts).toHaveLength(0);
+  });
+});
+
+describe('orgAllows (ticks, jobs, gateway mirrors)', () => {
+  it('flag off: true with no lookup', async () => {
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(true);
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+  it('enforced: Base false, Premium true, lookup error false; never a PostHog event', async () => {
+    h.env.ENTITLEMENTS_ENFORCED = 'true';
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(false);
+    h.execute.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(true);
+    h.cacheFail = true;
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(false);
+    expect(h.capture).not.toHaveBeenCalled();
+  });
+  it('skippedField only adds the key when something was skipped', () => {
+    expect(skippedField(0)).toEqual({});
+    expect(skippedField(2)).toEqual({ skippedByEntitlement: 2 });
   });
 });

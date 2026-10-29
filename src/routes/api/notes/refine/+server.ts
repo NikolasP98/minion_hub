@@ -6,13 +6,16 @@ import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
-const DEFAULT_MODEL = env.NOTES_REFINE_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
+const DEFAULT_MODEL =
+  env.NOTES_REFINE_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
 const MAX_INPUT = 8000;
 
 // Note-polish intents bias the title style (distinct from transcription intents).
 const INTENT_HINTS: Record<string, string> = {
-  meeting: 'Treat this as meeting notes — titles should name the meeting/topic and surface decisions.',
+  meeting:
+    'Treat this as meeting notes — titles should name the meeting/topic and surface decisions.',
   short: 'Prefer terse, punchy titles (2–4 words).',
   long: 'Allow descriptive, fuller titles (a short sentence is fine).',
   formal: 'Use a professional, formal tone for titles.',
@@ -56,6 +59,7 @@ const resultSchema = z.object({
  * title is currently empty. Never rewrites the note body.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
 
   const apiKey = env.OPENROUTER_API_KEY;
@@ -99,7 +103,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     const textIds = new Set(blocks.filter((b) => b.type === 'text').map((b) => b.id));
     return json({
       title: object.title?.trim() ?? '',
-      blocks: object.blocks.filter((b) => ids.has(b.id)).map((b) => ({ id: b.id, title: b.title.trim() })),
+      blocks: object.blocks
+        .filter((b) => ids.has(b.id))
+        .map((b) => ({ id: b.id, title: b.title.trim() })),
       textBlocks: (object.textBlocks ?? [])
         .filter((b) => textIds.has(b.id))
         .map((b) => ({ id: b.id, body: b.body })),

@@ -11,8 +11,10 @@ import {
   listBrainEnrichmentModelCatalog,
   updateBrainEnrichmentConfig,
 } from '$server/services/brain-enrichment-settings.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireFeature(locals, 'ai');
   await requireOrgCapability(locals, 'brains', 'manage');
   const ctx = await requireCoreCtx(locals);
   return json({
@@ -24,6 +26,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const PUT: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const capabilities = await requireOrgCapability(locals, 'brains', 'manage');
   if (capabilities && !capabilities.roles.some((role) => role === 'owner' || role === 'admin')) {
     throw error(403, 'Owner or administrator access required');

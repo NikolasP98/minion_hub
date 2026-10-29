@@ -13,6 +13,8 @@ import { and, asc, eq, gt, inArray, lte, or, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
 import { bgJobs } from '$server/db/pg-schema/bg-jobs';
+import { withAiUsageOrg } from '$server/ai-usage';
+import { isEnforced, orgAllows, skippedField } from '$server/services/entitlements.service';
 
 export type BgJob = typeof bgJobs.$inferSelect;
 export type JobTransaction = Parameters<
@@ -55,6 +57,8 @@ export type JobHandler = {
   type: string;
   /** Explicit opt-in for the Pulse family only. */
   pulseRetry?: boolean;
+  /** Spec 043: the entitlement this job needs; an org without it gets the job finished as skipped. */
+  feature?: string;
   /** Advance the job by one bounded step. Persist domain changes here. */
   advance: (job: BgJob, execution: JobExecution) => Promise<AdvanceResult>;
 };
@@ -278,6 +282,7 @@ async function advanceAdmittedJob(
   budgetMs: number,
   selection?: Selection,
   observedGeneration?: number,
+  stats?: { skipped: number },
 ): Promise<boolean> {
   const budgetNow = selection ? () => performance.now() : () => Date.now();
   const deadline = budgetNow() + budgetMs;
@@ -378,14 +383,25 @@ async function advanceAdmittedJob(
           abort.abort();
           return invoked;
         }
-        invoked = true;
-        const outcome = await Promise.race([
-          track(handler.advance(job, execution)),
-          loss,
-          expiration,
-        ]);
-        if (outcome === leaseLost || outcome === budgetExpired || lost) return invoked;
-        result = outcome;
+        if (
+          handler.feature &&
+          isEnforced() &&
+          !(await orgAllows(job.tenantId, handler.feature, `job:${job.type}`))
+        ) {
+          // Finishes the job as failed with a named reason, so it is not re-leased.
+          if (stats) stats.skipped += 1;
+          result = { done: true, error: 'skipped_by_entitlement' };
+        } else {
+          invoked = true;
+          const outcome = await Promise.race([
+            // The org rides the AI usage scope so the model-call backstop knows whose job this is.
+            track(withAiUsageOrg(job.tenantId, job.type, () => handler.advance(job, execution))),
+            loss,
+            expiration,
+          ]);
+          if (outcome === leaseLost || outcome === budgetExpired || lost) return invoked;
+          result = outcome;
+        }
       } catch (err) {
         if (err instanceof RetryableJobError && job.type === 'booking_stock') {
           // One attempt per lease: no hot loop and no cursor mutation. The normal
@@ -457,7 +473,9 @@ async function advanceAdmittedJob(
 }
 
 /** Cron entrypoint: advance every resumable job within an overall budget. */
-export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> {
+export async function runTick(
+  budgetMs = 50_000,
+): Promise<{ advanced: number; skippedByEntitlement?: number }> {
   if (quiescing) return { advanced: 0 };
   const db = getCoreDb();
   const now = Date.now();
@@ -477,18 +495,20 @@ export async function runTick(budgetMs = 50_000): Promise<{ advanced: number }> 
     .limit(20);
   const deadline = Date.now() + budgetMs;
   let advanced = 0;
+  const stats = { skipped: 0 };
   for (const { id } of resumable) {
     if (quiescing || Date.now() >= deadline) break;
     const remaining = deadline - Date.now();
-    if (await advanceJob(id, Math.min(remaining, 25_000))) advanced += 1;
+    const work = advanceAdmittedJob(id, Math.min(remaining, 25_000), undefined, undefined, stats);
+    if (await track(work)) advanced += 1;
   }
-  return { advanced };
+  return { advanced, ...skippedField(stats.skipped) };
 }
 
 /** Trusted, bounded Pulse-only admission. Predicates precede LIMIT and repeat at claim. */
 export async function runSelectedTick(
   input: Selection & { budgetMs: number; maxCandidates?: number },
-): Promise<{ advanced: number }> {
+): Promise<{ advanced: number; skippedByEntitlement?: number }> {
   if (
     !input.tenantId ||
     !input.ownerProfileId ||
@@ -527,6 +547,7 @@ export async function runSelectedTick(
     .orderBy(asc(bgJobs.updatedAt), asc(bgJobs.id))
     .limit(cap);
   let advanced = 0;
+  const stats = { skipped: 0 };
   for (const candidate of candidates) {
     if (quiescing || performance.now() >= deadline) break;
     if (
@@ -536,10 +557,11 @@ export async function runSelectedTick(
           deadline - performance.now(),
           selection,
           candidate.generation,
+          stats,
         ),
       )
     )
       advanced += 1;
   }
-  return { advanced };
+  return { advanced, ...skippedField(stats.skipped) };
 }

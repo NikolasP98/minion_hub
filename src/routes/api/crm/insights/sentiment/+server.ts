@@ -4,9 +4,11 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { scoreSentimentBatch } from '$server/services/crm-insights.service';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import { refreshSentimentRollupDays } from '$server/services/crm-sentiment-rollup.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /** POST /api/crm/insights/sentiment → score one capped batch of unscored inbound messages. */
 export const POST: RequestHandler = async ({ locals }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   const result = await scoreSentimentBatch(ctx, { cap: 50 });

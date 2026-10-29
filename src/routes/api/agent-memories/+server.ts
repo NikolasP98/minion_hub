@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { requireTenantCtx } from '$server/auth/authorize';
 import { listMemories, memoryStats, searchMemories } from '$server/services/agent-memories.service';
 import { embedText, embeddingsEnabled } from '$server/services/embeddings';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * GET /api/agent-memories?agentId=…&limit=…[&stats=1]
@@ -14,14 +15,17 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const agentId = url.searchParams.get('agentId');
   if (!agentId) throw error(400, 'agentId is required');
 
-  const num = (k: string) => (url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined);
+  const num = (k: string) =>
+    url.searchParams.get(k) ? Number(url.searchParams.get(k)) : undefined;
   const memories = await listMemories(ctx.tenantId, {
     agentId,
     limit: num('limit'),
     offset: num('offset'),
   });
 
-  const stats = url.searchParams.get('stats') ? await memoryStats(ctx.tenantId, agentId) : undefined;
+  const stats = url.searchParams.get('stats')
+    ? await memoryStats(ctx.tenantId, agentId)
+    : undefined;
   return json({ memories, ...(stats ? { stats } : {}) });
 };
 
@@ -30,6 +34,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
  *   → { hits: MemorySearchHit[] }   semantic search (embeds the query server-side)
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = requireTenantCtx(locals);
   if (!embeddingsEnabled()) throw error(503, 'Embeddings unavailable (OPENAI_API_KEY unset)');
 

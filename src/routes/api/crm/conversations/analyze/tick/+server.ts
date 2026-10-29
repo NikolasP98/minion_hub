@@ -6,6 +6,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { analyzeConversationsTick } from '$server/services/crm-conversation-analysis.service';
 import { withAiUsageOrg } from '$server/ai-usage';
+import { orgAllows, skippedField } from '$server/services/entitlements.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -39,12 +40,18 @@ export const GET: RequestHandler = async ({ request, url }) => {
     skippedLocked: 0,
     errors: 0,
   };
+  let skippedByEntitlement = 0;
   for (const { id: orgId } of orgs) {
     // Cron auth means there is no `locals.tenantCtx`, so the request-level AI
     // usage scope has a null org. Without this per-iteration scope every token
     // this pipeline burns — the bulk of platform COGS — would land in the ledger
     // unattributed. `continue` became `return` because the body is now a callback.
     await withAiUsageOrg(orgId, 'crm.conversations.analyze', async () => {
+      // Spec 043: proactive AI only for orgs whose plan includes it; skips are counted.
+      if (!(await orgAllows(orgId, 'ai.proactive', 'tick:crm.conversations.analyze'))) {
+        skippedByEntitlement += 1;
+        return;
+      }
       const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
       try {
         if (!(await isModuleEnabled(ctx, 'crm'))) return;
@@ -65,5 +72,5 @@ export const GET: RequestHandler = async ({ request, url }) => {
       }
     });
   }
-  return json({ ok: true, full, ...totals });
+  return json({ ok: true, full, ...totals, ...skippedField(skippedByEntitlement) });
 };

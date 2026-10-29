@@ -10,6 +10,7 @@ import {
   WALL_CLOCK_BUDGET_MS,
 } from '$server/services/crm-relationship-inference.service';
 import { withAiUsageOrg } from '$server/ai-usage';
+import { orgAllows, skippedField } from '$server/services/entitlements.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
 /**
@@ -46,11 +47,17 @@ export const GET: RequestHandler = async ({ request }) => {
     errors: 0,
   };
   let remainingBudget = GLOBAL_CAP;
+  let skippedByEntitlement = 0;
   for (const { id: orgId } of orgs) {
     if (remainingBudget <= 0 || Date.now() >= deadline) break;
     // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
     // the ledger cannot attribute this pipeline's tokens to anyone.
     await withAiUsageOrg(orgId, 'crm.relationship', async () => {
+      // Spec 043: proactive AI only for orgs whose plan includes it; skips are counted.
+      if (!(await orgAllows(orgId, 'ai.proactive', 'tick:crm.relationship'))) {
+        skippedByEntitlement += 1;
+        return;
+      }
       const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId };
       try {
         if (!(await isModuleEnabled(ctx, 'crm'))) return;
@@ -69,5 +76,5 @@ export const GET: RequestHandler = async ({ request }) => {
       }
     });
   }
-  return json({ ok: true, ...totals });
+  return json({ ok: true, ...totals, ...skippedField(skippedByEntitlement) });
 };

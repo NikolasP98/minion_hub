@@ -13,9 +13,11 @@ import { finalizeBuiltAgentPublish } from '$server/services/builder.service';
 import { synchronizeRuntimeAgent } from '$server/services/builder-agent-publisher';
 import { getGatewayCredentialsById } from '$server/services/gateway.pg.service';
 import { gatewayCallToInstance } from '$lib/server/gateway-rpc';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /** GET /api/builder/agents/:id — agent with skill slots */
 export const GET: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   await requireBuilderCapability(locals, 'view');
   const ctx = await requireCoreCtx(locals);
   await requireBuilderOwnership(locals, ctx, 'agent', params.id!);
@@ -38,6 +40,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 
 /** PUT /api/builder/agents/:id — update agent or manage skill slots */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  await requireFeature(locals, 'ai');
   await requireBuilderCapability(locals, 'edit');
   const ctx = await requireCoreCtx(locals);
   await requireBuilderOwnership(locals, ctx, 'agent', params.id!);
@@ -66,7 +69,8 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
           systemPrompt: draft.systemPrompt,
           runtimeAgentId: draft.runtimeAgentId,
         },
-        (method, rpcParams) => gatewayCallToInstance(credentials.url, credentials.token, method, rpcParams),
+        (method, rpcParams) =>
+          gatewayCallToInstance(credentials.url, credentials.token, method, rpcParams),
       );
       await finalizeBuiltAgentPublish(ctx, draft.id, result.runtimeAgentId, draft.gatewayId);
       return json({ ok: true, runtimeAgentId: result.runtimeAgentId });
@@ -148,6 +152,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 /** DELETE /api/builder/agents/:id */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   await requireBuilderCapability(locals, 'delete');
   const ctx = await requireCoreCtx(locals);
   await requireBuilderOwnership(locals, ctx, 'agent', params.id!);

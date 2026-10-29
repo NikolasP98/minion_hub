@@ -7,6 +7,7 @@ import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getToolInfo } from '$lib/data/tool-manifest';
 import { getOpenRouterModel, estimateCost } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const SYSTEM_PROMPT = `You are a skill-building assistant for an AI agent platform called OpenClaw. Given a subprocess chapter's name and description within a larger skill, generate suggestions for ALL fields following best practices for skill development.
 
@@ -37,6 +38,7 @@ const chapterSuggestionSchema = z.object({
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getOrCreateTenantCtx(locals);
   if (!ctx) throw error(401);
 

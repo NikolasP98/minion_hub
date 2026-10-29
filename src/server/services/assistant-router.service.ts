@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { assertAiCallAllowed, isEnforced } from '$server/services/entitlements.service';
 /**
  * The JEV classifier call behind `POST /api/assistant/route`.
  *
@@ -137,6 +138,7 @@ export async function classifyAssistantTurnWithEvidence(
 ): Promise<RouteEvidence> {
   const text = input.text.trim();
   if (!text || !deps.apiKey) return { decision: null, attempt: null };
+  if (isEnforced()) await assertAiCallAllowed('assistant-router'); // spec 043 backstop, no-op unless enforced
   const started = Date.now();
   const sha = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
   const questions = buildQuestions();

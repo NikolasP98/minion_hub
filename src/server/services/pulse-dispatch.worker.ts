@@ -207,4 +207,9 @@ export async function advancePulseDispatch(
 async function postponeBudget(_job: BgJob, _execution: JobExecution) {
   return { postponeUntil: Date.now() + 5000, commitPostpone: async () => {} };
 }
-registerJobHandler({ type: 'pulse_dispatch', pulseRetry: true, advance: advancePulseDispatch });
+registerJobHandler({
+  type: 'pulse_dispatch',
+  pulseRetry: true,
+  feature: 'ai.proactive',
+  advance: advancePulseDispatch,
+});

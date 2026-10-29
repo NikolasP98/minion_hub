@@ -7,6 +7,7 @@ import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getToolInfo } from '$lib/data/tool-manifest';
 import { getOpenRouterModel, estimateCost } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const SYSTEM_PROMPT = `You are a skill architect for an AI agent platform called OpenClaw. Given a skill description and the list of available tools, design a complete execution pipeline as a directed graph of chapters (cycles are supported and bounded by maxCycles) and optional condition nodes.
 
@@ -77,6 +78,7 @@ const skillPipelineSchema = z.object({
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getOrCreateTenantCtx(locals);
   if (!ctx) throw error(401);
 
