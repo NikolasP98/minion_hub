@@ -1,6 +1,7 @@
 import type { OrgKind } from '$lib/org-kind';
 import {
   MODULE_MANIFEST,
+  featureForPath,
   resolveModuleForPath,
   isModuleAvailable,
   type ModuleAvailability,
@@ -61,15 +62,19 @@ export type RouteGuardContext = {
    */
   kind: OrgKind | undefined | null;
   moduleStates: ModuleStates;
+  /** Plan features (spec 043). Absent = not checked, as before entitlements existed. */
+  features?: readonly string[];
 };
 
 /**
- * True when `canonicalPath` must 404 for this org (kind-restricted or
+ * True when `canonicalPath` must 404 for this org (kind-restricted, plan-gated or
  * toggled-off module). Caller canonicalizes the path first (locale-strip
  * only, `$lib/canonical-path` — kept as a separate operation per R6).
  * Unmapped paths and unmanaged module ids always pass.
  */
 export function isAppRouteBlocked(canonicalPath: string, ctx: RouteGuardContext): boolean {
+  const feature = featureForPath(canonicalPath);
+  if (feature && ctx.features && !ctx.features.includes(feature)) return true;
   const match = resolveModuleForPath(canonicalPath);
   if (!match) return false;
   if (ctx.kind == null && isKindRestricted(match.moduleId)) return true;

@@ -11,29 +11,30 @@
  */
 
 import { page } from '$app/state';
+import { hasFeature } from '$lib/access/premium';
 
 interface AssistantUiState {
-    open: boolean;
-    /** Current scope context shown above input — surfaces what the assistant can see */
-    scope: {
-        route: string | null;
-        agentId: string | null;
-    };
+  open: boolean;
+  /** Current scope context shown above input — surfaces what the assistant can see */
+  scope: {
+    route: string | null;
+    agentId: string | null;
+  };
 }
 
 const ui = $state<AssistantUiState>({
-    open: false,
-    scope: {
-        route: null,
-        agentId: null,
-    },
+  open: false,
+  scope: {
+    route: null,
+    agentId: null,
+  },
 });
 
 type PersonalAgentEntry = { agentId?: string | null } | null;
 
 function pagePersonalAgent(): PersonalAgentEntry {
-    const data = page.data as { personalAgent?: { agent: PersonalAgentEntry } | null } | undefined;
-    return data?.personalAgent?.agent ?? null;
+  const data = page.data as { personalAgent?: { agent: PersonalAgentEntry } | null } | undefined;
+  return data?.personalAgent?.agent ?? null;
 }
 
 /**
@@ -41,55 +42,57 @@ function pagePersonalAgent(): PersonalAgentEntry {
  * page.data so the canonical server-load is the single source of truth.
  */
 export const assistant = {
-    get open() {
-        return ui.open;
-    },
-    set open(value: boolean) {
-        ui.open = value;
-    },
-    get scope() {
-        return ui.scope;
-    },
-    get personalAgentId(): string | null {
-        // The gateway lowercases agent ids in its session keys (so chat events
-        // arrive keyed as `agent:<lowercased-id>:main`). The DB-stored id can be
-        // mixed-case, which would mismatch the live event stream — breaking live
-        // chat updates AND the voice-call reply trigger. Canonicalize to lower so
-        // agentChat keys, sessionKeys and event ids all agree.
-        return pagePersonalAgent()?.agentId?.toLowerCase() ?? null;
-    },
-    /**
-     * No client-side loading anymore — kept for source compatibility.
-     */
-    get loading(): boolean {
-        return false;
-    },
-    get error(): string | null {
-        // Synthesize an error message when the server-load returned no
-        // personal agent (rare; means the user has no provisioned agent).
-        const data = page.data as { personalAgent?: unknown } | undefined;
-        if (data && 'personalAgent' in (data ?? {})) {
-            const agent = pagePersonalAgent();
-            if (!agent?.agentId) return 'No personal agent provisioned';
-        }
-        return null;
-    },
+  get open() {
+    return ui.open;
+  },
+  set open(value: boolean) {
+    ui.open = value;
+  },
+  get scope() {
+    return ui.scope;
+  },
+  get personalAgentId(): string | null {
+    // The gateway lowercases agent ids in its session keys (so chat events
+    // arrive keyed as `agent:<lowercased-id>:main`). The DB-stored id can be
+    // mixed-case, which would mismatch the live event stream — breaking live
+    // chat updates AND the voice-call reply trigger. Canonicalize to lower so
+    // agentChat keys, sessionKeys and event ids all agree.
+    // Spec 043: without ai.chat no surface sees the agent (no history load, no thread).
+    if (!hasFeature('ai.chat')) return null;
+    return pagePersonalAgent()?.agentId?.toLowerCase() ?? null;
+  },
+  /**
+   * No client-side loading anymore — kept for source compatibility.
+   */
+  get loading(): boolean {
+    return false;
+  },
+  get error(): string | null {
+    // Synthesize an error message when the server-load returned no
+    // personal agent (rare; means the user has no provisioned agent).
+    const data = page.data as { personalAgent?: unknown } | undefined;
+    if (data && 'personalAgent' in (data ?? {})) {
+      const agent = pagePersonalAgent();
+      if (!agent?.agentId) return 'No personal agent provisioned';
+    }
+    return null;
+  },
 };
 
 export function toggleAssistant() {
-    ui.open = !ui.open;
+  ui.open = !ui.open;
 }
 
 export function openAssistant() {
-    ui.open = true;
+  ui.open = true;
 }
 
 export function closeAssistant() {
-    ui.open = false;
+  ui.open = false;
 }
 
 export function setScope(scope: Partial<AssistantUiState['scope']>) {
-    Object.assign(ui.scope, scope);
+  Object.assign(ui.scope, scope);
 }
 
 /**
@@ -98,5 +101,5 @@ export function setScope(scope: Partial<AssistantUiState['scope']>) {
  * callsites (e.g. FloatingAssistant.svelte onMount) don't break.
  */
 export function loadPersonalAgent(): void {
-    /* no-op — see module docblock */
+  /* no-op — see module docblock */
 }

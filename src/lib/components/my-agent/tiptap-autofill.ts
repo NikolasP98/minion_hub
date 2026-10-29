@@ -15,6 +15,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { fetchAutocomplete } from '$lib/state/features/notes-autocomplete';
+import { hasFeature } from '$lib/access/premium';
 
 export interface AutofillOptions {
   /** Note kind — the endpoint tailors the prompt. */
@@ -31,12 +32,12 @@ interface AutofillState {
 const key = new PluginKey<AutofillState>('autofill');
 
 declare module '@tiptap/core' {
-	interface Commands<ReturnType> {
-		autofill: {
-			/** Request an AI continuation, or accept the pending ghost suggestion. */
-			triggerAutofill: () => ReturnType;
-		};
-	}
+  interface Commands<ReturnType> {
+    autofill: {
+      /** Request an AI continuation, or accept the pending ghost suggestion. */
+      triggerAutofill: () => ReturnType;
+    };
+  }
 }
 
 export function createAutofill(options: AutofillOptions): Extension {
@@ -89,6 +90,7 @@ export function createAutofill(options: AutofillOptions): Extension {
         triggerAutofill:
           () =>
           ({ editor, view }) => {
+            if (!hasFeature('ai')) return false; // spec 043: no AI autofill without the plan
             const current = key.getState(view.state)?.text ?? null;
 
             // Second trigger → accept the pending suggestion.

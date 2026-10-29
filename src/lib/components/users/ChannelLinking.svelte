@@ -21,6 +21,8 @@
   import type { ChannelPluginInfo } from '$lib/types/channel-link';
   import { Plug, RefreshCw, Settings as SettingsIcon, ChevronDown } from 'lucide-svelte';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
+  import { visibleLinkPlugins } from '$lib/components/channels/channel-href';
+  import { hasFeature } from '$lib/access/premium';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import { Puzzle } from 'lucide-svelte';
   import { iconSizes, Button } from '$lib/components/ui';
@@ -105,7 +107,13 @@
   let openPluginId = $state<string | null>(null);
 
   // Everything except WhatsApp/Telegram, which have dedicated connect cards.
-  const otherPlugins = $derived(plugins.filter((p) => !isClaimChannel(p)));
+  // Spec 043: iframe entries are not rendered for an org without `ai` (R8).
+  const otherPlugins = $derived(
+    visibleLinkPlugins(
+      plugins.filter((p) => !isClaimChannel(p)),
+      hasFeature('ai'),
+    ),
+  );
 
   // Per-plugin form state for `mode: 'form'` descriptors.
   let formValues = $state<Record<string, Record<string, string>>>({});

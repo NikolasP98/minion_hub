@@ -22,6 +22,7 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import CrmHygiene from '$lib/components/crm/CrmHygiene.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
+  import { hasFeature, isPremiumResponse } from '$lib/access/premium';
   import { formatPhoneLike, relativeTime } from '$lib/components/crm/crm-format';
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
@@ -137,7 +138,7 @@
           [id]: m.crm_ai_eval_result({ applied: r.applied ?? 0, evaluated: r.evaluated ?? 0 }),
         };
         await invalidate('crm:contacts');
-      } else {
+      } else if (!(await isPremiumResponse(res))) {
         const j = await res.json().catch(() => ({}));
         evalResult = { ...evalResult, [id]: j.message ?? 'Error' };
       }
@@ -313,7 +314,7 @@
             <Select bind:value={kind} class="select-field">
               <option value="manual">{m.crm_tag_kind_manual()}</option>
               <option value="auto">{m.crm_tag_kind_auto()}</option>
-              <option value="ai">{m.crm_tag_kind_ai()}</option>
+              {#if hasFeature('ai')}<option value="ai">{m.crm_tag_kind_ai()}</option>{/if}
             </Select>
           </label>
 
@@ -377,19 +378,21 @@
                     <span class="ai-desc" title={aiDescription(t.rule)}
                       >{aiDescription(t.rule)}</span
                     >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="find"
-                      onclick={() => evaluateTag(t.id)}
-                      disabled={evaluating === t.id}
-                    >
-                      <Sparkles
-                        size={iconSizes.xs}
-                        class={evaluating === t.id ? 'animate-pulse' : ''}
-                      />
-                      {evaluating === t.id ? m.crm_ai_finding() : m.crm_ai_find_matches()}
-                    </Button>
+                    {#if hasFeature('ai')}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="find"
+                        onclick={() => evaluateTag(t.id)}
+                        disabled={evaluating === t.id}
+                      >
+                        <Sparkles
+                          size={iconSizes.xs}
+                          class={evaluating === t.id ? 'animate-pulse' : ''}
+                        />
+                        {evaluating === t.id ? m.crm_ai_finding() : m.crm_ai_find_matches()}
+                      </Button>
+                    {/if}
                     {#if evalResult[t.id]}<span class="ai-result">{evalResult[t.id]}</span>{/if}
                   {/if}
                   <Button

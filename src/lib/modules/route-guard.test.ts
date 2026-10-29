@@ -159,3 +159,61 @@ describe('isAppRouteBlocked — unknown kind fails CLOSED (overrides isModuleAva
     expect(isAppRouteBlocked('/crm', { kind: null, moduleStates: {} })).toBe(false);
   });
 });
+
+describe('isAppRouteBlocked — plan features (spec 043)', () => {
+  const AI_PREFIXES = [
+    '/agents',
+    '/builder',
+    '/workshop',
+    '/sessions',
+    '/brains',
+    '/prompt',
+    '/capabilities',
+    '/tools',
+    '/flow-editor/skills',
+    '/workforce',
+    '/reliability',
+    '/plugins',
+    '/settings/plugins',
+    '/pulse',
+    '/settings/pulse',
+    '/marketplace',
+  ];
+  const premium = ['ai', 'ai.chat', 'ai.proactive', 'marketplace'];
+  test.each(AI_PREFIXES)('%s: blocked for Base, open for Premium', (path) => {
+    expect(isAppRouteBlocked(path, { kind: 'personal', moduleStates: {}, features: [] })).toBe(
+      true,
+    );
+    expect(
+      isAppRouteBlocked(`${path}/x`, { kind: 'business', moduleStates: {}, features: [] }),
+    ).toBe(true);
+    // personal kind so /pulse is kind-available; /workforce is business-only, so check it with business.
+    const kind = path === '/workforce' ? 'business' : 'personal';
+    expect(isAppRouteBlocked(path, { kind, moduleStates: {}, features: premium })).toBe(false);
+  });
+  test('Base keeps channels, settings, the flow editor and business modules', () => {
+    const base = { kind: 'business' as const, moduleStates: {}, features: [] };
+    for (const p of [
+      '/channels',
+      '/channels/gmail',
+      '/settings',
+      '/flow-editor',
+      '/crm',
+      '/pos',
+      '/home',
+    ])
+      expect(isAppRouteBlocked(p, base), p).toBe(false);
+  });
+  test('no features in the context = not checked (callers before spec 043)', () => {
+    expect(isAppRouteBlocked('/agents', { kind: 'business', moduleStates: {} })).toBe(false);
+  });
+  test('locale-prefixed AI URL 404s once canonicalized', () => {
+    expect(
+      isAppRouteBlocked(canonicalPath('/es/marketplace'), {
+        kind: 'business',
+        moduleStates: {},
+        features: [],
+      }),
+    ).toBe(true);
+  });
+});

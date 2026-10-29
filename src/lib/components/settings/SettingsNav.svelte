@@ -21,8 +21,8 @@
   } from 'lucide-svelte';
   import { page } from '$app/state';
   import { isAdmin } from '$lib/state/features/user.svelte';
-  import { canViewPath } from '$lib/access/can.svelte';
-  import { TABS } from '$lib/utils/config-schema';
+  import { canViewPath, hasFeature } from '$lib/access/can.svelte';
+  import { AI_CONFIG_TAB_IDS, resolveSettingsTab, TABS } from '$lib/utils/config-schema';
   import * as m from '$lib/paraglide/messages';
   import {
     SectionNav,
@@ -149,7 +149,11 @@
 
   // Gateway config tabs live on /settings?s=<id> (rendered by the config page scrollspy).
   const HUB_LEGACY_IDS = new Set(['appearance', 'backups']);
-  const gatewayTabs = $derived(TABS.filter((t) => !HUB_LEGACY_IDS.has(t.id)));
+  // Spec 043: the AI and Agents gateway tabs are not offered to an org without `ai`.
+  const aiEnabled = $derived(hasFeature('ai'));
+  const gatewayTabs = $derived(
+    TABS.filter((t) => !HUB_LEGACY_IDS.has(t.id) && (aiEnabled || !AI_CONFIG_TAB_IDS.has(t.id))),
+  );
 
   const pathname = $derived(navPath());
   const queryS = $derived(page.url.searchParams.get('s'));
@@ -160,8 +164,7 @@
   }
   function isGatewayActive(id: string): boolean {
     if (pathname !== '/settings') return false;
-    if (queryS) return queryS === id;
-    return id === 'ai';
+    return resolveSettingsTab(queryS, aiEnabled) === id;
   }
 
   // Gateway config tabs have no /settings/<id> route (they live on ?s=<id>,

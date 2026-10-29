@@ -59,7 +59,7 @@
   import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, User } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { toastError, toastWarning } from '$lib/state/ui/toast.svelte';
-  import { canAct } from '$lib/access/can.svelte';
+  import { canAct, hasFeature } from '$lib/access/can.svelte';
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     subscribeMessageCommitted,
@@ -594,7 +594,8 @@
       { id: 'identities', w: 2, h: 1 },
       isPersonal && data.cashflow ? { id: 'cashflow', w: 2, h: 2 } : null,
       data.finance ? { id: 'financials', w: 2, h: 2 } : null,
-      data.finance ? { id: 'wins', w: 2, h: 2 } : null,
+      // Spec 043: similar wins come from the AI win index; no empty cell without `ai`.
+      data.finance && hasFeature('ai') ? { id: 'wins', w: 2, h: 2 } : null,
       isPersonal ? null : { id: 'offers', w: 2, h: 2 },
       { id: 'bookings', w: 2, h: 2 },
       { id: 'attachments', w: 2, h: 2 },
@@ -1087,7 +1088,7 @@
       </section>
     {/if}
   {:else if idv === 'wins'}
-    {#if data.finance}<CrmSimilarWins contactId={c.id} />{/if}
+    {#if data.finance && hasFeature('ai')}<CrmSimilarWins contactId={c.id} />{/if}
   {:else if idv === 'offers'}
     {#if !isPersonal}<CrmNextOffers contactId={c.id} />{/if}
   {:else if idv === 'bookings'}
@@ -1214,18 +1215,20 @@
       <section class="card">
         <header class="card-h">
           <span>{m.crm_journey_map()}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="reanalyze"
-            onclick={analyzeJourney}
-            disabled={analyzingJourney}
-            loading={analyzingJourney}
-            title={m.crm_journey_analyze()}
-          >
-            <Sparkles size={iconSizes.sm} />
-            <span>{analyzingJourney ? m.crm_journey_analyzing() : m.crm_journey_analyze()}</span>
-          </Button>
+          {#if hasFeature('ai')}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="reanalyze"
+              onclick={analyzeJourney}
+              disabled={analyzingJourney}
+              loading={analyzingJourney}
+              title={m.crm_journey_analyze()}
+            >
+              <Sparkles size={iconSizes.sm} />
+              <span>{analyzingJourney ? m.crm_journey_analyzing() : m.crm_journey_analyze()}</span>
+            </Button>
+          {/if}
         </header>
         {#if journey.length > 0}
           <div class="jmap">

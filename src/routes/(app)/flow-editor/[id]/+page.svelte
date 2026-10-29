@@ -6,6 +6,7 @@
   import FlowCanvas from '$lib/components/flow-editor/FlowCanvas.svelte';
   import FlowSidebar from '$lib/components/flow-editor/FlowSidebar.svelte';
   import FlowCopilotPanel from '$lib/components/flow-editor/FlowCopilotPanel.svelte';
+  import { hasFeature } from '$lib/access/premium';
   import {
     flowEditorState,
     loadFlow,
@@ -136,9 +137,11 @@
 
   // ── Flow copilot (admin or flow owner) ──────────────────────────────────────
   const currentUserId = $derived((page.data as { user?: { id?: string } }).user?.id ?? null);
+  // Spec 043: the copilot is a model call; not rendered for an org without `ai`.
   const canCopilot = $derived(
-    isAdmin.value ||
-      (!!flowEditorState.flowOwnerId && flowEditorState.flowOwnerId === currentUserId),
+    hasFeature('ai') &&
+      (isAdmin.value ||
+        (!!flowEditorState.flowOwnerId && flowEditorState.flowOwnerId === currentUserId)),
   );
 
   let backup: WorkingFlow | null = null;
