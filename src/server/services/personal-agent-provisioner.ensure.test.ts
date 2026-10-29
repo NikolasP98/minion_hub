@@ -6,7 +6,9 @@ const mocks = vi.hoisted(() => ({
   commit: vi.fn(),
   failure: vi.fn(),
   rpc: vi.fn(),
+  allows: vi.fn(async () => true),
 }));
+vi.mock('./entitlements.service', () => ({ orgAllows: mocks.allows }));
 vi.mock('./personal-agent.service', () => ({
   getPersonalAgent: mocks.get,
   provisionPersonalAgent: mocks.provision,
@@ -20,7 +22,10 @@ vi.mock('./personal-agent-binding', () => ({
   PersonalAgentBindingError: class extends Error {},
 }));
 vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCallToInstance: mocks.rpc }));
-import { ensureActivePersonalAgent } from './personal-agent-provisioner';
+import {
+  ensureActivePersonalAgent,
+  getPendingProvisioningForUser,
+} from './personal-agent-provisioner';
 const ctx = { db: {} as never, tenantId: 'org-1', profileId: 'user-1' };
 const params = { userId: 'user-1', email: 'u@example.com' };
 const agentRow = (status: string, serverId: string | null = null) => ({
@@ -32,6 +37,7 @@ const agentRow = (status: string, serverId: string | null = null) => ({
 });
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.allows.mockResolvedValue(true);
   mocks.prepare.mockResolvedValue({
     target: { url: 'ws://127.0.0.1:18789', token: 'fixture-token' },
     agent: { agent_id: 'personal-legacy', provisioning_status: 'pending' },
@@ -77,5 +83,22 @@ describe('hosted personal-agent entrypoint', () => {
     expect(await ensureActivePersonalAgent(ctx, params)).toBe(false);
     expect(await ensureActivePersonalAgent(ctx, { ...params, userId: 'someone-else' })).toBe(false);
     expect(mocks.prepare).not.toHaveBeenCalled();
+  });
+});
+
+describe('org without the ai feature (spec 043)', () => {
+  it('provisions nothing and reports no pending provisioning when the org lacks ai', async () => {
+    mocks.allows.mockResolvedValue(false);
+    mocks.get.mockResolvedValue(null);
+    expect(await ensureActivePersonalAgent(ctx, params)).toBe(false);
+    expect(mocks.provision).not.toHaveBeenCalled();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    mocks.get.mockResolvedValue(agentRow('pending'));
+    expect(await getPendingProvisioningForUser(ctx, params.userId)).toBeNull();
+    expect(mocks.allows).toHaveBeenCalledWith('org-1', 'ai', expect.any(String));
+  });
+  it('is unchanged when the org may use ai (flag off answers true)', async () => {
+    mocks.get.mockResolvedValue(agentRow('pending'));
+    expect(await getPendingProvisioningForUser(ctx, params.userId)).not.toBeNull();
   });
 });

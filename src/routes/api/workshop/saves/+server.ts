@@ -6,8 +6,10 @@ import { randomUUID } from 'crypto';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
+import { requireFeature } from '$server/services/entitlements.service';
 
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
@@ -47,6 +49,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 };
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const user = requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);

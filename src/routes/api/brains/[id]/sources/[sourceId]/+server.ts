@@ -5,6 +5,7 @@ import { uuidParamOr404 } from '$server/utils/uuid-param';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { resolvePrincipal } from '$server/services/brains.service';
 import { setFocusedBrainSourceMembership } from '$server/services/brain-corpus.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 async function mutateMembership(
   locals: App.Locals,
@@ -24,9 +25,13 @@ async function mutateMembership(
 }
 
 /** Attach an existing shared corpus source to a Focused Brain. */
-export const PUT: RequestHandler = async ({ locals, params }) =>
-  json(await mutateMembership(locals, params, true));
+export const PUT: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
+  return json(await mutateMembership(locals, params, true));
+};
 
 /** Detach a shared source reference without deleting or re-embedding it. */
-export const DELETE: RequestHandler = async ({ locals, params }) =>
-  json(await mutateMembership(locals, params, false));
+export const DELETE: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
+  return json(await mutateMembership(locals, params, false));
+};

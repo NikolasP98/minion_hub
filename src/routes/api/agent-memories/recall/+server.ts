@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { searchMemories } from '$server/services/agent-memories.service';
 import { embedText, embeddingsEnabled } from '$server/services/embeddings';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/agent-memories/recall  { agentId, query, limit? }
@@ -13,6 +14,7 @@ import { embedText, embeddingsEnabled } from '$server/services/embeddings';
  * gracefully instead of erroring the agent turn.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   if (!locals.tenantCtx) throw error(401, 'Unauthorized');
   const orgId = locals.tenantCtx.tenantId;
 

@@ -120,14 +120,35 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
           settings: { debounceMs: 500 },
           authRef: 'whatsapp/+51906090526',
         },
+        aiEnabled: true,
       },
     ]);
   });
 
-  it('carries ownerProfileId (P0 user-scoped classification primitive) through untouched', () => {
-    const out = toResolvedChannels([
-      { ...waRow, tenantId: 'org-1', ownerProfileId: 'profile-1' },
+  it('sets aiEnabled from the per-org map (spec 043); missing org or null tenant → true', () => {
+    const map = new Map([
+      ['base-org', false],
+      ['premium-org', true],
     ]);
+    const out = toResolvedChannels(
+      [
+        { ...waRow, accountId: 'a', tenantId: 'base-org' },
+        { ...waRow, accountId: 'b', tenantId: 'premium-org' },
+        { ...waRow, accountId: 'c', tenantId: 'unlisted-org' },
+        { ...waRow, accountId: 'd' },
+      ],
+      map,
+    );
+    expect(out.map((c) => [c.accountId, c.aiEnabled])).toEqual([
+      ['a', false],
+      ['b', true],
+      ['c', true],
+      ['d', true],
+    ]);
+  });
+
+  it('carries ownerProfileId (P0 user-scoped classification primitive) through untouched', () => {
+    const out = toResolvedChannels([{ ...waRow, tenantId: 'org-1', ownerProfileId: 'profile-1' }]);
     expect(out[0].ownerProfileId).toBe('profile-1');
     // org-scoped row (no owner) — orgId still present, ownerProfileId null.
     expect(toResolvedChannels([{ ...waRow, tenantId: 'org-1' }])[0].ownerProfileId).toBeNull();
@@ -141,13 +162,19 @@ describe('toResolvedChannels (hub hydration mapper)', () => {
       { ...waRow, accountId: null },
       { ...waRow, accountId: '' },
     ]);
-    expect(out.map((c) => `${c.type}:${c.accountId}`)).toEqual(['telegram:bot123', 'discord:guild1']);
+    expect(out.map((c) => `${c.type}:${c.accountId}`)).toEqual([
+      'telegram:bot123',
+      'discord:guild1',
+    ]);
   });
 
   it('never leaks a credential-shaped field even if a row smuggles one in', () => {
-    const dirty = { ...waRow, accountId: '+1', botToken: 'SECRET', token: 'SECRET2' } as unknown as Parameters<
-      typeof toResolvedChannels
-    >[0][number];
+    const dirty = {
+      ...waRow,
+      accountId: '+1',
+      botToken: 'SECRET',
+      token: 'SECRET2',
+    } as unknown as Parameters<typeof toResolvedChannels>[0][number];
     const serialized = JSON.stringify(toResolvedChannels([dirty]));
     expect(serialized).not.toMatch(/SECRET|botToken/);
     expect(serialized).not.toMatch(/"token"/);

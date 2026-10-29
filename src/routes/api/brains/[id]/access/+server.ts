@@ -4,9 +4,11 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { listAccess, setAccess, resolvePrincipal } from '$server/services/brains.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /** GET /api/brains/:id/access — write-level required (access grants are themselves sensitive). */
 export const GET: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const principal = await resolvePrincipal(ctx);
@@ -25,6 +27,7 @@ const putSchema = z.object({
 
 /** PUT /api/brains/:id/access — replace-all the brain's access grants. */
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, putSchema);

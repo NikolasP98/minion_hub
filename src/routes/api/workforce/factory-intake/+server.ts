@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { trustedWorkforceMutationHeaders, workforceRawFetch } from '$lib/server/workforce-fetch';
 import type { RequestHandler } from './$types';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const MAX_REQUEST_LENGTH = 12_000;
 
@@ -26,6 +27,7 @@ function safeIdempotencyKey(value: unknown): string {
 }
 
 export const POST: RequestHandler = async (event) => {
+  await requireFeature(event.locals, 'ai');
   if (!event.locals.user) throw error(401, 'Authentication required');
   if (!event.locals.workforceIdentity) {
     return json(

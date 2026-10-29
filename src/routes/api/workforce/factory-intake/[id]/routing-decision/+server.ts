@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { trustedWorkforceMutationHeaders, workforceRawFetch } from '$lib/server/workforce-fetch';
 import { normalizeFactoryScopes } from '$lib/workforce/factory-intake';
 import type { RequestHandler } from './$types';
+import { requireFeature } from '$server/services/entitlements.service';
 
 function text(value: unknown, max = 4000): string | null {
   return typeof value === 'string' && value.trim() && value.trim().length <= max
@@ -18,6 +19,7 @@ function uuid(value: unknown): string | null {
 }
 
 export const POST: RequestHandler = async (event) => {
+  await requireFeature(event.locals, 'ai');
   if (!event.locals.user) throw error(401, 'Authentication required');
   if (!event.locals.workforceIdentity) {
     return json({ error: 'The factory control plane is unavailable.' }, { status: 503 });

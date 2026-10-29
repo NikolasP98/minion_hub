@@ -165,7 +165,11 @@ export async function advanceBusinessCorpusJob(
   return finish(progress(page));
 }
 
-registerJobHandler({ type: BRAIN_BUSINESS_CORPUS_JOB_TYPE, advance: advanceBusinessCorpusJob });
+registerJobHandler({
+  type: BRAIN_BUSINESS_CORPUS_JOB_TYPE,
+  feature: 'ai.proactive',
+  advance: advanceBusinessCorpusJob,
+});
 
 export async function advanceBusinessCorpusJobNow(jobId: string, budgetMs = 10_000): Promise<void> {
   await advanceJob(jobId, budgetMs);

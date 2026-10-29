@@ -13,6 +13,8 @@ import { requireAdmin } from '$server/auth/authorize';
 import { captureServerEvent } from '$lib/server/posthog';
 import type { OrgKind } from '$lib/org-kind';
 import { PLANS, type PlanKey } from '$server/entitlements/catalog';
+import { EntitlementError } from '$server/entitlements/errors';
+import { currentAiUsageScope } from '$server/ai-usage';
 import {
   ALL_FEATURE_KEYS,
   expandFeatures,
@@ -59,14 +61,19 @@ async function loadPlan(orgId: string): Promise<PlanLookup> {
   };
 }
 
+/** The last successful lookup per org on this instance, for config paths (see orgAllowsForConfig). */
+const lastAnswer = new Map<string, PlanLookup>();
+
 /** The cached plan lookup; null on any DB or cache error (logged as lookup_error). */
 async function lookupPlan(orgId: string): Promise<PlanLookup | null> {
   try {
-    return await cached(
+    const lookup = await cached(
       keys.hub('entitlements', { t: orgId }),
       { ttl: '5m', swr: '1m', tags: entitlementTags(orgId) },
       () => loadPlan(orgId),
     );
+    lastAnswer.set(orgId, lookup);
+    return lookup;
   } catch (err) {
     console.error('[entitlements] lookup_error', { orgId, err });
     return null;
@@ -96,6 +103,42 @@ export async function resolveEntitlements(orgId: string): Promise<ResolvedEntitl
   };
 }
 
+type DenyReason = 'not_in_plan' | 'rule_false' | 'lookup_error';
+
+/** Why `orgId` may not use `feature`, or null when it may. A lookup error never grants. */
+async function denyReason(
+  orgId: string,
+  feature: string,
+): Promise<{ reason: DenyReason | null; plan: PlanKey | undefined }> {
+  const lookup = await lookupPlan(orgId);
+  if (!lookup) return { reason: 'lookup_error', plan: undefined };
+  const verdict = isEntitled(lookup, feature);
+  return {
+    reason: verdict.allowed ? null : (verdict.reason as 'not_in_plan' | 'rule_false'),
+    plan: lookup.plan,
+  };
+}
+
+function captureDenial(
+  orgId: string,
+  feature: string,
+  reason: string,
+  surface: string,
+  actorId?: string,
+) {
+  captureServerEvent({
+    event: 'entitlement_denied',
+    distinctId: `org:${orgId}`,
+    properties: {
+      org_id: orgId,
+      actor_id: actorId,
+      entitlement_feature: feature,
+      entitlement_reason: reason,
+      entitlement_surface: surface,
+    },
+  });
+}
+
 async function checkFeature(
   orgId: string | undefined,
   feature: string,
@@ -108,31 +151,21 @@ async function checkFeature(
     if (enforced) throw error(401, 'Authentication required');
     return;
   }
-  const lookup = await lookupPlan(orgId);
-  let reason: 'not_in_plan' | 'rule_false' | 'lookup_error' | null = null;
-  if (!lookup) {
-    reason = 'lookup_error';
-  } else {
-    const verdict = isEntitled(lookup, feature);
-    if (!verdict.allowed) reason = verdict.reason as 'not_in_plan' | 'rule_false';
+  if (!enforced) {
+    // Shadow log only: a request never waits on the plan lookup while the flag is off.
+    void denyReason(orgId, feature).then(({ reason, plan }) => {
+      if (reason)
+        console.warn(
+          'entitlement.would_deny',
+          JSON.stringify({ feature, orgId, plan, reason, surface }),
+        );
+    });
+    return;
   }
+  const { reason, plan } = await denyReason(orgId, feature);
   if (!reason) return;
-  console.warn(
-    enforced ? 'entitlement.denied' : 'entitlement.would_deny',
-    JSON.stringify({ feature, orgId, plan: lookup?.plan, reason, surface }),
-  );
-  if (!enforced) return;
-  captureServerEvent({
-    event: 'entitlement_denied',
-    distinctId: `org:${orgId}`,
-    properties: {
-      org_id: orgId,
-      actor_id: locals?.user?.id,
-      entitlement_feature: feature,
-      entitlement_reason: reason,
-      entitlement_surface: surface,
-    },
-  });
+  console.warn('entitlement.denied', JSON.stringify({ feature, orgId, plan, reason, surface }));
+  captureDenial(orgId, feature, reason, surface, locals?.user?.id);
   if (reason === 'lookup_error') {
     throw error(503, { message: 'Plan lookup unavailable', code: 'entitlements_unavailable' });
   }
@@ -141,6 +174,81 @@ async function checkFeature(
     code: 'premium_required',
     feature,
   });
+}
+
+/**
+ * Background check for ticks, jobs and the gateway mirrors: true when `orgId` may use `feature`.
+ * Flag off → true with no lookup. A lookup error denies. Logs the skip; never sends PostHog.
+ */
+export async function orgAllows(orgId: string, feature: string, surface: string): Promise<boolean> {
+  return !(await orgFeatureCheck(orgId, feature, surface));
+}
+
+/** `orgAllows` with the reason, so a job can tell a transient `lookup_error` from a real denial. */
+export async function orgFeatureCheck(
+  orgId: string,
+  feature: string,
+  surface: string,
+): Promise<DenyReason | null> {
+  if (!isEnforced()) return null;
+  const { reason, plan } = await denyReason(orgId, feature);
+  if (reason)
+    console.warn('entitlement.skipped', JSON.stringify({ feature, orgId, plan, reason, surface }));
+  return reason;
+}
+
+/**
+ * Config paths (the gateway channel mirror): like `orgAllows`, but a lookup error never demotes a
+ * paying org (resolution decision 1). It answers from this instance's last answer, else `true`.
+ */
+export async function orgAllowsForConfig(
+  orgId: string,
+  feature: string,
+  surface: string,
+): Promise<boolean> {
+  const reason = await orgFeatureCheck(orgId, feature, surface);
+  if (reason !== 'lookup_error') return !reason;
+  const last = lastAnswer.get(orgId);
+  console.warn(
+    'entitlement.lookup_error',
+    JSON.stringify({ feature, orgId, surface, fallback: last ? 'last_answer' : 'allow' }),
+  );
+  return last ? isEntitled(last, feature).allowed : true;
+}
+
+/** `{skippedByEntitlement}` only when something was skipped, so flag-off tick responses keep their shape. */
+export function skippedField(count: number): { skippedByEntitlement?: number } {
+  return count ? { skippedByEntitlement: count } : {};
+}
+
+/**
+ * The model-call backstop (`llm.ts` usage middleware, embeddings, assistant router). Flag off → no-op.
+ * Org in the AI usage scope without `ai`, or a lookup error → `EntitlementError`. A signed-in scope
+ * with no org → denied. No scope, or an unauthenticated scope with no org (scripts, platform jobs)
+ * → allowed and logged.
+ */
+export async function assertAiCallAllowed(surface: string): Promise<void> {
+  if (!isEnforced()) return;
+  const scope = currentAiUsageScope();
+  const orgId = scope?.orgId ?? null;
+  if (!orgId) {
+    const log = { feature: 'ai', surface, route: scope?.route ?? null };
+    if (scope?.authenticated) {
+      console.warn('entitlement.denied', JSON.stringify({ ...log, reason: 'no_org' }));
+      throw new EntitlementError('ai', 'no_org');
+    }
+    console.info('entitlement.unscoped_model_call', JSON.stringify(log));
+    return;
+  }
+  const { reason, plan } = await denyReason(orgId, 'ai');
+  if (!reason) return;
+  console.warn(
+    'entitlement.denied',
+    JSON.stringify({ feature: 'ai', orgId, plan, reason, surface }),
+  );
+  // PostHog only for request denials; ticks and jobs run unauthenticated scopes.
+  if (scope?.authenticated) captureDenial(orgId, 'ai', reason, surface);
+  throw new EntitlementError('ai', reason);
 }
 
 /** First line of every gated route. Throws only when enforced. */

@@ -1061,4 +1061,4 @@ async function advanceBrainIngest(job: BgJob, execution: JobExecution): Promise<
 // qualification plus an explicit indeterminate-request recovery policy. Receipt-backed
 // source tests do not close those gates. See meta proposals/2026-09-08-platform-qc-remediation.md.
 
-registerJobHandler({ type: 'brain_ingest', advance: advanceBrainIngest });
+registerJobHandler({ type: 'brain_ingest', feature: 'ai.proactive', advance: advanceBrainIngest });

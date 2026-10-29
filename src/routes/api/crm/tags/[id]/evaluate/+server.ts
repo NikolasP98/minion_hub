@@ -6,11 +6,16 @@ import { env } from '$env/dynamic/private';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { getTag, getAiTagCandidates, applyTagBulk } from '$server/services/crm-contacts.service';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const evalItemSchema = z.object({ i: z.number(), qualifies: z.boolean() });
 
 const MODEL =
-  env.CRM_TAG_MODEL || env.CRM_FUNNEL_MODEL || env.CRM_CLEANUP_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
+  env.CRM_TAG_MODEL ||
+  env.CRM_FUNNEL_MODEL ||
+  env.CRM_CLEANUP_MODEL ||
+  env.NOTES_POLISH_MODEL ||
+  'google/gemini-2.5-flash';
 const BATCH = 15; // candidates per LLM call
 
 /**
@@ -22,6 +27,7 @@ const BATCH = 15; // candidates per LLM call
  *   ← { evaluated, matched, applied, model }
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
 
@@ -36,7 +42,9 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   const apiKey = env.OPENROUTER_API_KEY;
   if (!apiKey) throw error(503, 'No AI API key configured');
 
-  const candidates = (await getAiTagCandidates(ctx, { cap: 120 })).filter((c) => c.snippets.length > 0);
+  const candidates = (await getAiTagCandidates(ctx, { cap: 120 })).filter(
+    (c) => c.snippets.length > 0,
+  );
   if (candidates.length === 0) return json({ evaluated: 0, matched: 0, applied: 0 });
 
   const matchedIds: string[] = [];

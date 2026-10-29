@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { withAiUsageOrg } from '$server/ai-usage';
+import { orgAllows, skippedField } from '$server/services/entitlements.service';
 import {
   advanceBrainCorpusJobNow,
   ensureWhatsAppReconcileJob,
@@ -35,10 +36,16 @@ export const GET: RequestHandler = async ({ request }) => {
     businessAdvanced: 0,
     errors: 0,
   };
+  let skippedByEntitlement = 0;
   for (const { id: orgId } of orgs) {
     // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
     // the ledger cannot attribute this pipeline's embedding spend to anyone.
     await withAiUsageOrg(orgId, 'brains.reconcile', async () => {
+      // Spec 043: proactive AI only for orgs whose plan includes it; skips are counted.
+      if (!(await orgAllows(orgId, 'ai.proactive', 'tick:brains.reconcile'))) {
+        skippedByEntitlement += 1;
+        return;
+      }
       try {
         const whatsappJob = await ensureWhatsAppReconcileJob(orgId);
         if (whatsappJob.created) totals.created += 1;
@@ -57,5 +64,5 @@ export const GET: RequestHandler = async ({ request }) => {
       }
     });
   }
-  return json({ ok: true, ...totals });
+  return json({ ok: true, ...totals, ...skippedField(skippedByEntitlement) });
 };

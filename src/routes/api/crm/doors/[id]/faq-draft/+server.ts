@@ -7,6 +7,7 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 import { getDoor } from '$server/services/doors.service';
 import { draftFaqsFromConversations } from '$server/services/doors-faq-draft.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/crm/doors/[id]/faq-draft → `{drafts:[{q,a,count}]}` (crm:manage).
@@ -14,6 +15,7 @@ import { draftFaqsFromConversations } from '$server/services/doors-faq-draft.ser
  * 503 `ai_not_configured` without a model key; 429 after 3 calls / 10 min / org.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   const id = uuidParamOr404(params.id!);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');

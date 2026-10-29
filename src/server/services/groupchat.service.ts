@@ -556,4 +556,4 @@ async function advanceGroupchat(job: BgJob, execution: JobExecution): Promise<Ad
   }
 }
 
-registerJobHandler({ type: 'groupchat', advance: advanceGroupchat });
+registerJobHandler({ type: 'groupchat', feature: 'ai', advance: advanceGroupchat });
