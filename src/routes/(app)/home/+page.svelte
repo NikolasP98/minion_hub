@@ -926,7 +926,7 @@
       <h1 id="my-agent-greeting" class="sr-only">{data.greeting}</h1>
       <header class="greeting-row">
         <div class="identity">
-          {#if !voiceCall.active}
+          {#if !voiceCall.active && hasFeature('ai.chat')}
             <div class="mini-avatar">
               <AiOrbFace
                 diameter={40}
@@ -1317,7 +1317,7 @@
       </section>
 
       <!-- Spec 043: chat and voice call are the assistant; not rendered without it. -->
-      <!-- TODO(handoff): the thread area, greeting orb and chat empty state above still render for an org without ai.chat (empty: no personal agent is provisioned for it). Spec 043 listed only voice-call for /home; decide whether /home becomes a feed-only page for Base. Pointer: proposals/2026-10-29-hub-org-entitlements-followups.md. -->
+      <!-- Without ai.chat the orb is not rendered and assistant.personalAgentId is null, so no thread or history load; the feed stays. -->
       {#if hasFeature('ai.chat')}
         <div class="composer">
           <div class="composer-input">

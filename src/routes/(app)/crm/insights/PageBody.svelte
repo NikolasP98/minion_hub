@@ -105,172 +105,175 @@
         <CrmInsightsChat />
       {/if}
 
-      <!-- C3 — learning from winning conversations -->
-      <section class="card">
-        <header class="card-h">
-          <span class="flex items-center gap-1.5"
-            ><Trophy size={iconSizes.sm} /> {m.crm_wins_title()}</span
-          >
-          {#if aiEnabled}
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={rebuildWins}
-              disabled={rebuilding}
-              loading={rebuilding}
+      <!-- Spec 043: the win index and sentiment scores are model output; not rendered without `ai`. -->
+      {#if aiEnabled}
+        <!-- C3 — learning from winning conversations -->
+        <section class="card">
+          <header class="card-h">
+            <span class="flex items-center gap-1.5"
+              ><Trophy size={iconSizes.sm} /> {m.crm_wins_title()}</span
             >
-              <RefreshCw size={iconSizes.sm} />
-              {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
-            </Button>
-          {/if}
-        </header>
-        {#if (data.winIndex?.count ?? 0) > 0}
-          <p class="t-body">{m.crm_wins_status({ count: data.winIndex.count })}</p>
-          {#if data.winIndex?.thin}<p class="t-caption">{m.crm_wins_thin()}</p>{/if}
-        {:else}
-          <p class="t-caption">{m.crm_wins_never()}</p>
-        {/if}
-
-        {#if data.winAnalysis}
-          <div class="wa">
-            {#if data.winAnalysis.wins.length}
-              <h4 class="wa-h wa-h-win">{m.crm_wins_analysis_wins()}</h4>
-              <ul class="wa-list">
-                {#each data.winAnalysis.wins as w (w.point)}
-                  <li>
-                    <span class="wa-point">{w.point}</span>
-                    {#if w.repeat}<span class="wa-repeat"
-                        >{m.crm_wins_analysis_repeat()} {w.repeat}</span
-                      >{/if}
-                    {#if w.sources?.length}
-                      <span class="wa-sources">
-                        {#each w.sources as s (s.contactId)}
-                          <a class="wa-source" href={`/crm/${s.contactId}`}
-                            >{s.name ?? m.crm_wins_source_unknown()}{#if s.occurredAt}<span
-                                class="wa-source-date">· {fmtSourceDate(s.occurredAt)}</span
-                              >{/if}</a
-                          >
-                        {/each}
-                      </span>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-            {#if data.winAnalysis.improvements.length}
-              <h4 class="wa-h wa-h-improve">{m.crm_wins_analysis_improve()}</h4>
-              <ul class="wa-list">
-                {#each data.winAnalysis.improvements as im (im.area)}
-                  <li>
-                    <span class="wa-point">{im.area}</span>
-                    {#if im.suggestions.length}
-                      <ul class="wa-sublist">
-                        {#each im.suggestions as s (s)}<li>{s}</li>{/each}
-                      </ul>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
-            {/if}
-          </div>
-        {:else if (data.winIndex?.count ?? 0) > 0}
-          <p class="t-caption">{m.crm_wins_analysis_hint()}</p>
-        {/if}
-      </section>
-
-      <!-- Conversation intelligence — aggregate rollup over the vectorized +
-           analyzed conversation corpus (crm_conversation_analysis). -->
-      <section class="card">
-        <header class="card-h">
-          <span class="flex items-center gap-1.5"
-            ><Brain size={iconSizes.sm} /> {m.crm_themes_title()}</span
-          >
-        </header>
-        {#if data.themes.overAnswered.total === 0}
-          <EmptyState
-            compact
-            title={m.crm_themes_empty_title()}
-            description={m.crm_themes_empty_desc({ count: data.pendingAnalysis })}
-          />
-        {:else}
-          <div class="themes">
-            <div>
-              <h4 class="wa-h">{m.crm_themes_pain_title()}</h4>
-              <div class="bars">
-                {#each data.themes.topPainPoints as p (p.point)}
-                  <div class="bars-row">
-                    <span class="bars-label">{p.point}</span>
-                    <span class="bars-n">{p.count}</span>
-                    <span class="bars-wrap"
-                      ><span class="bars-fill" style:width={`${barPct(p.count, maxPain)}%`}
-                      ></span></span
-                    >
-                  </div>
-                {/each}
-              </div>
-            </div>
-            <div>
-              <h4 class="wa-h">{m.crm_themes_intent_title()}</h4>
-              <div class="bars">
-                {#each data.themes.intentDistribution as it (it.intent)}
-                  <div class="bars-row">
-                    <span class="bars-label">{it.intent}</span>
-                    <span class="bars-n">{it.count}</span>
-                    <span class="bars-wrap"
-                      ><span class="bars-fill" style:width={`${barPct(it.count, maxIntent)}%`}
-                      ></span></span
-                    >
-                  </div>
-                {/each}
-              </div>
-            </div>
-            <div>
-              <h4 class="wa-h">{m.crm_themes_over_title()}</h4>
-              <div class="over-stat">
-                <span class="trend-cur">{overPct}%</span>
-                <span class="t-caption"
-                  >{m.crm_themes_over_desc({
-                    count: data.themes.overAnswered.count,
-                    total: data.themes.overAnswered.total,
-                  })}</span
-                >
-              </div>
-            </div>
-          </div>
-        {/if}
-      </section>
-
-      <!-- Historic sentiment (chat-day scored, bucketed by day/week/month) -->
-      <section class="card">
-        <header class="card-h">
-          <span>{m.crm_insights_sentiment_title()}</span>
-          <span class="flex items-center gap-2">
-            <SegmentedControl
-              items={GRANULARITIES}
-              value={data.sentGranularity}
-              aria-label={m.crm_insights_sentiment_title()}
-              onValueChange={(v) => setParam('sent', v)}
-            />
             {#if aiEnabled}
               <Button
                 variant="outline"
                 size="sm"
-                onclick={analyze}
-                disabled={analyzing}
-                loading={analyzing}
+                onclick={rebuildWins}
+                disabled={rebuilding}
+                loading={rebuilding}
               >
                 <RefreshCw size={iconSizes.sm} />
-                {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
+                {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
               </Button>
             {/if}
-          </span>
-        </header>
-        <CrmSentimentTrend
-          points={data.sentiment}
-          current={data.current}
-          granularity={data.sentGranularity}
-        />
-      </section>
+          </header>
+          {#if (data.winIndex?.count ?? 0) > 0}
+            <p class="t-body">{m.crm_wins_status({ count: data.winIndex.count })}</p>
+            {#if data.winIndex?.thin}<p class="t-caption">{m.crm_wins_thin()}</p>{/if}
+          {:else}
+            <p class="t-caption">{m.crm_wins_never()}</p>
+          {/if}
+
+          {#if data.winAnalysis}
+            <div class="wa">
+              {#if data.winAnalysis.wins.length}
+                <h4 class="wa-h wa-h-win">{m.crm_wins_analysis_wins()}</h4>
+                <ul class="wa-list">
+                  {#each data.winAnalysis.wins as w (w.point)}
+                    <li>
+                      <span class="wa-point">{w.point}</span>
+                      {#if w.repeat}<span class="wa-repeat"
+                          >{m.crm_wins_analysis_repeat()} {w.repeat}</span
+                        >{/if}
+                      {#if w.sources?.length}
+                        <span class="wa-sources">
+                          {#each w.sources as s (s.contactId)}
+                            <a class="wa-source" href={`/crm/${s.contactId}`}
+                              >{s.name ?? m.crm_wins_source_unknown()}{#if s.occurredAt}<span
+                                  class="wa-source-date">· {fmtSourceDate(s.occurredAt)}</span
+                                >{/if}</a
+                            >
+                          {/each}
+                        </span>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+              {#if data.winAnalysis.improvements.length}
+                <h4 class="wa-h wa-h-improve">{m.crm_wins_analysis_improve()}</h4>
+                <ul class="wa-list">
+                  {#each data.winAnalysis.improvements as im (im.area)}
+                    <li>
+                      <span class="wa-point">{im.area}</span>
+                      {#if im.suggestions.length}
+                        <ul class="wa-sublist">
+                          {#each im.suggestions as s (s)}<li>{s}</li>{/each}
+                        </ul>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {:else if (data.winIndex?.count ?? 0) > 0}
+            <p class="t-caption">{m.crm_wins_analysis_hint()}</p>
+          {/if}
+        </section>
+
+        <!-- Conversation intelligence — aggregate rollup over the vectorized +
+           analyzed conversation corpus (crm_conversation_analysis). -->
+        <section class="card">
+          <header class="card-h">
+            <span class="flex items-center gap-1.5"
+              ><Brain size={iconSizes.sm} /> {m.crm_themes_title()}</span
+            >
+          </header>
+          {#if data.themes.overAnswered.total === 0}
+            <EmptyState
+              compact
+              title={m.crm_themes_empty_title()}
+              description={m.crm_themes_empty_desc({ count: data.pendingAnalysis })}
+            />
+          {:else}
+            <div class="themes">
+              <div>
+                <h4 class="wa-h">{m.crm_themes_pain_title()}</h4>
+                <div class="bars">
+                  {#each data.themes.topPainPoints as p (p.point)}
+                    <div class="bars-row">
+                      <span class="bars-label">{p.point}</span>
+                      <span class="bars-n">{p.count}</span>
+                      <span class="bars-wrap"
+                        ><span class="bars-fill" style:width={`${barPct(p.count, maxPain)}%`}
+                        ></span></span
+                      >
+                    </div>
+                  {/each}
+                </div>
+              </div>
+              <div>
+                <h4 class="wa-h">{m.crm_themes_intent_title()}</h4>
+                <div class="bars">
+                  {#each data.themes.intentDistribution as it (it.intent)}
+                    <div class="bars-row">
+                      <span class="bars-label">{it.intent}</span>
+                      <span class="bars-n">{it.count}</span>
+                      <span class="bars-wrap"
+                        ><span class="bars-fill" style:width={`${barPct(it.count, maxIntent)}%`}
+                        ></span></span
+                      >
+                    </div>
+                  {/each}
+                </div>
+              </div>
+              <div>
+                <h4 class="wa-h">{m.crm_themes_over_title()}</h4>
+                <div class="over-stat">
+                  <span class="trend-cur">{overPct}%</span>
+                  <span class="t-caption"
+                    >{m.crm_themes_over_desc({
+                      count: data.themes.overAnswered.count,
+                      total: data.themes.overAnswered.total,
+                    })}</span
+                  >
+                </div>
+              </div>
+            </div>
+          {/if}
+        </section>
+
+        <!-- Historic sentiment (chat-day scored, bucketed by day/week/month) -->
+        <section class="card">
+          <header class="card-h">
+            <span>{m.crm_insights_sentiment_title()}</span>
+            <span class="flex items-center gap-2">
+              <SegmentedControl
+                items={GRANULARITIES}
+                value={data.sentGranularity}
+                aria-label={m.crm_insights_sentiment_title()}
+                onValueChange={(v) => setParam('sent', v)}
+              />
+              {#if aiEnabled}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onclick={analyze}
+                  disabled={analyzing}
+                  loading={analyzing}
+                >
+                  <RefreshCw size={iconSizes.sm} />
+                  {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
+                </Button>
+              {/if}
+            </span>
+          </header>
+          <CrmSentimentTrend
+            points={data.sentiment}
+            current={data.current}
+            granularity={data.sentGranularity}
+          />
+        </section>
+      {/if}
 
       <!-- Word cloud -->
       <section class="card">

@@ -292,6 +292,7 @@ describe('featureForPath (spec 043)', () => {
     expect(featureForPath('/pulse')).toBe('ai.proactive');
     expect(featureForPath('/settings/pulse')).toBe('ai.proactive');
     expect(featureForPath('/marketplace/x')).toBe('marketplace');
+    expect(featureForPath('/home/settings')).toBe('ai.chat');
   });
   test('non-AI pages, channels and the flow editor need nothing', () => {
     for (const p of [

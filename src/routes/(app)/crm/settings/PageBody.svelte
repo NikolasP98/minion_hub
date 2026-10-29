@@ -314,7 +314,7 @@
             <Select bind:value={kind} class="select-field">
               <option value="manual">{m.crm_tag_kind_manual()}</option>
               <option value="auto">{m.crm_tag_kind_auto()}</option>
-              <option value="ai">{m.crm_tag_kind_ai()}</option>
+              {#if hasFeature('ai')}<option value="ai">{m.crm_tag_kind_ai()}</option>{/if}
             </Select>
           </label>
 

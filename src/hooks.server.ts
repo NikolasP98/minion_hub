@@ -59,6 +59,7 @@ import {
 } from '$lib/nav/custom-sections';
 import { listModuleStates } from '$server/services/modules.service';
 import { isAppRouteBlocked, shouldApplyOrganizationRouteGuards } from '$lib/modules/route-guard';
+import { featureForPath } from '$lib/modules/availability';
 import { resolveEntitlements } from '$server/services/entitlements.service';
 import {
   proxyRequestHeaders,
@@ -510,7 +511,14 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // /home). The destination is user-configurable via the sidebar right-click
   // "Set as home page" action (stored in the `landingPage` preference).
   if (event.locals.user && path === '/') {
-    const location = await resolveLandingPage(event.locals.user.supabaseId);
+    let location = await resolveLandingPage(event.locals.user.supabaseId);
+    // Spec 043: a landing page the org's plan does not grant would 404 right after login.
+    const landing = canonicalPath(location.split(/[?#]/, 1)[0]);
+    const feature = featureForPath(landing);
+    const tenantId = event.locals.tenantCtx?.tenantId;
+    if (feature && tenantId && !(await resolveEntitlements(tenantId)).features.includes(feature)) {
+      location = `${location.slice(0, location.indexOf(landing))}/home`;
+    }
     return new Response(null, { status: 307, headers: { location } });
   }
 

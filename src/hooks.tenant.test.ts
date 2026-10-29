@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   moduleStates: vi.fn(),
   enforced: { list: [] as string[] },
   planRows: vi.fn(),
+  prefs: vi.fn(),
 }));
 vi.mock('$server/env-hoist', () => ({}));
 vi.mock('$env/dynamic/private', () => ({ env: mocks.cronEnv }));
@@ -84,7 +85,7 @@ vi.mock('$server/services/modules.service', () => ({
 vi.mock('$lib/server/workforce-identity', () => ({ mintWorkforceIdentity: vi.fn() }));
 vi.mock('$lib/server/workforce-viewer', () => ({ trustedWorkforceViewerRoleKeys: vi.fn() }));
 vi.mock('$server/services/user-preferences.service', () => ({
-  getUserPreferences: async () => ({}),
+  getUserPreferences: async () => mocks.prefs(),
 }));
 vi.mock('$server/ai-usage', () => ({
   runWithAiUsageScope: (_scope: unknown, fn: () => unknown) => fn(),
@@ -167,6 +168,7 @@ beforeEach(() => {
   mocks.enforced.list = [];
   delete mocks.cronEnv.ENTITLEMENTS_ENFORCED;
   mocks.planRows.mockResolvedValue([{ kind: 'business', plan_key: null }]);
+  mocks.prefs.mockResolvedValue({});
   mocks.navConfig.mockResolvedValue({
     version: 1,
     sections: [
@@ -547,6 +549,13 @@ describe('plan-gated pages through the module guard', () => {
     expect(r.status).toBe(200);
     expect(r.locals.entitlements).toEqual({ plan: 'base', features: FULL });
   });
+  it('flag off: a DB that never answers does not delay the guard (zero plan I/O)', async () => {
+    mocks.planRows.mockReturnValue(new Promise(() => {}));
+    const r = await open('/es/marketplace');
+    expect(r.status).toBe(200);
+    expect(r.locals.entitlements?.features).toEqual(FULL);
+    expect(mocks.planRows).not.toHaveBeenCalled();
+  });
   it('flag off, lookup error: everything visible', async () => {
     mocks.planRows.mockRejectedValue(new Error('db down'));
     expect((await open('/es/marketplace')).status).toBe(200);
@@ -569,5 +578,24 @@ describe('plan-gated pages through the module guard', () => {
     const r = await open('/es/marketplace');
     expect(r.status).toBe(200);
     expect(r.locals.entitlements?.features).toEqual(FULL);
+  });
+
+  it('flag on, Base: a landing page on an AI prefix falls back to /home (no 404 after login)', async () => {
+    mocks.prefs.mockResolvedValue({ landingPage: '/agents/autonomous', locale: { tag: 'es' } });
+    mocks.identity.mockResolvedValue({
+      locals: { user, tenantCtx: ctx, orgKind: 'business' },
+      bypassGate: false,
+    });
+    const at = async () => {
+      const input = event('/', 'GET');
+      (input as { route: { id: string } }).route = { id: '/(app)' };
+      const res = (await runHook({ event: input, resolve: vi.fn() })) as Response;
+      return res.headers.get('location');
+    };
+    expect(await at()).toBe('/es/agents/autonomous');
+    mocks.cronEnv.ENTITLEMENTS_ENFORCED = 'true';
+    expect(await at()).toBe('/es/home');
+    mocks.planRows.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
+    expect(await at()).toBe('/es/agents/autonomous');
   });
 });

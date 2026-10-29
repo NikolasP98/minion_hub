@@ -12,6 +12,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { deriveChannelDisplayState } from '$lib/utils/channel-display-state';
   import * as m from '$lib/paraglide/messages';
+  import { hasFeature } from '$lib/access/premium';
 
   interface Props {
     type: ChannelType;
@@ -128,7 +129,8 @@
   <div class="p-3 space-y-1.5">
     {@render children()}
   </div>
-  {#if pluginSettingsEntry}
+  <!-- Spec 043 R8: /settings/plugins 404s for an org without `ai`; no dead link. -->
+  {#if pluginSettingsEntry && hasFeature('ai')}
     <Button
       variant="ghost"
       href="/settings/plugins?plugin={encodeURIComponent(pluginSettingsEntry.pluginId)}"

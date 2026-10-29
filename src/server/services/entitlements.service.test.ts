@@ -85,6 +85,22 @@ describe('flag off', () => {
   });
 });
 
+describe('flag off: zero I/O', () => {
+  it('resolves the full catalog without touching the DB or cache, even when the DB never answers', async () => {
+    h.execute.mockReturnValue(new Promise(() => {}));
+    h.cacheFail = true;
+    const r = await resolveEntitlements(ORG);
+    expect(r).toEqual({
+      plan: 'base',
+      planSource: 'default',
+      features: ['ai', 'ai.chat', 'ai.proactive', 'marketplace'],
+      enforced: false,
+      lookupError: false,
+    });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+});
+
 describe('flag on', () => {
   beforeEach(() => {
     h.env.ENTITLEMENTS_ENFORCED = 'true';

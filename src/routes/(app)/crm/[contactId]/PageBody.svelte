@@ -594,7 +594,8 @@
       { id: 'identities', w: 2, h: 1 },
       isPersonal && data.cashflow ? { id: 'cashflow', w: 2, h: 2 } : null,
       data.finance ? { id: 'financials', w: 2, h: 2 } : null,
-      data.finance ? { id: 'wins', w: 2, h: 2 } : null,
+      // Spec 043: similar wins come from the AI win index; no empty cell without `ai`.
+      data.finance && hasFeature('ai') ? { id: 'wins', w: 2, h: 2 } : null,
       isPersonal ? null : { id: 'offers', w: 2, h: 2 },
       { id: 'bookings', w: 2, h: 2 },
       { id: 'attachments', w: 2, h: 2 },

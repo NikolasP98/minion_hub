@@ -75,6 +75,17 @@ async function lookupPlan(orgId: string): Promise<PlanLookup | null> {
 
 export async function resolveEntitlements(orgId: string): Promise<ResolvedEntitlements> {
   const enforced = isEnforced();
+  // Flag off: full catalog with zero I/O (the hook calls this on every app page load; prod cache is noop).
+  // `plan` is then not looked up and reads 'base'; nothing acts on it while unenforced.
+  if (!enforced) {
+    return {
+      plan: 'base',
+      planSource: 'default',
+      features: [...ALL_FEATURE_KEYS],
+      enforced,
+      lookupError: false,
+    };
+  }
   const lookup = await lookupPlan(orgId);
   if (!lookup) {
     // A paying org is never demoted by an outage in the UI path; request gates check lookupError.
@@ -89,8 +100,7 @@ export async function resolveEntitlements(orgId: string): Promise<ResolvedEntitl
   return {
     plan: lookup.plan,
     planSource: lookup.planSource,
-    // Flag off: full catalog on every surface.
-    features: enforced ? expandFeatures(lookup) : [...ALL_FEATURE_KEYS],
+    features: expandFeatures(lookup),
     enforced,
     lookupError: false,
   };

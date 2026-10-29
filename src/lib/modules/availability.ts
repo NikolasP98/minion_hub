@@ -177,6 +177,8 @@ export const FEATURE_PAGES: Readonly<Record<string, string>> = {
   '/pulse': 'ai.proactive',
   '/settings/pulse': 'ai.proactive',
   '/marketplace': 'marketplace',
+  // The personal agent's own settings (tone, workspace, channel links); /home itself stays.
+  '/home/settings': 'ai.chat',
 };
 
 /** The plan feature a canonical path needs, or null when it needs none. */
