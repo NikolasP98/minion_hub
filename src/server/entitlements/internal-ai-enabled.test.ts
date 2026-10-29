@@ -127,4 +127,17 @@ describe('/api/internal/flows/[id]', () => {
     h.flow = flow(null);
     expect((await get()).aiEnabled).toBe(true);
   });
+  it('a lookup error never demotes: the last answer, else true, and logs lookup_error', async () => {
+    h.env.ENTITLEMENTS_ENFORCED = 'true';
+    h.flow = flow('base-org');
+    expect((await get()).aiEnabled).toBe(false); // base-org answered once
+    h.execute.mockRejectedValue(new Error('db down'));
+    expect((await get()).aiEnabled).toBe(false);
+    h.flow = flow('flow-unseen-org');
+    expect((await get()).aiEnabled).toBe(true);
+    expect(console.warn).toHaveBeenCalledWith(
+      'entitlement.lookup_error',
+      expect.stringContaining('flow-unseen-org'),
+    );
+  });
 });
