@@ -127,6 +127,7 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/killswitches': 'capability:killswitches.view',
   '/notifications': 'role:admin',
   '/orgs': 'capability:orgs.all',
+  '/orgs/plans': 'capability:orgs.all',
   // Sandbox POC: user-authored element code, admin only (spec 010 decision D6).
   '/sandbox': 'org-capability:settings:manage',
   // Write surfaces nested under a view-gated module: the module prefix and

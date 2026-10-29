@@ -3,6 +3,7 @@
   import { Button, Card, Input, PageHeader, Spinner, StatusDot, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import { canViewPath } from '$lib/access/can.svelte';
 
   type ProvisionStep = {
     id: string;
@@ -79,6 +80,9 @@
   </PageHeader>
 
   <PageBody width="content">
+    {#if canViewPath('/orgs/plans')}
+      <a class="text-sm text-accent" href="/orgs/plans">{m.admin_plans_link()}</a>
+    {/if}
     <div class="provision-grid">
       <Card elevation={2} padding="lg">
         <form class="provision-form" onsubmit={submit}>
