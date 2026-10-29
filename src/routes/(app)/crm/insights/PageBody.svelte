@@ -11,6 +11,7 @@
   import CrmWordCloud from '$lib/components/crm/CrmWordCloud.svelte';
   import CrmSentimentTrend from '$lib/components/crm/CrmSentimentTrend.svelte';
   import CrmInsightsChat from '$lib/components/crm/CrmInsightsChat.svelte';
+  import { hasFeature } from '$lib/access/premium';
 
   type PageData = Granted<LoadedPageData['crm']>;
   let { data }: { data: PageData } = $props();
@@ -48,10 +49,12 @@
     });
 
   let analyzing = $state(false);
+  // Spec 043: sentiment scoring, the win index and the analyst chat are model calls.
+  const aiEnabled = $derived(hasFeature('ai'));
   // Incremental scoring on first view (one capped batch), like the funnel auto-analyze.
   let tried = $state(false);
   $effect(() => {
-    if (!tried) {
+    if (!tried && aiEnabled) {
       tried = true;
       void analyze();
     }
@@ -98,7 +101,9 @@
   <PageBody padding="compact" scroll="region">
     <div class="flex flex-col gap-4 max-w-5xl mx-auto w-full">
       <!-- Conversation intelligence chat — ask the CRM analyst directly -->
-      <CrmInsightsChat />
+      {#if hasFeature('ai.chat')}
+        <CrmInsightsChat />
+      {/if}
 
       <!-- C3 — learning from winning conversations -->
       <section class="card">
@@ -106,16 +111,18 @@
           <span class="flex items-center gap-1.5"
             ><Trophy size={iconSizes.sm} /> {m.crm_wins_title()}</span
           >
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={rebuildWins}
-            disabled={rebuilding}
-            loading={rebuilding}
-          >
-            <RefreshCw size={iconSizes.sm} />
-            {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
-          </Button>
+          {#if aiEnabled}
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={rebuildWins}
+              disabled={rebuilding}
+              loading={rebuilding}
+            >
+              <RefreshCw size={iconSizes.sm} />
+              {rebuilding ? m.crm_wins_rebuilding() : m.crm_wins_rebuild()}
+            </Button>
+          {/if}
         </header>
         {#if (data.winIndex?.count ?? 0) > 0}
           <p class="t-body">{m.crm_wins_status({ count: data.winIndex.count })}</p>
@@ -244,16 +251,18 @@
               aria-label={m.crm_insights_sentiment_title()}
               onValueChange={(v) => setParam('sent', v)}
             />
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={analyze}
-              disabled={analyzing}
-              loading={analyzing}
-            >
-              <RefreshCw size={iconSizes.sm} />
-              {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
-            </Button>
+            {#if aiEnabled}
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={analyze}
+                disabled={analyzing}
+                loading={analyzing}
+              >
+                <RefreshCw size={iconSizes.sm} />
+                {analyzing ? m.crm_insights_analyzing() : m.crm_insights_analyze()}
+              </Button>
+            {/if}
           </span>
         </header>
         <CrmSentimentTrend

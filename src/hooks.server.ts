@@ -59,6 +59,7 @@ import {
 } from '$lib/nav/custom-sections';
 import { listModuleStates } from '$server/services/modules.service';
 import { isAppRouteBlocked, shouldApplyOrganizationRouteGuards } from '$lib/modules/route-guard';
+import { resolveEntitlements } from '$server/services/entitlements.service';
 import {
   proxyRequestHeaders,
   proxyResponseHeaders,
@@ -379,16 +380,22 @@ async function applyModuleAvailabilityGuard(
   }
   const tenantId = event.locals.tenantCtx?.tenantId;
   if (!tenantId) return;
-  const moduleStates = await listModuleStates({
-    db: getCoreDb(),
-    tenantId,
-    profileId: event.locals.user?.supabaseId,
-  });
+  const [moduleStates, entitlements] = await Promise.all([
+    listModuleStates({
+      db: getCoreDb(),
+      tenantId,
+      profileId: event.locals.user?.supabaseId,
+    }),
+    // Spec 043: flag off or a lookup error resolve to the full catalog, so the UI is unchanged.
+    resolveEntitlements(tenantId),
+  ]);
   event.locals.moduleStates = moduleStates;
+  event.locals.entitlements = { plan: entitlements.plan, features: entitlements.features };
   if (
     isAppRouteBlocked(guardPath ?? canonicalPath(event.url.pathname), {
       kind: event.locals.orgKind,
       moduleStates,
+      features: entitlements.features,
     })
   ) {
     throw error(404, 'Not found');

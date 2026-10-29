@@ -15,6 +15,7 @@ const pageData: {
   user: { role: 'user' | 'admin' };
   permissions: { permissions: string[] };
   activeOrgKind?: 'business' | 'personal' | null;
+  entitlements?: { plan: string; features: string[] };
 } = {
   // Platform admins receive the full PERMISSIONS set (loadPermissionsForUser
   // short-circuit); users.manage + reliability.monitor are now permission-driven
@@ -46,6 +47,7 @@ beforeAll(async () => {
 beforeEach(() => {
   pageData.activeOrgKind = 'business';
   pageData.navConfig = undefined;
+  pageData.entitlements = undefined;
   enforced.list = [];
 });
 
@@ -171,5 +173,64 @@ describe('canViewPath — nav instances', () => {
     as(['page:k3x9q2:view', 'pos:view']);
     pageData.activeOrgKind = 'personal';
     expect(canViewPath('/staff/sell~k3x9q2')).toBe(false);
+  });
+});
+
+// Spec 043: a page the org's plan lacks is not offered; flag off = full catalog = unchanged.
+describe('canViewPath + hasFeature — plan features', () => {
+  const premium = { plan: 'premium', features: ['ai', 'ai.chat', 'ai.proactive', 'marketplace'] };
+  test('Base hides AI pages, archetype filters and nav instances targeting them', async () => {
+    const { canViewPath } = await import('./can.svelte');
+    pageData.user = { role: 'admin' };
+    pageData.permissions = {
+      permissions: [
+        'reliability:view',
+        'reliability.dashboard:view',
+        'marketplace:view',
+        'marketplace.dashboard:view',
+        'agents:view',
+        'brains:view',
+      ],
+    };
+    const paths = [
+      '/reliability',
+      '/marketplace',
+      '/agents?archetype=copilot',
+      '/es/brains',
+      '/overview',
+    ];
+    const today = paths.map(canViewPath);
+    expect(today).toEqual([true, true, true, true, true]);
+    pageData.entitlements = premium;
+    expect(paths.map(canViewPath)).toEqual(today);
+    pageData.entitlements = { plan: 'base', features: [] };
+    expect(paths.map(canViewPath)).toEqual([false, false, false, false, true]);
+    pageData.navConfig = {
+      version: 1,
+      sections: [
+        {
+          id: 's1',
+          slug: 'ai',
+          label: 'AI',
+          pages: [{ id: 'q1w2e3', slug: 'b', label: 'B', kind: 'link', target: '/brains' }],
+        },
+      ],
+      builtinSections: {},
+      builtin: {},
+    };
+    pageData.permissions = { permissions: ['page:q1w2e3:view', 'brains:view'] };
+    expect(canViewPath('/ai/b~q1w2e3')).toBe(false);
+    pageData.entitlements = premium;
+    expect(canViewPath('/ai/b~q1w2e3')).toBe(true);
+  });
+  test('hasFeature is exact membership; no entitlements in page.data = entitled', async () => {
+    const { hasFeature } = await import('./can.svelte');
+    expect(hasFeature('ai')).toBe(true);
+    pageData.entitlements = { plan: 'base', features: ['ai'] };
+    expect(hasFeature('ai')).toBe(true);
+    expect(hasFeature('ai.chat')).toBe(false);
+    expect(hasFeature('a')).toBe(false);
+    pageData.entitlements = { plan: 'base', features: [] };
+    expect(hasFeature('ai')).toBe(false);
   });
 });

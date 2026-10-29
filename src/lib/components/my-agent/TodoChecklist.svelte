@@ -15,6 +15,7 @@
   } from '$lib/state/features/agent-notes.svelte';
   import type { TodoBlock } from '$lib/types/notes';
   import { fetchAutocomplete } from '$lib/state/features/notes-autocomplete';
+  import { hasFeature, isPremiumRequired } from '$lib/access/premium';
   import { Plus, X, Sparkles } from 'lucide-svelte';
 
   // When `block` is set the checklist is an embedded note block; otherwise it is a
@@ -89,8 +90,8 @@
         ghost = res.items;
         if (res.items.length === 0) err = m.note_noSuggestionsRight();
       }
-    } catch {
-      if (!signal.aborted) err = m.note_couldNotSuggest();
+    } catch (e) {
+      if (!signal.aborted && !isPremiumRequired(e)) err = m.note_couldNotSuggest();
     } finally {
       busy = false;
     }
@@ -101,7 +102,7 @@
       e.preventDefault();
       if (itemIndex === items.length - 1) addItem();
       focusItem(itemIndex + 1);
-    } else if (e.key === 'Tab' && !e.shiftKey) {
+    } else if (e.key === 'Tab' && !e.shiftKey && hasFeature('ai')) {
       e.preventDefault();
       if (ghost.length) acceptGhost();
       else void requestSuggest();
@@ -168,7 +169,7 @@
           >{m.note_dismissSuggestions()}</Button
         >
       </span>
-    {:else}
+    {:else if hasFeature('ai')}
       <Button
         type="button"
         class="add-item suggest"

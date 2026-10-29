@@ -105,6 +105,7 @@
   import type { PageData } from './$types';
   import { Button, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
+  import { hasFeature } from '$lib/access/premium';
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   const { data }: { data: PageData } = $props();
@@ -938,28 +939,30 @@
             <AgentGreeting greeting={data.greeting} userName={data.userName} />
           </div>
         </div>
-        <div class="chat-header-actions">
-          {#if agentId}
-            <ChatHistoryPopover
-              {agentId}
-              activeSessionKey={chat?.sessionKey ?? `agent:${agentId}:main`}
-              disabled={!conn.connected || sending}
-              onselect={selectConversation}
-            />
-          {/if}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            class="new-chat"
-            disabled={!agentId || !conn.connected || sending}
-            title={m.chat_newChat()}
-            onclick={startNewChat}
-          >
-            <MessageSquarePlus size={iconSizes.sm} />
-            <span>{m.chat_newChat()}</span>
-          </Button>
-        </div>
+        {#if hasFeature('ai.chat')}
+          <div class="chat-header-actions">
+            {#if agentId}
+              <ChatHistoryPopover
+                {agentId}
+                activeSessionKey={chat?.sessionKey ?? `agent:${agentId}:main`}
+                disabled={!conn.connected || sending}
+                onselect={selectConversation}
+              />
+            {/if}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              class="new-chat"
+              disabled={!agentId || !conn.connected || sending}
+              title={m.chat_newChat()}
+              onclick={startNewChat}
+            >
+              <MessageSquarePlus size={iconSizes.sm} />
+              <span>{m.chat_newChat()}</span>
+            </Button>
+          </div>
+        {/if}
       </header>
 
       {#if voiceCall.error}
@@ -1313,33 +1316,37 @@
         {/if}
       </section>
 
-      <div class="composer">
-        <div class="composer-input">
-          <ChatInput
-            bind:value={draft}
-            {agentId}
-            onsubmit={handleSubmit}
-            ownerKey={preferenceOwner()}
-            running={routing ||
-              sending ||
-              stream !== null ||
-              !!streamMessage ||
-              !!$acceptedActivity}
-            onstop={stopReply}
-          />
+      <!-- Spec 043: chat and voice call are the assistant; not rendered without it. -->
+      <!-- TODO(handoff): the thread area, greeting orb and chat empty state above still render for an org without ai.chat (empty: no personal agent is provisioned for it). Spec 043 listed only voice-call for /home; decide whether /home becomes a feed-only page for Base. Pointer: proposals/2026-10-29-hub-org-entitlements-followups.md. -->
+      {#if hasFeature('ai.chat')}
+        <div class="composer">
+          <div class="composer-input">
+            <ChatInput
+              bind:value={draft}
+              {agentId}
+              onsubmit={handleSubmit}
+              ownerKey={preferenceOwner()}
+              running={routing ||
+                sending ||
+                stream !== null ||
+                !!streamMessage ||
+                !!$acceptedActivity}
+              onstop={stopReply}
+            />
+          </div>
+          <div class="composer-call">
+            <CallControls
+              active={voiceCall.active}
+              muted={voiceCall.muted}
+              status={voiceCall.status}
+              disabled={!canCall}
+              onstart={handleStartCall}
+              onend={endCall}
+              ontoggleMute={toggleMute}
+            />
+          </div>
         </div>
-        <div class="composer-call">
-          <CallControls
-            active={voiceCall.active}
-            muted={voiceCall.muted}
-            status={voiceCall.status}
-            disabled={!canCall}
-            onstart={handleStartCall}
-            onend={endCall}
-            ontoggleMute={toggleMute}
-          />
-        </div>
-      </div>
+      {/if}
     </div>
   </div>
 

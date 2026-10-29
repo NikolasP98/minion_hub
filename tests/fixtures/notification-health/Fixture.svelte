@@ -101,6 +101,7 @@
       // on every page, not only inside each module's own subtree.
       schedulingEnabled: true,
       stockEnabled: true,
+      entitlements: { plan: 'premium', features: ['ai', 'ai.chat', 'ai.proactive', 'marketplace'] },
       user: {
         id: actorId(owner),
         supabaseId: actorId(owner),

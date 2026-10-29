@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   explicit: vi.fn(),
   moduleStates: vi.fn(),
   enforced: { list: [] as string[] },
+  planRows: vi.fn(),
 }));
 vi.mock('$server/env-hoist', () => ({}));
 vi.mock('$env/dynamic/private', () => ({ env: mocks.cronEnv }));
@@ -44,8 +45,13 @@ vi.mock('$lib/server/cache', () => ({
 }));
 vi.mock('$server/auth/resolve-identity', () => ({ resolveIdentity: mocks.identity }));
 vi.mock('$server/db/client', () => ({ getDb: mocks.db }));
+vi.mock('@minion-stack/cache', async (orig) => ({
+  ...(await orig<typeof import('@minion-stack/cache')>()),
+  cached: (_key: unknown, _opts: unknown, load: () => unknown) => load(),
+}));
 vi.mock('$server/db/pg-client', () => ({
-  getCoreDb: vi.fn(),
+  // Only the entitlements plan lookup executes SQL in this suite (spec 043).
+  getCoreDb: () => ({ execute: mocks.planRows }),
   // ambientOrgTxHandle's handle — never reached here (no POS GET in this suite).
   getOrgTransactionDb: vi.fn(),
 }));
@@ -159,6 +165,8 @@ beforeEach(() => {
   mocks.perms.mockReturnValue([]);
   mocks.explicit.mockReturnValue(undefined);
   mocks.enforced.list = [];
+  delete mocks.cronEnv.ENTITLEMENTS_ENFORCED;
+  mocks.planRows.mockResolvedValue([{ kind: 'business', plan_key: null }]);
   mocks.navConfig.mockResolvedValue({
     version: 1,
     sections: [
@@ -505,5 +513,61 @@ describe('spec 037 nav-instance guards (target path + page grant + floor)', () =
     mocks.perms.mockReturnValue([]);
     mocks.explicit.mockReturnValue(true);
     expect((await page('/es/pos/sell')).resolved).toBe(true);
+  });
+});
+
+// Spec 043 S3: the module guard resolves the UI entitlements once and 404s plan-gated pages.
+describe('plan-gated pages through the module guard', () => {
+  async function open(path: string) {
+    mocks.identity.mockResolvedValue({
+      locals: { user, tenantCtx: ctx, orgKind: 'business' },
+      bypassGate: false,
+    });
+    mocks.perms.mockReturnValue([
+      'marketplace:view',
+      'marketplace.dashboard:view',
+      'crm:view',
+      'crm.dashboard:view',
+    ]);
+    const input = event(path, 'GET');
+    (input as { route: { id: string } }).route = { id: '/(app)/x' };
+    const resolve = vi.fn(async () => new Response('ok'));
+    try {
+      await runHook({ event: input, resolve });
+      return { status: resolve.mock.calls.length ? 200 : 0, locals: input.locals };
+    } catch (e) {
+      if (!(e as { status?: number }).status) throw e;
+      return { status: (e as { status: number }).status, locals: input.locals };
+    }
+  }
+  const FULL = ['ai', 'ai.chat', 'ai.proactive', 'marketplace'];
+
+  it('flag off, no plan row: everything visible', async () => {
+    const r = await open('/es/marketplace');
+    expect(r.status).toBe(200);
+    expect(r.locals.entitlements).toEqual({ plan: 'base', features: FULL });
+  });
+  it('flag off, lookup error: everything visible', async () => {
+    mocks.planRows.mockRejectedValue(new Error('db down'));
+    expect((await open('/es/marketplace')).status).toBe(200);
+  });
+  it('flag on, Base: AI pages 404, features empty, other pages open', async () => {
+    mocks.cronEnv.ENTITLEMENTS_ENFORCED = 'true';
+    const r = await open('/es/marketplace');
+    expect(r.status).toBe(404);
+    expect(r.locals.entitlements).toEqual({ plan: 'base', features: [] });
+    expect((await open('/es/crm')).status).toBe(200);
+  });
+  it('flag on, Premium: AI pages open', async () => {
+    mocks.cronEnv.ENTITLEMENTS_ENFORCED = 'true';
+    mocks.planRows.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
+    expect((await open('/es/marketplace')).status).toBe(200);
+  });
+  it('flag on, lookup error: everything visible (a paying org is never hidden by an outage)', async () => {
+    mocks.cronEnv.ENTITLEMENTS_ENFORCED = 'true';
+    mocks.planRows.mockRejectedValue(new Error('db down'));
+    const r = await open('/es/marketplace');
+    expect(r.status).toBe(200);
+    expect(r.locals.entitlements?.features).toEqual(FULL);
   });
 });

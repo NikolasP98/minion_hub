@@ -6,6 +6,7 @@
   import { Button, Input, Toggle, iconSizes } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import { toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { hasFeature, isPremiumResponse } from '$lib/access/premium';
   import type { DoorEditorProps } from '$lib/doors/types';
   import { FAQ_A_MAX, FAQ_MAX_ENTRIES, FAQ_Q_MAX, type FaqEntry } from '$lib/doors/kinds/faq';
 
@@ -44,8 +45,11 @@
   let suggesting = $state(false);
   let notice = $state<{ tone: 'error' | 'info'; text: string } | null>(null);
 
+  // Spec 043: the FAQ draft is a model call; without `ai` no button, no hint, no fetch.
+  const aiEnabled = $derived(hasFeature('ai'));
+
   async function suggest() {
-    if (!canManage || suggesting) return;
+    if (!canManage || suggesting || !aiEnabled) return;
     suggesting = true;
     notice = null;
     try {
@@ -53,6 +57,7 @@
         `/api/crm/doors/${encodeURIComponent(page.params.id ?? '')}/faq-draft`,
         { method: 'POST' },
       );
+      if (await isPremiumResponse(res)) return;
       if (!res.ok) {
         notice = {
           tone: 'error',
@@ -92,14 +97,17 @@
 <div class="faq-editor">
   <div class="head">
     <h2 class="t-label title">{m.doors_faq_questions()}</h2>
-    {#if canManage}
+    {#if canManage && aiEnabled}
       <Button size="sm" variant="secondary" onclick={suggest} loading={suggesting}>
         {#snippet icon()}<Sparkles size={iconSizes.sm} />{/snippet}
         {m.doors_faq_suggest()}
       </Button>
     {/if}
   </div>
-  <p class="t-caption muted">{m.doors_faq_suggest_hint()} {m.doors_faq_approved_hint()}</p>
+  <p class="t-caption muted">
+    {#if aiEnabled}{m.doors_faq_suggest_hint()}{/if}
+    {m.doors_faq_approved_hint()}
+  </p>
   {#if notice}
     <p
       class={['notice', { error: notice.tone === 'error' }]}

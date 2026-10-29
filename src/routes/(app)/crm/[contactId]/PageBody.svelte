@@ -59,7 +59,7 @@
   import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, User } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
   import { toastError, toastWarning } from '$lib/state/ui/toast.svelte';
-  import { canAct } from '$lib/access/can.svelte';
+  import { canAct, hasFeature } from '$lib/access/can.svelte';
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   import {
     subscribeMessageCommitted,
@@ -1087,7 +1087,7 @@
       </section>
     {/if}
   {:else if idv === 'wins'}
-    {#if data.finance}<CrmSimilarWins contactId={c.id} />{/if}
+    {#if data.finance && hasFeature('ai')}<CrmSimilarWins contactId={c.id} />{/if}
   {:else if idv === 'offers'}
     {#if !isPersonal}<CrmNextOffers contactId={c.id} />{/if}
   {:else if idv === 'bookings'}
@@ -1214,18 +1214,20 @@
       <section class="card">
         <header class="card-h">
           <span>{m.crm_journey_map()}</span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="reanalyze"
-            onclick={analyzeJourney}
-            disabled={analyzingJourney}
-            loading={analyzingJourney}
-            title={m.crm_journey_analyze()}
-          >
-            <Sparkles size={iconSizes.sm} />
-            <span>{analyzingJourney ? m.crm_journey_analyzing() : m.crm_journey_analyze()}</span>
-          </Button>
+          {#if hasFeature('ai')}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="reanalyze"
+              onclick={analyzeJourney}
+              disabled={analyzingJourney}
+              loading={analyzingJourney}
+              title={m.crm_journey_analyze()}
+            >
+              <Sparkles size={iconSizes.sm} />
+              <span>{analyzingJourney ? m.crm_journey_analyzing() : m.crm_journey_analyze()}</span>
+            </Button>
+          {/if}
         </header>
         {#if journey.length > 0}
           <div class="jmap">

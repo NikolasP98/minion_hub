@@ -51,6 +51,8 @@
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { sendRequest } from '$lib/services/gateway.svelte';
+  import { hasFeature } from '$lib/access/premium';
+  import { isAiFlowNode } from '$lib/flows/ai-nodes';
 
   let collapsed = $state(false);
 
@@ -77,7 +79,15 @@
     return n.kind === 'trigger' && !!n.channelId && n.event === 'message:received';
   }
 
-  const visiblePlugins = $derived(pluginNodes.filter((n) => !isRedundantChannelTrigger(n)));
+  // Spec 043: an org without `ai` is not offered the AI node types or the AI plugin actions.
+  const aiEnabled = $derived(hasFeature('ai'));
+  const visiblePlugins = $derived(
+    pluginNodes.filter(
+      (n) =>
+        !isRedundantChannelTrigger(n) &&
+        (aiEnabled || n.kind === 'trigger' || !isAiFlowNode('pluginAction', n.method)),
+    ),
+  );
 
   // Plugin nodes whose `category` matches a built-in function group slot in
   // alongside the built-ins (keyed by group title). The rest stay grouped by
@@ -586,6 +596,15 @@
   /** Built-in function-group titles — plugin nodes matching one slot into it. */
   const BUILTIN_TITLES = new Set(CATEGORIES.map((c) => c.title));
 
+  const paletteCategories = $derived(
+    aiEnabled
+      ? CATEGORIES
+      : CATEGORIES.map((c) => ({
+          ...c,
+          nodes: c.nodes.filter((n) => !isAiFlowNode(n.type)),
+        })).filter((c) => c.nodes.length > 0 || (pluginsByCategory[c.title]?.length ?? 0) > 0),
+  );
+
   /** Drag payload for a built-in palette node. */
   function nodeDragPayload(node: PaletteNode) {
     return {
@@ -630,7 +649,7 @@
   {#if collapsed}
     <!-- Icon-only column when collapsed: function groups separated by a hairline -->
     <div class="flex-1 overflow-y-auto py-2 flex flex-col items-center gap-1">
-      {#each CATEGORIES as cat, ci (cat.title)}
+      {#each paletteCategories as cat, ci (cat.title)}
         {#if ci > 0}
           <div class="w-5 my-0.5 border-t border-border/40"></div>
         {/if}
@@ -681,7 +700,7 @@
     {/snippet}
 
     <div class="flex-1 overflow-y-auto py-3 px-2 space-y-4">
-      {#each CATEGORIES as cat (cat.title)}
+      {#each paletteCategories as cat (cat.title)}
         <div>
           <p
             class="text-[length:var(--font-size-telemetry)] font-semibold text-muted/50 uppercase tracking-widest px-1 mb-1.5"

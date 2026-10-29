@@ -5,6 +5,8 @@
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
+  import { hasFeature } from '$lib/access/premium';
+  import { channelHref } from '$lib/components/channels/channel-href';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -67,7 +69,7 @@
       <div class="channel-grid">
         {#each channels as e (e.pluginId)}
           {@const st = status(e.status)}
-          <a href="/channels/{e.pluginId}" class="channel-card group">
+          <a href={channelHref(e.pluginId, hasFeature('ai'))} class="channel-card group">
             <div class="icon-wrap">
               <NavIcon icon={resolvePluginIcon(e.icon)} size={22} class="text-accent" />
             </div>

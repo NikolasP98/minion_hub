@@ -25,7 +25,12 @@ import { REDACTED_SENTINEL } from '$lib/types/config';
 //   Extensions 200-499  skills, plugins, discovery, presence, voicewake
 //   System      500+    logging (and any unknown high-order groups)
 
-export const META_GROUPS: { id: string; label: () => string; minOrder: number; maxOrder: number }[] = [
+export const META_GROUPS: {
+  id: string;
+  label: () => string;
+  minOrder: number;
+  maxOrder: number;
+}[] = [
   { id: 'setup', label: m.config_meta_setup, minOrder: 0, maxOrder: 39 },
   { id: 'ai', label: m.config_meta_ai, minOrder: 40, maxOrder: 79 },
   { id: 'automation', label: m.config_meta_automation, minOrder: 80, maxOrder: 129 },
@@ -119,6 +124,15 @@ export const TABS: { id: string; label: () => string; icon: string }[] = [
   { id: 'backups', label: m.settings_nav_backups, icon: 'DatabaseBackup' },
   { id: 'appearance', label: m.settings_nav_appearance, icon: 'Palette' },
 ];
+
+/** Gateway-config tabs about AI models and agents: not rendered for orgs without `ai` (spec 043). */
+export const AI_CONFIG_TAB_IDS: ReadonlySet<string> = new Set(['ai', 'agents']);
+
+/** The `/settings?s=` tab to show: `ai` by default, `comms` for an org without `ai`. */
+export function resolveSettingsTab(requested: string | null, ai: boolean): string {
+  if (ai) return requested ?? 'ai';
+  return !requested || AI_CONFIG_TAB_IDS.has(requested) ? 'comms' : requested;
+}
 
 /**
  * Maps each tab ID to the meta-group IDs whose groups it contains.

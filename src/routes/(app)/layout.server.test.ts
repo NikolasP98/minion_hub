@@ -83,7 +83,13 @@ vi.mock('$server/db/pg-client', () => ({
 import { load } from './+layout.server';
 
 function makeEvent(
-  overrides: Partial<{ user: unknown; session: unknown; orgId: string; orgKind: string }> = {},
+  overrides: Partial<{
+    user: unknown;
+    session: unknown;
+    orgId: string;
+    orgKind: string;
+    entitlements: { plan: string; features: string[] };
+  }> = {},
 ) {
   return {
     locals: {
@@ -92,6 +98,7 @@ function makeEvent(
       tenantCtx: { db: {} as never, tenantId: 'tenant-x' },
       orgId: overrides.orgId,
       orgKind: overrides.orgKind,
+      entitlements: overrides.entitlements,
     } as never,
     depends: vi.fn(),
     request: new Request('http://localhost/'),
@@ -159,6 +166,8 @@ describe('(app)/+layout.server load', () => {
       brainAgentIds: [],
       tableConfig: {},
       navConfig: { version: 1, sections: [], builtinSections: {}, builtin: {} },
+      // The guard did not run for this request: full catalog, as before plans existed (spec 043).
+      entitlements: { plan: 'base', features: ['ai', 'ai.chat', 'ai.proactive', 'marketplace'] },
     });
     // depends() should register all nine keys
     expect(ev.depends).toHaveBeenCalledWith(
@@ -172,6 +181,16 @@ describe('(app)/+layout.server load', () => {
       'app:table-config',
       'app:nav-config',
     );
+  });
+
+  it('returns the entitlements the module guard resolved (spec 043: Base = no features)', async () => {
+    const ev = makeEvent({
+      user: { id: 'u-1', email: 'a@b.com', role: 'admin', onboardedAt: '2026-01-01T00:00:00Z' },
+      session: { activeOrganizationId: 'tenant-x', id: 's1' },
+      entitlements: { plan: 'base', features: [] },
+    }) as unknown as Parameters<typeof load>[0];
+    const out = (await load(ev)) as { entitlements: unknown };
+    expect(out.entitlements).toEqual({ plan: 'base', features: [] });
   });
 
   it('keeps the org table config for a role denied every dataset (shell read, spec 039)', async () => {
