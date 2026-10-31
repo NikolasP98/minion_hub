@@ -42,7 +42,7 @@ export function listAudiences(
   return { groups, invalid };
 }
 
-export type Outcome = 'allowed' | 'refused' | 'error';
+export type Outcome = 'allowed' | 'refused' | 'error' | 'skipped';
 
 export interface ProbeCase {
   name: string;
@@ -51,11 +51,41 @@ export interface ProbeCase {
   expect: Outcome;
 }
 
+/** Agent the probe names for the refused `sessions.patch` case; never assigned to anyone. */
+export const UNASSIGNED_AGENT = 'jwt-probe-unassigned';
+const PROBE_LABEL = 'jwt-probe';
+
 /**
- * The calls a JWT-only socket makes, each side-effect free. `auth.refresh`
- * with the socket's own JWT is the write probe: same identity, same scopes.
+ * The calls a JWT-only socket makes. `auth.refresh` with the socket's own JWT is
+ * the write probe: same identity, same scopes. For a member, A1's label-only
+ * `sessions.patch` rule (new chat, rename) is probed on both sides: allowed for
+ * an agent in the JWT's `agentIds`, refused for any other. The allowed case
+ * labels one dedicated `agent:<id>:jwt-probe` session — the probe's only write.
  */
-export function probeMatrix(isPlatformAdmin: boolean): ProbeCase[] {
+export function probeMatrix(isPlatformAdmin: boolean, assignedAgentId?: string): ProbeCase[] {
+  const sessionCases: ProbeCase[] = isPlatformAdmin
+    ? []
+    : [
+        ...(assignedAgentId
+          ? [
+              {
+                name: 'member sessions.patch label, assigned agent',
+                method: 'sessions.patch',
+                params: () => ({
+                  key: `agent:${assignedAgentId}:${PROBE_LABEL}`,
+                  label: PROBE_LABEL,
+                }),
+                expect: 'allowed' as const,
+              },
+            ]
+          : []),
+        {
+          name: 'member sessions.patch label, unassigned agent',
+          method: 'sessions.patch',
+          params: () => ({ key: `agent:${UNASSIGNED_AGENT}:${PROBE_LABEL}`, label: PROBE_LABEL }),
+          expect: 'refused',
+        },
+      ];
   return [
     { name: 'health', method: 'health', params: () => ({}), expect: 'allowed' },
     { name: 'read (status)', method: 'status', params: () => ({}), expect: 'allowed' },
@@ -71,6 +101,7 @@ export function probeMatrix(isPlatformAdmin: boolean): ProbeCase[] {
       params: () => ({}),
       expect: isPlatformAdmin ? 'allowed' : 'refused',
     },
+    ...sessionCases,
   ];
 }
 
@@ -87,11 +118,27 @@ export interface ProbeSocket {
   close(): void;
 }
 
+/** How a connect attempt ended: admitted, or the gateway's close frame. */
+export type ConnectOutcome = { admitted: true } | { admitted: false; code: number; reason: string };
+
 export interface ProbeDeps {
   /** Mint server-side for the probed user and org; never printed. */
   mint(audience: string): Promise<string>;
+  /** The JWT's `agentIds` claim (decoded, not verified). */
+  agentIds(jwt: string): string[];
   /** JWT-only connect (no shared token). Rejects when the gateway refuses the socket. */
   connect(jwt: string): Promise<ProbeSocket>;
+  /** JWT-only connect that reports the close frame; rejects on timeout or network error. */
+  connectOutcome(jwt: string): Promise<ConnectOutcome>;
+}
+
+/** The gateway's refusal of an `aud` it does not serve: a 1008 close with this reason. */
+export function isAudienceRefusal(outcome: ConnectOutcome): boolean {
+  return (
+    !outcome.admitted &&
+    outcome.code === 1008 &&
+    /^(jwt_audience_not_allowed|jwt_validation_failed)$/.test(outcome.reason)
+  );
 }
 
 export interface ProbeLine {
@@ -132,7 +179,16 @@ export async function runProbe(opts: {
   }
   if (socket) {
     try {
-      for (const probe of probeMatrix(isPlatformAdmin)) {
+      const assigned = deps.agentIds(jwt)[0];
+      if (!isPlatformAdmin && !assigned) {
+        lines.push({
+          name: 'member sessions.patch label, assigned agent',
+          expected: 'allowed',
+          actual: 'skipped',
+          detail: 'this user has no agent in the JWT; new chat and rename will fail for them',
+        });
+      }
+      for (const probe of probeMatrix(isPlatformAdmin, assigned)) {
         try {
           await socket.call(probe.method, probe.params(jwt));
           lines.push({ name: probe.name, expected: probe.expect, actual: 'allowed' });
@@ -150,20 +206,29 @@ export async function runProbe(opts: {
     }
   }
 
-  // Any refusal of the socket counts: the gateway closes 1008 on an unlisted `aud`.
+  // Only the gateway's audience refusal counts; a timeout or network error is a FAIL.
   const foreign = await deps.mint(FOREIGN_AUDIENCE);
   try {
-    const replay = await deps.connect(foreign);
-    replay.close();
-    lines.push({ name: 'foreign-audience connect', expected: 'refused', actual: 'allowed' });
+    const outcome = await deps.connectOutcome(foreign);
+    lines.push({
+      name: 'foreign-audience connect',
+      expected: 'refused',
+      actual: isAudienceRefusal(outcome) ? 'refused' : outcome.admitted ? 'allowed' : 'error',
+      detail: outcome.admitted
+        ? undefined
+        : `close ${outcome.code}: ${outcome.reason.slice(0, 120)}`,
+    });
   } catch (err) {
     lines.push({
       name: 'foreign-audience connect',
       expected: 'refused',
-      actual: 'refused',
+      actual: 'error',
       detail: detailOf(err),
     });
   }
 
-  return { lines, ok: lines.every((line) => line.actual === line.expected) };
+  return {
+    lines,
+    ok: lines.every((line) => line.actual === 'skipped' || line.actual === line.expected),
+  };
 }
