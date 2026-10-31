@@ -414,7 +414,6 @@ const finishApp: Handle = async ({ event, resolve }) => {
     '/api/servers',
     '/api/metrics',
     '/api/gateway',
-    '/api/device-identity',
     '/api/admin',
     // Self-serve join: a no-org (no tenantCtx) but authenticated user must be
     // able to POST a join request. Handlers enforce their own auth (requireAuth

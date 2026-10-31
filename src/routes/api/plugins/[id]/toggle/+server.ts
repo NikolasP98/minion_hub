@@ -1,13 +1,17 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { listGatewayHostsForUser, resolveGatewayId } from '$server/services/gateway.pg.service';
 import { setPluginDisabledForOrg } from '$server/services/org-config-sync.service';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-  requireAuth(locals);
+  // `plugins.org.set` below runs with the system token's gateway admin, so the
+  // org gate lives here: owner/admin (settings:manage) or platform admin; a
+  // plain member gets 403 (spec 045 N4). The central hooks write guard maps
+  // this path to the same capability; this keeps the route safe on its own.
+  await requireOrgCapability(locals, 'settings', 'manage');
   const pluginId = params.id ?? '';
   if (!pluginId) return json({ error: 'pluginId required' }, { status: 400 });
   // Per-org enable/disable: plugins are installed globally on the shared

@@ -419,6 +419,21 @@ export async function getGatewayTokenByServerId(
 }
 
 /**
+ * URL of a gateway (server id or gateway uuid) only when it belongs to the
+ * active organization; null otherwise. The JWT audience source (spec 045).
+ */
+export async function getGatewayUrlForOrg(serverId: string, orgId: string): Promise<string | null> {
+  const gatewayId = await resolveGatewayId(serverId);
+  if (!gatewayId) return null;
+  const [row] = await getCoreDb()
+    .select({ url: gateway.url })
+    .from(gateway)
+    .where(and(eq(gateway.id, gatewayId), eq(gateway.orgId, orgId)))
+    .limit(1);
+  return row?.url ?? null;
+}
+
+/**
  * URL + decrypted token for one gateway row by id — the fleet-update
  * orchestrator's per-instance credential lookup (spec §3.2). Unlike the
  * user/org/system resolution chain, this addresses a SPECIFIC instance.

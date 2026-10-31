@@ -115,3 +115,65 @@ test('refuses issuance from a stale tenant context after membership removal', as
   ).rejects.toThrow('Active organization membership required');
   expect(mocks.hasCanonicalMembership).toHaveBeenLastCalledWith('removed-user', 'removed-org');
 });
+
+describe('spec 045 issuance claims', () => {
+  async function issue(profileRole: string | null, opts?: { audience?: string }) {
+    const { exportJWK, generateKeyPair, decodeJwt } = await import('jose');
+    const { privateKey } = await generateKeyPair('EdDSA', { extractable: true });
+    mocks.openSecret.mockReturnValue(JSON.stringify(await exportJWK(privateKey)));
+    mocks.listActiveGatewaySigningKeys.mockResolvedValue([
+      { kid: 'k', alg: 'EdDSA', public_jwk: {}, private_ciphertext: 'c', private_iv: 'i' },
+    ]);
+    mocks.hasCanonicalMembership.mockResolvedValue(true);
+    mocks.loadCanonicalProfile.mockResolvedValue({ id: 'u', role: profileRole });
+    const db = {
+      select: () => ({ from: () => ({ innerJoin: () => ({ where: async () => [] }) }) }),
+    };
+    const { issueGatewayJwt } = await import('./gateway-jwt.service');
+    const result = await issueGatewayJwt({ tenantId: 'org-a', db } as never, 'u', opts);
+    return { result, payload: decodeJwt(result.token) };
+  }
+
+  test.each([
+    ['admin', 'admin'],
+    ['user', 'user'],
+    ['org_admin', 'user'],
+    ['owner', 'user'],
+    [null, 'user'],
+  ])('platform role %s maps to gateway role %s', async (profileRole, expected) => {
+    expect((await issue(profileRole)).payload.role).toBe(expected);
+  });
+
+  test('without an audience: legacy aud and the old hour', async () => {
+    const { payload } = await issue('user');
+    expect(payload.aud).toBe('openclaw-gateway');
+    expect(payload.exp! - payload.iat!).toBe(3600);
+  });
+
+  test('with an audience: bound to that gateway for 900 s', async () => {
+    const { payload, result } = await issue('user', { audience: 'gw:gw.example.test:8443' });
+    expect(payload.aud).toBe('gw:gw.example.test:8443');
+    expect(payload.exp! - payload.iat!).toBe(900);
+    expect(result.expiresAt).toBe(payload.exp! * 1000);
+  });
+
+  test.each([
+    ['wss://Faces-Gateway.Minion-AI.org', 'gw:faces-gateway.minion-ai.org'],
+    ['wss://gw.example.test:443/ws?x=1', 'gw:gw.example.test'],
+    ['ws://gw.example.test:80', 'gw:gw.example.test'],
+    ['ws://GW.example.test:443', 'gw:gw.example.test:443'],
+    ['https://gw.example.test:10000/', 'gw:gw.example.test:10000'],
+    ['http://127.0.0.1:18790', 'gw:127.0.0.1:18790'],
+  ])('gatewayAudience(%s) = %s', async (url, expected) => {
+    const { gatewayAudience } = await import('./gateway-jwt.service');
+    expect(gatewayAudience(url)).toBe(expected);
+  });
+
+  test.each(['ftp://gw.example.test', 'gw.example.test:18790', 'not a url'])(
+    'gatewayAudience refuses %s',
+    async (url) => {
+      const { gatewayAudience } = await import('./gateway-jwt.service');
+      expect(() => gatewayAudience(url)).toThrow();
+    },
+  );
+});

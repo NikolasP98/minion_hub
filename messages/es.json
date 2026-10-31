@@ -3657,6 +3657,7 @@
   "pluginsPage_subtitle": "Los complementos que incluyen una interfaz de usuario aparecen aquí. Su configuración es propiedad del complemento mismo.",
   "pluginsPage_title": "Complementos",
   "pluginsPage_toggleFailed": "Error al cambiar",
+  "pluginsPage_toggleForbidden": "Tu rol no puede activar ni desactivar plugins. Pídeselo a un propietario o administrador.",
   "pluginsPage_unreachable": "Puerta de acceso inaccesible",
   "pluginsPage_unsavedChanges": "Cambios sin guardar",
   "polishMenu_polishAs": "Pulir como…",
