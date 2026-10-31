@@ -8,12 +8,12 @@ vi.mock('$server/services/personal-agent-provisioner', () => ({
 import { PersonalAgentBindingError } from '$server/services/personal-agent-binding';
 import { POST } from './+server';
 const ctx = { tenantId: 'org', profileId: 'profile' };
-const call = () =>
+const call = (body = '{}') =>
   POST({
     locals: { user: { id: 'profile' } },
     request: new Request('http://localhost/api/personal-agent/create', {
       method: 'POST',
-      body: '{}',
+      body,
     }),
   } as never);
 beforeEach(() => {
@@ -38,6 +38,27 @@ describe('explicit hosted creation', () => {
     mocks.activate.mockResolvedValue('personal-legacy');
     expect((await call()).status).toBe(200);
     expect(mocks.activate).toHaveBeenCalledWith(ctx, 'profile', {});
+  });
+  // Spec 045 A3 audit F4: an error-state agent may already exist on the gateway
+  // with a personality; an empty retry (the browser's auto-provision) must not
+  // send config.patch with a blank one.
+  it('keeps an error-state agent’s runtime personality on an empty retry', async () => {
+    mocks.pending.mockResolvedValue({
+      agent: { agentId: 'personal-legacy', displayName: 'Mine', provisioningStatus: 'error' },
+    });
+    mocks.activate.mockResolvedValue('personal-legacy');
+    expect((await call()).status).toBe(200);
+    expect(mocks.activate).toHaveBeenCalledWith(ctx, 'profile', {});
+  });
+  it('still applies an identity the caller names for an error-state agent', async () => {
+    mocks.pending.mockResolvedValue({
+      agent: { agentId: 'personal-legacy', displayName: 'Mine', provisioningStatus: 'error' },
+    });
+    mocks.activate.mockResolvedValue('personal-legacy');
+    expect((await call('{"name":"Ana","personality":"warm"}')).status).toBe(200);
+    expect(mocks.activate).toHaveBeenCalledWith(ctx, 'profile', {
+      identity: { name: 'Ana', personality: 'warm', personalityText: undefined },
+    });
   });
   it('reports a binding conflict instead of claiming activation', async () => {
     mocks.activate.mockRejectedValue(new PersonalAgentBindingError('Assignment conflict'));

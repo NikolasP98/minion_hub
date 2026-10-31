@@ -53,10 +53,15 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   }
 
   try {
+    // An existing active agent only needs its missing binding verified, and an
+    // error-state one may already exist on the gateway with a personality: an
+    // empty retry (the browser's auto-provision) preserves both (spec 045 F4).
+    const namesIdentity = Boolean(requestedName || personality || body.personalityText);
+    const keepRuntime =
+      pending.agent.provisioningStatus === 'active' ||
+      (pending.agent.provisioningStatus === 'error' && !namesIdentity);
     const agentId = await activatePersonalAgent(ctx, locals.user.id, {
-      // An existing active agent only needs its missing binding verified.
-      // Preserve runtime customization on ordinary manual retries.
-      ...(pending.agent.provisioningStatus === 'active'
+      ...(keepRuntime
         ? {}
         : {
             identity: {
