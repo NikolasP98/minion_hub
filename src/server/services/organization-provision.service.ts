@@ -3,7 +3,7 @@ import { WebSocket } from 'ws';
 import { supabaseAdmin } from '$server/supabase';
 import { workforceClientForOrg } from '$lib/server/workforce-fetch';
 import { ensureDefaultGatewayForUser } from '$server/services/gateway.pg.service';
-import { env as publicEnv } from '$env/dynamic/public';
+import { browserSharedTokenOff } from '$lib/gateway-browser-token';
 import { gatewayCallAsUser, resolveCredentialsForUser } from '$lib/server/gateway-rpc';
 import { gatewayAudience, issueGatewayJwt } from '$server/services/gateway-jwt.service';
 import { getDb } from '$server/db/client';
@@ -189,7 +189,7 @@ export async function mintOrgGatewayJwt(orgId: string, profileId: string): Promi
   // launch switch; the legacy one is accepted because this call sends the token.
   // TODO(handoff): spec 045 A4 deletes the flag — make the audience unconditional there (tasks T054).
   const audience =
-    publicEnv.PUBLIC_GATEWAY_BROWSER_SHARED_TOKEN === 'false'
+    browserSharedTokenOff()
       ? gatewayAudience((await resolveCredentialsForUser(profileId, orgId)).url)
       : undefined;
   const { token } = await issueGatewayJwt({ db: getDb(), tenantId: orgId }, profileId, {

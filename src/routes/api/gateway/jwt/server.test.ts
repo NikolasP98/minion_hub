@@ -41,7 +41,7 @@ describe('gateway credential response cache boundary', () => {
     {
       name: 'storage outage',
       locals: { user, tenantCtx: { db: {} as never, tenantId: 'org' } },
-      status: 500,
+      status: 503,
     },
   ])('sets no-store on $name', async ({ name, locals, status }) => {
     if (name === 'removed membership')
@@ -53,6 +53,7 @@ describe('gateway credential response cache boundary', () => {
     expect(response.status).toBe(status);
     expect(response.headers.get('cache-control')).toBe('no-store');
     expect(await response.text()).not.toContain('PRIVATE_DATABASE_SENTINEL');
+    if (status === 503) expect(response.headers.get('retry-after')).toBe('2');
     if (status === 401 || name === 'no active organization') expect(f.issue).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,7 @@ import { json, error, isHttpError } from '@sveltejs/kit';
 import * as Sentry from '@sentry/sveltekit';
 import { and, eq } from 'drizzle-orm';
 import { userServers } from '@minion-stack/db/schema';
-import { env as publicEnv } from '$env/dynamic/public';
+import { browserSharedTokenOff } from '$lib/gateway-browser-token';
 import {
   GatewayJwtAccessDenied,
   gatewayAudience,
@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     const ctx = await getTenantCtx(locals);
     if (!ctx) throw error(403, 'Active organization required');
     const gatewayId = url.searchParams.get('gatewayId');
-    if (!gatewayId && publicEnv.PUBLIC_GATEWAY_BROWSER_SHARED_TOKEN === 'false') {
+    if (!gatewayId && browserSharedTokenOff()) {
       return json({ error: 'gateway_id_required' }, { status: 400, headers });
     }
     let audience: string | undefined;
@@ -64,6 +64,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     Sentry.captureException(new Error('Gateway JWT issuance unavailable'), {
       tags: { operation: 'gateway.jwt.issue' },
     });
-    return json({ error: 'Failed to issue JWT' }, { status: 500, headers });
+    // Registry or DB outage: transient, like the token route's 503.
+    return json(
+      { error: 'Failed to issue JWT' },
+      { status: 503, headers: { ...headers, 'retry-after': '2' } },
+    );
   }
 };
