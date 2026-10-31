@@ -3,8 +3,9 @@ import { WebSocket } from 'ws';
 import { supabaseAdmin } from '$server/supabase';
 import { workforceClientForOrg } from '$lib/server/workforce-fetch';
 import { ensureDefaultGatewayForUser } from '$server/services/gateway.pg.service';
-import { gatewayCallAsUser } from '$lib/server/gateway-rpc';
-import { issueGatewayJwt } from '$server/services/gateway-jwt.service';
+import { env as publicEnv } from '$env/dynamic/public';
+import { gatewayCallAsUser, resolveCredentialsForUser } from '$lib/server/gateway-rpc';
+import { gatewayAudience, issueGatewayJwt } from '$server/services/gateway-jwt.service';
 import { getDb } from '$server/db/client';
 
 export type OrganizationProvisionStepId =
@@ -181,8 +182,19 @@ async function ensureProvisionedWorkforceCompany(
  * org-scoped shells.* RPCs — see gatewayCallWithCreds' `jwt` option and
  * minion's shells.ts `requireOrgScope`.
  */
-async function mintOrgGatewayJwt(orgId: string, profileId: string): Promise<string> {
-  const { token } = await issueGatewayJwt({ db: getDb(), tenantId: orgId }, profileId);
+export async function mintOrgGatewayJwt(orgId: string, profileId: string): Promise<string> {
+  // Bound to the gateway `gatewayCallAsUser` will reach (same resolution).
+  // Before launch (spec 045 §5 step 1) gateways list only the legacy audience
+  // and close any other with 1008, so the per-gateway audience waits for the
+  // launch switch; the legacy one is accepted because this call sends the token.
+  // TODO(handoff): spec 045 A4 deletes the flag — make the audience unconditional there (tasks T054).
+  const audience =
+    publicEnv.PUBLIC_GATEWAY_BROWSER_SHARED_TOKEN === 'false'
+      ? gatewayAudience((await resolveCredentialsForUser(profileId, orgId)).url)
+      : undefined;
+  const { token } = await issueGatewayJwt({ db: getDb(), tenantId: orgId }, profileId, {
+    audience,
+  });
   return token;
 }
 

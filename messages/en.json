@@ -3657,6 +3657,7 @@
   "pluginsPage_subtitle": "Plugins that ship a UI appear here. Their configuration is owned by the plugin itself.",
   "pluginsPage_title": "Plugins",
   "pluginsPage_toggleFailed": "Toggle failed",
+  "pluginsPage_toggleForbidden": "Your role can't turn plugins on or off. Ask an owner or administrator.",
   "pluginsPage_unreachable": "Server unreachable",
   "pluginsPage_unsavedChanges": "Unsaved changes",
   "polishMenu_polishAs": "Polish as…",

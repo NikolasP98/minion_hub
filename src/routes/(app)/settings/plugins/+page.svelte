@@ -163,6 +163,10 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ enabled: next }),
       });
+      if (res.status === 403) {
+        toggleError = m.pluginsPage_toggleForbidden();
+        return false;
+      }
       const body = (await res.json()) as {
         ok?: boolean;
         restartRequired?: boolean;
