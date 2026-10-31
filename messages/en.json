@@ -7289,5 +7289,7 @@
   "doors_col_clicks": "Clicks",
   "sched_book_subtitle": "Choose a service and reserve an available time.",
   "inboxKind_crm_door_submission": "Door submission",
-  "sched_book_eyebrow": "Online booking"
+  "sched_book_eyebrow": "Online booking",
+  "gateway_roleCantConnect": "Your role can't connect to this gateway. Ask an administrator for access.",
+  "gateway_roleCantAction": "Your role can't do this on the gateway. Ask a platform administrator."
 }

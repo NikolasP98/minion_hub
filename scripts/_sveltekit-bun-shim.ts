@@ -23,6 +23,7 @@ const SERVER_VALUE_MODULES = [
   '$server/db/with-org-core',
   '$server/services/embeddings',
   '$server/llm',
+  '$server/db/pg-pool',
 ];
 
 plugin({

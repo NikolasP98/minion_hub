@@ -4,6 +4,7 @@
   import { onDestroy } from 'svelte';
   import { Check, AlertTriangle, RotateCw } from 'lucide-svelte';
   import { mountHostBridge, type MountedHostBridge } from './bridge-host';
+  import { PLUGIN_RPC } from '$lib/services/gateway/platform-admin-methods';
   import type { Theme, Locale } from './bridge-protocol';
   import { checkPluginCompat, type CompatVerdict } from './compat';
   import type { PluginCompat } from './plugin-types';
@@ -73,14 +74,14 @@
     // generous ceiling so the hub doesn't time out a request the gateway is
     // still happily serving.
     const timeoutMs = /\.(generate|edit)$/.test(method) ? 180_000 : undefined;
-    return mod.sendRequest(method, params, timeoutMs);
+    // Spec 045: a plugin chooses this method, and every plugin RPC needs gateway admin.
+    return mod.sendRequest(method, params, timeoutMs, PLUGIN_RPC);
   }
 
   interface Props {
     pluginId: string;
     entrypoint: string;
     gatewayUrl: string;
-    authToken: string;
     theme: Theme;
     tokens: Record<string, string>;
     /**
@@ -119,7 +120,6 @@
     pluginId,
     entrypoint,
     gatewayUrl,
-    authToken,
     theme,
     tokens,
     externalSaveBar = false,
@@ -273,7 +273,10 @@
         theme,
         tokens,
         gatewayUrl: wsGatewayUrl,
-        authToken,
+        // The iframe never used the gateway token: every plugin RPC goes through
+        // `forwardRpc`. The bridge still drops a hello without a string here, so
+        // send an empty one (spec 045 §3.2). TODO(handoff): drop with A4 (T054).
+        authToken: '',
         locale: languageTag() as Locale,
       },
       onResize: (h) => {

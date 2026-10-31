@@ -13,17 +13,10 @@
     entries: PluginUiManifestOccupant[];
     theme: Theme;
     tokens: Record<string, string>;
-    /**
-     * Optional. When omitted, defaults to the active host (`getActiveHost()`)
-     * and `fetchHostToken()` is used to obtain a per-user token rather
-     * than receiving one in props. Keeps plaintext tokens out of SSR
-     * page data.
-     */
     gatewayBaseUrl?: string;
-    authToken?: string;
   }
 
-  let { slot, entries, theme, tokens, gatewayBaseUrl = '', authToken = '' }: Props = $props();
+  let { slot, entries, theme, tokens, gatewayBaseUrl = '' }: Props = $props();
 
   let selected = $state(0);
 
@@ -85,7 +78,6 @@
           pluginId={current.pluginId}
           entrypoint={current.entrypoint}
           gatewayUrl={gatewayBaseUrl}
-          {authToken}
           {theme}
           {tokens}
           compat={current.compat}

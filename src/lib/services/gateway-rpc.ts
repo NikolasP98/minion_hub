@@ -11,6 +11,7 @@
 // here via `setClient()`; everything else just calls `sendRequest`.
 
 import type { GatewayClient } from '@minion-stack/shared';
+import { gatewayMethodAllowed, refuseForRole } from './gateway/platform-admin-methods';
 
 let client: GatewayClient | null = null;
 let channelStatusSink: ((status: object) => void) | null = null;
@@ -58,7 +59,19 @@ export function setChannelStatusSink(sink: ((status: object) => void) | null): v
   channelStatusSink = sink;
 }
 
-export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
+/**
+ * `gate` is what the role check keys on: the method itself, or `PLUGIN_RPC` for a
+ * method a plugin chose (spec 045: every plugin RPC needs gateway admin).
+ */
+export function sendRequest(
+  method: string,
+  params?: unknown,
+  timeoutMs = 15000,
+  gate = method,
+): Promise<unknown> {
+  // Spec 045: a method this viewer's JWT cannot call fails here with "your role
+  // can't", instead of a gateway "missing scope" round-trip.
+  if (!gatewayMethodAllowed(gate)) return refuseForRole();
   if (!client) return Promise.reject(new Error('not connected'));
   return client.request<unknown>(method, params, { timeoutMs });
 }
