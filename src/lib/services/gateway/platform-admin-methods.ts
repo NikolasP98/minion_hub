@@ -90,6 +90,14 @@ function isPlatformAdmin(): boolean {
   return (page.data as { user?: { role?: unknown } } | undefined)?.user?.role === 'admin';
 }
 
+// TODO(handoff): spec 045 T037 hides (not locks) only the channel setup controls
+// (ChannelsTab/ChannelGroup/ChannelCard). Every other surface behind this list —
+// agent files/skills, tools, flows, prompt sections, secrets, cloud shells,
+// workshop experiments, dream, drones, debug — still renders for members after
+// the switch and fails with "your role can't" via sendRequest. Two calls bypass
+// that guard on the captured transport and fail silently: session-bootstrap's
+// flows.trigger.register and plugin-health's reliability.plugins. Gate each
+// control with gatewayMethodAllowed(), or move it to a hub route (spec 042).
 /**
  * Whether this viewer's gateway credential can call `method`. Always true until
  * the launch switch: today's token socket carries admin, so gating earlier would
