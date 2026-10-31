@@ -201,12 +201,28 @@ describe("flag 'false': per-gateway JWT only", () => {
     expect(String(vi.mocked(toastError).mock.calls[0][0])).toMatch(/role can't connect/i);
   }, 30_000); // first lazy messages-chunk load
 
-  it.each([500, 503])('shows the existing unreachable state on an issuance %i', async (status) => {
-    jwtReplies = [{ status }];
+  it.each([500, 503])(
+    'retries an issuance %i through the handshake and backoff',
+    async (status) => {
+      jwtReplies = [{ status }];
+      await wsConnect();
+      // F5: the socket opens anyway; its handshake re-mints instead of stopping.
+      expect(harness.clients).toHaveLength(1);
+      const frame = await harness.clients[0].options.onChallenge('nonce');
+      expect(frame.jwt).toBe('jwt-1');
+      expect(jwtCalls).toHaveLength(2);
+      expect(toastError).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails the handshake on a persistent outage, so the client backs off and retries', async () => {
+    jwtReplies = [{ status: 503 }, { status: 503 }];
     await wsConnect();
-    expect(harness.clients).toHaveLength(0);
-    expect(conn.connected).toBe(false);
-    expect(vi.mocked(toastError).mock.calls[0][2]).toEqual({ id: 'gateway-token-unavailable' });
+    await expect(harness.clients[0].options.onChallenge('nonce')).rejects.toThrow(
+      'could not load gateway token',
+    );
+    expect(harness.clients[0].close).not.toHaveBeenCalled();
+    expect(getClient()).toBe(harness.clients[0]);
   });
 
   it('never falls back to the shared token when the gateway rejects the JWT', async () => {

@@ -125,6 +125,13 @@ import {
 } from './gateway-rpc';
 import { env as publicEnv } from '$env/dynamic/public';
 import { browserSharedTokenOff } from '$lib/gateway-browser-token';
+import { gatewayMethodAllowed, refuseForRole } from './gateway/platform-admin-methods';
+
+/** The captured transport, with the same "your role can't" gate as `sendRequest` (spec 045). */
+function guardedRequest(client: GatewayClient) {
+  return (method: string, params?: unknown) =>
+    gatewayMethodAllowed(method) ? client.request(method, params) : refuseForRole();
+}
 
 setChannelStatusSink((status) => {
   gw.channels = status as typeof gw.channels;
@@ -671,7 +678,7 @@ function publishAuthenticatedSession(
     hostUrl: host.url,
     methods: Array.isArray(hello.features?.methods) ? hello.features.methods : null,
     current,
-    request: (method, params) => client.request(method, params),
+    request: guardedRequest(client),
   });
   publishedOwner = { hostId: host.id, url: host.url, identity: identityKey() };
   gwTrace('hello.received', { protocol: hello.protocol });
@@ -759,10 +766,12 @@ export async function wsConnect() {
   let fetched: string | null;
   if (browserSharedTokenOff() && prefetchedJwt) {
     // No shared token: mint this gateway's JWT before opening the socket, so a
-    // refused role or an issuance outage surfaces here. The challenge presents it.
+    // refused role stops here. The challenge presents it. An issuance outage is
+    // not final: the challenge re-mints, and a failed handshake gets the existing
+    // "unreachable" toast and the client's own backoff (spec 045 A3 audit F5).
     minted = await prefetchedJwt.jwt;
-    fetched = typeof minted === 'string' ? '' : null;
-    if (fetched === null) prefetchedJwt = null;
+    if (typeof minted !== 'string') prefetchedJwt = null;
+    fetched = '';
   } else {
     fetched = await fetchHostToken(capturedHostId);
   }
@@ -1712,7 +1721,7 @@ function onHelloOk(hello: HelloOk, client: GatewayClient, current: () => boolean
 
   stopSessionBootstrap = startSessionBootstrap({
     current,
-    request: (method, params) => client.request(method, params),
+    request: guardedRequest(client),
     fetcher: fetch,
     agents(value, initial) {
       const result = value as { agents?: never[]; defaultId?: string } | null;

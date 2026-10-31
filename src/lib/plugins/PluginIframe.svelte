@@ -4,6 +4,7 @@
   import { onDestroy } from 'svelte';
   import { Check, AlertTriangle, RotateCw } from 'lucide-svelte';
   import { mountHostBridge, type MountedHostBridge } from './bridge-host';
+  import { PLUGIN_RPC } from '$lib/services/gateway/platform-admin-methods';
   import type { Theme, Locale } from './bridge-protocol';
   import { checkPluginCompat, type CompatVerdict } from './compat';
   import type { PluginCompat } from './plugin-types';
@@ -73,7 +74,8 @@
     // generous ceiling so the hub doesn't time out a request the gateway is
     // still happily serving.
     const timeoutMs = /\.(generate|edit)$/.test(method) ? 180_000 : undefined;
-    return mod.sendRequest(method, params, timeoutMs);
+    // Spec 045: a plugin chooses this method, and every plugin RPC needs gateway admin.
+    return mod.sendRequest(method, params, timeoutMs, PLUGIN_RPC);
   }
 
   interface Props {

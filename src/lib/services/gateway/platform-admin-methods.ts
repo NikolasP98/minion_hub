@@ -5,6 +5,13 @@ import { page } from '$app/state';
 import { browserSharedTokenOff } from '$lib/gateway-browser-token';
 
 /**
+ * Gate key for RPCs a plugin chooses (iframe `forwardRpc`, a channel plugin's
+ * link submit method). `plugins.*` is admin on the gateway and plugin-specific
+ * methods fall through to admin, so every such call needs a platform admin.
+ */
+export const PLUGIN_RPC = '$PLUGIN_RPC';
+
+/**
  * Gateway methods the dashboard calls that need `operator.admin`, which only a
  * platform admin's JWT carries (spec 045 I4). Owner-accepted at launch step 2a;
  * each moves to a hub server route checked against org RBAC in spec 042.
@@ -33,7 +40,14 @@ export const PLATFORM_ADMIN_ONLY: ReadonlySet<string> = new Set([
   'debug.stepContinue',
   'killswitch.list',
   'killswitch.set',
+  'reliability.activity',
+  'reliability.events',
+  'reliability.flow',
+  'reliability.perf',
   'reliability.plugins',
+  'reliability.summary',
+  'reliability.timeline',
+  'reliability.usage',
   'sessions.usage',
   // Dream, drones
   'dream.history',
@@ -64,7 +78,11 @@ export const PLATFORM_ADMIN_ONLY: ReadonlySet<string> = new Set([
   'prompt.sections.upsert',
   'prompt.sections.usage',
   'prompt.sections.workspaceFiles.list',
+  // Plugin iframe RPCs and plugin-declared methods (gate key, not a method)
+  PLUGIN_RPC,
   // Secrets
+  'secrets.clear',
+  'secrets.clear_scoped',
   'secrets.list',
   'secrets.probe',
   'secrets.probe_scoped',
@@ -90,14 +108,14 @@ function isPlatformAdmin(): boolean {
   return (page.data as { user?: { role?: unknown } } | undefined)?.user?.role === 'admin';
 }
 
-// TODO(handoff): spec 045 T037 hides (not locks) only the channel setup controls
-// (ChannelsTab/ChannelGroup/ChannelCard). Every other surface behind this list —
-// agent files/skills, tools, flows, prompt sections, secrets, cloud shells,
-// workshop experiments, dream, drones, debug — still renders for members after
-// the switch and fails with "your role can't" via sendRequest. Two calls bypass
-// that guard on the captured transport and fail silently: session-bootstrap's
-// flows.trigger.register and plugin-health's reliability.plugins. Gate each
-// control with gatewayMethodAllowed(), or move it to a hub route (spec 042).
+// TODO(handoff): spec 045 T037 hides (not locks) only channel setup (ChannelsTab,
+// ChannelGroup, ChannelCard) and /account/connections' sync and channel plugins.
+// Every other surface behind this list — agent files/skills, tools, flows, prompt
+// sections, secrets, cloud shells, reliability, plugin pages, workshop
+// experiments, dream, drones, debug — still renders for members after the switch
+// and fails with "your role can't" (sendRequest and the session-owner transport
+// both refuse). Gate each control with gatewayMethodAllowed(), or move it to a hub
+// route (spec 042).
 /**
  * Whether this viewer's gateway credential can call `method`. Always true until
  * the launch switch: today's token socket carries admin, so gating earlier would
@@ -110,4 +128,10 @@ export function gatewayMethodAllowed(method: string): boolean {
 /** A gateway call this viewer's role cannot make; `message` is the localized "your role can't". */
 export class GatewayRoleError extends Error {
   readonly code = 'gateway_role_forbidden';
+}
+
+/** Reject with the localized "your role can't" (the messages chunk loads lazily, off the shell bundle). */
+export async function refuseForRole(): Promise<never> {
+  const m = await import('$lib/paraglide/messages');
+  throw new GatewayRoleError(m.gateway_roleCantAction());
 }

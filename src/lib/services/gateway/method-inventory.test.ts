@@ -10,8 +10,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env as publicEnv } from '$env/dynamic/public';
 import { page } from '$app/state';
-import { SECRETS_METHODS } from '$lib/types/secrets';
-import { PLATFORM_ADMIN_ONLY, gatewayMethodAllowed } from './platform-admin-methods';
+import { PLATFORM_ADMIN_ONLY, PLUGIN_RPC, gatewayMethodAllowed } from './platform-admin-methods';
 
 // ── Copied from the gateway: minion `src/gateway/server-core/server-methods.ts`
 // (`authorizeGatewayMethod`, branch feat/entitlements-s4-gateway b4072205d84 —
@@ -72,6 +71,25 @@ function isLabelOnly(args: string): boolean {
   return fields.length > 0 && fields.every((f) => f === 'key' || f === 'label');
 }
 
+/** Gateway admin-scope prefixes and fallthrough names, copied with the sets above. */
+const ADMIN_METHOD_PREFIXES = ['exec.approvals.', 'admin.impersonate', 'hub.', 'debug.', 'plugins.', 'killswitch.']; // prettier-ignore
+const ADMIN_FALLTHROUGH_NAMESPACES = ['config', 'wizard', 'update', 'channels', 'agents', 'skills', 'cron', 'sessions']; // prettier-ignore
+
+/**
+ * Namespaces a gateway method can live in. Any dotted string in browser code
+ * under one of these is treated as a possible RPC and must be classified.
+ */
+const NAMESPACES = new Set(
+  [
+    ...[...READ_METHODS, ...WRITE_METHODS, ...APPROVAL_METHODS, ...PAIRING_METHODS],
+    ...ADMIN_METHOD_PREFIXES,
+    ...ADMIN_FALLTHROUGH_NAMESPACES,
+    ...PLATFORM_ADMIN_ONLY,
+  ]
+    .filter((name) => /^[A-Za-z][\w-]*\./.test(name) || ADMIN_FALLTHROUGH_NAMESPACES.includes(name))
+    .map((name) => name.split('.')[0]),
+);
+
 /**
  * Admin methods the browser used to call that now go through a hub server
  * route holding the gateway credential. The browser must never call them.
@@ -80,24 +98,113 @@ const SERVED_BY_HUB_ROUTE: Record<string, string> = {
   'agents.create': '/api/personal-agent/create', // T035a
 };
 
-/** Browser call sites whose method is not a literal; each is guarded by `sendRequest`. */
+/** Dotted strings under a gateway namespace that are NOT RPCs, each with why. */
+const NOT_RPC: Record<string, string> = {
+  // Gateway event names (server → browser frames), never requested
+  'agent.llm.usage': 'event name',
+  'channels.status.changed': 'event name',
+  'channels.status.updated': 'event name',
+  'channels.whatsapp.pairFailed': 'event name',
+  'channels.whatsapp.paired': 'event name',
+  'channels.whatsapp.qr': 'event name',
+  'chat.event': 'event name',
+  'debug.step': 'event name',
+  'exec.error': 'reliability event type',
+  'exec.ok': 'reliability event type',
+  'flows.run.event': 'event name',
+  'memory.node_created': 'event name',
+  'memory.node_deleted': 'event name',
+  'memory.node_updated': 'event name',
+  'memory.recall': 'event name',
+  'pi-agent.orchestration-progress': 'event name',
+  'pi-agent.run-end': 'event name',
+  'pi-agent.run-start': 'event name',
+  'pi-agent.subagent-completed': 'event name',
+  'pi-agent.subagent-spawned': 'event name',
+  'pi-agent.tool-call': 'event name',
+  'prompt.sections.changed': 'event name',
+  'prompt.sections.preview.event': 'event name',
+  'update.applied': 'event name',
+  'update.available': 'event name',
+  'update.migrating': 'event name',
+  'update.notify': 'event name',
+  'update.progress': 'event name',
+  // Hub-local names
+  'agent.json': 'marketplace file name',
+  'agent.notice': 'notification kind',
+  'agent.report': 'notification kind',
+  'agent.report.ready': 'notification kind',
+  'agent.user_notice': 'notification kind',
+  'agents.publish': 'hub access capability key',
+  'agents.view': 'hub access capability key',
+  'channels.view': 'hub access capability key',
+  'config.editor': 'hub access capability key',
+  'flows.view': 'hub access capability key',
+  'reliability.monitor': 'hub access capability key',
+  'agents.defaults': 'gateway config path (agent settings schema)',
+  'agents.list.0': 'gateway config path (agent settings schema)',
+  'tools.allow': 'gateway config path (agent settings schema)',
+  'tools.byProvider': 'gateway config path (agent settings schema)',
+  'tools.deny': 'gateway config path (agent settings schema)',
+  'tools.elevated': 'gateway config path (agent settings schema)',
+  'tools.exec': 'gateway config path (agent settings schema)',
+  'tools.profile': 'gateway config path (agent settings schema)',
+  'chat.abort_failed': 'hub diagnostic event',
+  'chat.cancel': 'hub chat state transition',
+  'chat.commit': 'hub chat state transition',
+  'chat.guard_timeout': 'hub diagnostic event',
+  'channels.send': 'flow diagram label text',
+  'hub.artifact.context.get': 'artifact iframe RPC answered by the hub API, never forwarded',
+  'hub.navigate': 'assistant tool name (runs in the hub)',
+  'hub.pages': 'assistant tool name (runs in the hub)',
+  'plugins.controlCenter': 'plugin UI slot id',
+  'plugins.users.list': 'plugin RPC answered by the hub API before forwarding',
+};
+
+/** Dotted template strings (`ns.${…}`) that are not RPCs, by file and prefix. */
+const NOT_RPC_TEMPLATES: Record<string, string> = {
+  'src/lib/utils/agent-settings-schema.ts agents.': 'gateway config path',
+  'src/lib/components/agents/AgentSettingsPanel.svelte agents.': 'gateway config path',
+  'src/routes/(app)/home/settings/+page.svelte agents.': 'gateway config path',
+  'src/lib/plugins/PluginIframe.svelte plugins.': 'error message text',
+};
+
+/** Call sites whose method is not a literal, with how each is gated. */
 const DYNAMIC_CALL_SITES: Record<string, string> = {
-  'src/lib/plugins/PluginIframe.svelte':
-    'forwards a plugin iframe RPC (method chosen by the plugin)',
-  'src/lib/components/users/ChannelLinking.svelte':
-    'a channel plugin’s declared link submit method',
-  'src/lib/components/settings/SecretsSection.svelte': 'SECRETS_METHODS constants, resolved below',
+  'src/lib/plugins/PluginIframe.svelte': 'plugin iframe RPC, gated as PLUGIN_RPC',
+  'src/lib/components/users/ChannelLinking.svelte': 'plugin link submit, gated as PLUGIN_RPC',
+  'src/lib/components/settings/SecretsSection.svelte':
+    'SECRETS_METHODS constants; their strings are swept in src/lib/types/secrets.ts',
+  'src/lib/state/reliability/owned-resource.svelte.ts':
+    'loader for reliability.* (strings swept in reliability.svelte.ts); guarded transport',
+  'src/lib/services/gateway-rpc.ts': 'sendRequest itself (gated)',
+  'src/lib/services/gateway.svelte.ts': 'guardedRequest itself (gated)',
+  'src/lib/services/gateway/session-bootstrap.ts':
+    'read(method) wrapper; its strings are swept here; guarded transport',
+  // Not gateway calls: a local `request` that is something else.
+  'src/lib/components/pos/plan-open-persistence.ts': 'Web Locks API request(name, …)',
+  'src/lib/components/scheduling/collection-mutations.svelte.ts': 'HTTP request(signal) callback',
+  'src/routes/(app)/scheduling/settings/PageBody.svelte': 'HTTP request(signal) callback',
 };
 
 const ROOT = path.resolve('src');
 function browserFiles(dir = ROOT): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) return entry.name === 'server' ? [] : browserFiles(full);
+    if (entry.isDirectory())
+      return ['server', 'paraglide', '__fixtures__'].includes(entry.name) ? [] : browserFiles(full);
     if (!/\.(ts|svelte)$/.test(entry.name)) return [];
     if (/\.test\.ts$|\.server\.ts$|\+server\.ts$/.test(entry.name)) return [];
     return [full];
   });
+}
+
+/** Drop comments so a method named in prose is not counted (URLs keep their `//`). */
+function stripComments(source: string): string {
+  return source
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:'"`\\])\/\/[^\n]*/g, '$1');
 }
 
 interface CallSite {
@@ -105,69 +212,133 @@ interface CallSite {
   file: string;
   args: string;
 }
-function scan(): { calls: CallSite[]; dynamic: Set<string> } {
-  const calls: CallSite[] = [];
-  const dynamic = new Set<string>();
-  const literal = /\b(?:sendRequest|request)(?:<[^>()]*>)?\(\s*['"`]([\w.-]+)['"`]\s*,?/g;
-  const nonLiteral = /(?<!function )\bsendRequest(?:<[^>()]*>)?\(\s*([A-Za-z_$][\w$.]*)/g;
-  for (const full of browserFiles()) {
-    const file = path.relative(process.cwd(), full);
-    const source = readFileSync(full, 'utf8');
-    for (const m of source.matchAll(literal)) {
-      calls.push({ method: m[1], file, args: source.slice(m.index + m[0].length, m.index + 400) });
-    }
-    for (const m of source.matchAll(nonLiteral)) {
-      dynamic.add(file);
-      const secret = /^SECRETS_METHODS\.(\w+)$/.exec(m[1]);
-      if (secret) {
-        const method = SECRETS_METHODS[secret[1] as keyof typeof SECRETS_METHODS];
-        if (method) calls.push({ method, file, args: '' });
-      }
-    }
-  }
-  return { calls, dynamic };
+interface Sweep {
+  /** Literal first-argument calls, kept for the `sessions.patch` label-only check. */
+  calls: CallSite[];
+  /** Every dotted string under a gateway namespace, wherever it appears. */
+  strings: Array<{ value: string; file: string }>;
+  templates: Array<{ prefix: string; file: string }>;
+  dynamic: Set<string>;
 }
 
-const { calls, dynamic } = scan();
+export function sweepSource(file: string, raw: string, into: Sweep): void {
+  const source = stripComments(raw);
+  for (const m of source.matchAll(
+    /\b(?:sendRequest|request)(?:<[^>()]*>)?\(\s*['"`]([\w.-]+)['"`]\s*,?/g,
+  )) {
+    into.calls.push({
+      method: m[1],
+      file,
+      args: source.slice(m.index + m[0].length, m.index + 400),
+    });
+  }
+  for (const m of source.matchAll(/(['"`])([A-Za-z][\w-]*(?:\.[\w-]+)+)\1/g)) {
+    if (NAMESPACES.has(m[2].split('.')[0])) into.strings.push({ value: m[2], file });
+  }
+  for (const m of source.matchAll(/`([A-Za-z][\w-]*)\.[^`]*?\$\{/g)) {
+    if (NAMESPACES.has(m[1])) into.templates.push({ prefix: `${m[1]}.`, file });
+  }
+  if (/(?<!function )\b(?:sendRequest|request)(?:<[^>()]*>)?\(\s*(?!['"`)])[A-Za-z_$]/.test(source))
+    into.dynamic.add(file);
+}
+
+/** Every reason the sweep is not accepted; empty means the owner's list is complete. */
+export function violations(sweep: Sweep): string[] {
+  const out = new Set<string>();
+  for (const { value, file } of sweep.strings) {
+    if (READ_METHODS.has(value) || WRITE_METHODS.has(value) || value === 'sessions.patch') continue;
+    if (value in SERVED_BY_HUB_ROUTE)
+      out.add(`${value} is served by ${SERVED_BY_HUB_ROUTE[value]} (${file})`);
+    else if (!PLATFORM_ADMIN_ONLY.has(value) && !(value in NOT_RPC))
+      out.add(`${value} needs operator.admin but is not PLATFORM_ADMIN_ONLY (${file})`);
+  }
+  for (const { prefix, file } of sweep.templates)
+    if (!(`${file} ${prefix}` in NOT_RPC_TEMPLATES)) out.add(`template ${prefix}\${…} (${file})`);
+  for (const file of sweep.dynamic)
+    if (!(file in DYNAMIC_CALL_SITES)) out.add(`non-literal gateway call (${file})`);
+  return [...out];
+}
+
+function emptySweep(): Sweep {
+  return { calls: [], strings: [], templates: [], dynamic: new Set() };
+}
+const tree = emptySweep();
+for (const full of browserFiles()) sweepSource(path.relative(process.cwd(), full), readFileSync(full, 'utf8'), tree); // prettier-ignore
+
+describe('the sweep catches what the A3 audit found the call-shape scan missed', () => {
+  const probe = (file: string, source: string) => {
+    const sweep = emptySweep();
+    sweepSource(file, source, sweep);
+    return violations(sweep);
+  };
+  it('a template-literal method', () => {
+    expect(probe('src/lib/x.ts', 'sendRequest(`update.${step}`)')).toEqual([
+      'template update.${…} (src/lib/x.ts)',
+    ]);
+  });
+  it('a wrapper taking the method as a later argument', () => {
+    expect(probe('src/lib/x.ts', "rel.load(owner, 'agents.delete', {})")).toEqual([
+      'agents.delete needs operator.admin but is not PLATFORM_ADMIN_ONLY (src/lib/x.ts)',
+    ]);
+  });
+  it('.request(m) with a variable', () => {
+    expect(probe('src/lib/x.ts', 'client.request(m, {})')).toEqual([
+      'non-literal gateway call (src/lib/x.ts)',
+    ]);
+  });
+  it('a ternary inside an allowlisted dynamic site', () => {
+    expect(
+      probe('src/lib/plugins/PluginIframe.svelte', "sendRequest(on ? 'cron.remove' : 'health')"),
+    ).toEqual(['cron.remove needs operator.admin but is not PLATFORM_ADMIN_ONLY (src/lib/plugins/PluginIframe.svelte)']); // prettier-ignore
+  });
+  it('accepts read/write methods and listed admin methods', () => {
+    expect(probe('src/lib/x.ts', "f('chat.send'); g('config.patch'); h('agents.list')")).toEqual(
+      [],
+    );
+  });
+});
 
 describe('browser gateway method inventory', () => {
   it('finds the dashboard’s calls (scanner sanity)', () => {
-    const methods = new Set(calls.map((c) => c.method));
-    for (const m of ['chat.send', 'config.patch', 'sessions.patch', 'agents.list', 'secrets.set'])
+    const methods = new Set(tree.strings.map((c) => c.value));
+    for (const m of [
+      'chat.send',
+      'config.patch',
+      'sessions.patch',
+      'reliability.summary',
+      'secrets.clear',
+    ])
       expect(methods).toContain(m);
   });
 
-  it('every browser call needing operator.admin is platform-admin-only or moved to the hub', () => {
-    const unaccepted = calls
-      .filter((c) => requiredScope(c.method, c.args) !== 'read')
-      .filter((c) => requiredScope(c.method, c.args) !== 'write')
-      .filter((c) => !PLATFORM_ADMIN_ONLY.has(c.method))
-      .map((c) => `${c.method} (${c.file})`);
-    expect(unaccepted).toEqual([]);
+  it('every gateway-looking string is classified: read, write, admin-listed or not an RPC', () => {
+    expect(violations(tree)).toEqual([]);
   });
 
   it('chat’s sessions.patch calls are label-only, which A1 opens to operator.write', () => {
-    const patches = calls.filter((c) => c.method === 'sessions.patch');
+    const patches = tree.calls.filter((c) => c.method === 'sessions.patch');
     expect(patches.length).toBeGreaterThan(0);
     for (const call of patches)
       expect(requiredScope(call.method, call.args), call.file).toBe('write');
   });
 
-  it('the browser never calls a method a hub route now serves', () => {
-    const leaked = calls.filter((c) => c.method in SERVED_BY_HUB_ROUTE);
-    expect(leaked.map((c) => `${c.method} (${c.file})`)).toEqual([]);
-  });
-
-  it('lists only methods that are called and really need admin', () => {
-    const called = new Set(calls.map((c) => c.method));
+  it('lists only methods that are still referenced and really need admin', () => {
+    const referenced = new Set(tree.strings.map((c) => c.value));
     for (const method of PLATFORM_ADMIN_ONLY) {
-      expect(called.has(method), `${method} is no longer called`).toBe(true);
+      if (method === PLUGIN_RPC) continue;
+      expect(referenced.has(method), `${method} is no longer referenced`).toBe(true);
       expect(requiredScope(method, ''), method).toBe('admin');
     }
+    for (const value of Object.keys(NOT_RPC))
+      expect(referenced.has(value), `NOT_RPC ${value} is stale`).toBe(true);
   });
 
-  it('knows every non-literal call site', () => {
-    expect([...dynamic].sort()).toEqual(Object.keys(DYNAMIC_CALL_SITES).sort());
+  it('every plugin-chosen call is gated as PLUGIN_RPC', () => {
+    for (const file of [
+      'src/lib/plugins/PluginIframe.svelte',
+      'src/lib/components/users/ChannelLinking.svelte',
+    ])
+      expect(readFileSync(file, 'utf8'), file).toMatch(/sendRequest\([^)]*PLUGIN_RPC\)/);
   });
 });
 

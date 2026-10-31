@@ -1,8 +1,8 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
-  import { onMount } from 'svelte';
   import { invalidate } from '$app/navigation';
   import { sendRequest } from '$lib/services/gateway.svelte';
+  import { PLUGIN_RPC, gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
@@ -69,6 +69,10 @@
   // config.get / writes config.patch over the WS. Without this gate a disconnected
   // gateway surfaces as a late, opaque "Could not load config" at the last step.
   const canSync = $derived(!!serverId && conn.connected);
+  // Spec 045: full sync and the channel plugins need gateway admin — hidden, not
+  // locked, for everyone else once the browser stops carrying the shared token.
+  const gatewayAdmin = $derived(gatewayMethodAllowed('config.patch'));
+  const pluginsAllowed = $derived(gatewayMethodAllowed('channels.plugins.list'));
   let wizardType = $state<'whatsapp' | null>(null);
   function closeWizard() {
     wizardType = null;
@@ -101,6 +105,9 @@
 
   let plugins = $state<ChannelPluginInfo[]>([]);
   let loading = $state(false);
+  // One attempt per live connection: a failed or empty load must not re-trigger
+  // the effect below (a refused call fails synchronously and spun the tab).
+  let attempted = $state(false);
   let loadError = $state<string | null>(null);
   let openPluginId = $state<string | null>(null);
 
@@ -112,7 +119,8 @@
   let submitting = $state<string | null>(null);
 
   async function loadPlugins() {
-    if (!conn.connected) return;
+    if (!conn.connected || !pluginsAllowed) return;
+    attempted = true;
     loading = true;
     loadError = null;
     try {
@@ -127,10 +135,12 @@
     }
   }
 
-  onMount(loadPlugins);
-  // Reload whenever a gateway connection comes up.
+  // Load once per gateway connection; the refresh button retries by hand.
   $effect(() => {
-    if (conn.connected && plugins.length === 0 && !loading) loadPlugins();
+    if (!conn.connected) attempted = false;
+  });
+  $effect(() => {
+    if (conn.connected && pluginsAllowed && !attempted && !loading) void loadPlugins();
   });
 
   async function unclaim(identity: Identity) {
@@ -163,7 +173,7 @@
     if (p.link.mode !== 'form') return;
     submitting = p.pluginId;
     try {
-      await sendRequest(p.link.submitMethod, formValues[p.pluginId] ?? {});
+      await sendRequest(p.link.submitMethod, formValues[p.pluginId] ?? {}, undefined, PLUGIN_RPC);
       toastSuccess(m.usersui_channelConnected({ label: p.label }));
       formValues[p.pluginId] = {};
       openPluginId = null;
@@ -183,7 +193,7 @@
     >
       {m.usersui_channels()}
     </div>
-    {#if conn.connected}
+    {#if conn.connected && pluginsAllowed}
       <Button
         variant="ghost"
         size="xs"
@@ -209,7 +219,7 @@
         identity={whatsappIdentity}
         accountState={whatsappAccountState}
         {canSync}
-        onSetupSync={() => (wizardType = 'whatsapp')}
+        onSetupSync={gatewayAdmin ? () => (wizardType = 'whatsapp') : undefined}
         onUnclaim={unclaim}
       />
       {#if isSyncActive(whatsappSync, whatsappDelivery)}

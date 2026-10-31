@@ -36,12 +36,10 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /crm/doors, /crm/doors/[id] and the public /d/[slug] added (spec 041 hub
   // collection points S0) — 3 more screens+endpoints + 1 more fixture
   // (`public-door`); F2 gave /crm/doors/[id] its seeded `door-detail` fixture.
-  // The legacy /terminal redirect deleted (spec 045 A3: its page fetched the
-  // gateway token) — 1 fewer endpoint+redirect.
-  endpoints: 162,
+  endpoints: 163,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
   screens: 152,
-  redirects: 10,
+  redirects: 11,
   fixtures: 30,
   viewports: ['compact', 'medium', 'wide'] as const,
 });

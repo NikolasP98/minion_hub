@@ -31,7 +31,8 @@
     identity: Identity | null;
     accountState: ChannelAccountUiState;
     canSync: boolean;
-    onSetupSync: () => void;
+    /** Absent when this viewer cannot set up sync (spec 045: gateway admin only). */
+    onSetupSync?: () => void;
     onUnclaim: (identity: Identity) => void;
   } = $props();
 
@@ -164,7 +165,7 @@
     </span>
     <ChannelAccountStateBadge state={accountState} />
     {#if identity}
-      {#if accountState === 'claimed'}
+      {#if accountState === 'claimed' && onSetupSync}
         <Button
           variant="outline"
           size="xs"

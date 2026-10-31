@@ -84,8 +84,7 @@ describe('route design contracts', () => {
     // platform-reliability surface.
     // /crm/doors + /crm/doors/[id] (spec 041 S0) add two Wave-B surfaces and
     // the public /d/[slug] adds one Wave-E public surface.
-    // The legacy /terminal redirect deleted (spec 045 A3) drops one Wave-D surface.
-    expect(counts).toEqual({ A: 36, B: 77, C: 17, D: 22, E: 10 });
+    expect(counts).toEqual({ A: 36, B: 77, C: 17, D: 23, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

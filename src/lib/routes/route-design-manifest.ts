@@ -756,6 +756,9 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   redirectRoute('/tools', 'Tools', 'agents-builders', '/capabilities?tab=tools', 307, {
     preserveQuery: false,
   }),
+  redirectRoute('/terminal', 'Legacy terminal', 'immersive-workspaces', '/cloud/terminal', 307, {
+    preserveQuery: true,
+  }),
   redirectRoute(
     '/workshop/[...path]',
     'Legacy workshop path',
