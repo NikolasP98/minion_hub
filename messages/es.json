@@ -7289,5 +7289,7 @@
   "doors_col_clicks": "Clics",
   "sched_book_subtitle": "Elige un servicio y reserva un horario disponible.",
   "inboxKind_crm_door_submission": "Envío de puerta",
-  "sched_book_eyebrow": "Reserva en línea"
+  "sched_book_eyebrow": "Reserva en línea",
+  "gateway_roleCantConnect": "Tu rol no puede conectarse a este gateway. Pide acceso a un administrador.",
+  "gateway_roleCantAction": "Tu rol no puede hacer esto en el gateway. Pídeselo a un administrador de la plataforma."
 }

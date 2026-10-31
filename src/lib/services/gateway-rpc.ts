@@ -11,6 +11,7 @@
 // here via `setClient()`; everything else just calls `sendRequest`.
 
 import type { GatewayClient } from '@minion-stack/shared';
+import { GatewayRoleError, gatewayMethodAllowed } from './gateway/platform-admin-methods';
 
 let client: GatewayClient | null = null;
 let channelStatusSink: ((status: object) => void) | null = null;
@@ -59,8 +60,17 @@ export function setChannelStatusSink(sink: ((status: object) => void) | null): v
 }
 
 export function sendRequest(method: string, params?: unknown, timeoutMs = 15000): Promise<unknown> {
+  // Spec 045: a method this viewer's JWT cannot call fails here with "your role
+  // can't", instead of a gateway "missing scope" round-trip.
+  if (!gatewayMethodAllowed(method)) return refuseForRole();
   if (!client) return Promise.reject(new Error('not connected'));
   return client.request<unknown>(method, params, { timeoutMs });
+}
+
+async function refuseForRole(): Promise<never> {
+  // Lazy: a static import drags the full messages chunk into the shell bundle.
+  const m = await import('$lib/paraglide/messages');
+  throw new GatewayRoleError(m.gateway_roleCantAction());
 }
 
 /** Fetch and publish a fresh channels.status snapshot through the registered sink. */

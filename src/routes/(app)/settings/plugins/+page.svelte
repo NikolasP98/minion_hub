@@ -9,7 +9,6 @@
     AlertTriangle,
     Copy,
     Check,
-    RefreshCw,
     PlugZap,
     ArrowUpRight,
     ServerCrash,
@@ -19,7 +18,6 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
-  import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
   import { setPluginEnabled } from '$lib/state/plugin-nav.svelte';
   import type { PageData } from './$types';
 
@@ -73,40 +71,6 @@
     if (!target) return;
     const idx = data.entries.findIndex((e) => e.pluginId === target);
     if (idx >= 0 && idx !== selected) selected = idx;
-  });
-
-  // Fetch a per-user gateway token for the active host so plugin iframes can
-  // open authenticated WS connections to the gateway. Tokens are NOT sent
-  // through SSR page data (would leak in HTML); they're fetched on demand
-  // from /api/servers/:id/token and forwarded via the bridge hello payload.
-  let authToken = $state('');
-  let tokenLoading = $state(false);
-  let tokenError = $state<string | null>(null);
-
-  $effect(() => {
-    const hostId = hostsState.activeHostId;
-    if (!hostId || data.entries.length === 0) {
-      authToken = '';
-      return;
-    }
-    tokenLoading = true;
-    tokenError = null;
-    fetchHostToken(hostId)
-      .then((tok) => {
-        if (tok === null) {
-          tokenError = 'session required';
-          authToken = '';
-        } else {
-          authToken = tok;
-        }
-      })
-      .catch((err) => {
-        tokenError = String(err);
-        authToken = '';
-      })
-      .finally(() => {
-        tokenLoading = false;
-      });
   });
 
   let refreshing = $state(false);
@@ -431,16 +395,6 @@
               {@const on = enabledOpt.get(current.pluginId, effectiveEnabled(current))}
               {@const busy = enabledOpt.isPending(current.pluginId)}
               <div class="flex items-center justify-end gap-3 border-b border-border px-4 py-2">
-                {#if tokenLoading}
-                  <span class="flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <RefreshCw size={iconSizes.xs} class="animate-spin" />
-                    {m.pluginsPage_authenticating()}
-                  </span>
-                {:else if tokenError}
-                  <span class="text-xs text-destructive"
-                    >{m.pluginsPage_authError({ error: tokenError })}</span
-                  >
-                {/if}
                 {#if saveSaving}
                   <span class="flex items-center gap-1.5 text-xs">
                     <Loader2 size={iconSizes.xs} class="animate-spin text-muted-foreground" />
@@ -501,39 +455,27 @@
                   {m.pluginsPage_restartRequired()}
                 </div>
               {/if}
-              {#if tokenLoading}
-                <div class="flex items-center gap-2 px-4 py-6 text-sm text-muted-foreground">
-                  <RefreshCw size={iconSizes.sm} class="animate-spin" />
-                  {m.pluginsPage_fetchingToken()}
-                </div>
-              {:else if !authToken && !tokenError}
-                <div class="px-4 py-6 text-sm text-muted-foreground">
-                  {m.pluginsPage_noHost()}
-                </div>
-              {:else}
-                <div class="flex min-h-0 flex-1 flex-col">
-                  {#key current.pluginId + ':' + current.entrypoint}
-                    <PluginIframe
-                      pluginId={current.pluginId}
-                      entrypoint={current.entrypoint}
-                      gatewayUrl={data.gatewayBaseUrl}
-                      {authToken}
-                      {theme}
-                      {tokens}
-                      compat={current.compat}
-                      pluginStatus={current.status}
-                      externalSaveBar
-                      fillContainer
-                      bind:dirty={saveDirty}
-                      bind:saving={saveSaving}
-                      bind:saveError
-                      bind:saveOk
-                      bind:restartRequired={saveRestart}
-                      bindTriggerSave={(fn) => (triggerSaveFn = fn)}
-                    />
-                  {/key}
-                </div>
-              {/if}
+              <div class="flex min-h-0 flex-1 flex-col">
+                {#key current.pluginId + ':' + current.entrypoint}
+                  <PluginIframe
+                    pluginId={current.pluginId}
+                    entrypoint={current.entrypoint}
+                    gatewayUrl={data.gatewayBaseUrl}
+                    {theme}
+                    {tokens}
+                    compat={current.compat}
+                    pluginStatus={current.status}
+                    externalSaveBar
+                    fillContainer
+                    bind:dirty={saveDirty}
+                    bind:saving={saveSaving}
+                    bind:saveError
+                    bind:saveOk
+                    bind:restartRequired={saveRestart}
+                    bindTriggerSave={(fn) => (triggerSaveFn = fn)}
+                  />
+                {/key}
+              </div>
             {/if}
           </div>
         </div>

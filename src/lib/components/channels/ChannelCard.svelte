@@ -18,6 +18,7 @@
   import { isSyncActive } from '$lib/state/gateway';
   import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { createOptimistic } from '$lib/utils/optimistic';
   import { fetchChannels } from '$lib/state/channels';
 
@@ -47,6 +48,9 @@
     transportEnabled,
     onreauthenticate,
   }: Props = $props();
+  // Spec 045: channel setup is gateway admin (config.patch, channels.logout,
+  // channels.whatsapp.pair) — hidden, not locked, for anyone else once switched.
+  const gatewayAdmin = $derived(gatewayMethodAllowed('config.patch'));
 
   const isGateway = $derived(channel.source === 'gateway');
   let showEditForm = $state(false);
@@ -651,7 +655,7 @@
 
         <!-- WhatsApp history sync: per-account override of the gateway default.
                      Source of truth = gateway config, so it patches, it doesn't PUT. -->
-        {#if isGateway && channel.type === 'whatsapp' && gwAccountId}
+        {#if gatewayAdmin && isGateway && channel.type === 'whatsapp' && gwAccountId}
           <HistorySyncControl accountId={gwAccountId} />
 
           <!-- markOnline: transport-level knob, source of truth = gateway.json -->
@@ -764,18 +768,20 @@
                 <Pencil size={iconSizes.xs} />
                 {m.common_edit()}
               </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                type="button"
-                onclick={(e) => {
-                  e.stopPropagation();
-                  handleReauthenticate();
-                }}
-              >
-                <RefreshCw size={iconSizes.xs} />
-                Re-authenticate
-              </Button>
+              {#if gatewayAdmin}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  type="button"
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    handleReauthenticate();
+                  }}
+                >
+                  <RefreshCw size={iconSizes.xs} />
+                  Re-authenticate
+                </Button>
+              {/if}
               {#if isGateway && gwChannelType && gwAccountId}
                 <Button
                   variant={channel.gwEnabled === false ? 'primary' : 'danger'}
@@ -794,47 +800,49 @@
                   {/if}
                   {channel.gwEnabled === false ? m.channel_enable() : m.channel_disable()}
                 </Button>
-                {#if confirmRemove}
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    type="button"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveAccount();
-                    }}
-                    loading={removing}
-                  >
-                    {#if !removing}
+                {#if gatewayAdmin}
+                  {#if confirmRemove}
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      type="button"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveAccount();
+                      }}
+                      loading={removing}
+                    >
+                      {#if !removing}
+                        <Trash2 size={iconSizes.xs} />
+                      {/if}
+                      {m.common_confirm()}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      type="button"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        confirmRemove = false;
+                      }}
+                      disabled={removing}
+                    >
+                      {m.common_cancel()}
+                    </Button>
+                  {:else}
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      type="button"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        confirmRemove = true;
+                      }}
+                    >
                       <Trash2 size={iconSizes.xs} />
-                    {/if}
-                    {m.common_confirm()}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    type="button"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      confirmRemove = false;
-                    }}
-                    disabled={removing}
-                  >
-                    {m.common_cancel()}
-                  </Button>
-                {:else}
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    type="button"
-                    onclick={(e) => {
-                      e.stopPropagation();
-                      confirmRemove = true;
-                    }}
-                  >
-                    <Trash2 size={iconSizes.xs} />
-                    {m.common_remove()}
-                  </Button>
+                      {m.common_remove()}
+                    </Button>
+                  {/if}
                 {/if}
               {/if}
             </div>

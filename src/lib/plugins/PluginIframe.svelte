@@ -80,7 +80,6 @@
     pluginId: string;
     entrypoint: string;
     gatewayUrl: string;
-    authToken: string;
     theme: Theme;
     tokens: Record<string, string>;
     /**
@@ -119,7 +118,6 @@
     pluginId,
     entrypoint,
     gatewayUrl,
-    authToken,
     theme,
     tokens,
     externalSaveBar = false,
@@ -273,7 +271,10 @@
         theme,
         tokens,
         gatewayUrl: wsGatewayUrl,
-        authToken,
+        // The iframe never used the gateway token: every plugin RPC goes through
+        // `forwardRpc`. The bridge still drops a hello without a string here, so
+        // send an empty one (spec 045 §3.2). TODO(handoff): drop with A4 (T054).
+        authToken: '',
         locale: languageTag() as Locale,
       },
       onResize: (h) => {

@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { buildRouteInventory } from './ui-audit-inventory.mjs';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 147 screens and 11 redirects', async () => {
+  it('locks the complete endpoint ledger at 152 screens and 10 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 163, screens: 152, redirects: 11 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(163);
+    expect(inventory.summary).toMatchObject({ endpoints: 162, screens: 152, redirects: 10 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(162);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
@@ -22,7 +22,6 @@ describe('UI audit route inventory', () => {
       '/scheduling/resources',
       '/shells',
       '/shells/[shellId]',
-      '/terminal',
       '/tools',
       '/workshop/[...path]',
     ]);
@@ -122,22 +121,5 @@ describe('UI audit route inventory', () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-  });
-
-  it('classifies the rendered legacy terminal shim by its unconditional server redirect', async () => {
-    const inventory = await buildRouteInventory();
-    const terminal = inventory.routes.find((route) => route.pattern === '/terminal');
-
-    // Unlike the current clean-HEAD ledger above, this reads the WORKTREE (no
-    // cleanBaseline flag), so it also reflects uncommitted route changes.
-    expect(inventory.summary).toMatchObject({ endpoints: 163, screens: 152, redirects: 11 });
-    expect(terminal).toMatchObject({
-      kind: 'redirect',
-      source: 'src/routes/(app)/terminal/+page.svelte',
-      redirectContract: {
-        location: '/cloud/terminal?server=ui-audit-shell',
-        outcomes: ['preserves-query', 'legacy-route'],
-      },
-    });
   });
 });

@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { browserSharedTokenOff } from '$lib/gateway-browser-token';
 import { and, eq } from 'drizzle-orm';
 import { userServers } from '@minion-stack/db/schema';
 import { requireAuth } from '$server/auth/authorize';
@@ -23,6 +24,11 @@ import {
  * proxy access logs, and the default HTTP cache.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
+  // Spec 045 I1: once the dashboard connects with its own per-gateway JWT, no
+  // browser gets the shared token. TODO(handoff): delete this route in A4 (T054).
+  if (browserSharedTokenOff()) {
+    return json({ error: 'gone' }, { status: 410, headers: { 'cache-control': 'no-store' } });
+  }
   console.log(
     '[token-ep] ENTRY user=',
     locals.user?.email ?? 'NONE',

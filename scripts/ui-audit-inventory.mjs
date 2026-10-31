@@ -61,12 +61,6 @@ const REDIRECT_CONTRACTS = {
     location: '/capabilities?tab=tools',
     outcomes: ['preserves-tab-target'],
   },
-  '/terminal': {
-    probePath: '/terminal?server=ui-audit-shell',
-    statuses: [307],
-    location: '/cloud/terminal?server=ui-audit-shell',
-    outcomes: ['preserves-query', 'legacy-route'],
-  },
   '/workshop/[...path]': {
     probePath: '/workshop/ui-audit',
     statuses: [308],

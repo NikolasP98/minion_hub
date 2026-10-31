@@ -1,4 +1,3 @@
-import { sendRequest } from '$lib/services/gateway-rpc';
 import { queryClient } from '$lib/query/client';
 
 interface PersonalAgentState {
@@ -69,9 +68,10 @@ export const personalAgent = {
 
   /**
    * Check if this user's personal agent needs gateway provisioning and trigger it.
-   * Called on page load -- fetches provisioning status from server, then calls
-   * agents.create via the browser WebSocket if needed. Reports result back to server.
-   * Silently fails -- will retry on next page load via exponential backoff.
+   * Called on page load: fetches provisioning status, then asks the hub to create
+   * the agent. `agents.create` needs gateway admin, so the hub does it with its
+   * own credential, only for this user's pending agent (spec 045 R9), and records
+   * success or failure itself. Silently fails -- will retry on next page load.
    */
   async checkAndProvision() {
     try {
@@ -86,31 +86,11 @@ export const personalAgent = {
       });
       if (!data.needsProvisioning) return;
 
-      // Call gateway to create the agent workspace
-      try {
-        await sendRequest('agents.create', data.payload);
-        // Mark as active
-        await fetch('/api/personal-agent/provision', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'active' }),
-        });
-        // displayName lives in the gateway config (`agents.list[].identity.name`)
-        // as the single source of truth — /my-agent writes it via config.patch.
-        // We no longer push it from the DB via hub.personal-agent.updated.
-        await queryClient.invalidateQueries({ queryKey: ['personal-agent'] });
-        await this.load();
-      } catch (err) {
-        // Mark as error
-        await fetch('/api/personal-agent/provision', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'error',
-            error: err instanceof Error ? err.message : 'Gateway unreachable',
-          }),
-        });
-      }
+      await fetch('/api/personal-agent/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
       // Always reload so client state reflects the DB outcome — invalidate
       // first so a fresh `load()` within the same staleTime window refetches
       // instead of serving the pre-provisioning cached snapshot.
