@@ -252,6 +252,13 @@ export function violations(sweep: Sweep): string[] {
     else if (!PLATFORM_ADMIN_ONLY.has(value) && !(value in NOT_RPC))
       out.add(`${value} needs operator.admin but is not PLATFORM_ADMIN_ONLY (${file})`);
   }
+  // A literal call is classified by the gateway's own rules, whatever the string
+  // allowlists say (re-audit R1: `NOT_RPC` holds real methods like `channels.send`).
+  for (const { method, file, args } of sweep.calls) {
+    const scope = requiredScope(method, args);
+    if (scope !== 'read' && scope !== 'write' && !PLATFORM_ADMIN_ONLY.has(method))
+      out.add(`${method} needs operator.${scope} but is not PLATFORM_ADMIN_ONLY (${file})`);
+  }
   for (const { prefix, file } of sweep.templates)
     if (!(`${file} ${prefix}` in NOT_RPC_TEMPLATES)) out.add(`template ${prefix}\${…} (${file})`);
   for (const file of sweep.dynamic)
@@ -280,6 +287,18 @@ describe('the sweep catches what the A3 audit found the call-shape scan missed',
     expect(probe('src/lib/x.ts', "rel.load(owner, 'agents.delete', {})")).toEqual([
       'agents.delete needs operator.admin but is not PLATFORM_ADMIN_ONLY (src/lib/x.ts)',
     ]);
+  });
+  it('a literal call the string allowlists would excuse, or outside every namespace', () => {
+    expect(probe('src/lib/x.ts', "sendRequest('channels.send', {})")).toContain(
+      'channels.send needs operator.admin but is not PLATFORM_ADMIN_ONLY (src/lib/x.ts)',
+    );
+    expect(probe('src/lib/x.ts', "sendRequest('restart')")).toContain(
+      'restart needs operator.admin but is not PLATFORM_ADMIN_ONLY (src/lib/x.ts)',
+    );
+    expect(probe('src/lib/x.ts', "sendRequest('sessions.patch', { key, model })")).toContain(
+      'sessions.patch needs operator.admin but is not PLATFORM_ADMIN_ONLY (src/lib/x.ts)',
+    );
+    expect(probe('src/lib/x.ts', "sendRequest('chat.history', {})")).toEqual([]);
   });
   it('.request(m) with a variable', () => {
     expect(probe('src/lib/x.ts', 'client.request(m, {})')).toEqual([
