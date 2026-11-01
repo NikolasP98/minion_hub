@@ -34,7 +34,7 @@
     ChevronDown,
     ChevronsUpDown,
     Check,
-    LayoutList,
+    Home,
   } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
   import {
@@ -61,7 +61,7 @@
   // resolves unconditionally: the module the CURRENT ROUTE belongs to, else
   // the last module picked from this same picker, else the first module the
   // user can see (`visibleModules()[0]`) — that fallback also covers routes
-  // no module claims (e.g. `/notifications`); `/home` itself resolves to the
+  // no module claims (e.g. `/notifications`); the chat screen resolves to the
   // Organization module via its own matcher, so it's covered too. This is
   // the exact getter Sidebar's module view reads — no forked list.
   const moduleItems = $derived(navMode.activeModule?.items ?? []);
@@ -76,8 +76,8 @@
   // subtree, so it has no top-layer conflict.
   const pickerModules = $derived(visibleModules(navModuleData(), canViewPath));
   const pickerActive = $derived(navMode.activeModule);
-  const PickerIcon = $derived(pickerActive?.icon ?? LayoutList);
-  const pickerLabel = $derived(pickerActive?.label ?? m.nav_allSections());
+  const PickerIcon = $derived(pickerActive?.icon ?? Home);
+  const pickerLabel = $derived(pickerActive?.label ?? m.nav_home());
 
   let modulePickerOpen = $state(false);
   let modulePickerRoot = $state<HTMLDivElement | null>(null);
@@ -87,6 +87,12 @@
     if (!mod) return;
     navMode.pickModule(mod.id);
     void moduleNavigation.go(mod.href);
+  }
+  /** Inicio: the member's resolved landing page (spec 046); closes picker and sheet. */
+  function goHome() {
+    modulePickerOpen = false;
+    mobileMenuOpen = false;
+    void moduleNavigation.go(page.data.landingPage as string);
   }
   function onPickerPointerDown(e: PointerEvent) {
     if (modulePickerOpen && modulePickerRoot && !modulePickerRoot.contains(e.target as Node)) {
@@ -264,6 +270,17 @@
         </Button>
         {#if modulePickerOpen}
           <div use:floatingLayer class="module-picker-menu" role="menu">
+            <Button
+              variant="ghost"
+              size="xs"
+              type="button"
+              class="module-picker-item"
+              role="menuitem"
+              onclick={goHome}
+            >
+              <Home size={iconSizes.sm} class="shrink-0" />
+              <span class="truncate">{m.nav_home()}</span>
+            </Button>
             {#each pickerModules as mod (mod.id)}
               {@const ModIcon = mod.icon}
               <Button

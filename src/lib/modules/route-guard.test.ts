@@ -30,11 +30,11 @@ describe('isAppPageRequest — request-class classification', () => {
 
 describe('shouldApplyOrganizationRouteGuards — organization recovery boundary', () => {
   test('defers organization-scoped guards until recovery supplies tenant context', () => {
-    expect(shouldApplyOrganizationRouteGuards(true, false, '/(app)/home')).toBe(false);
+    expect(shouldApplyOrganizationRouteGuards(true, false, '/(app)/chat')).toBe(false);
   });
 
   test('runs for an authenticated organization-scoped app request', () => {
-    expect(shouldApplyOrganizationRouteGuards(true, true, '/(app)/home')).toBe(true);
+    expect(shouldApplyOrganizationRouteGuards(true, true, '/(app)/chat')).toBe(true);
   });
 });
 
@@ -126,7 +126,7 @@ describe('isAppRouteBlocked — module-toggle state', () => {
 describe('isAppRouteBlocked — unmapped paths', () => {
   test('a path with no manifest entry always passes', () => {
     const ctx = { kind: undefined, moduleStates: {} };
-    expect(isAppRouteBlocked('/home', ctx)).toBe(false);
+    expect(isAppRouteBlocked('/chat', ctx)).toBe(false);
     expect(isAppRouteBlocked('/crm', ctx)).toBe(false);
     // /settings/team is no longer unmapped as of S3/WP1 — see the
     // "unknown kind fails CLOSED" describe block below for its coverage.

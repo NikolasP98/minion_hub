@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, type ComponentProps } from 'svelte';
   import Shell from '../mobile-composition/Shell.svelte';
-  import HomePage from '../../../src/routes/(app)/home/+page.svelte';
+  import HomePage from '../../../src/routes/(app)/chat/+page.svelte';
   import { begin, stop } from './gateway-transport';
   // Matches the existing route-only fixture boundary; no server identity is certified.
   const data = {

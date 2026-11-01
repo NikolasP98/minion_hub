@@ -211,7 +211,7 @@ describe('module floor', () => {
     expect(moduleViewFloor('/pos/sell')).toBe('pos:view');
     expect(moduleViewFloor('/crm/insights')).toBe('crm:view');
     expect(moduleViewFloor('/settings/roles')).toBeNull();
-    expect(moduleViewFloor('/home')).toBeNull();
+    expect(moduleViewFloor('/chat')).toBeNull();
   });
   it('floorApplies follows DATASET_ENFORCED', () => {
     expect(floorApplies('/pos/sell')).toBe(true);

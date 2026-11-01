@@ -73,6 +73,7 @@
     resolveNavInstance,
     setHidden,
     uniqueSectionSlug,
+    setOrgLandingPage,
     type NavConfig,
     type NavConfigIssue,
     type NavPage,
@@ -111,10 +112,7 @@
   const customSection = $derived<NavSection | null>(
     customId ? (config.sections.find((s) => s.id === customId) ?? null) : null,
   );
-  const currentHome = $derived(
-    ((page.data as { preferences?: { preferences?: Record<string, unknown> } })?.preferences
-      ?.preferences?.landingPage as string | undefined) ?? '/home',
-  );
+  const currentHome = $derived(page.data.landingPage as string);
 
   async function setAsHome() {
     if (currentHome === href) return;
@@ -181,6 +179,14 @@
         selection: 'checkbox',
         checked: currentHome === href,
       });
+      if (canEditNav())
+        out.push({
+          id: 'org-home',
+          label: config.landingPage === href ? m.nav_org_isHome() : m.nav_org_setAsHome(),
+          icon: Star,
+          selection: 'checkbox',
+          checked: config.landingPage === href,
+        });
       const target = instance?.target ?? builtinTarget;
       if (!target) return out;
       const access = { id: 'access', label: m.nav_access_menu(), icon: ShieldCheck };
@@ -369,6 +375,8 @@
     const clip = navClipboard.item;
     const pageId = instance?.page.id;
     if (id === 'home') return void setAsHome();
+    if (id === 'org-home')
+      return void run((c) => setOrgLandingPage(c, c.landingPage === href ? null : href));
     if (id === 'copy') {
       const target = instance?.target ?? builtinTarget;
       if (target)

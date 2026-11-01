@@ -84,8 +84,9 @@ describe('route design contracts', () => {
     // platform-reliability surface.
     // /crm/doors + /crm/doors/[id] (spec 041 S0) add two Wave-B surfaces and
     // the public /d/[slug] adds one Wave-E public surface.
-    // /orgs/plans (spec 043 S1) adds one more Wave-A organization surface.
-    expect(counts).toEqual({ A: 37, B: 77, C: 17, D: 23, E: 10 });
+    // /orgs/plans (spec 043 S1) adds one Wave-A surface; /home + /home/settings redirects
+    // (spec 046 S3) add two Wave-D entries.
+    expect(counts).toEqual({ A: 37, B: 77, C: 17, D: 25, E: 10 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

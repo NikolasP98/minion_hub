@@ -49,7 +49,7 @@ describe('resolveModuleForNav', () => {
 
   it('covers every nav surface', () => {
     const paths = [
-      '/home',
+      '/chat',
       '/overview',
       '/team',
       '/pos/sell',

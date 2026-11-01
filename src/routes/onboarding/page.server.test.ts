@@ -19,7 +19,6 @@ vi.mock('$server/services/finance.service', () => ({
 vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability: vi.fn() }));
 vi.mock('$server/services/supabase-credential', () => ({ updateSupabaseProfile: vi.fn() }));
 vi.mock('$server/services/user-preferences.service', () => ({ upsertUserPreference: vi.fn() }));
-vi.mock('$server/landing-cache', () => ({ invalidateLandingCache: vi.fn() }));
 
 import { load } from './+page.server';
 
@@ -77,7 +76,7 @@ it('redirects away when there is nothing left to set up', async () => {
   });
   await expect(load(event({ onboardedAt: '2026-01-02T00:00:00.000Z' }))).rejects.toMatchObject({
     status: 303,
-    location: '/home',
+    location: '/',
   });
 });
 
@@ -88,6 +87,6 @@ it('does not hold a plain member at the org flow it cannot submit', async () => 
   });
   await expect(load(event({ onboardedAt: '2026-01-02T00:00:00.000Z' }))).rejects.toMatchObject({
     status: 303,
-    location: '/home',
+    location: '/',
   });
 });

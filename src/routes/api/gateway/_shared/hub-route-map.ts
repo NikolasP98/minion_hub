@@ -1,3 +1,5 @@
+import { CHAT_PATH } from '$lib/nav/landing';
+
 /**
  * Single source of truth for "what pages does the hub have" — consumed by:
  *  - `$lib/state/features/assistant-context.ts` (in-app floating assistant briefing)
@@ -34,7 +36,7 @@ export const HUB_ROUTE_MAP: Array<[route: string, description: string]> = [
   ['/flow-editor', 'Agent Builder — visual flow editor.'],
   ['/marketplace', 'Agent + skill marketplace.'],
   ['/capabilities', 'Capabilities + MCPs.'],
-  ['/home', 'Personal agent chat (this same assistant, full-screen).'],
+  [CHAT_PATH, 'Personal agent chat (this same assistant, full-screen).'],
   [
     '/overview',
     'Overview dashboard — org map + key business metrics at a glance. Proactively look up live data (top customers, recent activity, revenue) before answering instead of describing the page.',

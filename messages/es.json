@@ -5948,7 +5948,6 @@
   "attachments_restore": "Restaurar",
   "attachments_restore_failed": "No se pudo restaurar el adjunto",
   "attachments_trash_hint": "Los archivos eliminados se conservan 30 días y luego se borran definitivamente.",
-  "nav_allSections": "Todas las secciones",
   "nav_collapseSidebar": "Contraer la barra lateral",
   "nav_expandSidebar": "Expandir la barra lateral",
   "nav_moreOptions": "Más",
@@ -7332,5 +7331,9 @@
   "nav_dialog_advanced": "Configuración avanzada",
   "nav_dialog_icon": "Icono",
   "nav_dialog_access_rows": "Quién puede ver",
-  "nav_error_access_save": "La sección se guardó pero sus permisos no. Guarda de nuevo para reintentar."
+  "nav_error_access_save": "La sección se guardó pero sus permisos no. Guarda de nuevo para reintentar.",
+  "nav_chat": "Chat",
+  "nav_back_home": "Volver a Inicio",
+  "nav_org_setAsHome": "Fijar como inicio de la organización",
+  "nav_org_isHome": "Inicio de la organización"
 }

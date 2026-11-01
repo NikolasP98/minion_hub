@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { buildRouteInventory } from './ui-audit-inventory.mjs';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 147 screens and 11 redirects', async () => {
+  it('locks the complete endpoint ledger at 152 screens and 13 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 164, screens: 153, redirects: 11 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(164);
+    expect(inventory.summary).toMatchObject({ endpoints: 166, screens: 153, redirects: 13 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(166);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
@@ -18,6 +18,8 @@ describe('UI audit route inventory', () => {
       '/ads/[...path]',
       '/builder',
       '/crm/cleanup',
+      '/home',
+      '/home/settings',
       '/pos',
       '/scheduling/resources',
       '/shells',

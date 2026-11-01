@@ -97,6 +97,7 @@
   function makeData(owner: 'a' | 'b', seed: NotificationHealthSeed): PageData {
     return {
       env: { backend: 'prd', local: false },
+      landingPage: '/chat',
       // Module states now ride the (app) layout payload so the sidebar has them
       // on every page, not only inside each module's own subtree.
       schedulingEnabled: true,

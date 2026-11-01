@@ -124,7 +124,7 @@ import { ensureAgentChat } from '$lib/state/chat/chat.svelte';
 
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { flushSync, type ComponentProps } from 'svelte';
-import Home from '../../routes/(app)/home/+page.svelte';
+import Home from '../../routes/(app)/chat/+page.svelte';
 import { page } from '../../../tests/fixtures/pending-submission/page.svelte';
 import { sourceMessageRun } from '$lib/assistant/accepted-runs';
 import { decisionEvents } from '$lib/assistant/decision-events';

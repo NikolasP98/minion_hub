@@ -87,7 +87,7 @@ describe('buildAssistantContext', () => {
   });
 
   test('routes organization knowledge through the active org Master Brain', () => {
-    const ctx = at('/home', {
+    const ctx = at('/chat', {
       organizations: [
         { id: 'o1', name: 'FACES' },
         { id: 'o2', name: 'MINION' },

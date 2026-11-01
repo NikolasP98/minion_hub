@@ -9,6 +9,7 @@
 import { ROUTE_DESIGN_MANIFEST } from '$lib/routes/route-design-manifest';
 import { HUB_ROUTE_MAP } from '../../routes/api/gateway/_shared/hub-route-map';
 import { FORM_CATALOG } from './catalog';
+import { CHAT_PATH } from '$lib/nav/landing';
 
 export interface SitePage {
   path: string;
@@ -22,7 +23,7 @@ export interface SitePage {
  * so it only scores a weak hit and is briefed as "NO MODULE HERE for".
  */
 export const PAGE_KEYWORDS: Record<string, string> = {
-  '/home': 'chat assistant asistente inicio',
+  [CHAT_PATH]: 'chat assistant asistente inicio',
   '/overview': 'dashboard resumen panel metrics kpis',
   '/work': 'tasks tareas pendientes my work',
   '/team':

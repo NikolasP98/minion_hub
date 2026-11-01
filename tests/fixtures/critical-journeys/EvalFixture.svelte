@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, type ComponentProps } from 'svelte';
   import Shell from '../mobile-composition/Shell.svelte';
-  import Home from '../../../src/routes/(app)/home/+page.svelte';
+  import Home from '../../../src/routes/(app)/chat/+page.svelte';
   import Floating from '../../../src/lib/components/layout/FloatingAssistant.svelte';
   import Sandbox from '../../../src/routes/(app)/sandbox/+page.svelte';
   import { assistant } from '$lib/state/features/assistant.svelte';

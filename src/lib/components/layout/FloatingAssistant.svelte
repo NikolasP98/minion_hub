@@ -15,6 +15,7 @@
     type TurnOrigin,
   } from '$lib/assistant/accepted-runs';
   import { useDropRegistry } from '$lib/shell/drop-context.svelte';
+  import { CHAT_PATH } from '$lib/nav/landing';
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { fileDraftContext, type DraftFile } from '$lib/attachments/draft';
@@ -595,7 +596,7 @@
   // On /my-agent the user is already in a full chat with this same personal
   // agent (same thread, same AI), so the floating assistant is redundant
   // there — hide it entirely on that route.
-  const onMyAgentPage = $derived(canonicalPath(page.url.pathname) === '/home');
+  const onMyAgentPage = $derived(canonicalPath(page.url.pathname) === CHAT_PATH);
 
   // A call lives at the app level (module singleton). When it's running and
   // the user has navigated off the call UI, this anchored popup surfaces the

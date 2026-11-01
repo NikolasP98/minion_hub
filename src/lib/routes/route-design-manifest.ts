@@ -1,5 +1,6 @@
 import type { CaptureFixtureId } from './capture-fixtures';
 import { routeAccessPolicyIdForPattern, type RouteAccessPolicyId } from './route-access-policies';
+import { CHAT_PATH, LEGACY_HOME_PATH } from '$lib/nav/landing';
 
 export type RouteArchetype =
   | 'dashboard'
@@ -572,8 +573,8 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/stock/warehouses', 'Warehouses', 'stock', 'collection'),
 
   // Platform, sessions, reliability and remote work (19)
-  screen('/home', 'Home', 'immersive-workspaces', 'dashboard'),
-  screen('/home/settings', 'Home settings', 'immersive-workspaces', 'form-settings'),
+  screen(CHAT_PATH, 'Chat', 'immersive-workspaces', 'dashboard'),
+  screen('/chat/settings', 'Chat settings', 'immersive-workspaces', 'form-settings'),
   screen('/cloud', 'Cloud workspace', 'immersive-workspaces', 'dashboard'),
   screen('/cloud/gui', 'Cloud remote desktop', 'immersive-workspaces', 'terminal-remote-desktop'),
   screen('/cloud/settings', 'Cloud settings', 'immersive-workspaces', 'form-settings'),
@@ -713,6 +714,18 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     preserveQuery: true,
     preservePath: true,
   }),
+  // The assistant screen moved from /home to /chat (spec 046 S3).
+  redirectRoute(LEGACY_HOME_PATH, 'Legacy Home', 'immersive-workspaces', CHAT_PATH, 308, {
+    preserveQuery: false,
+  }),
+  redirectRoute(
+    `${LEGACY_HOME_PATH}/settings`,
+    'Legacy Home settings',
+    'immersive-workspaces',
+    '/chat/settings',
+    308,
+    { preserveQuery: false },
+  ),
   redirectRoute('/builder', 'Legacy builder', 'agents-builders', '/agents/builder', 308, {
     preserveQuery: false,
   }),

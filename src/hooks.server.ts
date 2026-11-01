@@ -33,7 +33,8 @@ import { applyOrgTxScope } from '$server/db/with-org-core';
 import { createAmbientOrgTx } from '$server/db/ambient-org-tx';
 import { markAiUsageAuthenticated, runWithAiUsageScope, setAiUsageOrg } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
-import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
+import { resolveLandingFor } from '$server/nav/landing.server';
+import { CHAT_PATH, SAFE_PATH } from '$lib/nav/landing';
 import { availableLanguageTags } from '$lib/paraglide/runtime';
 import {
   apiWriteCapability,
@@ -97,48 +98,28 @@ const backendModeHandle: Handle = ({ event, resolve }) => {
 };
 
 /**
- * Resolve the landing page for a signed-in user hitting "/". Defaults to
- * `/home`; honors the per-user `landingPage` preference (set via right-click →
- * "Set as home page" in the sidebar) and the per-user `locale` preference
- * (`{ tag }`, what the language toggle saves): the result is locale-prefixed
- * (`/es/home`), so a Spanish-speaking member lands in Spanish instead of the
- * unprefixed path falling to the default language (owner ask 2026-09-26:
- * "change their default language to spanish"). Best-effort — any lookup
- * failure falls back to the default so the root redirect never 500s.
+ * Where a signed-in user hitting "/" goes: the one landing resolver (spec 046,
+ * `$server/nav/landing.server`), prefixed with the per-user `locale` preference
+ * (`{ tag }`, what the language toggle saves) so a Spanish-speaking member
+ * lands in Spanish (`/es/...`) instead of the unprefixed path falling to the
+ * default language (owner ask 2026-09-26). Best-effort — any lookup failure
+ * falls back to the resolver's last resort so the root redirect never 500s.
  */
-async function resolveLandingPage(supabaseId: string | undefined): Promise<string> {
-  const DEFAULT = '/home';
-  if (!supabaseId) return DEFAULT;
-  const cached = getCachedLanding(supabaseId);
-  if (cached) return cached;
+async function resolveLandingPage(locals: App.Locals): Promise<string> {
+  const supabaseId = locals.user?.supabaseId;
   try {
-    const prefs = await getUserPreferences(getCoreDb(), supabaseId);
+    const prefs = supabaseId ? await getUserPreferences(getCoreDb(), supabaseId) : {};
     const tag = (prefs.locale as { tag?: unknown } | undefined)?.tag;
     const prefix =
       typeof tag === 'string' && (availableLanguageTags as readonly string[]).includes(tag)
         ? `/${tag}`
         : '';
-    const choice = prefs.landingPage;
-    // Same-origin guard: must be a root-relative path, NOT a protocol-relative
-    // (`//evil.com`) or backslash-tricked (`/\evil.com`) URL that the browser
-    // would resolve off-site. Prevents open-redirect via a poisoned preference.
-    if (
-      typeof choice === 'string' &&
-      choice.startsWith('/') &&
-      !choice.startsWith('//') &&
-      !choice.startsWith('/\\')
-    ) {
-      setCachedLanding(supabaseId, prefix + choice);
-      return prefix + choice;
-    }
-    // Valid lookup with no (or an unsafe) home-page preference: cache the
-    // (locale-prefixed) default so the common case stops re-querying PG.
-    setCachedLanding(supabaseId, prefix + DEFAULT);
-    return prefix + DEFAULT;
+    const choice = await resolveLandingFor(locals, { preferences: prefs });
+    // Same-origin guard: the resolver only returns SAFE_PATH values, but a
+    // poisoned preference must never become an off-site (`//evil.com`) redirect.
+    return prefix + (SAFE_PATH.test(choice) ? choice : CHAT_PATH);
   } catch {
-    /* fall through to default — and don't cache, so a transient PG error
-       doesn't pin the default for the whole TTL */
-    return DEFAULT;
+    return CHAT_PATH;
   }
 }
 
@@ -253,7 +234,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
     // AUTH_DISABLED bypass skips finishApp, so mirror its "/" → landing redirect
     // here or the root URL 404s in dev (there is no +page at "/").
     if (canonicalPath(event.url.pathname) === '/') {
-      return new Response(null, { status: 307, headers: { location: '/home' } });
+      return new Response(null, { status: 307, headers: { location: CHAT_PATH } });
     }
     // Bypass covers AUTHENTICATION only — module/kind availability still
     // applies, or auth-disabled dev reaches routes prod 404s (the per-route
@@ -509,17 +490,16 @@ const finishApp: Handle = async ({ event, resolve }) => {
     return new Response(null, { status: 302, headers: { location: '/' } });
   }
 
-  // Authenticated users landing on "/" go to their chosen home page (default
-  // /home). The destination is user-configurable via the sidebar right-click
-  // "Set as home page" action (stored in the `landingPage` preference).
+  // Authenticated users landing on "/" go to their resolved landing page:
+  // their own choice, the org's, the first page of their nav, else chat.
   if (event.locals.user && path === '/') {
-    let location = await resolveLandingPage(event.locals.user.supabaseId);
+    let location = await resolveLandingPage(event.locals);
     // Spec 043: a landing page the org's plan does not grant would 404 right after login.
     const landing = canonicalPath(location.split(/[?#]/, 1)[0]);
     const feature = featureForPath(landing);
     const tenantId = event.locals.tenantCtx?.tenantId;
     if (feature && tenantId && !(await resolveEntitlements(tenantId)).features.includes(feature)) {
-      location = `${location.slice(0, location.indexOf(landing))}/home`;
+      location = `${location.slice(0, location.indexOf(landing))}${CHAT_PATH}`;
     }
     return new Response(null, { status: 307, headers: { location } });
   }

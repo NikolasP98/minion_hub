@@ -9,6 +9,7 @@
   } from '$lib/assistant/accepted-runs';
   import { appLocale } from '$lib/utils/format';
   import * as m from '$lib/paraglide/messages';
+  import { CHAT_PATH } from '$lib/nav/landing';
   import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
   import FeedSection from '$lib/components/my-agent/FeedSection.svelte';
   import FeedCard from '$lib/components/my-agent/FeedCard.svelte';
@@ -750,7 +751,7 @@
     try {
       let loaded: ReadonlySet<ManifestId> | undefined;
       if (routed) {
-        const evidence = await requestRouteDecisionWithEvidence(text, languageTag(), '/home', {
+        const evidence = await requestRouteDecisionWithEvidence(text, languageTag(), CHAT_PATH, {
           signal: pending.signal,
           submissionId: pending.submissionId,
         });

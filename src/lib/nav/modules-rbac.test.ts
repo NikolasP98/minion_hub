@@ -16,7 +16,7 @@ const ALL_ITEMS = getModules({ schedulingEnabled: true }).flatMap((mod) =>
  * landing pages everyone needs. Their org-config subroutes and write APIs gate
  * themselves. Anything else reaching the `authenticated` fallback is a hole.
  */
-const UNIVERSAL = new Set(['/home', '/overview', '/settings']);
+const UNIVERSAL = new Set(['/chat', '/overview', '/settings']);
 
 const ctx = (perms: string[]) => ({ authenticated: true, permissions: new Set(perms) });
 
@@ -45,7 +45,7 @@ describe('module registry ↔ RBAC', () => {
     expect(mods.map((mod) => mod.id)).toEqual(['stock', 'organization', 'platform']);
     const byId = (id: string) => mods.find((mod) => mod.id === id)!.items.map((it) => it.href);
     expect(byId('stock').every((href) => href.startsWith('/stock'))).toBe(true);
-    expect(byId('organization')).toEqual(['/home', '/overview']);
+    expect(byId('organization')).toEqual(['/chat', '/overview']);
     expect(byId('platform')).toEqual(['/settings']);
   });
 

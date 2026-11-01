@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { NavConfig } from './custom-sections';
+import { SAFE_PATH } from './landing';
 
 const id = z.string().regex(/^[a-z0-9]{6}$/);
 
@@ -31,6 +32,7 @@ export const navConfigSchema = z.object({
     z.string().min(1).max(200),
     z.object({ label: z.string().min(1).max(80).optional(), hidden: z.literal(true).optional() }),
   ),
+  landingPage: z.string().regex(SAFE_PATH).max(200).optional(),
 });
 
 export function isNavConfig(value: unknown): value is NavConfig {

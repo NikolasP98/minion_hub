@@ -4,7 +4,7 @@
   // Mounts the ACTUAL Home route component with a synthetic identity. The
   // gateway stays disconnected, so the feed/chat render their offline states —
   // the composer, call controls and notes dock are still fully composed.
-  import HomePage from '../../../src/routes/(app)/home/+page.svelte';
+  import HomePage from '../../../src/routes/(app)/chat/+page.svelte';
   import { conn } from '$lib/state/gateway';
 
   // Synthetic "gateway up" so the call/history controls render enabled and can

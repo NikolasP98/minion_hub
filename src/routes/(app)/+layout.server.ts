@@ -18,6 +18,7 @@ import { readTableConfig } from '$server/services/table-config.service';
 import type { TableConfig } from '$lib/tables/registry';
 import { readNavConfig } from '$server/services/nav-config.service';
 import { EMPTY_NAV_CONFIG, visibleNavConfig } from '$lib/nav/custom-sections';
+import { resolveLandingFor } from '$server/nav/landing.server';
 import { dev } from '$app/environment';
 import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
@@ -262,9 +263,18 @@ export const load: LayoutServerLoad = async ({
     }
   }
 
+  // The same resolver the "/" redirect uses (spec 046): the sidebar's home mark,
+  // the switcher's Inicio and the H chord all go where "/" goes.
+  const landingPage = await resolveLandingFor(locals, {
+    preferences: preferences.preferences,
+    navConfig: navConfigFull,
+    permissions,
+  });
+
   return {
     user,
     permissions,
+    landingPage,
     // Module states shape the SIDEBAR, which renders on every authenticated
     // page — not just inside the module's own subtree. They used to come from
     // `/pos/+layout.server.ts` alone, so anywhere outside /pos the POS section

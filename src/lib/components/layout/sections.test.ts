@@ -8,7 +8,7 @@ describe('getSections — core nav taxonomy', () => {
     const ids = getSections().map((s) => s.id);
     expect(ids).toEqual(['organization', 'agents']);
     const org = getSections().find((s) => s.id === 'organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/chat', '/overview', '/team', '/sandbox']);
   });
 
   it('includes Agent Builder (/flow-editor) in the Agents section', () => {
@@ -83,13 +83,13 @@ describe('personal-org nav gating', () => {
 describe('getSections — personal org (R2)', () => {
   it('drops /team but keeps Home/Overview/Sandbox, relabels the group "My Space"', () => {
     const org = getSections('personal').find((s) => s.id === 'organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/sandbox']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/chat', '/overview', '/sandbox']);
     expect(org?.label).toBe('My Space');
   });
 
   it('business orgs are unaffected (Home/Overview/Team/Sandbox, "Organization" label)', () => {
     const org = getSections('business').find((s) => s.id === 'organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/chat', '/overview', '/team', '/sandbox']);
     expect(org?.label).toBe('Organization');
   });
 });
@@ -125,7 +125,7 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     const mySpace = secs.find((s) => s.id === 'organization');
     expect(mySpace?.label).toBe('My Space');
     expect(mySpace?.items.map((i) => i.href)).toEqual(
-      expect.arrayContaining(['/home', '/overview', '/pulse', '/work']),
+      expect.arrayContaining(['/chat', '/overview', '/pulse', '/work']),
     );
     expect(mySpace?.items).toHaveLength(5);
     // no separate "plugins:my-space" section leaks through
@@ -162,7 +162,7 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     expect(secs.find((s) => s.id === 'plugins:my-space')).toBeUndefined();
     const org = secs.find((s) => s.id === 'organization');
     expect(org?.label).toBe('Organization');
-    expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
+    expect(org?.items.map((i) => i.href)).toEqual(['/chat', '/overview', '/team', '/sandbox']);
   });
 });
 

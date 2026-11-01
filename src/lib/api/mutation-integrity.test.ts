@@ -62,7 +62,7 @@ describe('high-risk mutation integration contracts', () => {
   });
 
   it('home activity cards do not pass focusable no-op actions', () => {
-    const home = source('routes/(app)/home/+page.svelte');
+    const home = source('routes/(app)/chat/+page.svelte');
     const card = source('lib/components/my-agent/FeedCard.svelte');
     expect(home).not.toMatch(/on(?:snooze|dismiss|open)=\{\(\) => \{\}\}/);
     expect(card).toContain('{#if onopen}');

@@ -10,6 +10,7 @@ import {
   type RouteDesignMeta,
   type ScreenDesignMeta,
 } from './route-design-manifest';
+import { CHAT_PATH } from '$lib/nav/landing';
 
 export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /crm/graph, /finances/products, /stock/consumption, /stock/consume
@@ -36,12 +37,13 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /crm/doors, /crm/doors/[id] and the public /d/[slug] added (spec 041 hub
   // collection points S0) — 3 more screens+endpoints + 1 more fixture
   // (`public-door`); F2 gave /crm/doors/[id] its seeded `door-detail` fixture.
-  // /orgs/plans added (spec 043 hub org entitlements S1 — platform-admin plans
-  // page) — 1 more screen+endpoint.
-  endpoints: 164,
+  // /orgs/plans added (spec 043 S1) — 1 more screen+endpoint. /home and /home/settings
+  // became 308 redirects to /chat (spec 046 S3) — 2 more redirects+endpoints; those screens
+  // moved, so they do not change the screen count.
+  endpoints: 166,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
   screens: 153,
-  redirects: 11,
+  redirects: 13,
   fixtures: 30,
   viewports: ['compact', 'medium', 'wide'] as const,
 });
@@ -58,8 +60,8 @@ export const IMMERSIVE_SCREEN_PATTERNS = Object.freeze([
   '/cloud/gui',
   '/cloud/settings',
   '/cloud/terminal',
-  '/home',
-  '/home/settings',
+  CHAT_PATH,
+  '/chat/settings',
 ]);
 
 export interface ContractIssue {
