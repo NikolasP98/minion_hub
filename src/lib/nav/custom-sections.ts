@@ -391,9 +391,26 @@ export function slugify(label: string): string {
   return /^[a-z]/.test(s) ? s : 'page';
 }
 
+/** `slugify(label)`, suffixed `-2`, `-3`, … until it is neither reserved nor another section's slug (≤ 32 chars). */
+export function uniqueSectionSlug(
+  config: NavConfig,
+  label: string,
+  reserved: ReadonlySet<string> = reservedSectionSlugs(),
+): string {
+  const base = slugify(label);
+  const taken = new Set(config.sections.map((s) => s.slug));
+  const free = (slug: string) => !reserved.has(slug) && !taken.has(slug);
+  if (free(base)) return base;
+  for (let n = 2; ; n++) {
+    const suffix = `-${n}`;
+    const slug = base.slice(0, 32 - suffix.length).replace(/-$/, '') + suffix;
+    if (free(slug)) return slug;
+  }
+}
+
 const clip = (label: string) => label.trim().slice(0, NAV_LIMITS.label);
 
-function freshId(config: NavConfig): string {
+export function freshNavId(config: NavConfig): string {
   const used = new Set<string>(config.sections.map((s) => s.id));
   for (const { page } of allInstances(config)) used.add(page.id);
   let id = newId();
@@ -438,7 +455,7 @@ export function addLink(
   if (!list) return config;
   const label = clip(link.label);
   list.push({
-    id: freshId(config),
+    id: freshNavId(config),
     kind: 'link',
     slug: slugify(label),
     label,
@@ -454,7 +471,7 @@ export function duplicatePage(
   ref: { pageId: string } | { target: string; module: string; label?: string },
 ): NavConfig {
   const next = structuredClone(config);
-  const id = freshId(config);
+  const id = freshNavId(config);
   if ('pageId' in ref) {
     const at = locate(next, ref.pageId);
     if (!at) return config;
@@ -488,7 +505,7 @@ export function moveBuiltin(
     for (let i = list.length - 1; i >= 0; i--)
       if (list[i].kind === 'main' && list[i].target === target) list.splice(i, 1);
   const l = clip(label);
-  dest.pages.push({ id: freshId(config), kind: 'main', slug: slugify(l), label: l, target });
+  dest.pages.push({ id: freshNavId(config), kind: 'main', slug: slugify(l), label: l, target });
   return prune(next);
 }
 
@@ -528,13 +545,16 @@ export function renameBuiltin(config: NavConfig, target: string, label: string |
 export function renameSection(
   config: NavConfig,
   sectionId: string,
-  patch: { label?: string; slug?: string },
+  patch: { label?: string; icon?: string },
 ): NavConfig {
   const next = structuredClone(config);
   const section = next.sections.find((s) => s.id === sectionId);
   if (!section) return config;
   if (patch.label !== undefined) section.label = clip(patch.label);
-  if (patch.slug !== undefined) section.slug = patch.slug;
+  if (patch.icon !== undefined) {
+    if (patch.icon.trim()) section.icon = patch.icon.trim();
+    else delete section.icon;
+  }
   return next;
 }
 
@@ -565,9 +585,19 @@ export function setHidden(
   return prune(next);
 }
 
-export function addSection(config: NavConfig, s: { label: string; slug: string }): NavConfig {
+export function addSection(
+  config: NavConfig,
+  s: { label: string; id?: string; icon?: string },
+): NavConfig {
   const next = structuredClone(config);
-  next.sections.push({ id: freshId(config), slug: s.slug, label: clip(s.label), pages: [] });
+  const icon = s.icon?.trim();
+  next.sections.push({
+    id: s.id ?? freshNavId(config),
+    slug: uniqueSectionSlug(config, s.label),
+    label: clip(s.label),
+    ...(icon ? { icon } : {}),
+    pages: [],
+  });
   return next;
 }
 

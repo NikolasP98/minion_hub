@@ -53,12 +53,27 @@ function setup(perms: string[], navConfig: NavConfig = CONFIG) {
   state.data = { navConfig, preferences: { preferences: {} }, permissions: { permissions: perms } };
 }
 
+let stored: NavConfig = CONFIG;
+let failOverrides = false;
 beforeEach(() => {
   navClipboard.item = null;
+  stored = CONFIG;
+  failOverrides = false;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = String(input);
     if (url === '/api/nav/config' && !init?.method)
-      return new Response(JSON.stringify(CONFIG), { status: 200 });
+      return new Response(JSON.stringify(stored), { status: 200 });
+    if (url === '/api/roles')
+      return new Response(
+        JSON.stringify({
+          roles: [
+            { key: 'owner', name: 'Owner' },
+            { key: 'viewer', name: 'Viewer' },
+          ],
+        }),
+      );
+    if (url.startsWith('/api/roles/overrides') && !init?.method) return new Response('{}');
+    if (url === '/api/roles/overrides' && failOverrides) return new Response('{}', { status: 500 });
     return new Response('{}', { status: 200 });
   });
 });
@@ -139,16 +154,97 @@ describe('NavContextMenu', () => {
     });
   });
 
-  it('(f) New section rejects the reserved slug pos and keeps Save disabled', async () => {
-    setup(['settings:manage']);
+  async function openNewSection() {
     mount({ kind: 'area' });
     await fireEvent.contextMenu(screen.getByTestId('row'));
     await fireEvent.click(screen.getByRole('menuitem', { name: /New section/ }));
-    const label = await screen.findByLabelText(/Label/);
-    await fireEvent.input(label, { target: { value: 'pos' } });
-    await waitFor(() => expect(screen.getByText('This name is reserved')).toBeTruthy());
-    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
+    return screen.findByLabelText(/Label/);
+  }
+  const navPuts = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(([u, i]) => u === '/api/nav/config' && i?.method === 'PUT')
+      .map(([, i]) => JSON.parse(String(i!.body)) as NavConfig);
+
+  it('(f) New section has no slug input; a reserved name saves as pos-2 without an error', async () => {
+    setup(['settings:manage']);
+    await fireEvent.input(await openNewSection(), { target: { value: 'POS' } });
+    expect(screen.queryByLabelText(/slug/i)).toBeNull();
+    expect(screen.getByText('URL: /pos-2')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(navPuts()).toHaveLength(1));
+    expect(navPuts()[0].sections.at(-1)).toMatchObject({ label: 'POS', slug: 'pos-2' });
+  });
+
+  it('(f2) two sections named Staff get staff and staff-2', async () => {
+    stored = EMPTY_NAV_CONFIG;
+    setup(['settings:manage'], EMPTY_NAV_CONFIG);
+    await fireEvent.input(await openNewSection(), { target: { value: 'Staff' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(navPuts()).toHaveLength(1));
+    expect(navPuts()[0].sections[0].slug).toBe('staff');
+    cleanup();
+    stored = navPuts()[0];
+    setup(['settings:manage'], stored);
+    await fireEvent.input(await openNewSection(), { target: { value: 'Staff' } });
+    expect(screen.getByText('URL: /staff-2')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(navPuts()).toHaveLength(2));
+    expect(navPuts()[1].sections.map((x) => x.slug)).toEqual(['staff', 'staff-2']);
+  });
+
+  const overridePosts = () =>
+    vi.mocked(fetch).mock.calls.filter(([u, i]) => u === '/api/roles/overrides' && i?.method);
+  async function denyViewer() {
+    await fireEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
+    const g = await screen.findByRole('group', { name: 'Viewer' });
+    await fireEvent.click(
+      [...g.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Deny')!,
+    );
+  }
+
+  it('(h) Advanced settings: nav PUT first, then the section rows with the pre-generated id', async () => {
+    setup(['settings:manage', 'users:manage']);
+    await fireEvent.input(await openNewSection(), { target: { value: 'Front desk' } });
+    await denyViewer();
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(overridePosts()).toHaveLength(1));
+    expect(navPuts()).toHaveLength(1);
+    const id = navPuts()[0].sections.at(-1)!.id;
+    expect(JSON.parse(String(overridePosts()[0][1]!.body))).toEqual({
+      roleKey: 'viewer',
+      module: `section:${id}`,
+      caps: { view: false },
+    });
+    const order = vi
+      .mocked(fetch)
+      .mock.calls.filter(([, i]) => i?.method)
+      .map(([u]) => String(u));
+    expect(order).toEqual(['/api/nav/config', '/api/roles/overrides']);
+  });
+
+  it('(i) a failed overrides write keeps the section and the dialog; Save retries only the rows', async () => {
+    setup(['settings:manage', 'users:manage']);
+    failOverrides = true;
+    await fireEvent.input(await openNewSection(), { target: { value: 'Front desk' } });
+    await denyViewer();
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByText(/access rules were not/)).toBeTruthy();
+    expect(navPuts()).toHaveLength(1);
+    failOverrides = false;
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save' })).toBeNull());
+    expect(navPuts()).toHaveLength(1);
+    expect(overridePosts()).toHaveLength(2);
+  });
+
+  it('(j) without users:manage Advanced settings shows only the Icon field', async () => {
+    setup(['settings:manage']);
+    await openNewSection();
+    await fireEvent.click(screen.getByRole('button', { name: /Advanced settings/ }));
+    expect(await screen.findByLabelText('Icon')).toBeTruthy();
+    expect(screen.queryByRole('group', { name: 'Viewer' })).toBeNull();
+    expect(screen.queryByText('Who can view')).toBeNull();
   });
 
   it('(g) a saved New section closes its dialog even while the app reload is still pending', async () => {

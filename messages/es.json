@@ -7265,13 +7265,9 @@
   "nav_menu_delete_section": "Eliminar sección…",
   "nav_menu_label": "Navegación",
   "nav_dialog_label": "Nombre",
-  "nav_dialog_slug": "Slug de URL",
   "nav_dialog_url_preview": "URL: {url}",
   "nav_dialog_pick_screen": "Elige una página para enlazar",
   "nav_dialog_pick_section": "Mover a la sección",
-  "nav_error_reserved": "Este nombre está reservado",
-  "nav_error_format": "Solo minúsculas, dígitos y guiones",
-  "nav_error_duplicate": "Ya existe una sección con este slug",
   "nav_error_label": "Usa de 1 a 40 caracteres",
   "nav_confirm_delete_link": "¿Quitar este enlace? La página sigue disponible en su ubicación principal.",
   "nav_confirm_delete_section": "¿Eliminar la sección y sus {count} entradas? Las páginas movidas vuelven a su ubicación original.",
@@ -7332,5 +7328,9 @@
   "nav_access_inherit_hint": "Hereda la regla de la sección y, si no, la propia de la página",
   "nav_access_saved": "Acceso actualizado",
   "nav_access_saving": "Guardando acceso…",
-  "nav_access_fixed": "Siempre tiene acceso"
+  "nav_access_fixed": "Siempre tiene acceso",
+  "nav_dialog_advanced": "Configuración avanzada",
+  "nav_dialog_icon": "Icono",
+  "nav_dialog_access_rows": "Quién puede ver",
+  "nav_error_access_save": "La sección se guardó pero sus permisos no. Guarda de nuevo para reintentar."
 }

@@ -7265,13 +7265,9 @@
   "nav_menu_delete_section": "Delete section…",
   "nav_menu_label": "Navigation",
   "nav_dialog_label": "Label",
-  "nav_dialog_slug": "URL slug",
   "nav_dialog_url_preview": "URL: {url}",
   "nav_dialog_pick_screen": "Choose a page to link",
   "nav_dialog_pick_section": "Move to section",
-  "nav_error_reserved": "This name is reserved",
-  "nav_error_format": "Lowercase letters, digits and dashes only",
-  "nav_error_duplicate": "A section with this slug already exists",
   "nav_error_label": "Use 1 to 40 characters",
   "nav_confirm_delete_link": "Remove this link? Its page keeps working at its main location.",
   "nav_confirm_delete_section": "Delete the section and its {count} entries? Moved pages return to their original location.",
@@ -7332,5 +7328,9 @@
   "nav_access_inherit_hint": "Inherits the section's rule, then the page's own rule",
   "nav_access_saved": "Access updated",
   "nav_access_saving": "Saving access…",
-  "nav_access_fixed": "Always has access"
+  "nav_access_fixed": "Always has access",
+  "nav_dialog_advanced": "Advanced settings",
+  "nav_dialog_icon": "Icon",
+  "nav_dialog_access_rows": "Who can view",
+  "nav_error_access_save": "The section was saved but its access rules were not. Save again to retry."
 }

@@ -11,6 +11,7 @@ vi.mock('$lib/permissions', async (orig) => ({
 
 import {
   EMPTY_NAV_CONFIG,
+  SLUG_RE,
   addLink,
   addSection,
   aliasableTargets,
@@ -34,6 +35,7 @@ import {
   resolveNavInstance,
   setHidden,
   slugify,
+  uniqueSectionSlug,
   validateNavConfig,
   visibleNavConfig,
   type NavConfig,
@@ -317,7 +319,10 @@ describe('operations', () => {
       label: 'X',
       slug: 'x',
     });
-    expect(renameSection(staff(), 'st4ff1', { label: 'Crew' }).sections[0].label).toBe('Crew');
+    expect(renameSection(staff(), 'st4ff1', { label: 'Crew' }).sections[0]).toMatchObject({
+      label: 'Crew',
+      slug: 'staff',
+    });
     const b = renameBuiltin(cfg([]), '/pos/sell', 'Vender');
     expect(b.builtin).toEqual({ '/pos/sell': { label: 'Vender' } });
     expect(renameBuiltin(b, '/pos/sell', null).builtin).toEqual({});
@@ -334,9 +339,38 @@ describe('operations', () => {
     expect(setHidden(b, { target: '/pos/sell' }, false).builtin).toEqual({});
   });
   it('addSection / removeSection', () => {
-    const a = addSection(cfg([]), { label: 'Ops', slug: 'ops' });
-    expect(a.sections[0]).toMatchObject({ slug: 'ops', label: 'Ops', pages: [] });
+    const a = addSection(cfg([]), { label: 'Ops', id: 'abc123', icon: 'Star' });
+    expect(a.sections[0]).toMatchObject({
+      id: 'abc123',
+      slug: 'ops',
+      label: 'Ops',
+      icon: 'Star',
+      pages: [],
+    });
     expect(removeSection(staff(), 'st4ff1').sections).toEqual([]);
+  });
+});
+
+describe('uniqueSectionSlug', () => {
+  it('suffixes used slugs: staff, staff-2, staff-3', () => {
+    let c = cfg([]);
+    const slugs: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      c = addSection(c, { label: 'Staff' });
+      slugs.push(c.sections[i].slug);
+    }
+    expect(slugs).toEqual(['staff', 'staff-2', 'staff-3']);
+  });
+  it('suffixes reserved slugs: pos -> pos-2', () => {
+    expect(uniqueSectionSlug(cfg([]), 'POS')).toBe('pos-2');
+  });
+  it('trims the base so the result stays within 32 chars and valid', () => {
+    const long = 'a'.repeat(40);
+    const c = addSection(cfg([]), { label: long });
+    const next = uniqueSectionSlug(c, long);
+    expect(next).toBe('a'.repeat(30) + '-2');
+    expect(next.length).toBe(32);
+    expect(SLUG_RE.test(next)).toBe(true);
   });
 });
 
