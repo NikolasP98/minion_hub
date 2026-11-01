@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { Trash2 } from 'lucide-svelte';
@@ -11,14 +12,18 @@
   }
 
   let { onDelete }: Props = $props();
+
+  // Spec 045: the editor behind a card is a gateway-admin page; others see the card, not a dead link.
+  const linked = $derived(!adminOnlyPageHidden('/flow-editor/skills'));
 </script>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
   {#each builderState.skills as skill (skill.id)}
     <div class="item-card">
-      <a
+      <svelte:element
+        this={linked ? 'a' : 'div'}
         class="item-link"
-        href={recordHref('/flow-editor/skills', skill.id)}
+        href={linked ? recordHref('/flow-editor/skills', skill.id) : undefined}
         aria-label={skill.name}
       >
         <div class="item-card-inner">
@@ -34,7 +39,7 @@
             <span class="item-time">{formatRelativeTime(skill.updatedAt)}</span>
           </div>
         </div>
-      </a>
+      </svelte:element>
       <Button
         variant="ghost"
         type="button"

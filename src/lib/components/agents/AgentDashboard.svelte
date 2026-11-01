@@ -19,8 +19,13 @@
   import type { Agent } from '@minion-stack/shared';
   import { agentDisplayName } from '$lib/utils/agent-display';
   import * as m from '$lib/paraglide/messages';
+  import { adminOnlyPageHidden, gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
+
+  // Spec 045: workspace files and the prompt inspector are gateway-admin RPCs.
+  const filesAllowed = $derived(gatewayMethodAllowed('agents.files.list'));
+  const promptAllowed = $derived(gatewayMethodAllowed('prompt.sections.list'));
 
   // ─── Lazy-fetched counts (root-level only, fast) ─────────────────────────
   let fileCount = $state<number | null>(null);
@@ -29,6 +34,7 @@
   async function loadFileCount(id: string) {
     fileCount = null;
     fileError = false;
+    if (!filesAllowed) return;
     try {
       const res = (await sendRequest('agents.files.list', { agentId: id })) as {
         files?: Array<{ name: string; isDir?: boolean; missing?: boolean }>;
@@ -121,9 +127,11 @@
       </p>
     </div>
     <div class="flex items-center gap-2 flex-wrap justify-end">
-      <Button variant="ghost" href="/reliability">
-        {m.agent_dashboardOpenReliability()}
-      </Button>
+      {#if !adminOnlyPageHidden('/reliability')}
+        <Button variant="ghost" href="/reliability">
+          {m.agent_dashboardOpenReliability()}
+        </Button>
+      {/if}
       <Button
         variant="ghost"
         type="button"
@@ -202,7 +210,7 @@
     <div
       role="button"
       tabindex="0"
-      onclick={() => go('files')}
+      onclick={() => go(filesAllowed ? 'files' : 'memory')}
       {...buttonKeys()}
       class="group cursor-pointer text-left bg-card border border-border rounded-xl p-4 hover:border-accent/40 hover:bg-bg3 transition-all"
     >
@@ -213,25 +221,29 @@
           <FileText size={iconSizes.sm} />
           Knowledge
         </div>
-        <span
-          class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors"
-        >
-          Files <ArrowRight size={iconSizes.xs} class="inline" />
-        </span>
+        {#if filesAllowed}
+          <span
+            class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-accent transition-colors"
+          >
+            Files <ArrowRight size={iconSizes.xs} class="inline" />
+          </span>
+        {/if}
       </div>
 
       <!-- Two-up stat row -->
       <div class="grid grid-cols-2 gap-3 mb-3">
-        <div>
-          <div class="text-lg font-semibold text-foreground tabular-nums">
-            {fileError ? '—' : (fileCount ?? '·')}
+        {#if filesAllowed}
+          <div>
+            <div class="text-lg font-semibold text-foreground tabular-nums">
+              {fileError ? '—' : (fileCount ?? '·')}
+            </div>
+            <div
+              class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground"
+            >
+              Files
+            </div>
           </div>
-          <div
-            class="text-[length:var(--font-size-telemetry)] uppercase tracking-wider text-muted-foreground"
-          >
-            Files
-          </div>
-        </div>
+        {/if}
         <div>
           <div class="text-lg font-semibold text-foreground tabular-nums">{chatMsgCount}</div>
           <div
@@ -255,17 +267,19 @@
         >
           Memory →
         </Button>
-        <Button
-          variant="ghost"
-          type="button"
-          onclick={(e) => {
-            e.stopPropagation();
-            go('prompt');
-          }}
-          class="text-[length:var(--font-size-caption)] text-muted-foreground hover:text-accent transition-colors"
-        >
-          Prompt →
-        </Button>
+        {#if promptAllowed}
+          <Button
+            variant="ghost"
+            type="button"
+            onclick={(e) => {
+              e.stopPropagation();
+              go('prompt');
+            }}
+            class="text-[length:var(--font-size-caption)] text-muted-foreground hover:text-accent transition-colors"
+          >
+            Prompt →
+          </Button>
+        {/if}
       </div>
     </div>
 

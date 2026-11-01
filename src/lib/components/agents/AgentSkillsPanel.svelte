@@ -9,8 +9,11 @@
   import type { SkillStatusEntry } from '$lib/types/skills';
   import ToggleSwitch from '../config/ToggleSwitch.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
   const enabledOpt = createOptimistic<boolean>();
+  // Spec 045: the toggle writes `agents.skills.set` (gateway admin) — hidden for everyone else.
+  const editable = $derived(gatewayMethodAllowed('agents.skills.set'));
   let { agentId }: { agentId: string } = $props();
 
   $effect(() => {
@@ -195,18 +198,20 @@
           title={skill.description ?? ''}
         >
           <!-- Toggle -->
-          <div class="shrink-0">
-            {#if skill.always}
-              <ToggleSwitch checked={true} id="skill-{skill.skillKey}" />
-            {:else}
-              <ToggleSwitch
-                checked={enabledOpt.get(skill.skillKey, isEnabled)}
-                pending={agentSkillsState.saving}
-                id="skill-{skill.skillKey}"
-                onchange={(checked) => toggleSkill(skill, checked)}
-              />
-            {/if}
-          </div>
+          {#if editable}
+            <div class="shrink-0">
+              {#if skill.always}
+                <ToggleSwitch checked={true} id="skill-{skill.skillKey}" />
+              {:else}
+                <ToggleSwitch
+                  checked={enabledOpt.get(skill.skillKey, isEnabled)}
+                  pending={agentSkillsState.saving}
+                  id="skill-{skill.skillKey}"
+                  onchange={(checked) => toggleSkill(skill, checked)}
+                />
+              {/if}
+            </div>
+          {/if}
 
           <!-- Emoji -->
           {#if skill.emoji}

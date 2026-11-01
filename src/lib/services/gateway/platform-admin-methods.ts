@@ -108,14 +108,18 @@ function isPlatformAdmin(): boolean {
   return (page.data as { user?: { role?: unknown } } | undefined)?.user?.role === 'admin';
 }
 
-// TODO(handoff): spec 045 T037 hides (not locks) only channel setup (ChannelsTab,
-// ChannelGroup, ChannelCard) and /account/connections' sync and channel plugins.
-// Every other surface behind this list — agent files/skills, tools, flows, prompt
-// sections, secrets, cloud shells, reliability, plugin pages, workshop
-// experiments, dream, drones, debug — still renders for members after the switch
-// and fails with "your role can't" (sendRequest and the session-owner transport
-// both refuse). Gate each control with gatewayMethodAllowed(), or move it to a hub
-// route (spec 042).
+// TODO(handoff): spec 045 T037/T038 hide (not lock) every surface behind this list from
+// anyone but a platform admin once switched: channel setup; the pages in ADMIN_ONLY_PAGES
+// (reliability, kill switches, cloud/shells, flow editor, config, prompt builder, plugin
+// pages, tool editor, session debug, workshop experiments) via canViewPath + the app
+// layout; agent Files/Prompt tabs, agent settings panel, tool drag and skill toggles,
+// dream activity, secrets, the session-title drone and flow-trigger re-registration.
+// Left ungated: `skills.update` (agent-skills `toggleGlobalSkill` has no UI caller),
+// `drones.list` / `flows.*` / `shells.*` / `tools.*` / `reliability.*` (reachable only from
+// the hidden pages above), `playground.complete` / `models.setEnabled` (workshop
+// experiments, hidden). A hidden page's own links are removed where found (workshop nav,
+// leaderboard back-link, agent dashboard, builder cards); any link missed lands on an
+// empty page. Move each admin RPC to a hub route (spec 042) and drop it from this list.
 /**
  * Whether this viewer's gateway credential can call `method`. Always true until
  * the launch switch: today's token socket carries admin, so gating earlier would
@@ -134,4 +138,28 @@ export class GatewayRoleError extends Error {
 export async function refuseForRole(): Promise<never> {
   const m = await import('$lib/paraglide/messages');
   throw new GatewayRoleError(m.gateway_roleCantAction());
+}
+
+/**
+ * Pages whose whole purpose is behind one admin-only method (spec 045 T038).
+ * `canViewPath` (sidebar, topbar, palette, hotkeys, assistant) and the app
+ * layout both read this, so the nav entry and the URL go dark together.
+ */
+const ADMIN_ONLY_PAGES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^\/reliability(\/|$)/, 'reliability.summary'],
+  [/^\/killswitches(\/|$)/, 'killswitch.list'],
+  [/^\/(cloud|shells)(\/|$)/, 'shells.list'],
+  [/^\/flow-editor(\/|$)/, 'flows.templates.list'],
+  [/^\/config(\/|$)/, 'config.schema'],
+  [/^\/prompt(\/|$)/, 'prompt.sections.list'],
+  [/^\/plugins\/[^/]/, PLUGIN_RPC],
+  [/^\/tools\/[^/]/, 'tools.update'],
+  [/^\/sessions\/[^/]+\/debug(\/|$)/, 'debug.setSteppedBuild'],
+  [/^\/agents\/workshop\/(compare|groupchat)(\/|$)/, 'playground.complete'],
+];
+
+/** The page at this canonical path exists only for gateway admins and this viewer is not one. */
+export function adminOnlyPageHidden(canonicalPath: string): boolean {
+  const path = canonicalPath.split(/[?#]/, 1)[0];
+  return ADMIN_ONLY_PAGES.some(([re, method]) => re.test(path) && !gatewayMethodAllowed(method));
 }
