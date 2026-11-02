@@ -47,6 +47,9 @@ vi.mock('$server/services/brain-agents.service', () => ({
 vi.mock('$server/services/table-config.service', () => ({
   readTableConfig: vi.fn(async () => ({})),
 }));
+vi.mock('$server/nav/landing.server', () => ({
+  resolveLandingFor: vi.fn(async () => '/overview'),
+}));
 vi.mock('$server/services/nav-config.service', () => ({
   readNavConfig: vi.fn(async () => ({
     version: 1,
@@ -141,6 +144,8 @@ describe('(app)/+layout.server load', () => {
     expect(out).toEqual({
       user,
       permissions: { permissions: ['perm.a', 'perm.b'] },
+      // Spec 046: the same resolver the "/" redirect uses.
+      landingPage: '/overview',
       // The sidebar renders on every page, so module states ride this bundle
       // rather than each module's own subtree layout; absent = enabled, the
       // same default the subtree layouts use.

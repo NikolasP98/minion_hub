@@ -132,7 +132,7 @@ describe('UI audit route inventory', () => {
 
     // Unlike the current clean-HEAD ledger above, this reads the WORKTREE (no
     // cleanBaseline flag), so it also reflects uncommitted route changes.
-    expect(inventory.summary).toMatchObject({ endpoints: 164, screens: 153, redirects: 11 });
+    expect(inventory.summary).toMatchObject({ endpoints: 166, screens: 153, redirects: 13 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',
