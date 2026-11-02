@@ -458,7 +458,8 @@
     dlg?.t === 'new-section' || (dlg?.t === 'rename' && !!customSection),
   );
   const draftOp = $derived.by<((c: NavConfig) => NavConfig) | null>(() => {
-    if (dlg?.t === 'new-section') return (c) => addSection(c, { label: fLabel, id: fNewId, icon: fIcon });
+    if (dlg?.t === 'new-section')
+      return (c) => addSection(c, { label: fLabel, id: fNewId, icon: fIcon });
     if (dlg?.t !== 'rename') return null;
     if (instance) return (c) => renamePage(c, instance.page.id, { label: fLabel });
     if (customSection)
