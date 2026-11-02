@@ -193,7 +193,9 @@ export interface PersonalAgentSettings {
   text?: string;
 }
 
-const SETTINGS_MAX = { name: 80, conversationName: 80, preset: 40, text: 5000 } as const;
+// Bounds mirror the gateway's PersonalitySchema (text ≤ 2000) and the page's four presets.
+const SETTINGS_MAX = { name: 80, conversationName: 80, preset: 40, text: 2000 } as const;
+const PERSONALITY_PRESETS = new Set(['professional', 'casual', 'creative', 'technical']);
 
 /** Allowlist + clamp the client body; never reads an agent id from it. */
 export function sanitizePersonalAgentSettings(body: unknown): PersonalAgentSettings {
@@ -205,6 +207,7 @@ export function sanitizePersonalAgentSettings(body: unknown): PersonalAgentSetti
     const value = key === 'text' ? v : v.trim();
     if (value.length > SETTINGS_MAX[key]) continue;
     if (key === 'name' && !value) continue; // a name can be changed, not cleared
+    if (key === 'preset' && !PERSONALITY_PRESETS.has(value)) continue;
     out[key] = value;
   }
   return out;
@@ -238,13 +241,18 @@ export async function updatePersonalAgentSettings(
   const call = <T = unknown>(method: string, params: Record<string, unknown> = {}) =>
     gatewayCallToInstance<T>(target.url, target.token, method, params);
   try {
+    // A list entry with a new id would ADD an agent to the gateway: patch only one already there.
+    const roster = await call<{ agents?: Array<{ id?: unknown }> }>('agents.list');
+    if (!roster?.agents?.some((a) => a.id === agent.agent_id))
+      throw new PersonalAgentBindingError('Personal agent is not on its gateway yet.');
     const snapshot = await call<{ hash?: string }>('config.get');
     await call('config.patch', {
       raw: JSON.stringify({ agents: { list: [entry] } }),
       baseHash: snapshot?.hash,
       note: 'Personal agent settings',
     });
-  } catch {
+  } catch (err) {
+    if (err instanceof PersonalAgentBindingError) throw err;
     throw new Error('Personal agent settings could not be saved. Retry.');
   }
   return agent.agent_id;
