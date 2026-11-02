@@ -9,25 +9,25 @@ import { listOpenedIds } from '$server/services/email-opens.service';
 // is client-side `sendRequest(...)` after mount.
 
 export interface MyAgentIdentity {
-	userName: string;
-	greeting: string;
-	/** Gmail message ids the user has opened in the hub (cross-device open state). */
-	openedIds: string[];
+  userName: string;
+  greeting: string;
+  /** Gmail message ids the user has opened in the hub (cross-device open state). */
+  openedIds: string[];
 }
 
 export const load: PageServerLoad = async ({ locals }) => {
-	if (!locals.user) throw redirect(302, '/login');
+  if (!locals.user) throw redirect(302, '/login');
 
-	const userName = locals.user.displayName ?? locals.user.email.split('@')[0];
-	// Greeting uses the first name only (e.g. "Nikolas", not "Nikolas Sarria").
-	const firstName = userName.trim().split(/\s+/)[0] || userName;
+  const userName = locals.user.displayName ?? locals.user.email.split('@')[0];
+  // Greeting uses the first name only (e.g. "Nikolas", not "Nikolas Sarria").
+  const firstName = userName.trim().split(/\s+/)[0] || userName;
 
-	// Cross-device "opened" set; best-effort (a DB hiccup must not blank the page).
-	const openedIds = await listOpenedIds(locals.user.id).catch(() => []);
+  // Cross-device "opened" set; best-effort (a DB hiccup must not blank the page).
+  const openedIds = await listOpenedIds(locals.user.id).catch(() => []);
 
-	return {
-		userName,
-		greeting: `Good to see you, ${firstName}.`,
-		openedIds,
-	} satisfies MyAgentIdentity;
+  return {
+    userName,
+    greeting: `Good to see you, ${firstName}.`,
+    openedIds,
+  } satisfies MyAgentIdentity;
 };
