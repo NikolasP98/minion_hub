@@ -122,6 +122,8 @@ function isPlatformAdmin(): boolean {
 // experiments, hidden). A hidden page's own links are removed where found (workshop nav,
 // leaderboard back-link, agent dashboard, builder cards); any link missed lands on an
 // empty page. Move each admin RPC to a hub route (spec 042) and drop it from this list.
+// Untested gates (T038 re-audit R4): the /users + /settings Bindings tab, the /settings/plugins
+// frame, the ensureChannelPlugins skip and the tools.reload skip — add a member/admin/unset test each.
 /**
  * Whether this viewer's gateway credential can call `method`. Always true until
  * the launch switch: today's token socket carries admin, so gating earlier would
