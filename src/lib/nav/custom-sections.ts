@@ -46,6 +46,8 @@ export interface NavConfig {
   builtinSections: Record<string, NavPage[]>;
   /** Keyed by target pattern. */
   builtin: Record<string, BuiltinOverride>;
+  /** Org landing page (spec 046), seeded at provisioning by module-install.service (spec 047). */
+  landingPage?: string;
 }
 export const EMPTY_NAV_CONFIG: NavConfig = {
   version: 1,
@@ -259,7 +261,13 @@ export function visibleNavConfig(
     const pages = all.filter(keep);
     if (pages.length > 0) builtinSections[module] = pages;
   }
-  return { version: 1, sections, builtinSections, builtin: config.builtin };
+  return {
+    version: 1,
+    sections,
+    builtinSections,
+    builtin: config.builtin,
+    ...(config.landingPage ? { landingPage: config.landingPage } : {}),
+  };
 }
 
 // ── validation ──────────────────────────────────────────────────────────
@@ -375,6 +383,7 @@ export function normalizeNavConfig(value: unknown): NavConfig {
       Object.entries(v.builtinSections ?? {}).map(([k, pages]) => [k, pages.map(page)]),
     ),
     builtin: v.builtin ?? {},
+    ...(typeof v.landingPage === 'string' ? { landingPage: v.landingPage } : {}),
   };
 }
 

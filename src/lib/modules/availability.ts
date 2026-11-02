@@ -133,6 +133,29 @@ export const MODULE_MANIFEST = {
 
 export type ModuleId = keyof typeof MODULE_MANIFEST;
 
+/**
+ * Spec 047 S4: the base set a new org is provisioned with — one explicit
+ * `app_modules` row per manifest toggleId (keys must equal `toggleIds()`,
+ * pinned by availability.test.ts). The only base-set definition.
+ */
+export const BASE_MODULES = {
+  crm: true,
+  scheduling: true,
+  pos: true,
+  stock: true,
+  finances: true,
+  support: false,
+  sales: false,
+  ads: false,
+} as const satisfies Record<string, boolean>;
+
+/** Every manifest `toggleId`, in manifest order (Settings → Modules row order). */
+export function toggleIds(): string[] {
+  return (Object.values(MODULE_MANIFEST) as ModuleAvailability[]).flatMap((e) =>
+    e.toggleId ? [e.toggleId] : [],
+  );
+}
+
 /** Longest-prefix match of a canonical path against every manifest entry's `appPrefixes`. */
 export function resolveModuleForPath(
   canonicalPath: string,

@@ -45,6 +45,7 @@
     gateway: m.orgProvision_stepGateway(),
     workstation: m.orgProvision_stepWorkstation(),
     readiness: m.orgProvision_stepReadiness(),
+    modules: m.orgProvision_stepModules(),
   };
 
   async function submit(event: SubmitEvent): Promise<void> {

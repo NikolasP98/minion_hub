@@ -822,6 +822,16 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/services/module-install.service.sql.integration.test.ts',
+      minimumAssertions: 4,
+      requiredBehaviors: [
+        'installBaseModules against PostgreSQL writes one row per toggle module with the base set and the business landing page',
+        'installBaseModules against PostgreSQL a second run writes zero rows and keeps the landing page',
+        'installBaseModules against PostgreSQL keeps a pre-existing support = true row',
+        'installBaseModules against PostgreSQL sets the landing page only when the document lacks one',
+      ],
+    },
+    {
       file: 'src/server/db/pg-inbox-schema.sql.integration.test.ts',
       minimumAssertions: 2,
       requiredBehaviors: [
