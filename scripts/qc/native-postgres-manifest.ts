@@ -803,6 +803,14 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/modules/links.sql.integration.test.ts',
+      minimumAssertions: 2,
+      requiredBehaviors: [
+        'stock module links against PostgreSQL every declared link joins two real columns, with a foreign key unless it is soft',
+        'stock module links against PostgreSQL every foreign key between a stk_ table and another module is declared',
+      ],
+    },
+    {
       file: 'src/server/db/pg-inbox-schema.sql.integration.test.ts',
       minimumAssertions: 2,
       requiredBehaviors: [
