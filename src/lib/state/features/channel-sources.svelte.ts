@@ -14,6 +14,7 @@
 
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
+import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
 export type ChannelPlugin = { id: string; label: string };
 export type ChannelAccount = {
@@ -56,6 +57,8 @@ export function channelPlugins(): ChannelPlugin[] {
 
 export async function ensureChannelPlugins(): Promise<void> {
   if (store.pluginsLoaded || !conn.connected) return;
+  // Spec 045: gateway admin; skipped, not failed, for everyone else.
+  if (!gatewayMethodAllowed('channels.plugins.list')) return;
   try {
     const res = (await sendRequest('channels.plugins.list', {})) as
       | { plugins?: { channelType?: string; pluginId?: string; label?: string }[] }

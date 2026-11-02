@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createOptimistic } from '$lib/utils/optimistic';
-  import { Button, Spinner } from '$lib/components/ui';
+  import { Button, Spinner, StatusDot } from '$lib/components/ui';
   import {
     agentSkillsState,
     loadAgentSkills,
@@ -210,6 +210,14 @@
                   onchange={(checked) => toggleSkill(skill, checked)}
                 />
               {/if}
+            </div>
+          {:else}
+            <!-- Read-only state in place of the toggle. -->
+            <div class="shrink-0" data-part="skill-status">
+              <StatusDot
+                state={isEnabled ? 'active' : 'disabled'}
+                label={isEnabled ? m.tools_enabled() : m.tools_disabled()}
+              />
             </div>
           {/if}
 

@@ -6,11 +6,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { env as publicEnv } from '$env/dynamic/public';
 import { page } from '$app/state';
-import { canViewPath } from '$lib/access/can.svelte';
+import { adminOnlyUrlHidden, canViewPath } from '$lib/access/can.svelte';
 import { utilityLinks } from '$lib/components/layout/utility-links';
 import { adminOnlyPageHidden } from './platform-admin-methods';
 
-vi.mock('$lib/nav/nav-config.svelte', () => ({ navConfig: () => ({ modules: [], pages: [] }) }));
+const nav = vi.hoisted(() => ({
+  config: { sections: [] as unknown[], builtinSections: {} as Record<string, unknown[]> },
+}));
+vi.mock('$lib/nav/nav-config.svelte', () => ({ navConfig: () => nav.config }));
 
 const AS_MEMBER = { user: { role: 'user' }, permissions: { permissions: ['reliability:view', 'workspace:view'] } };
 const AS_ADMIN = { user: { role: 'admin' }, permissions: AS_MEMBER.permissions };
@@ -33,11 +36,10 @@ const ADMIN_PAGES = [
   '/cloud/terminal',
   '/shells/abc',
   '/flow-editor',
-  '/flow-editor/skills/s1',
   '/config',
   '/prompt',
   '/plugins/some-plugin',
-  '/tools/t1',
+  '/channels/whatsapp-crm',
   '/sessions/agent%3Aa%3Amain/debug',
   '/agents/workshop/compare',
   '/agents/workshop/groupchat',
@@ -62,7 +64,18 @@ describe('admin-only pages (nav entry + URL)', () => {
 
   it('member pages next to them are never hidden', () => {
     setup('false', AS_MEMBER);
-    for (const p of ['/agents', '/agents/workshop', '/tools', '/sessions', '/plugins', '/workforce/reliability']) {
+    for (const p of [
+      '/agents',
+      '/agents/workshop',
+      '/tools',
+      '/tools/t1',
+      '/flow-editor/skills/s1',
+      '/flow-editor/master/m1',
+      '/channels/gmail',
+      '/sessions',
+      '/plugins',
+      '/workforce/reliability',
+    ]) {
       expect(adminOnlyPageHidden(p)).toBe(false);
     }
   });
@@ -77,5 +90,24 @@ describe('admin-only pages (nav entry + URL)', () => {
     expect(offered).not.toContain('/killswitches');
     setup('false', AS_ADMIN);
     expect(utilityLinks(canViewPath).map((l) => l.href)).toContain('/cloud');
+  });
+
+  it('a custom nav entry is judged by the page it renders (spec 037 alias to /reliability)', () => {
+    nav.config = {
+      sections: [{ slug: 'ops', id: 's1', pages: [{ id: 'abc123', slug: 'rel', target: '/reliability' }] }],
+      builtinSections: {},
+    };
+    try {
+      setup('false', AS_MEMBER);
+      expect(adminOnlyUrlHidden('/ops/rel~abc123')).toBe(true);
+      expect(canViewPath('/ops/rel~abc123')).toBe(false);
+      expect(adminOnlyUrlHidden('/en/ops/rel~abc123')).toBe(true);
+      setup('false', AS_ADMIN);
+      expect(adminOnlyUrlHidden('/ops/rel~abc123')).toBe(false);
+      setup(undefined, AS_MEMBER);
+      expect(adminOnlyUrlHidden('/ops/rel~abc123')).toBe(false);
+    } finally {
+      nav.config = { sections: [], builtinSections: {} };
+    }
   });
 });

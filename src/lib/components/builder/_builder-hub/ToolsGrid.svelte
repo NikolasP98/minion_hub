@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { Button, iconSizes } from '$lib/components/ui';
   import { Trash2 } from 'lucide-svelte';
   import { recordHref } from '$lib/utils/record-path';
@@ -28,9 +27,6 @@
       ? m.capabilities_permissionAllowed({ perm: label })
       : m.capabilities_permissionDenied({ perm: label });
   }
-
-  // Spec 045: the editor behind a card is a gateway-admin page; others see the card, not a dead link.
-  const linked = $derived(!adminOnlyPageHidden('/tools/x'));
 </script>
 
 <!--
@@ -46,10 +42,9 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
   {#each tools as tool (tool.source + ':' + tool.id)}
     <div class="item-card" class:dimmed={tool.source === 'gateway' && tool.enabled === false}>
-      <svelte:element
-        this={linked ? 'a' : 'div'}
+      <a
         class="item-link"
-        href={linked ? recordHref('/tools', tool.id) : undefined}
+        href={recordHref('/tools', tool.id)}
         aria-label={tool.displayTitle ?? tool.name}
       >
         <div class="item-card-inner">
@@ -114,7 +109,7 @@
             </div>
           {/if}
         </div>
-      </svelte:element>
+      </a>
       {#if tool.source === 'custom' && isAdmin}
         <Button
           variant="ghost"

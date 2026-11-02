@@ -110,12 +110,14 @@ function isPlatformAdmin(): boolean {
 
 // TODO(handoff): spec 045 T037/T038 hide (not lock) every surface behind this list from
 // anyone but a platform admin once switched: channel setup; the pages in ADMIN_ONLY_PAGES
-// (reliability, kill switches, cloud/shells, flow editor, config, prompt builder, plugin
-// pages, tool editor, session debug, workshop experiments) via canViewPath + the app
+// (reliability, kill switches, cloud/shells, flow list+editor, config, prompt builder, plugin
+// pages incl. /channels/<plugin>, session debug, workshop experiments) via canViewPath + the app
 // layout; agent Files/Prompt tabs, agent settings panel, tool drag and skill toggles,
-// dream activity, secrets, the session-title drone and flow-trigger re-registration.
+// dream activity, secrets, the /users Bindings tab, plugin settings frames, the session-title
+// drone and flow-trigger re-registration. /home/settings no longer calls config.patch: it posts
+// to /api/personal-agent/settings (hub credential, caller's own agent, four allowlisted fields).
 // Left ungated: `skills.update` (agent-skills `toggleGlobalSkill` has no UI caller),
-// `drones.list` / `flows.*` / `shells.*` / `tools.*` / `reliability.*` (reachable only from
+// `tools.*` (the tool editor's admin buttons already need hub admin), `drones.list` / `flows.*` / `shells.*` / `reliability.*` (reachable only from
 // the hidden pages above), `playground.complete` / `models.setEnabled` (workshop
 // experiments, hidden). A hidden page's own links are removed where found (workshop nav,
 // leaderboard back-link, agent dashboard, builder cards); any link missed lands on an
@@ -149,11 +151,13 @@ const ADMIN_ONLY_PAGES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/reliability(\/|$)/, 'reliability.summary'],
   [/^\/killswitches(\/|$)/, 'killswitch.list'],
   [/^\/(cloud|shells)(\/|$)/, 'shells.list'],
-  [/^\/flow-editor(\/|$)/, 'flows.templates.list'],
+  // skills/ and master/ are hub-backed (/api, tools.status read); the flow list/editor run & register.
+  [/^\/flow-editor(\/(?!skills\/|master\/)|$)/, 'flows.templates.list'],
   [/^\/config(\/|$)/, 'config.schema'],
   [/^\/prompt(\/|$)/, 'prompt.sections.list'],
   [/^\/plugins\/[^/]/, PLUGIN_RPC],
-  [/^\/tools\/[^/]/, 'tools.update'],
+  // Channel plugin pages are the same plugin iframe; gmail is a hub-API page.
+  [/^\/channels\/(?!gmail(\/|$))[^/]/, PLUGIN_RPC],
   [/^\/sessions\/[^/]+\/debug(\/|$)/, 'debug.setSteppedBuild'],
   [/^\/agents\/workshop\/(compare|groupchat)(\/|$)/, 'playground.complete'],
 ];

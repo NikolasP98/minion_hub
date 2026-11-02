@@ -48,6 +48,17 @@ export function canAct(module: string, action: string): boolean {
 }
 
 /**
+ * Spec 045: is the page this URL renders admin-only for this viewer? A custom nav
+ * entry (`/<section>/<slug>~<id>`, spec 037) renders its TARGET route, so the target
+ * is what gets judged.
+ */
+export function adminOnlyUrlHidden(pathname: string): boolean {
+  const path = canonicalPath(pathname.split(/[?#]/, 1)[0] || '/');
+  const hit = resolveNavInstance(navConfig(), path);
+  return adminOnlyPageHidden(hit ? hit.target + hit.rest : path);
+}
+
+/**
  * Evaluate a live href through the same route policy registry the server layout,
  * design manifest, global navigation, and command palette consult.
  *
@@ -61,14 +72,13 @@ export function canAct(module: string, action: string): boolean {
  */
 export function canViewPath(path: string): boolean {
   // Spec 045: pages that only a gateway admin's pass can serve are not offered to anyone else.
-  if (adminOnlyPageHidden(canonicalPath(path.split(/[?#]/, 1)[0] || '/'))) return false;
+  if (adminOnlyUrlHidden(path)) return false;
   const kind = accessData().activeOrgKind;
   // Spec 037: an instance path is judged by its TARGET's kind visibility plus the
   // page grant AND the module floor (same `instanceAllowed` resolve + guards use),
   // so the sidebar never offers a link that would 403.
   const hit = resolveNavInstance(navConfig(), canonicalPath(path.split(/[?#]/, 1)[0] || '/'));
   if (hit) {
-    if (adminOnlyPageHidden(hit.target)) return false;
     const m = resolveModuleForPath(hit.target);
     if (m && !isModuleVisibleForKind(m.moduleId, kind)) return false;
     return instanceAllowed(hit.page, new Set(accessData().permissions?.permissions ?? []));

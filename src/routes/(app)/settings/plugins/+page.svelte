@@ -19,6 +19,7 @@
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import { setPluginEnabled } from '$lib/state/plugin-nav.svelte';
+  import { PLUGIN_RPC, gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -456,6 +457,8 @@
                 </div>
               {/if}
               <div class="flex min-h-0 flex-1 flex-col">
+                <!-- Spec 045: a plugin's settings frame saves over plugin RPCs (gateway admin). -->
+                {#if gatewayMethodAllowed(PLUGIN_RPC)}
                 {#key current.pluginId + ':' + current.entrypoint}
                   <PluginIframe
                     pluginId={current.pluginId}
@@ -475,6 +478,7 @@
                     bindTriggerSave={(fn) => (triggerSaveFn = fn)}
                   />
                 {/key}
+                {/if}
               </div>
             {/if}
           </div>

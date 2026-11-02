@@ -10,6 +10,19 @@ import { tick } from 'svelte';
 import { env as publicEnv } from '$env/dynamic/public';
 import { page } from '$app/state';
 
+// Spy on the component's own caller: the transport's role refusal would otherwise hide a removed skip.
+const sent = vi.hoisted(() => ({ spy: vi.fn() }));
+vi.mock('$lib/services/gateway-rpc', async (orig) => {
+  const real = await orig<typeof import('$lib/services/gateway-rpc')>();
+  return {
+    ...real,
+    sendRequest: (...args: Parameters<typeof real.sendRequest>) => {
+      sent.spy(...args);
+      return real.sendRequest(...args);
+    },
+  };
+});
+
 import ChatHistoryPopover from './ChatHistoryPopover.svelte';
 import { setClient } from '$lib/services/gateway-rpc';
 
@@ -20,7 +33,7 @@ const settle = async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 };
-const droneCalls = () => request.mock.calls.filter(([m]) => m === 'drones.session-title').length;
+const droneCalls = () => sent.spy.mock.calls.filter(([m]) => m === 'drones.session-title').length;
 
 async function openHistory() {
   const view = render(ChatHistoryPopover, {
@@ -36,6 +49,7 @@ async function openHistory() {
 
 beforeEach(() => {
   request.mockReset();
+  sent.spy.mockReset();
   request.mockImplementation(async (method: string) =>
     method === 'sessions.list'
       ? { sessions: [{ key: 'agent:a1:main', lastMessagePreview: 'hello there' }] }

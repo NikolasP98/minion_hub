@@ -1,6 +1,5 @@
 <script lang="ts">
   import { recordPathSegment } from '$lib/utils/record-path';
-  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { Button, Spinner } from '$lib/components/ui';
   import { BookOpen, Bot, Wrench } from 'lucide-svelte';
   import { goto } from '$app/navigation';
@@ -185,12 +184,6 @@
     }
   });
 
-  // Spec 045: a new tool / skill opens its editor, a gateway-admin page — no button for anyone else.
-  const newTargetHidden = $derived(
-    (activeTab === 'tools' && adminOnlyPageHidden('/tools/x')) ||
-      (activeTab === 'skills' && adminOnlyPageHidden('/flow-editor/skills')),
-  );
-
   const currentTab = $derived(tabs.find((t) => t.id === activeTab)!);
 
   // ── Unified tool list ────────────────────────────────────────────
@@ -287,7 +280,7 @@
         <h2 class="text-sm font-semibold text-foreground">
           {currentTab.label}
         </h2>
-        {#if (activeTab === 'tools' ? isAdmin : !currentTab.locked) && !newTargetHidden}
+        {#if activeTab === 'tools' ? isAdmin : !currentTab.locked}
           <Button variant="ghost" type="button" class="new-button" onclick={handleNewClick}>
             <span>+ {currentTab.newLabel}</span>
           </Button>

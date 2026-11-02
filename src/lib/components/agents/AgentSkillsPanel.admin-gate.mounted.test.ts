@@ -49,6 +49,8 @@ it('member after the switch: the skill is listed, its toggle is not rendered', a
   const { container } = await show();
   expect(container.textContent).toContain('Writer');
   expect(toggles(container)).toBe(0);
+  // The state is kept as a read-only indicator, not a lock or a message.
+  expect(container.querySelector('[data-part="skill-status"]')).not.toBeNull();
 });
 
 it('platform admin after the switch: the toggle is rendered', async () => {

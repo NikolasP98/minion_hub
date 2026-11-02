@@ -263,7 +263,7 @@
                   </p>
                 </Card>
               {/if}
-              {#if tab.id === 'agents'}
+              {#if tab.id === 'agents' && gatewayMethodAllowed('config.patch')}
                 <div class="mt-6">
                   <BindingsTab />
                 </div>
