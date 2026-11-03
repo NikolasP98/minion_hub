@@ -23,6 +23,17 @@ def click_button(label):
 def key(name, code):
     press_key(name)
 
+def wait_for_dialog_close():
+    assert js("""(async () => {
+        const deadline = performance.now() + 5000;
+        do {
+            if (!document.querySelector('dialog[open]') &&
+                document.activeElement?.innerText?.trim() === 'Open dialog') return true;
+            await new Promise(resolve => setTimeout(resolve, 50));
+        } while (performance.now() < deadline);
+        return false;
+    })()"""), 'Dialog did not close and restore focus within 5 seconds'
+
 cdp('Emulation.setDeviceMetricsOverride', **{'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
 new_tab('http://127.0.0.1:18913/')
 cdp('Page.bringToFront')
@@ -51,9 +62,7 @@ for mode in ['light', 'dark']:
     point = js("(() => {const r=document.querySelector('dialog[open] input').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()")
     click_at_xy(point['x'], point['y'])
     key('Escape', 27)
-    settle()
-    assert js("!document.querySelector('dialog[open]')")
-    assert js("document.activeElement.innerText.trim()") == 'Open dialog'
+    wait_for_dialog_close()
     print('Desktop passed: ' + mode, flush=True)
     results.append({'mode': mode, 'tokens': state, 'reload': True, 'dialog': True, 'preventsBackgroundFocus': True, 'escapeRestoresFocus': True})
 
@@ -69,7 +78,7 @@ for mode in ['dark', 'light']:
     assert js("(() => {const r=document.querySelector('dialog[open]').getBoundingClientRect();return r.left>=0 && r.right<=innerWidth;})()")
     shot(mode + '-mobile-dialog')
     key('Escape', 27)
-    settle()
+    wait_for_dialog_close()
     print('Mobile passed: ' + mode, flush=True)
     results.append({'mode': mode, 'mobileWidth': 390, 'overflow': False, 'dialogFits': True})
 
