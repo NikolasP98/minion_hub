@@ -62,6 +62,20 @@ describe('runtime theme semantic contract', () => {
     expect(appStyles).toContain('--theme-radius: var(--radius-md)');
   });
 
+  it.each(['clinic-light', 'clinic-dark'] as const)(
+    'activates %s through the shared runtime and preserves the chosen accent',
+    (id) => {
+      const preset = PRESETS.find((candidate) => candidate.id === id)!;
+      expect(preset).toBeDefined();
+      expect(preset.mode).toBe(designTokens.themes[id].mode);
+      applyTheme(preset, '#9333ea');
+      expect(document.documentElement.dataset.minionTheme).toBe(id);
+      expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+      expect(document.documentElement.style.getPropertyValue('--color-accent')).toBe('#9333ea');
+      expect(document.documentElement.style.getPropertyValue('--color-on-accent')).toBe('#ffffff');
+    },
+  );
+
   it('retains decorative data-theme hooks without using them as token authority', () => {
     const light = PRESETS.find((candidate) => candidate.id === 'ayu-light');
     const crt = PRESETS.find((candidate) => candidate.id === 'crt');

@@ -24,7 +24,7 @@
         "@minion-stack/cache": "^0.3",
         "@minion-stack/crm-sdk": "file:deps/minion-stack-crm-sdk-0.1.0-776d8c49.tgz",
         "@minion-stack/db": "file:deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz",
-        "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.1-durability.h3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d.tgz",
+        "@minion-stack/design-tokens": "file:deps/minion-stack-design-tokens-0.1.1-durability.h1f30c56a9f5ed3eb2beff464a2eb89b56eef559986275aa0d1b285da4bcb422d.tgz",
         "@minion-stack/shared": "file:deps/minion-stack-shared-0.9.0-agent-harness.e6e69bb92fd1.tgz",
         "@minion-stack/ui": "file:deps/minion-stack-ui-0.1.0-durability.hf35a998e0397229b84f9eb96d43f80c314d36347a4d834135566d182924348fd.tgz",
         "@minion-stack/workforce-client": "file:deps/minion-stack-workforce-client-0.4.0-readiness.1.tgz",
@@ -432,7 +432,7 @@
 
     "@minion-stack/db": ["@minion-stack/db@deps/minion-stack-db-0.9.4-ui-coherence-7942d0d8.tgz", { "peerDependencies": { "drizzle-orm": ">=0.45.0" } }],
 
-    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.1-durability.h3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d.tgz", {}],
+    "@minion-stack/design-tokens": ["@minion-stack/design-tokens@deps/minion-stack-design-tokens-0.1.1-durability.h1f30c56a9f5ed3eb2beff464a2eb89b56eef559986275aa0d1b285da4bcb422d.tgz", {}],
 
     "@minion-stack/lint-config": ["@minion-stack/lint-config@0.1.2", "", { "peerDependencies": { "@eslint/js": ">=9.0.0", "eslint": ">=9.0.0", "oxlint": ">=0.15.0", "prettier": ">=3.0.0", "typescript-eslint": ">=8.0.0" }, "optionalPeers": ["@eslint/js", "eslint", "oxlint", "prettier", "typescript-eslint"] }, "sha512-68UnBGAn0xbrsL50CX2JQApmFiELDbRfz5RZKTvy52I12TrnZzvqJ+U1jjSG6un4RvWEu0hBcIm5ymCz2FFrKg=="],
 

@@ -33,6 +33,7 @@ const THEME_ORDER: ContractThemeId[] = [
   'void',
   'obsidian',
   'crt',
+  'clinic-dark',
   'github-light',
   'solarized-light',
   'catppuccin-latte',
@@ -41,6 +42,7 @@ const THEME_ORDER: ContractThemeId[] = [
   'rose-pine-dawn',
   'gruvbox-light',
   'ayu-light',
+  'clinic-light',
 ];
 
 const ACCENT_ORDER: ContractAccentId[] = [
