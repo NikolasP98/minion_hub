@@ -10,7 +10,8 @@ const channels = [
   { pluginId: 'gmail', title: 'Gmail' },
   { pluginId: 'whatsapp-crm', title: 'WhatsApp CRM' },
 ];
-const hrefs = (c: HTMLElement) => Array.from(c.querySelectorAll('a')).map((a) => a.getAttribute('href'));
+const hrefs = (c: HTMLElement) =>
+  Array.from(c.querySelectorAll('a')).map((a) => a.getAttribute('href'));
 
 afterEach(() => {
   cleanup();

@@ -5,9 +5,11 @@ import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 // Cheap, fast model — polishing is a light-touch rewrite, not creative writing.
-const DEFAULT_MODEL = env.NOTES_POLISH_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
+const DEFAULT_MODEL =
+  env.NOTES_POLISH_MODEL || env.NOTES_AUTOCOMPLETE_MODEL || 'google/gemini-2.5-flash-lite';
 const MAX_INPUT = 6000;
 
 // Per-intent flavour appended to the base polish instruction.
@@ -28,6 +30,7 @@ const INTENT_HINTS: Record<string, string> = {
  * answering anything. `intent` lightly biases the cleanup (meeting/dictation/…).
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
 
   const apiKey = env.OPENROUTER_API_KEY;
@@ -49,7 +52,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       'You polish raw dictated speech-to-text into clean written text. Fix punctuation, ' +
       'capitalization, sentence breaks and obvious transcription errors (homophones, run-ons). ' +
       'Do NOT add information, do NOT answer questions inside the text, do NOT change the meaning ' +
-      'or the speaker\'s wording beyond light cleanup, and do NOT add commentary. ' +
+      "or the speaker's wording beyond light cleanup, and do NOT add commentary. " +
       'Reply with ONLY the cleaned-up text.' +
       intentHint,
     prompt: input,

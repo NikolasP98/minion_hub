@@ -1,12 +1,13 @@
 import { page } from '$app/state';
 import { can } from './policy';
 import { canAccessRoute, type RouteAccessContext } from '$lib/routes/route-access-policies';
-import { resolveModuleForPath } from '$lib/modules/availability';
+import { featureForPath, resolveModuleForPath } from '$lib/modules/availability';
 import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
 import { canonicalPath } from '$lib/canonical-path';
 import { instanceAllowed, resolveNavInstance } from '$lib/nav/custom-sections';
 import { navConfig } from '$lib/nav/nav-config.svelte';
 import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
+import { hasFeature } from './premium';
 
 interface ClientAccessData {
   user?: { role?: 'user' | 'admin' } | null;
@@ -47,6 +48,13 @@ export function canAct(module: string, action: string): boolean {
   return perms.includes(`${module}:${action}`);
 }
 
+export { hasFeature };
+
+function planGrantsPath(canonical: string): boolean {
+  const feature = featureForPath(canonical);
+  return !feature || hasFeature(feature);
+}
+
 /**
  * Spec 045: is the page this URL renders admin-only for this viewer? A custom nav
  * entry (`/<section>/<slug>~<id>`, spec 037) renders its TARGET route, so the target
@@ -77,8 +85,11 @@ export function canViewPath(path: string): boolean {
   // Spec 037: an instance path is judged by its TARGET's kind visibility plus the
   // page grant AND the module floor (same `instanceAllowed` resolve + guards use),
   // so the sidebar never offers a link that would 403.
-  const hit = resolveNavInstance(navConfig(), canonicalPath(path.split(/[?#]/, 1)[0] || '/'));
+  const canonical = canonicalPath(path.split(/[?#]/, 1)[0] || '/');
+  if (!planGrantsPath(canonical)) return false;
+  const hit = resolveNavInstance(navConfig(), canonical);
   if (hit) {
+    if (!planGrantsPath(hit.target)) return false;
     const m = resolveModuleForPath(hit.target);
     if (m && !isModuleVisibleForKind(m.moduleId, kind)) return false;
     return instanceAllowed(hit.page, new Set(accessData().permissions?.permissions ?? []));

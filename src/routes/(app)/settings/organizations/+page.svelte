@@ -1,8 +1,17 @@
 <script lang="ts">
   import { Building2, CheckCircle2, RotateCcw } from 'lucide-svelte';
-  import { Button, Card, Input, PageHeader, Spinner, StatusDot, iconSizes } from '$lib/components/ui';
+  import {
+    Button,
+    Card,
+    Input,
+    PageHeader,
+    Spinner,
+    StatusDot,
+    iconSizes,
+  } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import { canViewPath } from '$lib/access/can.svelte';
 
   type ProvisionStep = {
     id: string;
@@ -56,7 +65,10 @@
       const payload = (await response.json()) as ProvisionResult & { message?: string };
       if (!payload.steps) throw new Error(payload.message ?? m.orgProvision_unknownError());
       result = payload;
-      if (payload.organization && !organizations.some((org) => org.id === payload.organization?.id)) {
+      if (
+        payload.organization &&
+        !organizations.some((org) => org.id === payload.organization?.id)
+      ) {
         organizations = [...organizations, { ...payload.organization, members: 1 }].sort((a, b) =>
           a.name.localeCompare(b.name),
         );
@@ -79,6 +91,9 @@
   </PageHeader>
 
   <PageBody width="content">
+    {#if canViewPath('/orgs/plans')}
+      <a class="text-sm text-accent" href="/orgs/plans">{m.admin_plans_link()}</a>
+    {/if}
     <div class="provision-grid">
       <Card elevation={2} padding="lg">
         <form class="provision-form" onsubmit={submit}>
@@ -126,14 +141,22 @@
             <h2 class="t-title">{m.orgProvision_traceTitle()}</h2>
             <p class="t-body form-copy">{m.orgProvision_traceDescription()}</p>
           </div>
-          {#if result?.ok}<CheckCircle2 size={iconSizes.lg} class="success-icon" aria-hidden="true" />{/if}
+          {#if result?.ok}<CheckCircle2
+              size={iconSizes.lg}
+              class="success-icon"
+              aria-hidden="true"
+            />{/if}
         </div>
         {#if result}
           <ol class="trace-list" aria-label={m.orgProvision_traceTitle()}>
             {#each result.steps as step (step.id)}
               <li class="trace-step">
                 <StatusDot
-                  status={step.status === 'complete' ? 'running' : step.status === 'failed' ? 'aborted' : 'idle'}
+                  status={step.status === 'complete'
+                    ? 'running'
+                    : step.status === 'failed'
+                      ? 'aborted'
+                      : 'idle'}
                   size="sm"
                 />
                 <span class="trace-copy">

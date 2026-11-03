@@ -785,6 +785,17 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/services/entitlements.sql.integration.test.ts',
+      minimumAssertions: 5,
+      requiredBehaviors: [
+        'setOrgPlan against real SQL no-op on Base, then insert, then update, each change audited once',
+        'setOrgPlan against real SQL rejects prototype keys as plans',
+        'org_plans RLS (org_guc, select only) a member reads its own plan row and no other org',
+        'org_plans RLS (org_guc, select only) denies INSERT, UPDATE and DELETE to the app role',
+        'org_plans RLS (org_guc, select only) the audit table is unreadable by the app role',
+      ],
+    },
+    {
       file: 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
       minimumAssertions: 4,
       requiredBehaviors: [

@@ -11,10 +11,12 @@ import { flows } from '$server/db/pg-schema/flows';
 import * as ops from '$lib/flows/flow-ops';
 import type { WorkingFlow } from '$lib/flows/flow-ops';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const SYSTEM = `You edit an automation flow (nodes + edges). Node types: trigger, schedule, agent, llm, router, toolAgent, channel, handoff, reaction, transform, structured, pluginTrigger, pluginAction. Make the SMALLEST change that satisfies the user. Use the provided tools to mutate the flow; reference nodes by id. After editing, call validate. Explain what you changed in one short paragraph.`;
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await requireCoreCtx(locals);
   const body = (await request.json().catch(() => null)) as {
     messages?: { role: 'user' | 'assistant'; content: string }[];

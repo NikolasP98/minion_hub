@@ -459,25 +459,25 @@
               <div class="flex min-h-0 flex-1 flex-col">
                 <!-- Spec 045: a plugin's settings frame saves over plugin RPCs (gateway admin). -->
                 {#if gatewayMethodAllowed(PLUGIN_RPC)}
-                {#key current.pluginId + ':' + current.entrypoint}
-                  <PluginIframe
-                    pluginId={current.pluginId}
-                    entrypoint={current.entrypoint}
-                    gatewayUrl={data.gatewayBaseUrl}
-                    {theme}
-                    {tokens}
-                    compat={current.compat}
-                    pluginStatus={current.status}
-                    externalSaveBar
-                    fillContainer
-                    bind:dirty={saveDirty}
-                    bind:saving={saveSaving}
-                    bind:saveError
-                    bind:saveOk
-                    bind:restartRequired={saveRestart}
-                    bindTriggerSave={(fn) => (triggerSaveFn = fn)}
-                  />
-                {/key}
+                  {#key current.pluginId + ':' + current.entrypoint}
+                    <PluginIframe
+                      pluginId={current.pluginId}
+                      entrypoint={current.entrypoint}
+                      gatewayUrl={data.gatewayBaseUrl}
+                      {theme}
+                      {tokens}
+                      compat={current.compat}
+                      pluginStatus={current.status}
+                      externalSaveBar
+                      fillContainer
+                      bind:dirty={saveDirty}
+                      bind:saving={saveSaving}
+                      bind:saveError
+                      bind:saveOk
+                      bind:restartRequired={saveRestart}
+                      bindTriggerSave={(fn) => (triggerSaveFn = fn)}
+                    />
+                  {/key}
                 {/if}
               </div>
             {/if}

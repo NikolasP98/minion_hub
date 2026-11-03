@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
 import { recordAiUsage } from '$server/ai-usage';
+import { assertAiCallAllowed, isEnforced } from '$server/services/entitlements.service';
 
 /**
  * Text embeddings for the agent-memory corpus. Uses the OpenAI-compatible REST
@@ -154,6 +155,7 @@ export async function executeEmbeddingRequest(
   if (options.attemptPolicy !== undefined && !['single', 'retry'].includes(options.attemptPolicy))
     throw new Error('Invalid embedding attempt policy');
   const attempts = options.attemptPolicy === 'single' ? 1 : EMBEDDING_MAX_ATTEMPTS;
+  if (isEnforced()) await assertAiCallAllowed('embeddings'); // spec 043 backstop, no-op unless enforced
   const { provider, body } = pinned;
   const count = request.descriptor.count;
   for (let attempt = 1; attempt <= attempts; attempt++) {

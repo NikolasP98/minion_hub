@@ -35,7 +35,8 @@ async function show() {
   await tick();
   return view;
 }
-const tabs = (c: HTMLElement) => Array.from(c.querySelectorAll('button')).map((b) => b.textContent?.trim());
+const tabs = (c: HTMLElement) =>
+  Array.from(c.querySelectorAll('button')).map((b) => b.textContent?.trim());
 const gear = (c: HTMLElement) => c.querySelector(`button[title="${m.detail_agentSettings()}"]`);
 
 beforeEach(() => setClient({ request: vi.fn(async () => ({})) } as never));

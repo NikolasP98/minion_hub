@@ -15,7 +15,10 @@ const nav = vi.hoisted(() => ({
 }));
 vi.mock('$lib/nav/nav-config.svelte', () => ({ navConfig: () => nav.config }));
 
-const AS_MEMBER = { user: { role: 'user' }, permissions: { permissions: ['reliability:view', 'workspace:view'] } };
+const AS_MEMBER = {
+  user: { role: 'user' },
+  permissions: { permissions: ['reliability:view', 'workspace:view'] },
+};
 const AS_ADMIN = { user: { role: 'admin' }, permissions: AS_MEMBER.permissions };
 
 function setup(flag: 'false' | undefined, data: Record<string, unknown>) {
@@ -94,7 +97,9 @@ describe('admin-only pages (nav entry + URL)', () => {
 
   it('a custom nav entry is judged by the page it renders (spec 037 alias to /reliability)', () => {
     nav.config = {
-      sections: [{ slug: 'ops', id: 's1', pages: [{ id: 'abc123', slug: 'rel', target: '/reliability' }] }],
+      sections: [
+        { slug: 'ops', id: 's1', pages: [{ id: 'abc123', slug: 'rel', target: '/reliability' }] },
+      ],
       builtinSections: {},
     };
     try {

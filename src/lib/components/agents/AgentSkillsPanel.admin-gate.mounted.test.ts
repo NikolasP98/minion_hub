@@ -26,7 +26,8 @@ vi.mock('$lib/state/agents/agent-skills.svelte', async () => {
 
 import AgentSkillsPanel from './AgentSkillsPanel.svelte';
 
-const toggles = (c: HTMLElement) => c.querySelectorAll('[data-scope="switch"][data-part="root"]').length;
+const toggles = (c: HTMLElement) =>
+  c.querySelectorAll('[data-scope="switch"][data-part="root"]').length;
 
 async function show() {
   const view = render(AgentSkillsPanel, { agentId: 'a1' });

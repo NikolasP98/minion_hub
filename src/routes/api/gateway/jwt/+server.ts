@@ -12,6 +12,18 @@ import {
 import { getGatewayUrlForOrg, userHasGatewayAccess } from '$server/services/gateway.pg.service';
 import { requireAuth } from '$server/auth/authorize';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
+import { isEnforced, resolveEntitlements } from '$server/services/entitlements.service';
+
+/** Spec 043: plan claims only when enforced; a lookup error issues without them (R5). */
+async function entitlementClaims(orgId: string) {
+  if (!isEnforced()) return undefined;
+  const r = await resolveEntitlements(orgId);
+  if (r.lookupError) {
+    console.warn('entitlement.lookup_error', JSON.stringify({ orgId, surface: 'gateway.jwt' }));
+    return undefined;
+  }
+  return { plan: r.plan, features: r.features };
+}
 
 /**
  * Cookie-authenticated issuance; every outcome is private and non-cacheable.
@@ -55,7 +67,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
       }
       audience = gatewayAudience(gatewayUrl);
     }
-    return json(await issueGatewayJwt(ctx, authUser.id, { audience }), { headers });
+    const entitlements = await entitlementClaims(ctx.tenantId);
+    return json(await issueGatewayJwt(ctx, authUser.id, { audience, entitlements }), { headers });
   } catch (e) {
     if (isHttpError(e)) return json(e.body, { status: e.status, headers });
     if (e instanceof GatewayJwtAccessDenied) {

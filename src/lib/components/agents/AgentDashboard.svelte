@@ -19,7 +19,10 @@
   import type { Agent } from '@minion-stack/shared';
   import { agentDisplayName } from '$lib/utils/agent-display';
   import * as m from '$lib/paraglide/messages';
-  import { adminOnlyPageHidden, gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
+  import {
+    adminOnlyPageHidden,
+    gatewayMethodAllowed,
+  } from '$lib/services/gateway/platform-admin-methods';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
 

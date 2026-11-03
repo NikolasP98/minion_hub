@@ -6,6 +6,7 @@ import { hubBaseUrl } from '$server/config/urls';
 import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { SCHEMA_MAP, type SchemaType } from '$lib/schemas/structured-response';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
@@ -18,6 +19,7 @@ const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
  * Final line: { partial: <complete object>, done: true }
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getOrCreateTenantCtx(locals);
   if (!ctx) throw error(401, 'Unauthorized');
 

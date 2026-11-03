@@ -9,13 +9,7 @@ import { gatewayAudience, issueGatewayJwt } from '$server/services/gateway-jwt.s
 import { getDb } from '$server/db/client';
 
 export type OrganizationProvisionStepId =
-  | 'organization'
-  | 'membership'
-  | 'rbac'
-  | 'workforce'
-  | 'gateway'
-  | 'workstation'
-  | 'readiness';
+  'organization' | 'membership' | 'rbac' | 'workforce' | 'gateway' | 'workstation' | 'readiness';
 
 export interface OrganizationProvisionStep {
   id: OrganizationProvisionStepId;
@@ -77,7 +71,10 @@ async function findOrganization(slug: string): Promise<OrganizationRow | null> {
 
 function optionalOrganizationId(value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
-  if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  ) {
     throw new Error('Existing Workforce company ID must be a valid UUID');
   }
   return value.toLowerCase();
@@ -100,9 +97,7 @@ async function ensureOrganization(
     id: existingWorkforceCompanyId ?? crypto.randomUUID(),
     name,
     slug,
-    ...(existingWorkforceCompanyId
-      ? { paperclip_company_id: existingWorkforceCompanyId }
-      : {}),
+    ...(existingWorkforceCompanyId ? { paperclip_company_id: existingWorkforceCompanyId } : {}),
   };
   const { data, error } = await supabaseAdmin()
     .from('organizations')
@@ -188,10 +183,9 @@ export async function mintOrgGatewayJwt(orgId: string, profileId: string): Promi
   // and close any other with 1008, so the per-gateway audience waits for the
   // launch switch; the legacy one is accepted because this call sends the token.
   // TODO(handoff): spec 045 A4 deletes the flag — make the audience unconditional there (tasks T054).
-  const audience =
-    browserSharedTokenOff()
-      ? gatewayAudience((await resolveCredentialsForUser(profileId, orgId)).url)
-      : undefined;
+  const audience = browserSharedTokenOff()
+    ? gatewayAudience((await resolveCredentialsForUser(profileId, orgId)).url)
+    : undefined;
   const { token } = await issueGatewayJwt({ db: getDb(), tenantId: orgId }, profileId, {
     audience,
   });
@@ -245,13 +239,23 @@ export async function provisionOrganization(
     operation: () => Promise<void>,
   ): Promise<void> {
     if (failed) {
-      steps.push({ id, status: 'skipped', durationMs: 0, detail: 'Skipped after an earlier failure' });
+      steps.push({
+        id,
+        status: 'skipped',
+        durationMs: 0,
+        detail: 'Skipped after an earlier failure',
+      });
       return;
     }
     const start = performance.now();
     try {
       await operation();
-      steps.push({ id, status: 'complete', durationMs: Math.round(performance.now() - start), detail });
+      steps.push({
+        id,
+        status: 'complete',
+        durationMs: Math.round(performance.now() - start),
+        detail,
+      });
     } catch (error) {
       failed = true;
       steps.push({
@@ -332,12 +336,9 @@ export async function provisionOrganization(
     if (!organization) throw new Error('Organization was not created');
     await verifyOrganization(organization.id, params.profileId);
     const jwt = await mintOrgGatewayJwt(organization.id, params.profileId);
-    const listed = await gatewayCallAsUser<{ shells?: Array<{ orgId?: string; isDefault?: boolean }> }>(
-      'shells.list',
-      {},
-      params.profileId,
-      { orgId: organization.id, timeoutMs: 30_000, jwt },
-    );
+    const listed = await gatewayCallAsUser<{
+      shells?: Array<{ orgId?: string; isDefault?: boolean }>;
+    }>('shells.list', {}, params.profileId, { orgId: organization.id, timeoutMs: 30_000, jwt });
     const defaultShell = listed.shells?.find(
       (shell) => shell.orgId === organization?.id && shell.isDefault,
     ) as { shellId?: string } | undefined;
@@ -363,8 +364,13 @@ export async function provisionOrganization(
       signal: AbortSignal.timeout(15_000),
     });
     const desktopBody = await desktopResponse.text();
-    if (!desktopResponse.ok || /invalid or missing authentication|shell access expired/i.test(desktopBody)) {
-      throw new Error(`Desktop access relay rejected the capability (HTTP ${desktopResponse.status})`);
+    if (
+      !desktopResponse.ok ||
+      /invalid or missing authentication|shell access expired/i.test(desktopBody)
+    ) {
+      throw new Error(
+        `Desktop access relay rejected the capability (HTTP ${desktopResponse.status})`,
+      );
     }
     await verifyTerminalAccess(terminal.url, terminal.token);
   });

@@ -5,17 +5,21 @@
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
   import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
+  import { hasFeature } from '$lib/access/premium';
+  import { channelHref } from './channel-href';
 
   let { channels }: { channels: Array<{ pluginId: string; title: string; icon?: string }> } =
     $props();
 
   const items = $derived<SectionNavItem[]>(
-    channels.map((e) => ({
-      id: e.pluginId,
-      label: e.title,
-      icon: resolvePluginIcon(e.icon),
-      href: `/channels/${e.pluginId}`,
-    })).filter((i) => !adminOnlyPageHidden(i.href)),
+    channels
+      .map((e) => ({
+        id: e.pluginId,
+        label: e.title,
+        icon: resolvePluginIcon(e.icon),
+        href: channelHref(e.pluginId, hasFeature('ai')),
+      }))
+      .filter((i) => !adminOnlyPageHidden(i.href)),
   );
 
   const activeId = $derived(items.find((i) => navPath() === i.href)?.id);

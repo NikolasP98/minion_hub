@@ -23,6 +23,7 @@ import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
 import { captureServerEvent } from '$lib/server/posthog';
 import { requestIdentity, distinctIdFor } from '$lib/server/observability-context';
+import { ALL_FEATURE_KEYS } from '$server/entitlements/evaluate';
 
 const SLOW_LOAD_WARNING_MS = 3_000;
 
@@ -287,5 +288,7 @@ export const load: LayoutServerLoad = async ({
       new Set(permissions.permissions),
       permissions.permissions.includes('settings:manage'),
     ),
+    // Spec 043: resolved by the module guard; the full catalog when it did not run for this request.
+    entitlements: locals.entitlements ?? { plan: 'base', features: [...ALL_FEATURE_KEYS] },
   };
 };

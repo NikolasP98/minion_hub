@@ -6,6 +6,7 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { composeReminder, sampleContext } from '$server/services/reminder-compose';
+import { orgAllows } from '$server/services/entitlements.service';
 
 const previewSchema = z.object({
   personalize: z.boolean().optional(),
@@ -25,7 +26,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
   const b = await parseBody(request, previewSchema);
-  const personalize = b.personalize !== false;
+  // Spec 043: an org without `ai.proactive` previews the plain template.
+  const personalize =
+    b.personalize !== false && (await orgAllows(ctx.tenantId, 'ai.proactive', 'reminders.preview'));
   const text = await composeReminder(
     sampleContext({
       stage: b.stage ?? 'confirmation',

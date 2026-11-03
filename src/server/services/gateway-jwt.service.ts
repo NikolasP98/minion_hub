@@ -20,6 +20,9 @@ export interface GatewayJwtClaims {
   role: 'admin' | 'user';
   agentIds: string[];
   orgId: string | null;
+  /** Spec 043 plan claims; only `/api/gateway/jwt` with ENTITLEMENTS_ENFORCED on adds them. */
+  plan?: string;
+  features?: string[];
 }
 
 /** Audience every gateway accepts alongside its shared token, until rotation (spec 045 I2). */
@@ -160,7 +163,7 @@ export async function getJwksPublicKeys(): Promise<JWK[]> {
 export async function issueGatewayJwt(
   ctx: TenantContext,
   userId: string,
-  opts: { audience?: string } = {},
+  opts: { audience?: string; entitlements?: { plan: string; features: string[] } } = {},
 ): Promise<{ token: string; expiresAt: number }> {
   // 1. Role from canonical Postgres. Do not route authentication through
   // PostgREST: a REST-gateway restart previously turned this valid profile
@@ -192,7 +195,16 @@ export async function issueGatewayJwt(
   const ttl = opts.audience ? GATEWAY_JWT_EXPIRY_SECONDS : LEGACY_JWT_EXPIRY_SECONDS;
   const expiresAt = (nowSeconds + ttl) * 1000; // ms for the client
 
-  const claims: GatewayJwtClaims = { userId, role, agentIds, orgId: ctx.tenantId };
+  const claims: GatewayJwtClaims = {
+    userId,
+    role,
+    agentIds,
+    orgId: ctx.tenantId,
+    ...(opts.entitlements && {
+      plan: opts.entitlements.plan,
+      features: opts.entitlements.features,
+    }),
+  };
 
   const token = await new SignJWT({ ...claims })
     .setProtectedHeader({ alg: ALG, kid })

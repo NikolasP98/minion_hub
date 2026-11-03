@@ -13,6 +13,7 @@
   import NoteIconButton from './NoteIconButton.svelte';
   import PolishMenu from './PolishMenu.svelte';
   import { runPolish } from '$lib/state/features/note-polish.svelte';
+  import { hasFeature } from '$lib/access/premium';
   import { formatForDisplay } from '$lib/hotkeys';
   import { detectLang, countWords } from '$lib/utils/detect-lang';
   import { txPrefs, type NoteLang } from '$lib/state/features/transcription-prefs.svelte';
@@ -104,7 +105,8 @@
   <!-- TODO(handoff): HC-028 claims aria-modal="true" without a native modal (no inert background, no Tab trap, no focus return). Full-screen mode, not a dialog: either open through the shared Dialog or drop the modal claim. See spec-hc028-overlay-dialog-contract.md DELTA 3. -->
   <div class="zen" role="dialog" aria-modal="true" aria-label={m.note_focusMode()}>
     <div class="zen-header">
-      {#if current.kind === 'note'}
+      <!-- Spec 043: polish and transcription are AI; not rendered without the plan. -->
+      {#if current.kind === 'note' && hasFeature('ai')}
         <div class="zen-polish-wrap">
           <Button
             type="button"
@@ -135,6 +137,8 @@
           ondiscard={() => blocksRef?.discardFocused()}
           hasPending={() => blocksRef?.hasPendingFocused() ?? false}
         />
+      {/if}
+      {#if current.kind === 'note'}
         <ZenSettingsMenu />
       {/if}
       <Button

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
+  import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
   import SessionDropdown from '../sessions/SessionDropdown.svelte';
   import SessionViewer from '../sessions/SessionViewer.svelte';
   import SessionKanban from '../sessions/SessionKanban.svelte';
@@ -55,7 +55,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
 
   <!-- Tab bar -->
   <div class="shrink-0 flex items-center border-b border-border bg-bg2">
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'dashboard'
@@ -65,7 +66,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       Overview
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'chat'
@@ -75,7 +77,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       {m.agent_tabChat()}
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'monitor'
@@ -86,7 +89,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
       {m.agent_tabMonitor()}
     </Button>
     {#if filesAllowed}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
           {ui.activeAgentTab === 'files'
@@ -98,7 +102,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
       </Button>
     {/if}
     {#if promptAllowed}
-      <Button variant="ghost"
+      <Button
+        variant="ghost"
         type="button"
         class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
           {ui.activeAgentTab === 'prompt'
@@ -109,7 +114,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
         {m.agent_tabPrompt()}
       </Button>
     {/if}
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'memory'
@@ -119,7 +125,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       {m.agent_tabMemory()}
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'capabilities'
@@ -129,7 +136,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       Capabilities
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'orchestration'
@@ -143,7 +151,10 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
 
   <!-- Main content: chat or monitor -->
   {#key ui.activeAgentTab}
-    <div class="flex-1 min-h-0 flex flex-col overflow-hidden" style="animation: tab-slide-in 100ms ease-out">
+    <div
+      class="flex-1 min-h-0 flex flex-col overflow-hidden"
+      style="animation: tab-slide-in 100ms ease-out"
+    >
       {#if ui.activeAgentTab === 'dashboard'}
         <AgentDashboard {agentId} {agent} />
       {:else if ui.activeAgentTab === 'monitor'}

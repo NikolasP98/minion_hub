@@ -8,6 +8,7 @@
     FlowNodePreset,
   } from '$lib/state/features/flow-editor.svelte';
   import { sendRequest } from '$lib/services/gateway.svelte';
+  import { hasFeature } from '$lib/access/premium';
   import { Plus, X, Sparkles } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
@@ -39,7 +40,10 @@
     { id: 'claude-haiku-4-5-20251001', name: 'Claude Haiku 4.5' },
     { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6' },
   ];
+  // Spec 043: without `ai` the router offers only rule mode, so no model list is fetched.
+  const aiEnabled = $derived(hasFeature('ai'));
   onMount(async () => {
+    if (!aiEnabled) return;
     try {
       const res = (await sendRequest('models.list', {})) as { models?: ModelItem[] } | null;
       models = res?.models?.length ? res.models : FALLBACK_MODELS;
@@ -91,46 +95,48 @@
   );
 </script>
 
-<div class="flex gap-1 mb-2">
-  <Button
-    variant="ghost"
-    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
-    'rule'
-      ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
-      : 'text-muted/60 border border-transparent'}"
-    onclick={(e) => {
-      e.stopPropagation();
-      setMode('rule');
-    }}
-    title={m.flowcfg_ruleModeTip()}>{m.flowcfg_rule()}</Button
-  >
-  <Button
-    variant="ghost"
-    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
-    'llm'
-      ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
-      : 'text-muted/60 border border-transparent'}"
-    onclick={(e) => {
-      e.stopPropagation();
-      setMode('llm');
-    }}
-    title={m.flowcfg_llmModeTip()}>{m.flowcfg_llm()}</Button
-  >
-  <Button
-    variant="ghost"
-    class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
-    'hybrid'
-      ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
-      : 'text-muted/60 border border-transparent'}"
-    onclick={(e) => {
-      e.stopPropagation();
-      setMode('hybrid');
-    }}
-    title={m.flowcfg_hybridModeTip()}>{m.flowcfg_hybrid()}</Button
-  >
-</div>
+{#if aiEnabled}
+  <div class="flex gap-1 mb-2">
+    <Button
+      variant="ghost"
+      class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
+      'rule'
+        ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+        : 'text-muted/60 border border-transparent'}"
+      onclick={(e) => {
+        e.stopPropagation();
+        setMode('rule');
+      }}
+      title={m.flowcfg_ruleModeTip()}>{m.flowcfg_rule()}</Button
+    >
+    <Button
+      variant="ghost"
+      class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
+      'llm'
+        ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+        : 'text-muted/60 border border-transparent'}"
+      onclick={(e) => {
+        e.stopPropagation();
+        setMode('llm');
+      }}
+      title={m.flowcfg_llmModeTip()}>{m.flowcfg_llm()}</Button
+    >
+    <Button
+      variant="ghost"
+      class="flex-1 text-[length:var(--font-size-telemetry)] font-semibold rounded px-1 py-0.5 transition-colors {value.mode ===
+      'hybrid'
+        ? 'bg-[var(--color-warning-surface)] text-[var(--color-warning-fg)] border border-[var(--color-warning-border)]'
+        : 'text-muted/60 border border-transparent'}"
+      onclick={(e) => {
+        e.stopPropagation();
+        setMode('hybrid');
+      }}
+      title={m.flowcfg_hybridModeTip()}>{m.flowcfg_hybrid()}</Button
+    >
+  </div>
+{/if}
 
-{#if value.mode === 'llm' || value.mode === 'hybrid'}
+{#if aiEnabled && (value.mode === 'llm' || value.mode === 'hybrid')}
   <Select
     size="sm"
     class="text-[length:var(--font-size-telemetry)] bg-bg3 border border-border rounded px-1 py-0.5 text-foreground"

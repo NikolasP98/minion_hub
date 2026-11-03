@@ -188,7 +188,12 @@
   // so fields never clobber each other; one shared status drives the SaveIndicator.
   // The saved value is read back from `config.get`.
   const saveStatus = createSaveStatus();
-  type SettingsFields = { name?: string; conversationName?: string; preset?: string; text?: string };
+  type SettingsFields = {
+    name?: string;
+    conversationName?: string;
+    preset?: string;
+    text?: string;
+  };
   function prepareConfig(fields: SettingsFields, isCurrent: () => boolean) {
     if (!agentStructure || agentStructure.type !== 'list')
       throw new SaveOutcomeError('error', m.myAgent_displayNameNotReady());
@@ -233,30 +238,21 @@
   const editConversationName = createAutosave({
     committed: () => personalityFromGateway.conversationName,
     scope: () => agent?.agentId,
-    prepare: (v, current) =>
-      prepareConfig({ conversationName: v.trim() ? v : '' }, current),
+    prepare: (v, current) => prepareConfig({ conversationName: v.trim() ? v : '' }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });
   const editPreset = createAutosave<PresetKey | null>({
     committed: () => personalityFromGateway.preset,
     scope: () => agent?.agentId,
-    prepare: (v, current) =>
-      prepareConfig(
-        { preset: v ?? '' },
-        current,
-      ),
+    prepare: (v, current) => prepareConfig({ preset: v ?? '' }, current),
     status: saveStatus,
     debounceMs: 0,
   });
   const editPersonalityText = createAutosave({
     committed: () => personalityFromGateway.text,
     scope: () => agent?.agentId,
-    prepare: (v, current) =>
-      prepareConfig(
-        { text: v.trim() ? v : '' },
-        current,
-      ),
+    prepare: (v, current) => prepareConfig({ text: v.trim() ? v : '' }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });

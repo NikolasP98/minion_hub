@@ -1,11 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import { utilityLinks, hasVisibleSectionItems } from './utility-links';
 import type { Section } from './sections';
+import { featureForPath } from '$lib/modules/availability';
 vi.mock('$lib/paraglide/messages', () => ({
   nav_reliability: () => 'Reliability',
   nav_marketplace: () => 'Marketplace',
   nav_cloud: () => 'Cloud',
   nav_killSwitches: () => 'Killswitches',
+  nav_orgPlans: () => 'Org plans',
 }));
 
 describe('shared navigation offer policy', () => {
@@ -15,6 +17,14 @@ describe('shared navigation offer policy', () => {
       '/marketplace',
       '/cloud',
       '/killswitches',
+      '/orgs/plans',
+    ]);
+  });
+  it('a Base org (no plan features) is not offered Reliability or the Marketplace (spec 043)', () => {
+    expect(utilityLinks((href) => featureForPath(href) === null).map((item) => item.href)).toEqual([
+      '/cloud',
+      '/killswitches',
+      '/orgs/plans',
     ]);
   });
   it('does not offer denied utilities or mutate the policy decision', () => {
