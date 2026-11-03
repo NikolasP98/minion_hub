@@ -40,6 +40,7 @@
     saveNavConfig,
   } from '$lib/nav/nav-edit.svelte';
   import {
+    EMPTY_NAV_CONFIG,
     addLink,
     addSection,
     aliasableTargets,
@@ -283,7 +284,11 @@
 
   let dlg = $state<Dlg | null>(null);
   let dlgOpen = $state(false);
+  // Draft validation runs against the document as it was when the dialog opened: `config`
+  // flips to the optimistic copy (which already holds the draft) before the PUT resolves.
+  let base = $state.raw<NavConfig>(EMPTY_NAV_CONFIG);
   const openDlg = (d: Dlg) => {
+    base = config;
     if (d.t === 'rename') {
       fLabel =
         instance?.page.label ??
@@ -415,7 +420,7 @@
         return { field: 'form', text: i.message };
     }
   };
-  const draftIssues = $derived(draftOp ? newIssues(config, draftOp(config)) : []);
+  const draftIssues = $derived(draftOp ? newIssues(base, draftOp(base)) : []);
   const shown = $derived([...draftIssues, ...serverIssues].map(issueText));
   const errorFor = (f: 'label' | 'slug' | 'form') => shown.find((s) => s.field === f)?.text;
   // Built-in labels may be emptied (that resets the override); everything else needs a label.

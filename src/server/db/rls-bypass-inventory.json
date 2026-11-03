@@ -1,0 +1,662 @@
+[
+  {
+    "file": "src/hooks.server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/lib/assistant/turn-router.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/lib/server/agents/health-metrics.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/lib/server/artifacts/store.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/lib/server/flows/exports-store.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/lib/server/gateway-rpc.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/lib/server/workforce-company.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/(app)/+layout.server.ts",
+    "calls": ["getDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/(app)/home/settings/+page.server.ts",
+    "calls": ["getDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/attachments/sweep/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/auth/forgot-password/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/auth/password-login/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/brains/reconcile/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/builder/tools/variables/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/crm/conversations/analyze/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/crm/conversations/vectorize/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/crm/dni-validation/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/crm/relationship/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/dev/qa-login/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/dev/switch-user/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/dev/users/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/finances/sync/daily/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/finances/sync/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/flows/[id]/copilot/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/_shared/action-auth.ts",
+    "calls": ["getCoreDb", "supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/actions/note-create/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/actions/notify-user/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/brain-remember/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/brain-search/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/brains/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/crm-conversation-themes/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/email-ledger/+server.ts",
+    "calls": ["getCoreDb", "supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/insight/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/pulse/proposals/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/query/custom-tools/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/query/notes/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/query/tool-catalog/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/search-crm-conversations/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/gateway/whatsapp/member/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/internal/channels/resolved/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/internal/events/handle/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/internal/flows/[id]/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/marketplace/agents/[id]/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/marketplace/agents/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/marketplace/sync/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/marketplace/sync/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/me/password/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/me/preferences/[section]/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/memberships/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/meta/attribution/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/meta/sync/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/metrics/skill-stats/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/notifications/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/scheduling/reminders/tick/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/workshop/groupchat/[id]/advance/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/api/workspaces/select/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/auth/callback/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/routes/onboarding/+page.server.ts",
+    "calls": ["getCoreDb", "supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/ai-usage.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/auth/assistant-principal.ts",
+    "calls": ["getCoreDb", "supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/auth/core-ctx.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/auth/flows-ctx.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/auth/notes-ctx.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/auth/password.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/auth/resolve-identity.ts",
+    "calls": ["getCoreDb", "getDb", "supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/auth/shared-rate-limit.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/pg-crm-schema.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/pg-ledger-client.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/pg-schema/brain-agents.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/pg-schema/brains.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/pg-schema/email-opens.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/pg-schema/workshop-experiments.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/db/with-org-core.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/identity/channel-claim.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/architecture-c4.model.ts",
+    "calls": ["getDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/assignment.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/backup-scheduler.ts",
+    "calls": ["getCoreDb", "getDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/bg-runtime.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/brain-business-corpus-jobs.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/brain-corpus-jobs.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/brains.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/channel-pairing.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/channel-sync.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/crm-contacts.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/crm-relationship-inference.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/crm-sentiment-rollup.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/crm-word-frequency-rollup.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/dev-qa-login.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/doors-followup.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/doors.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/email-ledger.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/email-opens.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/finance-statements.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/finance-sync-jobs.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/fleet-update.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/gateway-jwt.service.ts",
+    "calls": ["getDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/gateway-lease.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/gateway-resource-authority.repository.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/gateway.pg.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/groupchat.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/inbox/evaluate.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/join/links.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/join/membership.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/join/request-target.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/join/requests.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/membership.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/meta/meta-sync-jobs.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/meta/meta-sync.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/nav-config.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/notif.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/org-areas.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/org-config-sync.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/organization-provision.service.ts",
+    "calls": ["getDb", "supabaseAdmin"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/organizations.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/permissions.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/personal-agent.service.ts",
+    "calls": ["getDb"],
+    "class": "user-scoped"
+  },
+  {
+    "file": "src/server/services/preferences.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "user-scoped"
+  },
+  {
+    "file": "src/server/services/pulse-digest.store.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/pulse-digest.worker.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/pulse-dispatch.worker.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/pulse-tick.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/rbac.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/releases/releases.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/reminder-config.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/retention.service.ts",
+    "calls": ["getDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/scheduling-public.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/shared-identity.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/supabase-credential.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/tenant.service.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/user.service.ts",
+    "calls": ["getCoreDb", "supabaseAdmin"],
+    "class": "user-scoped"
+  },
+  {
+    "file": "src/server/services/workshop-experiments.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/workspaces.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  }
+]
