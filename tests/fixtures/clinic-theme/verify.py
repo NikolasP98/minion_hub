@@ -66,6 +66,31 @@ for mode in ['light', 'dark']:
     print('Desktop passed: ' + mode, flush=True)
     results.append({'mode': mode, 'tokens': state, 'reload': True, 'dialog': True, 'preventsBackgroundFocus': True, 'escapeRestoresFocus': True})
 
+# Exercise both real picker cards at desktop width, including their visible grid.
+for mode in ['light', 'dark']:
+    selector = 'button[title="Clinic ' + mode.title() + '"]'
+    js("document.querySelector('.appearance-proof').open = true; document.querySelector('.appearance-proof').scrollIntoView()")
+    settle()
+    js('document.querySelector(' + json.dumps(selector) + ').scrollIntoView({block:"center"})')
+    settle()
+    shot('picker-' + mode + '-desktop-before')
+    point = js('(() => {const r=document.querySelector(' + json.dumps(selector) + ').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,visible:r.width>0&&r.height>0&&r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight};})()')
+    assert point['visible'], point
+    click_at_xy(point['x'], point['y'])
+    settle()
+    assert js('document.documentElement.dataset.minionTheme') == 'clinic-' + mode
+    assert js("JSON.parse(localStorage.getItem('minion-hub-theme')).presetId") == 'clinic-' + mode
+    assert js('document.querySelector(' + json.dumps(selector) + ').getAttribute("aria-pressed")') == 'true'
+    assert js('document.documentElement.scrollWidth <= innerWidth')
+    shot('picker-' + mode + '-desktop')
+    js('location.reload()')
+    wait_for_load()
+    settle()
+    assert js('document.documentElement.dataset.minionTheme') == 'clinic-' + mode
+    results.append({'actualAppearancePicker': True, 'mode': mode, 'desktopWidth': 1440, 'persisted': True, 'reload': True, 'overflow': False})
+    print('Desktop appearance picker passed: ' + mode, flush=True)
+
+js('scrollTo(0,0)')
 cdp('Emulation.setDeviceMetricsOverride', **{'width': 390, 'height': 844, 'deviceScaleFactor': 1, 'mobile': False})
 settle()
 shot('mobile-initial')
