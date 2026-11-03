@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-vi.mock('$server/ai-usage', () => ({ recordAiUsage: vi.fn() }));
+vi.mock('$server/ai-usage', () => ({
+  recordAiUsage: vi.fn(),
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 vi.mock('$env/dynamic/private', () => ({ env: { OPENROUTER_API_KEY: 'synthetic' } }));
 import {
   readJobRequest,

@@ -9,7 +9,10 @@ vi.mock('$env/dynamic/public', () => ({
   },
 }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => ({}) }));
-vi.mock('$server/ai-usage', () => ({ setAiUsageOrg: vi.fn() }));
+vi.mock('$server/ai-usage', () => ({
+  setAiUsageOrg: vi.fn(),
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 vi.mock('posthog-node', () => ({
   PostHog: class {
     capture = sink.capture;
