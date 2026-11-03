@@ -25,9 +25,28 @@ export interface GatewayJwtClaims {
   features?: string[];
 }
 
-/** JWT expiration time in seconds (1 hour). */
-const JWT_EXPIRY_SECONDS = 3600;
+/** Audience every gateway accepts alongside its shared token, until rotation (spec 045 I2). */
+const LEGACY_AUDIENCE = 'openclaw-gateway';
+/** Lifetime of a per-gateway JWT (spec 045 I3: removal cuts access within 15 minutes). */
+const GATEWAY_JWT_EXPIRY_SECONDS = 900;
+// The pre-A3 browser never refreshes on the socket and may hold a prefetched JWT
+// across a gateway outage, so the audience-less path keeps its old hour.
+// TODO(handoff): drop with the legacy audience in spec 045 A4 (tasks T054).
+const LEGACY_JWT_EXPIRY_SECONDS = 3600;
 const ALG = 'EdDSA';
+
+/**
+ * `gw:<host[:port]>` of a gateway row's URL: lower-cased host, explicit
+ * non-default port kept, scheme and path dropped (spec 045 §3.1). WHATWG URL
+ * already lower-cases the host and omits the default port of ws/wss/http/https.
+ */
+export function gatewayAudience(url: string): string {
+  const parsed = new URL(url);
+  if (!['ws:', 'wss:', 'http:', 'https:'].includes(parsed.protocol) || !parsed.host) {
+    throw new Error('Gateway URL must be ws, wss, http or https with a host');
+  }
+  return `gw:${parsed.host}`;
+}
 
 /**
  * Stable issuer for the gateway JWT. Must match the gateway's configured
@@ -136,13 +155,15 @@ export async function getJwksPublicKeys(): Promise<JWK[]> {
  * Issue a gateway JWT with custom claims for the specified user.
  *
  * Signs with a standalone EdDSA keypair (persisted in `gateway_signing_keys`,
- * sealed with `ENCRYPTION_KEY`). Issuer + audience are kept stable so the
- * gateway's `oidcIssuers` keeps validating after Better Auth is removed.
+ * sealed with `ENCRYPTION_KEY`). The issuer is kept stable so the gateway's
+ * `oidcIssuers` keeps validating after Better Auth is removed. `audience`
+ * (from `gatewayAudience`) binds the JWT to one gateway and shortens it to
+ * 15 minutes; without it the JWT carries the legacy audience and hour.
  */
 export async function issueGatewayJwt(
   ctx: TenantContext,
   userId: string,
-  entitlements?: { plan: string; features: string[] },
+  opts: { audience?: string; entitlements?: { plan: string; features: string[] } } = {},
 ): Promise<{ token: string; expiresAt: number }> {
   // 1. Role from canonical Postgres. Do not route authentication through
   // PostgREST: a REST-gateway restart previously turned this valid profile
@@ -156,7 +177,9 @@ export async function issueGatewayJwt(
   if (!profile) {
     throw new Error(`User not found: ${userId}`);
   }
-  const role = ((profile as { role: string | null }).role ?? 'user') as 'admin' | 'user';
+  // Gateway admin is a master key: only platform admins get it. Org owners and
+  // admins get `user` (read+write) like everyone else (spec 045 I4).
+  const role: GatewayJwtClaims['role'] = profile.role === 'admin' ? 'admin' : 'user';
 
   // 2. Agent IDs assigned to this user across the tenant.
   const agentRows = await ctx.db
@@ -169,14 +192,18 @@ export async function issueGatewayJwt(
   // 3. Sign with the standalone key.
   const { privateKey, kid } = await loadActiveSigningKey();
   const nowSeconds = Math.floor(Date.now() / 1000);
-  const expiresAt = (nowSeconds + JWT_EXPIRY_SECONDS) * 1000; // ms for the client
+  const ttl = opts.audience ? GATEWAY_JWT_EXPIRY_SECONDS : LEGACY_JWT_EXPIRY_SECONDS;
+  const expiresAt = (nowSeconds + ttl) * 1000; // ms for the client
 
   const claims: GatewayJwtClaims = {
     userId,
     role,
     agentIds,
     orgId: ctx.tenantId,
-    ...(entitlements && { plan: entitlements.plan, features: entitlements.features }),
+    ...(opts.entitlements && {
+      plan: opts.entitlements.plan,
+      features: opts.entitlements.features,
+    }),
   };
 
   const token = await new SignJWT({ ...claims })
@@ -185,9 +212,9 @@ export async function issueGatewayJwt(
     // Each issuance is individually revocable, including simultaneous sessions.
     .setJti(randomUUID())
     .setIssuedAt(nowSeconds)
-    .setExpirationTime(nowSeconds + JWT_EXPIRY_SECONDS)
+    .setExpirationTime(nowSeconds + ttl)
     .setIssuer(gatewayJwtIssuer())
-    .setAudience('openclaw-gateway')
+    .setAudience(opts.audience ?? LEGACY_AUDIENCE)
     .sign(privateKey);
 
   return { token, expiresAt };

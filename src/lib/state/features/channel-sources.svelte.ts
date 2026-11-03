@@ -14,6 +14,7 @@
 
 import { sendRequest } from '$lib/services/gateway.svelte';
 import { conn } from '$lib/state/gateway';
+import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
 export type ChannelPlugin = { id: string; label: string };
 export type ChannelAccount = {
@@ -56,10 +57,12 @@ export function channelPlugins(): ChannelPlugin[] {
 
 export async function ensureChannelPlugins(): Promise<void> {
   if (store.pluginsLoaded || !conn.connected) return;
+  // Spec 045: gateway admin; skipped, not failed, for everyone else.
+  if (!gatewayMethodAllowed('channels.plugins.list')) return;
   try {
-    const res = (await sendRequest('channels.plugins.list', {})) as
-      | { plugins?: { channelType?: string; pluginId?: string; label?: string }[] }
-      | null;
+    const res = (await sendRequest('channels.plugins.list', {})) as {
+      plugins?: { channelType?: string; pluginId?: string; label?: string }[];
+    } | null;
     const items = (res?.plugins ?? [])
       .map((p) => ({
         id: p.channelType ?? p.pluginId ?? '',
@@ -85,12 +88,10 @@ interface AccountSnapshot {
 export async function ensureChannelStatus(): Promise<void> {
   if (store.statusLoaded || !conn.connected) return;
   try {
-    const res = (await sendRequest('channels.status', {})) as
-      | {
-          channelAccounts?: Record<string, AccountSnapshot[]>;
-          channelDefaultAccountId?: Record<string, string>;
-        }
-      | null;
+    const res = (await sendRequest('channels.status', {})) as {
+      channelAccounts?: Record<string, AccountSnapshot[]>;
+      channelDefaultAccountId?: Record<string, string>;
+    } | null;
     const byChannel: Record<string, ChannelAccount[]> = {};
     const defaults = res?.channelDefaultAccountId ?? {};
     for (const [channel, accounts] of Object.entries(res?.channelAccounts ?? {})) {
@@ -128,7 +129,13 @@ export async function ensureRegisteredIdentities(): Promise<void> {
     const res = await fetch('/api/channels/identities');
     if (!res.ok) return;
     const body = (await res.json()) as {
-      identities?: { id: string; channel: string; to: string; displayName?: string | null; verified?: boolean }[];
+      identities?: {
+        id: string;
+        channel: string;
+        to: string;
+        displayName?: string | null;
+        verified?: boolean;
+      }[];
     };
     store.identities = (body.identities ?? []).map((i) => ({
       id: i.id,

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
+  import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
   import SessionDropdown from '../sessions/SessionDropdown.svelte';
   import SessionViewer from '../sessions/SessionViewer.svelte';
   import SessionKanban from '../sessions/SessionKanban.svelte';
@@ -15,11 +15,17 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
   import PiAgentTab from './PiAgentTab.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import type { Agent } from '@minion-stack/shared';
   import type { SessionRow } from '../sessions/SessionsList.svelte';
 
   let { agentId, agent }: { agentId: string; agent: Agent } = $props();
+
+  // Spec 045: workspace files and the prompt inspector are gateway-admin RPCs — hidden, not locked.
+  const filesAllowed = $derived(gatewayMethodAllowed('agents.files.list'));
+  const settingsAllowed = $derived(gatewayMethodAllowed('config.patch'));
+  const promptAllowed = $derived(gatewayMethodAllowed('prompt.sections.list'));
 
   const mainSessionKey = $derived(`agent:${agentId}:main`);
   const isMainSession = $derived(ui.selectedSessionKey === mainSessionKey);
@@ -49,7 +55,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
 
   <!-- Tab bar -->
   <div class="shrink-0 flex items-center border-b border-border bg-bg2">
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'dashboard'
@@ -59,7 +66,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       Overview
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'chat'
@@ -69,7 +77,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       {m.agent_tabChat()}
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'monitor'
@@ -79,27 +88,34 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       {m.agent_tabMonitor()}
     </Button>
-    <Button variant="ghost"
-      type="button"
-      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
-        {ui.activeAgentTab === 'files'
-        ? 'border-accent text-accent'
-        : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (ui.activeAgentTab = 'files')}
-    >
-      {m.agent_tabFiles()}
-    </Button>
-    <Button variant="ghost"
-      type="button"
-      class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
-        {ui.activeAgentTab === 'prompt'
-        ? 'border-accent text-accent'
-        : 'border-transparent text-muted hover:text-foreground'}"
-      onclick={() => (ui.activeAgentTab = 'prompt')}
-    >
-      {m.agent_tabPrompt()}
-    </Button>
-    <Button variant="ghost"
+    {#if filesAllowed}
+      <Button
+        variant="ghost"
+        type="button"
+        class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
+          {ui.activeAgentTab === 'files'
+          ? 'border-accent text-accent'
+          : 'border-transparent text-muted hover:text-foreground'}"
+        onclick={() => (ui.activeAgentTab = 'files')}
+      >
+        {m.agent_tabFiles()}
+      </Button>
+    {/if}
+    {#if promptAllowed}
+      <Button
+        variant="ghost"
+        type="button"
+        class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
+          {ui.activeAgentTab === 'prompt'
+          ? 'border-accent text-accent'
+          : 'border-transparent text-muted hover:text-foreground'}"
+        onclick={() => (ui.activeAgentTab = 'prompt')}
+      >
+        {m.agent_tabPrompt()}
+      </Button>
+    {/if}
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'memory'
@@ -109,7 +125,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       {m.agent_tabMemory()}
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'capabilities'
@@ -119,7 +136,8 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
     >
       Capabilities
     </Button>
-    <Button variant="ghost"
+    <Button
+      variant="ghost"
       type="button"
       class="px-4 py-2 text-[length:var(--font-size-caption)] font-semibold border-b-2 transition-colors cursor-pointer
         {ui.activeAgentTab === 'orchestration'
@@ -133,7 +151,10 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
 
   <!-- Main content: chat or monitor -->
   {#key ui.activeAgentTab}
-    <div class="flex-1 min-h-0 flex flex-col overflow-hidden" style="animation: tab-slide-in 100ms ease-out">
+    <div
+      class="flex-1 min-h-0 flex flex-col overflow-hidden"
+      style="animation: tab-slide-in 100ms ease-out"
+    >
       {#if ui.activeAgentTab === 'dashboard'}
         <AgentDashboard {agentId} {agent} />
       {:else if ui.activeAgentTab === 'monitor'}
@@ -143,9 +164,9 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
           sessionKey={ui.selectedSessionKey}
           serverId={ui.selectedServerId}
         />
-      {:else if ui.activeAgentTab === 'files'}
+      {:else if ui.activeAgentTab === 'files' && filesAllowed}
         <AgentFiles {agentId} />
-      {:else if ui.activeAgentTab === 'prompt'}
+      {:else if ui.activeAgentTab === 'prompt' && promptAllowed}
         <AgentPromptSimulator {agentId} sessionKey={mainSessionKey} />
       {:else if ui.activeAgentTab === 'memory'}
         <AgentMemoryPanel {agentId} />
@@ -167,6 +188,6 @@ import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
   {/key}
 </div>
 
-{#if ui.agentSettingsOpen}
+{#if ui.agentSettingsOpen && settingsAllowed}
   <AgentSettingsPanel {agentId} />
 {/if}

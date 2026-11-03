@@ -5,12 +5,16 @@
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { hasFeature } from '$lib/access/premium';
   import { channelHref } from '$lib/components/channels/channel-href';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
-  const channels = $derived(data.channels);
+  // Plugin channel pages are admin-only after the pass switch (spec 045 T038): no card into a blank page.
+  const channels = $derived(
+    data.channels.filter((e) => !adminOnlyPageHidden(channelHref(e.pluginId, hasFeature('ai')))),
+  );
   // Set when the gateway couldn't be reached — the page still renders (hub-native
   // cards like Gmail stay usable) but must not imply "no channels are enabled".
   // Boolean by design: the underlying RPC error can name internal hosts, so it

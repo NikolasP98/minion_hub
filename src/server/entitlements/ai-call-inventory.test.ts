@@ -65,10 +65,6 @@ const AI_CALL_SITES: Record<string, { kind: Kind; reason?: string }> = {
     reason: 'playground.complete inside the groupchat job (feature ai)',
   },
   // Browser gateway calls (gateway allowlist refuses them for Base sessions)
-  'src/lib/state/features/personal-agent.svelte.ts': {
-    kind: 'browser-gateway',
-    reason: 'agents.create; the hub reports no pending agent for an org without ai',
-  },
   'src/lib/state/workshop/experiments.svelte.ts': {
     kind: 'browser-gateway',
     reason: 'playground.complete; the workshop page is hidden',
@@ -132,6 +128,10 @@ const AI_CALL_SITES: Record<string, { kind: Kind; reason?: string }> = {
   'src/server/llm.ts': {
     kind: 'platform',
     reason: 'the provider factory and usage middleware backstop',
+  },
+  'src/lib/services/gateway/platform-admin-methods.ts': {
+    kind: 'platform',
+    reason: 'spec 045 list of admin-only method names; makes no call',
   },
   'src/server/db/pg-schema/ai-usage.ts': {
     kind: 'platform',

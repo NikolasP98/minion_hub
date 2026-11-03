@@ -2,13 +2,11 @@
   import PluginIframe from '$lib/plugins/PluginIframe.svelte';
   import type { Theme } from '$lib/plugins/bridge-protocol';
   import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
-  import { hostsState, fetchHostToken } from '$lib/state/features/hosts.svelte';
   import { iconSizes, PageHeader } from '$lib/components/ui';
-  import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import { Puzzle } from 'lucide-svelte';
   import { BRAND_ICON_SET, PLUGIN_ICON_MAP } from '$lib/plugins/icon-map';
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
-  import * as m from '$lib/paraglide/messages';
 
   let { entry, gatewayBaseUrl }: { entry: PluginUiManifestOccupant; gatewayBaseUrl: string } =
     $props();
@@ -43,36 +41,6 @@
       }
     }
   }
-
-  let authToken = $state('');
-  let tokenLoading = $state(false);
-  let tokenError = $state<string | null>(null);
-
-  $effect(() => {
-    const hostId = hostsState.activeHostId;
-    if (!hostId) {
-      authToken = '';
-      return;
-    }
-    tokenLoading = true;
-    tokenError = null;
-    fetchHostToken(hostId)
-      .then((tok) => {
-        if (tok === null) {
-          tokenError = 'session required';
-          authToken = '';
-        } else {
-          authToken = tok;
-        }
-      })
-      .catch((err) => {
-        tokenError = String(err);
-        authToken = '';
-      })
-      .finally(() => {
-        tokenLoading = false;
-      });
-  });
 </script>
 
 <PageShell archetype="workspace" scroll="none" labelledBy="plugin-control-title">
@@ -94,26 +62,12 @@
     {/snippet}
   </PageHeader>
   <PageBody padding="none" scroll="none">
-    <AsyncBoundary
-      class="h-full"
-      state={tokenLoading
-        ? { kind: 'loading', label: m.common_loading() }
-        : tokenError
-          ? { kind: 'error', description: tokenError }
-          : !authToken
-            ? {
-                kind: 'unavailable',
-                title: m.config_noServer(),
-                description: m.config_connectHint(),
-              }
-            : { kind: 'ready' }}
-    >
+    <div class="h-full">
       {#key entry.pluginId + ':' + entry.entrypoint}
         <PluginIframe
           pluginId={entry.pluginId}
           entrypoint={entry.entrypoint}
           gatewayUrl={gatewayBaseUrl}
-          {authToken}
           {theme}
           {tokens}
           compat={entry.compat}
@@ -121,6 +75,6 @@
           fillContainer
         />
       {/key}
-    </AsyncBoundary>
+    </div>
   </PageBody>
 </PageShell>

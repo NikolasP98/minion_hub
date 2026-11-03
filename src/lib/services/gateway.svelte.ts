@@ -124,6 +124,14 @@ import {
   gwTrace,
 } from './gateway-rpc';
 import { env as publicEnv } from '$env/dynamic/public';
+import { browserSharedTokenOff } from '$lib/gateway-browser-token';
+import { gatewayMethodAllowed, refuseForRole } from './gateway/platform-admin-methods';
+
+/** The captured transport, with the same "your role can't" gate as `sendRequest` (spec 045). */
+function guardedRequest(client: GatewayClient) {
+  return (method: string, params?: unknown) =>
+    gatewayMethodAllowed(method) ? client.request(method, params) : refuseForRole();
+}
 
 setChannelStatusSink((status) => {
   gw.channels = status as typeof gw.channels;
@@ -226,29 +234,66 @@ function isJwtAuthEnabled(): boolean {
   return publicEnv.PUBLIC_GATEWAY_JWT_AUTH === 'true' && !jwtAuthDisabled;
 }
 
-/** Best-effort fetch of the hub-issued gateway JWT. Null on any failure. */
-async function fetchGatewayJwt(): Promise<string | null> {
+// ─── Per-gateway JWT (spec 045 A3) ──────────────────────────────────────────
+// Once `browserSharedTokenOff()`, the hub-issued JWT is the dashboard's only gateway
+// credential: bound to one gateway (`aud=gw:<host>`), 900 s long, renewed on the
+// socket every 600 s, and never swapped for the shared token.
+/** A prefetched JWT older than this is re-minted, never presented (it lives 900 s). */
+const JWT_PREFETCH_MAX_AGE_MS = 5 * 60_000;
+const JWT_REFRESH_INTERVAL_MS = 600_000;
+
+/**
+ * The hub-issued gateway JWT, or the HTTP status that refused it (0 = network or
+ * malformed body). `gatewayId` binds it to that gateway; without it the JWT
+ * carries the legacy audience the token socket uses.
+ */
+async function requestGatewayJwt(gatewayId: string | null): Promise<string | number> {
   try {
-    const res = await fetch('/api/gateway/jwt', { credentials: 'same-origin' });
-    if (!res.ok) return null;
+    const url = gatewayId
+      ? `/api/gateway/jwt?gatewayId=${encodeURIComponent(gatewayId)}`
+      : '/api/gateway/jwt';
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) return res.status;
     const data = (await res.json()) as { token?: unknown };
-    return typeof data.token === 'string' ? data.token : null;
+    return typeof data.token === 'string' ? data.token : 0;
   } catch {
-    return null;
+    return 0;
   }
+}
+
+/** Best-effort fetch of the audience-less JWT the token socket carries. Null on any failure. */
+async function fetchGatewayJwt(): Promise<string | null> {
+  const jwt = await requestGatewayJwt(null);
+  return typeof jwt === 'string' ? jwt : null;
 }
 
 // One-shot JWT prefetch: wsConnect kicks this off so the fetch overlaps the
 // token fetch + WS open + challenge instead of adding a serial RTT inside the
-// handshake. Consume-once — auto-reconnect handshakes fetch fresh.
-let prefetchedJwt: Promise<string | null> | null = null;
-function prefetchGatewayJwt(): void {
-  if (isJwtAuthEnabled()) prefetchedJwt = fetchGatewayJwt();
+// handshake. Consume-once — auto-reconnect handshakes fetch fresh. Keyed by
+// gateway id so a JWT minted for one gateway is never presented to another.
+let prefetchedJwt: { gatewayId: string; at: number; jwt: Promise<string | number> } | null = null;
+function prefetchGatewayJwt(gatewayId: string): void {
+  if (browserSharedTokenOff()) {
+    prefetchedJwt = { gatewayId, at: Date.now(), jwt: requestGatewayJwt(gatewayId) };
+  } else if (isJwtAuthEnabled()) {
+    prefetchedJwt = { gatewayId, at: Date.now(), jwt: fetchGatewayJwt().then((t) => t ?? 0) };
+  }
 }
-function takePrefetchedJwt(): Promise<string | null> | null {
+function takePrefetchedJwt(gatewayId: string): Promise<string | number> | null {
   const p = prefetchedJwt;
   prefetchedJwt = null;
-  return p;
+  return p && p.gatewayId === gatewayId && Date.now() - p.at < JWT_PREFETCH_MAX_AGE_MS
+    ? p.jwt
+    : null;
+}
+
+/** Issuance refused this viewer's role for the gateway: say so and stop, never retry (spec 045 I5). */
+async function refuseGatewayRole(): Promise<void> {
+  conn.connecting = false;
+  conn.particleHue = 'red';
+  setConnectError('gateway_forbidden');
+  const m = await msgs();
+  toastError(m.gateway_roleCantConnect(), undefined, { id: 'gateway-role-forbidden' });
 }
 
 /** A 1008 close whose reason implicates JWT validation (issuer/audience/exp/sig). */
@@ -365,8 +410,25 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
     getActiveHost()?.url === host.url &&
     identityKey() === identity;
   let readOwner: GatewaySessionOwner | undefined;
+  // One renewal timer per live JWT-only socket (spec 045 I3). A failed renewal
+  // is ignored: the gateway's 4401 close at expiry drives a normal reconnect,
+  // whose challenge mints a fresh JWT.
+  let refreshTimer: ReturnType<typeof setInterval> | null = null;
+  const stopRefresh = () => {
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = null;
+  };
   const session = new AuthenticatedSession<HelloOk>(owns, (hello, current) => {
     readOwner = publishAuthenticatedSession(client, host, hello, current);
+    stopRefresh();
+    // Token sockets are never renewed: a pre-A1 gateway broadcasts auth.refresh to every socket.
+    if (!browserSharedTokenOff()) return;
+    refreshTimer = setInterval(async () => {
+      if (!current()) return stopRefresh();
+      const jwt = await requestGatewayJwt(host.id);
+      if (typeof jwt !== 'string' || !current()) return;
+      await client.request('auth.refresh', { jwt }).catch(() => {});
+    }, JWT_REFRESH_INTERVAL_MS);
   });
   const client: GatewayClient = new GatewayClient({
     url: host.url,
@@ -419,10 +481,32 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // failed fetch falls back to shared-token auth (orgId undefined => full
       // roster) rather than sending a known-bad credential.
       let jwt: string | null = null;
-      try {
-        jwt = isJwtAuthEnabled() ? await (takePrefetchedJwt() ?? fetchGatewayJwt()) : null;
-      } catch (e) {
-        gwFail('challenge.jwt', e);
+      if (browserSharedTokenOff()) {
+        // The JWT is the whole credential: a reconnect without one must fail, never fall back.
+        const minted = await (takePrefetchedJwt(host.id) ?? requestGatewayJwt(host.id));
+        if (identityKey() !== identity)
+          throw new Error('Gateway identity changed during authentication');
+        if (minted === 403) {
+          if (getClient() === client) {
+            setClient(null);
+            session.closed();
+            client.close();
+            void refuseGatewayRole();
+          }
+          throw new Error('gateway_forbidden');
+        }
+        // Outage: the failed handshake closes the socket and autoReconnect backs off.
+        if (typeof minted !== 'string') throw new Error('could not load gateway token');
+        jwt = minted;
+      } else {
+        try {
+          const legacy = isJwtAuthEnabled()
+            ? await (takePrefetchedJwt(host.id) ?? fetchGatewayJwt())
+            : null;
+          jwt = typeof legacy === 'string' ? legacy : null;
+        } catch (e) {
+          gwFail('challenge.jwt', e);
+        }
       }
       if (identityKey() !== identity)
         throw new Error('Gateway identity changed during authentication');
@@ -471,6 +555,7 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
     },
 
     onClose(code: number, reason: string) {
+      stopRefresh();
       session.closed();
       if (readOwner) retireGatewaySessionOwner(readOwner);
       // Fence: ignore entirely if this client is no longer the current one —
@@ -511,7 +596,8 @@ function buildGatewayClient(host: Host, token: string): GatewayClient {
       // expired/invalid token): disable the JWT for the rest of the session and
       // reconnect on shared-token auth alone. Self-healing — the dashboard is
       // never locked out by a JWT problem; it just loses org-scoping.
-      if (isJwtAuthEnabled() && isJwtAuthClose(code, reason)) {
+      // Never once the JWT is the only credential: there is nothing to fall back to (spec 045 I5).
+      if (!browserSharedTokenOff() && isJwtAuthEnabled() && isJwtAuthClose(code, reason)) {
         jwtAuthDisabled = true;
         console.warn(
           '[hub] gateway rejected JWT — temporarily falling back to shared-token auth:',
@@ -592,7 +678,7 @@ function publishAuthenticatedSession(
     hostUrl: host.url,
     methods: Array.isArray(hello.features?.methods) ? hello.features.methods : null,
     current,
-    request: (method, params) => client.request(method, params),
+    request: guardedRequest(client),
   });
   publishedOwner = { hostId: host.id, url: host.url, identity: identityKey() };
   gwTrace('hello.received', { protocol: hello.protocol });
@@ -675,8 +761,20 @@ export async function wsConnect() {
     conn.connecting = false;
     return;
   }
-  prefetchGatewayJwt();
-  const fetched = await fetchHostToken(capturedHostId);
+  prefetchGatewayJwt(capturedHostId);
+  let minted: string | number | null = null;
+  let fetched: string | null;
+  if (browserSharedTokenOff() && prefetchedJwt) {
+    // No shared token: mint this gateway's JWT before opening the socket, so a
+    // refused role stops here. The challenge presents it. An issuance outage is
+    // not final: the challenge re-mints, and a failed handshake gets the existing
+    // "unreachable" toast and the client's own backoff (spec 045 A3 audit F5).
+    minted = await prefetchedJwt.jwt;
+    if (typeof minted !== 'string') prefetchedJwt = null;
+    fetched = '';
+  } else {
+    fetched = await fetchHostToken(capturedHostId);
+  }
   if (
     !lifecycleFence.isCurrent(generation) ||
     identityKey() !== identity ||
@@ -684,6 +782,10 @@ export async function wsConnect() {
     getActiveHost()?.url !== host.url
   )
     return;
+  if (minted === 403) {
+    await refuseGatewayRole();
+    return;
+  }
   if (fetched === null) {
     conn.connecting = false;
     if (isEagerReconnectArmed()) {
@@ -748,7 +850,9 @@ export async function cutoverToHost(
   const sourceClient = getClient();
   const identity = identityKey();
   const generation = lifecycleFence.snapshot();
-  const fetched = await fetchHostToken(host.id);
+  // JWT-only: no token to fetch; the backup's challenge mints its own JWT for
+  // `host` (a prefetch for another gateway is never presented).
+  const fetched = browserSharedTokenOff() ? '' : await fetchHostToken(host.id);
   if (
     !lifecycleFence.isCurrent(generation) ||
     getClient() !== sourceClient ||
@@ -1617,7 +1721,7 @@ function onHelloOk(hello: HelloOk, client: GatewayClient, current: () => boolean
 
   stopSessionBootstrap = startSessionBootstrap({
     current,
-    request: (method, params) => client.request(method, params),
+    request: guardedRequest(client),
     fetcher: fetch,
     agents(value, initial) {
       const result = value as { agents?: never[]; defaultId?: string } | null;

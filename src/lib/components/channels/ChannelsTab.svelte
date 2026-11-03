@@ -19,7 +19,11 @@
   import { MessageSquare, Download } from 'lucide-svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
+  // Spec 045: the gateway-wide history default is gateway admin (config.patch, channels.logout,
+  // channels.whatsapp.pair) — hidden, not locked, for anyone else once switched.
+  const gatewayAdmin = $derived(gatewayMethodAllowed('config.patch'));
   let wizardType = $state<ChannelType | null>(null);
   let heartbeatChannels = $state<Channel[]>([]);
   let expandedChannelId = $state<string | null>(null);
@@ -434,7 +438,7 @@
       >
         <!-- Gateway-wide history-sync default. WhatsApp is the only transport
                      that streams history from the device, so it only shows here. -->
-        {#if type === 'whatsapp'}
+        {#if type === 'whatsapp' && gatewayAdmin}
           <div class="pb-2">
             <HistorySyncControl />
           </div>

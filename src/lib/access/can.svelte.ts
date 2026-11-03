@@ -6,6 +6,7 @@ import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
 import { canonicalPath } from '$lib/canonical-path';
 import { instanceAllowed, resolveNavInstance } from '$lib/nav/custom-sections';
 import { navConfig } from '$lib/nav/nav-config.svelte';
+import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
 import { hasFeature } from './premium';
 
 interface ClientAccessData {
@@ -55,6 +56,17 @@ function planGrantsPath(canonical: string): boolean {
 }
 
 /**
+ * Spec 045: is the page this URL renders admin-only for this viewer? A custom nav
+ * entry (`/<section>/<slug>~<id>`, spec 037) renders its TARGET route, so the target
+ * is what gets judged.
+ */
+export function adminOnlyUrlHidden(pathname: string): boolean {
+  const path = canonicalPath(pathname.split(/[?#]/, 1)[0] || '/');
+  const hit = resolveNavInstance(navConfig(), path);
+  return adminOnlyPageHidden(hit ? hit.target + hit.rest : path);
+}
+
+/**
  * Evaluate a live href through the same route policy registry the server layout,
  * design manifest, global navigation, and command palette consult.
  *
@@ -67,6 +79,8 @@ function planGrantsPath(canonical: string): boolean {
  * check, not the enforcement boundary.
  */
 export function canViewPath(path: string): boolean {
+  // Spec 045: pages that only a gateway admin's pass can serve are not offered to anyone else.
+  if (adminOnlyUrlHidden(path)) return false;
   const kind = accessData().activeOrgKind;
   // Spec 037: an instance path is judged by its TARGET's kind visibility plus the
   // page grant AND the module floor (same `instanceAllowed` resolve + guards use),

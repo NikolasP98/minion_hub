@@ -23,6 +23,7 @@
   import { canonicalInstancePath, mainPathFor, type NavConfig } from '$lib/nav/custom-sections';
   import { navConfig } from '$lib/nav/nav-config.svelte';
   import { localizePath } from '$lib/canonical-path';
+  import { adminOnlyUrlHidden } from '$lib/access/can.svelte';
   import { loadHosts } from '$lib/state/features/hosts.svelte';
   import { ensurePermissions } from '$lib/state/features/permissions.svelte';
   import { maybeRequestDailyKnock } from '$lib/state/features/notifications.svelte';
@@ -170,7 +171,10 @@
           class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         >
           <div class="h-full min-h-0 flex flex-col">
-            {@render children()}
+            <!-- Spec 045: an admin-only page reached by URL renders nothing for anyone else. -->
+            {#if !adminOnlyUrlHidden(page.url.pathname)}
+              {@render children()}
+            {/if}
           </div>
         </div>
       </div>

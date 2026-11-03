@@ -17,6 +17,7 @@
     subagentState,
   } from '$lib/state/features/subagent-data.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
   let { agentId }: { agentId: string } = $props();
 
@@ -176,25 +177,27 @@
     {/if}
   </div>
 
-  <!-- Dream Activity section (collapsible) -->
-  <div class="border border-border rounded-lg overflow-hidden">
-    <Button
-      variant="ghost"
-      type="button"
-      class="w-full flex items-center justify-between px-3 py-2 bg-bg2 hover:bg-bg3 transition-colors cursor-pointer"
-      onclick={() => (dreamOpen = !dreamOpen)}
-    >
-      <span class="text-[length:var(--font-size-caption)] font-semibold text-foreground"
-        >{m.pi_dreamActivity()}</span
+  {#if gatewayMethodAllowed('dream.history')}
+    <!-- Dream Activity section (collapsible) -->
+    <div class="border border-border rounded-lg overflow-hidden">
+      <Button
+        variant="ghost"
+        type="button"
+        class="w-full flex items-center justify-between px-3 py-2 bg-bg2 hover:bg-bg3 transition-colors cursor-pointer"
+        onclick={() => (dreamOpen = !dreamOpen)}
       >
-      <span class="text-[length:var(--font-size-telemetry)] text-muted"
-        >{dreamOpen ? '\u25B2' : '\u25BC'}</span
-      >
-    </Button>
-    {#if dreamOpen}
-      <div class="border-t border-border">
-        <DreamActivity {agentId} />
-      </div>
-    {/if}
-  </div>
+        <span class="text-[length:var(--font-size-caption)] font-semibold text-foreground"
+          >{m.pi_dreamActivity()}</span
+        >
+        <span class="text-[length:var(--font-size-telemetry)] text-muted"
+          >{dreamOpen ? '\u25B2' : '\u25BC'}</span
+        >
+      </Button>
+      {#if dreamOpen}
+        <div class="border-t border-border">
+          <DreamActivity {agentId} />
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>

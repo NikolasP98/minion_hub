@@ -4,6 +4,7 @@
  */
 import { saveAndRefresh, SaveOutcomeError } from '$lib/records/save-status.svelte';
 import { sendRequest } from '$lib/services/gateway-rpc';
+import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
 import * as m from '$lib/paraglide/messages';
 import { isAdmin } from '$lib/state/features/user.svelte';
@@ -198,13 +199,18 @@ export async function loadConfig(current: () => boolean = () => true): Promise<v
       sendRequest('config.get', {}) as Promise<ConfigFileSnapshot>,
       10000,
     );
-    const schemaP = withTimeout(
-      sendRequest('config.schema', {}) as Promise<ConfigSchemaResponse>,
-      8000,
-    ).catch((err) => {
-      console.warn('[config] config.schema request failed, falling back to inferred schema:', err);
-      return null;
-    });
+    // Spec 045: the schema is gateway admin; a member's read-only load never asks for it.
+    const schemaP: Promise<ConfigSchemaResponse | null> = gatewayMethodAllowed('config.schema')
+      ? withTimeout(sendRequest('config.schema', {}) as Promise<ConfigSchemaResponse>, 8000).catch(
+          (err) => {
+            console.warn(
+              '[config] config.schema request failed, falling back to inferred schema:',
+              err,
+            );
+            return null;
+          },
+        )
+      : Promise.resolve(null);
 
     const [snapshot, schemaRes] = await Promise.all([snapshotP, schemaP]);
     if (!current()) return;

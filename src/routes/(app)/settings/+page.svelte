@@ -33,6 +33,7 @@
   import ChannelsTab from '$lib/components/channels/ChannelsTab.svelte';
   import SecretsSection from '$lib/components/settings/SecretsSection.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { SvelteSet } from 'svelte/reactivity';
 
   // ─── Non-admin redirect ───────────────────────────────────────────────
@@ -254,9 +255,11 @@
 
               <!-- Integrated sections per tab -->
               {#if tab.id === 'security'}
-                <div class="mt-6">
-                  <SecretsSection />
-                </div>
+                {#if gatewayMethodAllowed('secrets.list')}
+                  <div class="mt-6">
+                    <SecretsSection />
+                  </div>
+                {/if}
                 <!-- Team + Roles management has moved to dedicated routes -->
                 <Card padding="md" class="mt-6 text-xs text-muted-foreground">
                   <p>
@@ -271,7 +274,7 @@
                   </p>
                 </Card>
               {/if}
-              {#if tab.id === 'agents'}
+              {#if tab.id === 'agents' && gatewayMethodAllowed('config.patch')}
                 <div class="mt-6">
                   <BindingsTab />
                 </div>
