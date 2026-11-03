@@ -216,6 +216,8 @@ describe('isAppRouteBlocked — plan features (spec 043)', () => {
         features: [],
       }),
     ).toBe(true);
+  });
+});
 
 describe('isAppRouteBlocked — a freshly provisioned business org (spec 047 SC-004)', () => {
   const ctx = { kind: 'business' as const, moduleStates: { ...BASE_MODULES } };

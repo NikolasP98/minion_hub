@@ -314,6 +314,8 @@ describe('featureForPath (spec 043)', () => {
     const appDir = fileURLToPath(new URL('../../routes/(app)/', import.meta.url));
     for (const prefix of Object.keys(FEATURE_PAGES))
       expect(() => readdirSync(appDir + prefix.slice(1)), prefix).not.toThrow();
+  });
+});
 
 describe('BASE_MODULES (spec 047 S4)', () => {
   test('has exactly one entry per manifest toggleId', () => {
