@@ -1,9 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   isOrdinaryVitestNativeExclusion,
-  NATIVE_POSTGRES_EXCLUDES,
   NATIVE_POSTGRES_LANES,
   NATIVE_POSTGRES_MANIFEST,
 } from './native-postgres-manifest';
@@ -60,9 +60,6 @@ export function validateNativePostgresOwnership(
 
 describe('native PostgreSQL ownership manifest', () => {
   it('matches every file excluded by the ordinary Vitest native policy exactly once', () => {
-    const config = readFileSync('vitest.config.ts', 'utf8');
-    expect(config).toContain('NATIVE_POSTGRES_EXCLUDES');
-    for (const pattern of NATIVE_POSTGRES_EXCLUDES) expect(config).not.toContain(`'${pattern}'`);
     const discovered = sourceFiles('src')
       .map((file) => path.relative(process.cwd(), file).replaceAll('\\', '/'))
       .filter(isOrdinaryVitestNativeExclusion);
@@ -75,6 +72,25 @@ describe('native PostgreSQL ownership manifest', () => {
     expect(crmBulk?.minimumAssertions).toBe(4);
     expect(crmBulk?.requiredBehaviors).toHaveLength(4);
   });
+
+  it('excludes native fixtures from ordinary Vitest discovery', () => {
+    const output = execFileSync(
+      process.execPath,
+      ['node_modules/vitest/vitest.mjs', 'list', '--filesOnly', '--json'],
+      {
+        encoding: 'utf8',
+        timeout: 20_000,
+        env: Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => !/^REQUIRE_[A-Z_]+_POSTGRES$/.test(key)),
+        ),
+      },
+    );
+    const selected = (JSON.parse(output) as { file: string }[]).map(({ file }) =>
+      path.relative(process.cwd(), file).replaceAll('\\', '/'),
+    );
+    expect(selected).toContain('scripts/qc/native-postgres-manifest.test.ts');
+    expect(selected.filter(isOrdinaryVitestNativeExclusion)).toEqual([]);
+  }, 30_000);
 
   it('rejects omissions, duplicate ownership, missing files and non-native admissions', () => {
     const admission = { minimumAssertions: 1, requiredBehaviors: ['critical behavior'] };
