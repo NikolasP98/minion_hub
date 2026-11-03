@@ -55,7 +55,7 @@ function verifyConsumer(manifest: string, lock: string, name: string, artifact: 
 describe('canonical immutable design-system artifacts', () => {
   it('pins the reviewed complete receipt', () => {
     expect(sha(receiptBytes)).toBe(
-      'e3e07ff0ebdd9a715447eb7e04f8a80d8e8d088a698b3e84a22177b781880f28',
+      'f6f3739719e4fa7eaa996c93f2dacde2798e6e6bf170206932feabf23f387295',
     );
     expect(receipt.contractVersion).toBe('1.1.0');
     expect(receipt.packages.map((p) => p.name).sort()).toEqual([

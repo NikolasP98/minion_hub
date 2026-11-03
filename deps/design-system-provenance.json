@@ -52,10 +52,10 @@
   "packages": [
     {
       "name": "@minion-stack/design-tokens",
-      "version": "0.1.1-durability.h1f30c56a9f5ed3eb2beff464a2eb89b56eef559986275aa0d1b285da4bcb422d",
-      "artifact": "minion-stack-design-tokens-0.1.1-durability.h1f30c56a9f5ed3eb2beff464a2eb89b56eef559986275aa0d1b285da4bcb422d.tgz",
-      "sha256": "2dfe280a71c3ac98031192869abf9a2bc32c87c41154eb4a344f8b71890571de",
-      "sourceDigest": "1f30c56a9f5ed3eb2beff464a2eb89b56eef559986275aa0d1b285da4bcb422d",
+      "version": "0.1.1-durability.ha762eb478fcde01441ff271adcc4797b6c34a65ce56c55036e89a1b7d1f4b35d",
+      "artifact": "minion-stack-design-tokens-0.1.1-durability.ha762eb478fcde01441ff271adcc4797b6c34a65ce56c55036e89a1b7d1f4b35d.tgz",
+      "sha256": "79e3c19819f7e7e471d6e4548b202db5d6e2cd050e28c62570cd7dd6803ea3a9",
+      "sourceDigest": "a762eb478fcde01441ff271adcc4797b6c34a65ce56c55036e89a1b7d1f4b35d",
       "packingRecipe": {
         "schemaVersion": 1,
         "node": "v22.23.3",
@@ -64,23 +64,23 @@
         "packerSha256": "6572f6db95303d3d8f34989ce3bcf2717c7bb1a745a7a9603d07f7fefb1f386b"
       },
       "sourceMembers": {
-        "README.md": "524e91d341eb05077b90277068f9b1a5c50ea7cf6868954a7b143d1aac7bd84d",
+        "README.md": "de2df0af88bd800dfb4a8f122528a60ff3f9c31707a34f13e94ca05cefd41c52",
         "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
-        "contract.json": "27478deef26462266ea15ba4786537507ac39e45ae350b93e0cdc6345dfbfb66",
+        "contract.json": "344449d0e78b0fb7c0836479c93525649e50a1d0a9f74bb134f4362ec6bf9729",
         "contract.schema.json": "a3e8a07c2fe44fbb3ca0bb171fd5225192e6406be324d971451eeacb9de1278b",
-        "inventory.json": "2ef62c5013de2d77d9047eaa8285c01737fa074e8d4cbedcf9847932763b26cf",
+        "inventory.json": "d486b5efc97b1cb6d11f10f242d0b8fcf7baa12a8ee23b5464ddc6a30a9608f5",
         "package.json": "cf86413351ac312602668b32ce2c07766c9c5cf36316abdfefd9fad7424d6044",
-        "tokens.css": "b88f0d0489bb6f23ba9647915dfd4e6fe819fd1e9e85ddc5b142c3b9d16d6435",
+        "tokens.css": "1a02417a4ca730b699eb0f9687e54cfaae3ece60de5c43e5721b0e20d5c465f3",
         "utilities.css": "2aaac943e0d4718055f0fe605738546bd0255025df5bdc8a05204ed80ce3d1e6"
       },
       "members": {
-        "README.md": "524e91d341eb05077b90277068f9b1a5c50ea7cf6868954a7b143d1aac7bd84d",
+        "README.md": "de2df0af88bd800dfb4a8f122528a60ff3f9c31707a34f13e94ca05cefd41c52",
         "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
-        "contract.json": "27478deef26462266ea15ba4786537507ac39e45ae350b93e0cdc6345dfbfb66",
+        "contract.json": "344449d0e78b0fb7c0836479c93525649e50a1d0a9f74bb134f4362ec6bf9729",
         "contract.schema.json": "a3e8a07c2fe44fbb3ca0bb171fd5225192e6406be324d971451eeacb9de1278b",
-        "inventory.json": "2ef62c5013de2d77d9047eaa8285c01737fa074e8d4cbedcf9847932763b26cf",
-        "package.json": "a9c81d6bfffd535330f720ef7b06d65dc54047fa2d31f5ea506158bfa8e29678",
-        "tokens.css": "b88f0d0489bb6f23ba9647915dfd4e6fe819fd1e9e85ddc5b142c3b9d16d6435",
+        "inventory.json": "d486b5efc97b1cb6d11f10f242d0b8fcf7baa12a8ee23b5464ddc6a30a9608f5",
+        "package.json": "8581116b02f85d8975475a06c3ac56554d0f4d054115943c62ebe5a434ddbfbe",
+        "tokens.css": "1a02417a4ca730b699eb0f9687e54cfaae3ece60de5c43e5721b0e20d5c465f3",
         "utilities.css": "2aaac943e0d4718055f0fe605738546bd0255025df5bdc8a05204ed80ce3d1e6"
       },
       "repacksByteIdentical": true
@@ -168,7 +168,7 @@
   "releaseBoundary": "Qualified local archives only; no publication, installation or deployment implied.",
   "tokenSource": {
     "sourceRepository": "NikolasP98/minion-meta",
-    "baseCommit": "4bf8bb55ca55aafe54321aa327a2510ea55d977c",
+    "baseCommit": "87f3262fcea0252b4241c84f8c8b3c50ace5624d",
     "contractVersion": "1.1.0",
     "packer": "scripts/pack-design-system.mjs"
   },
