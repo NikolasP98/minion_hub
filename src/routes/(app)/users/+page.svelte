@@ -4,14 +4,17 @@
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { configState, loadConfig } from '$lib/state/config/config.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { PageHeader, Tabs, type TabItem } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
 
   type Tab = 'team' | 'bindings';
   let activeTab = $state<Tab>('team');
+  // Spec 045: bindings are saved with `config.patch` (gateway admin) — no tab for anyone else.
+  const bindingsAllowed = $derived(gatewayMethodAllowed('config.patch'));
   const tabs: TabItem[] = $derived([
     { value: 'team', label: m.users_team() },
-    { value: 'bindings', label: m.users_bindings() },
+    ...(bindingsAllowed ? [{ value: 'bindings', label: m.users_bindings() }] : []),
   ]);
 
   // Load gateway config when switching to bindings tab (if not already loaded)
@@ -43,7 +46,7 @@
         aria-labelledby={`users-tabs-tab-${activeTab}`}
         class="users-panel"
       >
-        {#if activeTab === 'team'}
+        {#if activeTab === 'team' || !bindingsAllowed}
           <TeamTab />
         {:else}
           <BindingsTab />

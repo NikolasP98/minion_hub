@@ -27,6 +27,7 @@ vi.mock('$server/services/gateway.pg.service', () => ({
 }));
 
 import { POST } from './+server';
+import { env as publicEnv } from '$env/dynamic/public';
 
 function event() {
   return {
@@ -102,5 +103,19 @@ describe('POST /api/servers/[id]/token', () => {
 
     expect(response.status).toBe(404);
     expect(mocks.getGatewayTokenByServerId).not.toHaveBeenCalled();
+  });
+
+  test('answers 410 once the browser stops carrying the shared token (spec 045 I1)', async () => {
+    mocks.getGatewayTokenByServerId.mockResolvedValue('gateway-secret');
+    publicEnv.PUBLIC_GATEWAY_BROWSER_SHARED_TOKEN = 'false';
+    try {
+      const response = await POST(event());
+
+      expect(response.status).toBe(410);
+      expect(await response.text()).not.toContain('gateway-secret');
+      expect(mocks.getGatewayTokenByServerId).not.toHaveBeenCalled();
+    } finally {
+      delete publicEnv.PUBLIC_GATEWAY_BROWSER_SHARED_TOKEN;
+    }
   });
 });

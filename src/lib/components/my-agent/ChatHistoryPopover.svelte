@@ -4,6 +4,7 @@
   import * as m from '$lib/paraglide/messages';
   import { Popover } from '$lib/components/ui';
   import { sendRequest } from '$lib/services/gateway-rpc';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { History, MessageSquareText } from 'lucide-svelte';
   import { untrack } from 'svelte';
 
@@ -88,7 +89,8 @@
       // A deterministic first-prompt title paints immediately. Missing labels
       // are upgraded asynchronously by the cheap session-title drone and then
       // persisted on the gateway so every device sees the same title.
-      for (const row of rows) {
+      // Spec 045: the drone is gateway admin — a member keeps the first-prompt title, silently.
+      for (const row of gatewayMethodAllowed('drones.session-title') ? rows : []) {
         const key = String(row.key ?? '');
         const displayName = String(row.displayName ?? '').trim();
         const derivedTitle = String(row.derivedTitle ?? '').trim();

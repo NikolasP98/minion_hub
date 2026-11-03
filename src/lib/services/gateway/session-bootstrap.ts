@@ -1,3 +1,5 @@
+import { gatewayMethodAllowed } from './platform-admin-methods';
+
 type Request = (method: string, params?: unknown) => Promise<unknown>;
 export interface SessionBootstrap {
   current: () => boolean;
@@ -38,48 +40,50 @@ export function startSessionBootstrap(options: SessionBootstrap): () => void {
   void read('channels.status', options.channels);
   void read('cron.list', options.cron);
 
-  void options
-    .fetcher('/api/flows?active=true', { signal: abort.signal })
-    .then(async (response) => {
-      if (!response.ok || !current()) return;
-      const body = (await response.json()) as {
-        flows?: Array<{ id: string; nodes: Array<{ type: string; data: unknown }> }>;
-      };
-      for (const flow of body.flows ?? []) {
-        if (!current()) return;
-        const node = flow.nodes.find((n) => n.type === 'trigger' || n.type === 'pluginTrigger');
-        if (!node) continue;
-        const data = node.data as {
-          event: string;
-          deliverResponse: boolean;
-          sources?: { channel: string; accountId?: string }[];
-          channels?: string[];
-          filterChannelId?: string;
-          filterAgentId?: string;
+  // Spec 045: re-registering flow triggers is gateway admin; a member's dashboard doesn't try.
+  if (gatewayMethodAllowed('flows.trigger.register'))
+    void options
+      .fetcher('/api/flows?active=true', { signal: abort.signal })
+      .then(async (response) => {
+        if (!response.ok || !current()) return;
+        const body = (await response.json()) as {
+          flows?: Array<{ id: string; nodes: Array<{ type: string; data: unknown }> }>;
         };
-        const sources = data.sources?.length
-          ? data.sources
-          : data.channels?.length
-            ? data.channels.map((channel) => ({ channel }))
-            : data.filterChannelId
-              ? [{ channel: data.filterChannelId }]
-              : [];
-        // Captured transport, never the mutable global sendRequest client.
-        await options
-          .request('flows.trigger.register', {
-            flowId: flow.id,
-            event: data.event,
-            deliverResponse: data.deliverResponse,
-            filterChannelIds: sources.length
-              ? [...new Set(sources.map((s) => s.channel))]
-              : undefined,
-            filterChannelAccounts: sources.length ? sources : undefined,
-            filterAgentId: data.filterAgentId,
-          })
-          .catch(() => {});
-      }
-    })
-    .catch(() => {});
+        for (const flow of body.flows ?? []) {
+          if (!current()) return;
+          const node = flow.nodes.find((n) => n.type === 'trigger' || n.type === 'pluginTrigger');
+          if (!node) continue;
+          const data = node.data as {
+            event: string;
+            deliverResponse: boolean;
+            sources?: { channel: string; accountId?: string }[];
+            channels?: string[];
+            filterChannelId?: string;
+            filterAgentId?: string;
+          };
+          const sources = data.sources?.length
+            ? data.sources
+            : data.channels?.length
+              ? data.channels.map((channel) => ({ channel }))
+              : data.filterChannelId
+                ? [{ channel: data.filterChannelId }]
+                : [];
+          // Captured transport, never the mutable global sendRequest client.
+          await options
+            .request('flows.trigger.register', {
+              flowId: flow.id,
+              event: data.event,
+              deliverResponse: data.deliverResponse,
+              filterChannelIds: sources.length
+                ? [...new Set(sources.map((s) => s.channel))]
+                : undefined,
+              filterChannelAccounts: sources.length ? sources : undefined,
+              filterAgentId: data.filterAgentId,
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
 
   const delay = setTimeout(() => {
     if (!current()) return;

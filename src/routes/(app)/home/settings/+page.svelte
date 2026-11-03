@@ -3,13 +3,7 @@
   import { personalAgent, type PersonalAgentData } from '$lib/state/features/personal-agent.svelte';
   import { conn } from '$lib/state/gateway';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
-  import {
-    configState,
-    loadConfig,
-    setField,
-    save as saveConfig,
-    isDirty,
-  } from '$lib/state/config/config.svelte';
+  import { configState, loadConfig } from '$lib/state/config/config.svelte';
   import { detectAgentStructure } from '$lib/utils/agent-settings-schema';
   import { agentDisplayName } from '$lib/utils/agent-display';
   import { deepGet } from '$lib/utils/config-schema';
@@ -140,7 +134,7 @@
     }
   });
 
-  // Resolve the agent's index in agents.list[] (for setField path)
+  // Resolve the agent's index in agents.list[] (for the agentStructure lookup)
   const agentStructure = $derived.by(() => {
     if (!agent || !configState.loaded) return null;
     return detectAgentStructure(configState.current, agent.agentId);
@@ -181,7 +175,7 @@
     const conversationName = deepGet(configState.current, `${base}.conversationName`);
     return {
       text: typeof text === 'string' ? text : '',
-      preset: (typeof preset === 'string' ? preset : null) as PresetKey | null,
+      preset: (typeof preset === 'string' && preset ? preset : null) as PresetKey | null,
       configured: configured === true,
       conversationName: typeof conversationName === 'string' ? conversationName : '',
     };
@@ -189,22 +183,37 @@
 
   const showOnboarding = $derived(agent && !personalityFromGateway.configured && isActive);
 
-  // autosave (policy O): each field patches gateway config on its own —
-  // `saveConfig` sends only the diff (`computePatch`), so fields never clobber
-  // each other; one shared status drives the card's SaveIndicator.
+  // autosave (policy O): each field saves on its own through the hub route
+  // (`config.patch` needs gateway admin, which a member's pass lacks — spec 045),
+  // so fields never clobber each other; one shared status drives the SaveIndicator.
+  // The saved value is read back from `config.get`.
   const saveStatus = createSaveStatus();
-  function personalityBase(): string {
+  type SettingsFields = { name?: string; conversationName?: string; preset?: string; text?: string };
+  function prepareConfig(fields: SettingsFields, isCurrent: () => boolean) {
     if (!agentStructure || agentStructure.type !== 'list')
       throw new SaveOutcomeError('error', m.myAgent_displayNameNotReady());
-    return `agents.list.${agentStructure.listIndex}`;
-  }
-  function prepareConfig(fields: Record<string, unknown>, isCurrent: () => boolean) {
-    const base = personalityBase();
     return async () => {
       if (!isCurrent()) return;
-      for (const [path, value] of Object.entries(fields)) setField(`${base}.${path}`, value);
-      if (!isDirty.value) return;
-      await saveConfig({ silent: true, isCurrent });
+      const res = await fetch('/api/personal-agent/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fields),
+      });
+      if (res.status === 403) throw new SaveOutcomeError('error', m.gateway_roleCantAction());
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new SaveOutcomeError('error', body.error ?? m.config_saveFailed());
+      }
+      if (!isCurrent()) throw new SaveOutcomeError('unknown', 'Editing context changed');
+      try {
+        await loadConfig(isCurrent);
+      } catch (cause) {
+        throw new SaveOutcomeError(
+          'committed-refreshing',
+          cause instanceof Error ? cause.message : String(cause),
+          () => loadConfig(isCurrent),
+        );
+      }
     };
   }
   const editDisplayName = createAutosave({
@@ -216,7 +225,7 @@
         return async () => {
           throw new SaveOutcomeError('error', m.myAgent_displayNameRequired());
         };
-      return prepareConfig({ 'identity.name': name }, current);
+      return prepareConfig({ name }, current);
     },
     status: saveStatus,
     keepDraftOnError: true,
@@ -225,7 +234,7 @@
     committed: () => personalityFromGateway.conversationName,
     scope: () => agent?.agentId,
     prepare: (v, current) =>
-      prepareConfig({ 'personality.conversationName': v.trim() ? v : undefined }, current),
+      prepareConfig({ conversationName: v.trim() ? v : '' }, current),
     status: saveStatus,
     keepDraftOnError: true,
   });
@@ -234,7 +243,7 @@
     scope: () => agent?.agentId,
     prepare: (v, current) =>
       prepareConfig(
-        { 'personality.preset': v ?? undefined, 'personality.configured': true },
+        { preset: v ?? '' },
         current,
       ),
     status: saveStatus,
@@ -245,10 +254,7 @@
     scope: () => agent?.agentId,
     prepare: (v, current) =>
       prepareConfig(
-        {
-          'personality.text': v.trim() ? v : undefined,
-          'personality.configured': true,
-        },
+        { text: v.trim() ? v : '' },
         current,
       ),
     status: saveStatus,

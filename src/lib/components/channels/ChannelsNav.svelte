@@ -4,6 +4,7 @@
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
 
   let { channels }: { channels: Array<{ pluginId: string; title: string; icon?: string }> } =
     $props();
@@ -14,7 +15,7 @@
       label: e.title,
       icon: resolvePluginIcon(e.icon),
       href: `/channels/${e.pluginId}`,
-    })),
+    })).filter((i) => !adminOnlyPageHidden(i.href)),
   );
 
   const activeId = $derived(items.find((i) => navPath() === i.href)?.id);

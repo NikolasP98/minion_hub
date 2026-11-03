@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Button, ProgressBar, iconSizes } from '$lib/components/ui';
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { onMount } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -523,9 +524,11 @@
             {/each}
           </ul>
         {/if}
-        <a href="/config" class="text-xs text-accent hover:underline"
-          >{m.gateway_update_notifyEditHint()}</a
-        >
+        {#if !adminOnlyPageHidden('/config')}
+          <a href="/config" class="text-xs text-accent hover:underline"
+            >{m.gateway_update_notifyEditHint()}</a
+          >
+        {/if}
       </div>
     {/if}
   </div>

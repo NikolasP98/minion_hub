@@ -185,6 +185,79 @@ export async function activatePersonalAgent(
   }
 }
 
+/** The only fields /home/settings edits; `''` clears one. Anything else a caller sends is dropped. */
+export interface PersonalAgentSettings {
+  name?: string;
+  conversationName?: string;
+  preset?: string;
+  text?: string;
+}
+
+// Bounds mirror the gateway's PersonalitySchema (text ≤ 2000) and the page's four presets.
+const SETTINGS_MAX = { name: 80, conversationName: 80, preset: 40, text: 2000 } as const;
+const PERSONALITY_PRESETS = new Set(['professional', 'casual', 'creative', 'technical']);
+
+/** Allowlist + clamp the client body; never reads an agent id from it. */
+export function sanitizePersonalAgentSettings(body: unknown): PersonalAgentSettings {
+  const src = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+  const out: PersonalAgentSettings = {};
+  for (const key of ['name', 'conversationName', 'preset', 'text'] as const) {
+    const v = src[key];
+    if (typeof v !== 'string') continue;
+    const value = key === 'text' ? v : v.trim();
+    if (value.length > SETTINGS_MAX[key]) continue;
+    if (key === 'name' && !value) continue; // a name can be changed, not cleared
+    if (key === 'preset' && !PERSONALITY_PRESETS.has(value)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Patch the signed-in user's OWN personal agent (name, conversation name, personality)
+ * with the hub's gateway credential (spec 045: members' browser passes lack operator.admin).
+ * The agent is resolved from the caller's personal_agents row, never from the request.
+ */
+export async function updatePersonalAgentSettings(
+  ctx: CoreCtx,
+  userId: string,
+  settings: PersonalAgentSettings,
+): Promise<string> {
+  const { name, conversationName, preset, text } = settings;
+  const binding = await preparePersonalAgentBinding(ctx, userId);
+  const { target, agent } = binding;
+  if (agent.provisioning_status !== 'active') {
+    throw new PersonalAgentBindingError('Personal agent is not active yet.');
+  }
+  const entry: Record<string, unknown> = { id: agent.agent_id };
+  if (name !== undefined) entry.identity = { name };
+  const personality: Record<string, unknown> = {};
+  if (conversationName !== undefined) personality.conversationName = conversationName;
+  if (preset !== undefined) personality.preset = preset;
+  if (text !== undefined) personality.text = text;
+  if (preset !== undefined || text !== undefined) personality.configured = true;
+  if (Object.keys(personality).length) entry.personality = personality;
+  if (Object.keys(entry).length === 1) return agent.agent_id;
+  const call = <T = unknown>(method: string, params: Record<string, unknown> = {}) =>
+    gatewayCallToInstance<T>(target.url, target.token, method, params);
+  try {
+    // A list entry with a new id would ADD an agent to the gateway: patch only one already there.
+    const roster = await call<{ agents?: Array<{ id?: unknown }> }>('agents.list');
+    if (!roster?.agents?.some((a) => a.id === agent.agent_id))
+      throw new PersonalAgentBindingError('Personal agent is not on its gateway yet.');
+    const snapshot = await call<{ hash?: string }>('config.get');
+    await call('config.patch', {
+      raw: JSON.stringify({ agents: { list: [entry] } }),
+      baseHash: snapshot?.hash,
+      note: 'Personal agent settings',
+    });
+  } catch (err) {
+    if (err instanceof PersonalAgentBindingError) throw err;
+    throw new Error('Personal agent settings could not be saved. Retry.');
+  }
+  return agent.agent_id;
+}
+
 /** Ensure the existing identity is active and has a verified, immutable gateway binding. */
 export async function ensureActivePersonalAgent(
   ctx: CoreCtx,

@@ -12,6 +12,7 @@
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { deriveChannelDisplayState } from '$lib/utils/channel-display-state';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
   interface Props {
     type: ChannelType;
@@ -21,6 +22,9 @@
     children: Snippet;
   }
   let { type, channels, transportEnabled, onaddclick, children }: Props = $props();
+  // Spec 045: channel setup is gateway admin (config.patch, channels.logout,
+  // channels.whatsapp.pair) — hidden, not locked, for anyone else once switched.
+  const gatewayAdmin = $derived(gatewayMethodAllowed('config.patch'));
 
   // Plugin settings deep-link. When the gateway advertises a
   // `settings.plugins` UI for a plugin whose id matches this channel type
@@ -113,17 +117,19 @@
         </span>
       </div>
     </div>
-    <Toggle
-      checked={transportEnabled !== false}
-      label={transportEnabled === false ? 'Channel off' : 'Channel on'}
-      onchange={() => toggleTransport()}
-      disabled={toggling}
-      size="sm"
-    />
-    <Button type="button" variant="primary" size="sm" onclick={onaddclick}>
-      {#snippet icon()}<Plus size={iconSizes.xs} />{/snippet}
-      {m.channel_addAccount()}
-    </Button>
+    {#if gatewayAdmin}
+      <Toggle
+        checked={transportEnabled !== false}
+        label={transportEnabled === false ? 'Channel off' : 'Channel on'}
+        onchange={() => toggleTransport()}
+        disabled={toggling}
+        size="sm"
+      />
+      <Button type="button" variant="primary" size="sm" onclick={onaddclick}>
+        {#snippet icon()}<Plus size={iconSizes.xs} />{/snippet}
+        {m.channel_addAccount()}
+      </Button>
+    {/if}
   </header>
   <div class="p-3 space-y-1.5">
     {@render children()}

@@ -7,8 +7,12 @@
   } from '$lib/state/agents/agent-tools.svelte';
   import type { ToolStatusEntry } from '$lib/types/tools';
   import * as m from '$lib/paraglide/messages';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
   let { agentId }: { agentId: string } = $props();
+
+  // Spec 045: toggling a tool is `tools.update` (gateway admin) — everyone else sees the list, not the drag.
+  const editable = $derived(gatewayMethodAllowed('tools.update'));
 
   $effect(() => {
     loadAgentTools(agentId);
@@ -22,6 +26,7 @@
   let tooltipOpen = $state(false);
 
   function onDragStart(e: DragEvent, tool: ToolStatusEntry) {
+    if (!editable) return;
     draggedToolId = tool.id;
     e.dataTransfer!.effectAllowed = 'move';
     e.dataTransfer!.setData(
@@ -44,6 +49,7 @@
     e.preventDefault();
     dragOverZone = null;
     draggedToolId = null;
+    if (!editable) return;
     try {
       const data = JSON.parse(e.dataTransfer!.getData('text/plain'));
       if (data.enabled !== targetEnabled) {
@@ -163,7 +169,7 @@
           {#each enabledTools as tool (tool.id)}
             {@render toolItem(tool)}
           {/each}
-          {#if enabledTools.length === 0}
+          {#if enabledTools.length === 0 && editable}
             <div
               class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4"
             >
@@ -198,7 +204,7 @@
           {#each disabledTools as tool (tool.id)}
             {@render toolItem(tool)}
           {/each}
-          {#if disabledTools.length === 0}
+          {#if disabledTools.length === 0 && editable}
             <div
               class="text-[length:var(--font-size-telemetry)] text-muted-strong text-center py-4"
             >
@@ -213,20 +219,24 @@
 
 {#snippet toolItem(tool: ToolStatusEntry)}
   <div
-    draggable="true"
+    draggable={editable}
     ondragstart={(e) => onDragStart(e, tool)}
     ondragend={onDragEnd}
-    class="flex items-start gap-1.5 px-2 py-1.5 rounded-md cursor-grab active:cursor-grabbing
+    class="flex items-start gap-1.5 px-2 py-1.5 rounded-md {editable
+      ? 'cursor-grab active:cursor-grabbing'
+      : ''}
       hover:bg-[var(--color-text-primary)]/5 transition-colors group
       {draggedToolId === tool.id ? 'opacity-30' : ''}"
     role="listitem"
   >
     <!-- Drag handle -->
-    <span
-      class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none"
-    >
-      ⠿
-    </span>
+    {#if editable}
+      <span
+        class="text-[length:var(--font-size-telemetry)] text-muted-strong group-hover:text-muted-foreground mt-0.5 shrink-0 select-none"
+      >
+        ⠿
+      </span>
+    {/if}
 
     <!-- Content -->
     <div class="flex-1 min-w-0">
