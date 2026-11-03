@@ -40,7 +40,7 @@
     "class": "todo"
   },
   {
-    "file": "src/routes/(app)/home/settings/+page.server.ts",
+    "file": "src/routes/(app)/chat/settings/+page.server.ts",
     "calls": ["getDb"],
     "class": "todo"
   },
@@ -373,6 +373,11 @@
     "file": "src/server/identity/channel-claim.service.ts",
     "calls": ["supabaseAdmin"],
     "class": "todo"
+  },
+  {
+    "file": "src/server/nav/landing.server.ts",
+    "calls": ["getCoreDb"],
+    "class": "user-scoped"
   },
   {
     "file": "src/server/services/architecture-c4.model.ts",
