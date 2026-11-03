@@ -315,8 +315,6 @@
   let accessLoadFailed = $state(false);
   let accessRoles = $state<AccessRole[]>([]);
   let accessValues = $state<Record<string, AccessChoice>>({});
-  /** The config the dialog opened on: validation never sees its own optimistic save. */
-  let base = $state.raw<NavConfig>(EMPTY_NAV_CONFIG);
   let serverIssues = $state<NavConfigIssue[]>([]);
   let pending = $state(false);
 
@@ -339,7 +337,6 @@
       fIcon = '';
       fNewId = freshNavId(config);
     }
-    base = config;
     createdSectionId = null;
     accessError = '';
     advOpen = false;
