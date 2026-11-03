@@ -1249,7 +1249,9 @@
           <!-- PATCH/complete live under /api/scheduling → gated centrally by
          scheduling:edit, not pos:edit — gate on that capability here too. -->
           {#snippet actions(b)}
-            {#if b.status === 'completed' && canAct('pos', 'edit')}
+            <!-- Same gate as the context menu: a booking a ticket already charged is not
+                 offered for charging again (FACES report 2026-11-03). -->
+            {#if b.status === 'completed' && !b.paid && canAct('pos', 'edit')}
               <Button variant="outline" size="sm" onclick={() => chargeOne(b as Booking)}>
                 <ShoppingCart size={iconSizes.sm} />
                 {m.pos_appt_charge()}
