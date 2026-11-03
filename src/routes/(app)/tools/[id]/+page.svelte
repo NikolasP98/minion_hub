@@ -16,6 +16,7 @@
   import { Button } from '$lib/components/ui';
   import AsyncBoundary from '$lib/components/ui/foundations/AsyncBoundary.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
+  import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
 
   const isAdmin = $derived(hubIsAdmin.value);
 
@@ -176,7 +177,7 @@ echo "{\\"ok\\": true, \\"input\\": \\"\${MINION_TOOL_INPUT}\\"}"
       // Nudge the gateway to pick the tool up on its next turn. Fire-and-forget:
       // a stale local gateway (pre-restart) may not know this RPC yet — that's fine,
       // the gateway's own TTL-based custom-tools poll will catch it either way.
-      sendRequest('tools.reload').catch(() => {});
+      if (gatewayMethodAllowed('tools.reload')) sendRequest('tools.reload').catch(() => {});
     } catch (e) {
       console.error('[tool-editor] Publish failed:', e);
       operationError = e instanceof Error ? e.message : m.common_error();

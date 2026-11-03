@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatMoney } from '$lib/utils/format';
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { createQuery } from '@tanstack/svelte-query';
   import { ArrowLeft } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -78,13 +79,15 @@
 </script>
 
 <div class="flex-1 overflow-y-auto p-6 space-y-4">
-  <a
-    href="/agents/workshop/compare"
-    class="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
-  >
-    <ArrowLeft size={iconSizes.xs} />
-    {m.workshop_exp_compare()}
-  </a>
+  {#if !adminOnlyPageHidden('/agents/workshop/compare')}
+    <a
+      href="/agents/workshop/compare"
+      class="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-muted hover:text-foreground"
+    >
+      <ArrowLeft size={iconSizes.xs} />
+      {m.workshop_exp_compare()}
+    </a>
+  {/if}
   <h2 class="font-mono text-sm uppercase tracking-widest text-muted">
     {m.workshop_exp_leaderboard_title()}
   </h2>

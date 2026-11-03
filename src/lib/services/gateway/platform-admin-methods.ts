@@ -108,14 +108,22 @@ function isPlatformAdmin(): boolean {
   return (page.data as { user?: { role?: unknown } } | undefined)?.user?.role === 'admin';
 }
 
-// TODO(handoff): spec 045 T037 hides (not locks) only channel setup (ChannelsTab,
-// ChannelGroup, ChannelCard) and /account/connections' sync and channel plugins.
-// Every other surface behind this list — agent files/skills, tools, flows, prompt
-// sections, secrets, cloud shells, reliability, plugin pages, workshop
-// experiments, dream, drones, debug — still renders for members after the switch
-// and fails with "your role can't" (sendRequest and the session-owner transport
-// both refuse). Gate each control with gatewayMethodAllowed(), or move it to a hub
-// route (spec 042).
+// TODO(handoff): spec 045 T037/T038 hide (not lock) every surface behind this list from
+// anyone but a platform admin once switched: channel setup; the pages in ADMIN_ONLY_PAGES
+// (reliability, kill switches, cloud/shells, flow list+editor, config, prompt builder, plugin
+// pages incl. /channels/<plugin>, session debug, workshop experiments) via canViewPath + the app
+// layout; agent Files/Prompt tabs, agent settings panel, tool drag and skill toggles,
+// dream activity, secrets, the /users Bindings tab, plugin settings frames, the session-title
+// drone and flow-trigger re-registration. /home/settings no longer calls config.patch: it posts
+// to /api/personal-agent/settings (hub credential, caller's own agent, four allowlisted fields).
+// Left ungated: `skills.update` (agent-skills `toggleGlobalSkill` has no UI caller),
+// `tools.*` (the tool editor's admin buttons already need hub admin), `drones.list` / `flows.*` / `shells.*` / `reliability.*` (reachable only from
+// the hidden pages above), `playground.complete` / `models.setEnabled` (workshop
+// experiments, hidden). A hidden page's own links are removed where found (workshop nav,
+// leaderboard back-link, agent dashboard, builder cards); any link missed lands on an
+// empty page. Move each admin RPC to a hub route (spec 042) and drop it from this list.
+// Untested gates (T038 re-audit R4): the /users + /settings Bindings tab, the /settings/plugins
+// frame, the ensureChannelPlugins skip and the tools.reload skip — add a member/admin/unset test each.
 /**
  * Whether this viewer's gateway credential can call `method`. Always true until
  * the launch switch: today's token socket carries admin, so gating earlier would
@@ -134,4 +142,30 @@ export class GatewayRoleError extends Error {
 export async function refuseForRole(): Promise<never> {
   const m = await import('$lib/paraglide/messages');
   throw new GatewayRoleError(m.gateway_roleCantAction());
+}
+
+/**
+ * Pages whose whole purpose is behind one admin-only method (spec 045 T038).
+ * `canViewPath` (sidebar, topbar, palette, hotkeys, assistant) and the app
+ * layout both read this, so the nav entry and the URL go dark together.
+ */
+const ADMIN_ONLY_PAGES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/^\/reliability(\/|$)/, 'reliability.summary'],
+  [/^\/killswitches(\/|$)/, 'killswitch.list'],
+  [/^\/(cloud|shells)(\/|$)/, 'shells.list'],
+  // skills/ and master/ are hub-backed (/api, tools.status read); the flow list/editor run & register.
+  [/^\/flow-editor(\/(?!skills\/|master\/)|$)/, 'flows.templates.list'],
+  [/^\/config(\/|$)/, 'config.schema'],
+  [/^\/prompt(\/|$)/, 'prompt.sections.list'],
+  [/^\/plugins\/[^/]/, PLUGIN_RPC],
+  // Channel plugin pages are the same plugin iframe; gmail is a hub-API page.
+  [/^\/channels\/(?!gmail(\/|$))[^/]/, PLUGIN_RPC],
+  [/^\/sessions\/[^/]+\/debug(\/|$)/, 'debug.setSteppedBuild'],
+  [/^\/agents\/workshop\/(compare|groupchat)(\/|$)/, 'playground.complete'],
+];
+
+/** The page at this canonical path exists only for gateway admins and this viewer is not one. */
+export function adminOnlyPageHidden(canonicalPath: string): boolean {
+  const path = canonicalPath.split(/[?#]/, 1)[0];
+  return ADMIN_ONLY_PAGES.some(([re, method]) => re.test(path) && !gatewayMethodAllowed(method));
 }

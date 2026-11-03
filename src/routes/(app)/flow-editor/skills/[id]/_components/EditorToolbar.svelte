@@ -23,8 +23,12 @@
   } from '$lib/state/builder/skill-editor.svelte';
   import * as m from '$lib/paraglide/messages';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
 
-  const back = createBackNav('/flow-editor', () => 'Flows');
+  // Members can't open the flows list after the pass switch (spec 045 T038); skills live under Capabilities too.
+  const back = adminOnlyPageHidden('/flow-editor')
+    ? createBackNav('/capabilities?tab=skills', () => m.nav_capabilities())
+    : createBackNav('/flow-editor', () => 'Flows');
 
   let { showDryRun = $bindable() }: { showDryRun: boolean } = $props();
 </script>

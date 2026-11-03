@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as m from '$lib/paraglide/messages';
+  import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-methods';
   import { ArrowLeft, Settings2, Zap, Pencil, Maximize2, Minimize2 } from 'lucide-svelte';
   import ArtifactHost from '$lib/components/artifacts/ArtifactHost.svelte';
   import AgentHealthMetrics from '$lib/components/agents/AgentHealthMetrics.svelte';
@@ -87,7 +88,7 @@
             <div class="flex items-center gap-1.5">
               <!-- ponytail: edit is a forward-hook — only DB-flow-backed agents have
                  dbFlowId; system agents render read-only code flows (no edit). -->
-              {#if data.isAdmin && agent.dbFlowId}
+              {#if data.isAdmin && agent.dbFlowId && !adminOnlyPageHidden('/flow-editor')}
                 <Button variant="secondary" size="sm" href={`/flow-editor/${agent.dbFlowId}`}>
                   <Pencil size={iconSizes.sm} />
                   {m.autonomous_edit_flow()}
