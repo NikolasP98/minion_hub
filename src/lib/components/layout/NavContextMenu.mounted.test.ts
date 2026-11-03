@@ -159,4 +159,32 @@ describe('NavContextMenu', () => {
     // The optimistic view stays up until the reload lands; the next edit must still be able to copy it.
     expect(() => structuredClone(navConfig())).not.toThrow();
   });
+
+  it('(h) New section shows no duplicate error while its own PUT is still pending', async () => {
+    let resolvePut: ((r: Response) => void) | undefined;
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/api/nav/config' && !init?.method)
+        return new Response(JSON.stringify(CONFIG), { status: 200 });
+      if (url === '/api/nav/config' && init?.method === 'PUT')
+        return new Promise<Response>((r) => (resolvePut = r));
+      return new Response('{}', { status: 200 });
+    });
+    setup(['settings:manage']);
+    mount({ kind: 'area' });
+    await fireEvent.contextMenu(screen.getByTestId('row'));
+    await fireEvent.click(screen.getByRole('menuitem', { name: /New section/ }));
+    await fireEvent.input(await screen.findByLabelText(/Label/), {
+      target: { value: 'this is a test' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    // The PUT is in flight and the sidebar already shows the section (optimistic);
+    // the dialog must not call its own draft a duplicate.
+    await waitFor(() => expect(resolvePut).toBeTypeOf('function'));
+    expect(navConfig().sections.some((s) => s.slug === 'this-is-a-test')).toBe(true);
+    expect(screen.queryByText(/already exists|Ya existe/i)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeTruthy();
+    resolvePut!(new Response('{}', { status: 200 }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save' })).toBeNull());
+  });
 });

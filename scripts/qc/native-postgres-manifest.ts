@@ -806,6 +806,14 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/db/rls-coverage.sql.integration.test.ts',
+      minimumAssertions: 2,
+      requiredBehaviors: [
+        'RLS coverage of org-scoped tables every org table is forced-RLS with a current_org_id policy, or allowlisted',
+        'RLS coverage of org-scoped tables every allowlisted table still exists and is still uncovered',
+      ],
+    },
+    {
       file: 'src/server/db/pg-inbox-schema.sql.integration.test.ts',
       minimumAssertions: 2,
       requiredBehaviors: [
