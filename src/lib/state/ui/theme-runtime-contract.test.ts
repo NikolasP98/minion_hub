@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { compile, Polyfills } from 'tailwindcss';
+import { compile } from 'tailwindcss';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import designTokens from '@minion-stack/design-tokens/contract.json';
 import { ACCENT_OPTIONS, PRESETS } from '$lib/themes/presets';
@@ -14,7 +14,8 @@ const semanticTokens = (
       resolve(process.cwd(), 'node_modules/@minion-stack/design-tokens/tokens.css'),
       'utf8',
     ),
-    { polyfills: Polyfills.None },
+    // Polyfills.None is 0; its ambient const enum cannot be imported with verbatimModuleSyntax.
+    { polyfills: 0 },
   )
 ).build([]);
 const appStyles = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
@@ -87,7 +88,9 @@ describe('runtime theme semantic contract', () => {
       const theme = designTokens.themes[preset.id];
       const scale = theme.radiusScale as keyof typeof designTokens.radiusScales;
       applyTheme(preset, preset.colors.accent);
-      expect(getComputedStyle(root).borderRadius).toBe(designTokens.radiusScales[scale]['--radius-md']);
+      expect(getComputedStyle(root).borderRadius).toBe(
+        designTokens.radiusScales[scale]['--radius-md'],
+      );
     }
     root.style.setProperty('--radius-md', '23px');
     expect(getComputedStyle(root).borderRadius).toBe('23px');
