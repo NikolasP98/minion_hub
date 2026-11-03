@@ -10,7 +10,6 @@ import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { orgPlans, orgPlanEvents } from '$server/db/pg-schema/entitlements';
 import { requireAdmin } from '$server/auth/authorize';
-import { captureServerEvent } from '$lib/server/posthog';
 import type { OrgKind } from '$lib/org-kind';
 import { PLANS, type PlanKey } from '$server/entitlements/catalog';
 import { EntitlementError } from '$server/entitlements/errors';
@@ -136,17 +135,22 @@ function captureDenial(
   surface: string,
   actorId?: string,
 ) {
-  captureServerEvent({
-    event: 'entitlement_denied',
-    distinctId: `org:${orgId}`,
-    properties: {
-      org_id: orgId,
-      actor_id: actorId,
-      entitlement_feature: feature,
-      entitlement_reason: reason,
-      entitlement_surface: surface,
-    },
-  });
+  // Lazy: posthog imports $app/environment, which bg-runtime's worker processes can't load.
+  void import('$lib/server/posthog')
+    .then(({ captureServerEvent }) =>
+      captureServerEvent({
+        event: 'entitlement_denied',
+        distinctId: `org:${orgId}`,
+        properties: {
+          org_id: orgId,
+          actor_id: actorId,
+          entitlement_feature: feature,
+          entitlement_reason: reason,
+          entitlement_surface: surface,
+        },
+      }),
+    )
+    .catch(() => {});
 }
 
 async function checkFeature(

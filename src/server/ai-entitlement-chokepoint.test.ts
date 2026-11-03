@@ -66,7 +66,7 @@ describe('assertAiCallAllowed', () => {
       await expect(
         runWithAiUsageScope(scope(ORG, true), () => assertAiCallAllowed('llm')),
       ).rejects.toMatchObject({ name: 'EntitlementError', feature: 'ai', reason: 'not_in_plan' });
-      expect(h.capture).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(h.capture).toHaveBeenCalledOnce());
     });
 
     it('allows a Premium org', async () => {

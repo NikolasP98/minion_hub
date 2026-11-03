@@ -90,6 +90,12 @@
     "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
   },
   {
+    "table": "org_plan_events",
+    "reason": "platform",
+    "note": "spec 043 plan-change audit log: forced RLS with no policy and no grant, so only the service connection reads or writes it (platform admins change plans)",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
     "table": "org_provision_runs",
     "reason": "platform",
     "note": "written by organization provisioning, cross-org by design",
