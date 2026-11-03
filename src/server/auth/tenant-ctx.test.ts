@@ -2,7 +2,10 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ org: vi.fn(), db: vi.fn(), usage: vi.fn() }));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: mocks.org }));
 vi.mock('$server/db/client', () => ({ getDb: mocks.db }));
-vi.mock('$server/ai-usage', () => ({ setAiUsageOrg: mocks.usage }));
+vi.mock('$server/ai-usage', () => ({
+  setAiUsageOrg: mocks.usage,
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 import { getTenantCtx, getOrCreateTenantCtx } from './tenant-ctx';
 beforeEach(() => {
   vi.clearAllMocks();

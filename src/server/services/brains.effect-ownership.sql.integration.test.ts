@@ -17,7 +17,10 @@ vi.mock('$server/db/pg-pool', () => ({
   getCriticalPgClient: boundary.pool,
   resetAllPgPools: vi.fn(),
 }));
-vi.mock('$server/ai-usage', () => ({ recordAiUsage: vi.fn() }));
+vi.mock('$server/ai-usage', () => ({
+  recordAiUsage: vi.fn(),
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 vi.mock('$env/dynamic/private', () => ({ env: boundary.env }));
 vi.mock('./activity.service', () => ({ recordAudit: boundary.audit }));
 vi.mock('./finance-products.service', () => ({ listProducts: boundary.products }));

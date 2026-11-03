@@ -210,12 +210,12 @@
     "class": "todo"
   },
   {
-    "file": "src/routes/api/marketplace/agents/[id]/+server.ts",
+    "file": "src/routes/api/marketplace/agents/+server.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
   },
   {
-    "file": "src/routes/api/marketplace/agents/+server.ts",
+    "file": "src/routes/api/marketplace/agents/[id]/+server.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
   },
@@ -458,6 +458,11 @@
     "file": "src/server/services/email-opens.service.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
+  },
+  {
+    "file": "src/server/services/entitlements.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
   },
   {
     "file": "src/server/services/finance-statements.service.ts",

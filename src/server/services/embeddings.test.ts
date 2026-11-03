@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('$env/dynamic/private', () => ({ env: { OPENROUTER_API_KEY: 'test-key' } }));
-vi.mock('$server/ai-usage', () => ({ recordAiUsage: vi.fn() }));
+vi.mock('$server/ai-usage', () => ({
+  recordAiUsage: vi.fn(),
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 
 import { embedTexts, prepareEmbeddingRequest, executeEmbeddingRequest } from './embeddings';
 import { recordAiUsage } from '$server/ai-usage';
