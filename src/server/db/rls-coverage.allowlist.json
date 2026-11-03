@@ -1,0 +1,170 @@
+[
+  {
+    "table": "ai_usage",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "bg_jobs",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "brain_vector_outbox",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "email_ledger",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "email_ledger_settings",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "fin_dni_reassign_bak_cli",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "fin_dni_reassign_bak_inv",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "fin_products_bak_insumos2608",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "fin_settings",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "flow_groups_backup_20260604",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "flows_backup_20260604",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "flows_backup_20260605_triage",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "gateway",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "gateway_lease",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "notes",
+    "reason": "user-scoped",
+    "note": "scoped by user_id (tenant_id is not the access boundary)",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "org_provision_runs",
+    "reason": "platform",
+    "note": "written by organization provisioning, cross-org by design",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "pulse_proposals",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "pulse_settings",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_bins_bak_insumos2608",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_consumption_bak_insumos2608",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_entries_bak_repair",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_entries_reclass_bak",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_items_bak_insumos2608",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_items_fin_product_bridge_backup",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "stk_ledger_bak_repair",
+    "reason": "todo",
+    "note": "ad-hoc backup snapshot with no RLS: drop it or enable forced RLS",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "workshop_comparison_runs",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "workshop_groupchat_runs",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "workshop_prompt_categories",
+    "reason": "todo",
+    "note": "org-scoped table without forced RLS + current_org_id policy: convert and remove from this list",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  }
+]
