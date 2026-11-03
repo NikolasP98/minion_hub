@@ -11,7 +11,7 @@ One design system, machine-enforced. Semantic tokens and shared primitives only;
 
 ## Authority chain (highest first)
 
-1. `packages/design-tokens/contract.json` (meta-repo) — machine truth. 16 themes × 43 resolved tokens, 10 accent pairs, 34 compat aliases. `tokens.css` is **generated** (`pnpm --filter @minion-stack/design-tokens generate`); `utilities.css` is hand-authored in the same package. Build fails on stale CSS, incomplete theme, unknown alias, or <AA contrast.
+1. `packages/design-tokens/contract.json` (meta-repo) — machine truth. Read the installed `@minion-stack/design-tokens/inventory.json` for theme IDs, resolved token counts, accent options, and aliases. `tokens.css` is **generated** (`pnpm --filter @minion-stack/design-tokens generate`); `utilities.css` is hand-authored in the same package. Build fails on stale CSS, incomplete theme, unknown alias, or <AA contrast.
 2. `specs/2026-07-13-hub-ui-coherence-implementation-spec.md` §D2 (meta-repo) — sole normative naming policy. §D3 theme, §D4 typography, §D5 primitives, §D6 layout/archetypes, §D9 a11y.
 3. `minion_hub/scripts/DESIGN-LINT.md` — enforcement mechanics.
 
@@ -20,7 +20,7 @@ One design system, machine-enforced. Semantic tokens and shared primitives only;
 - **Semantic tokens only.** Never a literal hex/rgb, Tailwind palette utility (`bg-slate-500`), arbitrary size (`text-[16px]`, `p-[13px]`), raw shadow, raw duration/easing, or numeric z-index in `.svelte` files. Raw colors are legal only in `app.css` and `themes/*.ts`.
 - **⛔ Forbidden names (hard-fail):** `--accent`, `--accent-bg`, `--accent-rgb`, `--color-background`, `--color-bg1`, `--color-error`, `--color-primary`, `--color-primary-foreground`. Migrate consumers to the semantic role; never re-declare these.
 - **Never hand-edit `tokens.css`.** Extend `contract.json` and regenerate.
-- **Theme = `data-theme` on `<html>` only.** No Tailwind `dark:` variants (dead code here — no class/media wiring), no `prefers-color-scheme`, no per-theme selectors in components. Components read semantic tokens; themes swap the values.
+- **Semantic theme selection belongs to `$lib/themes/runtime.ts`.** It sets `data-minion-theme` on `<html>` for the shared token selectors and retains `data-theme` only for decorative hooks. No Tailwind `dark:` variants (dead code here — no class/media wiring), no `prefers-color-scheme`, no per-theme selectors in components. Components read semantic tokens; themes swap the values.
 - **Accent is a pair.** `--color-accent` always with `--color-on-accent`. Categorical `--color-purple/pink/cyan/emerald/neutral` are for charts/data-viz ONLY, never action or status semantics.
 - **On-accent prefers white** (user directive 2026-07-16): white text whenever it clears AA 4.5 on the accent; black ONLY on bright accents where white can't (amber/cyan/green/orange). Dark accent options are tuned to 600-scale shades so white passes — never "fix" contrast by flipping a dark accent back to black text, and never pick on-accent by raw max-contrast (`onAccentFor` in hub encodes the white-first rule).
 - **Compat aliases** (`--color-bg`, `--color-foreground`, `--color-muted`, `--shadow-sm`, `--hairline`, …) are legal but write new code with the canonical names.
@@ -245,7 +245,7 @@ New semantic need → add token to `contract.json` with every theme mode enumera
 | "It's just one hex value" | 855 raw colors started as one. Use the semantic token. |
 | "z-index: 9999 to be safe" | That's the nav-killer pattern. Use `--layer-*`. |
 | "I'll style this button quickly" | `bare-button` count is 511 and ratcheted. Use `Button`. |
-| "dark: variant like other Tailwind apps" | Dead code here — theming is `data-theme` presets. Tokens only. |
+| "dark: variant like other Tailwind apps" | Dead code here — follow the semantic theme selection rule above. |
 | "I'll add the exception file entry later" | Later = CI failure. Do it in the same change, capped. |
 | "This component is special" | Special = an exception category + cap + reason, not a bypass. |
 | "Skip the lint, the diff is tiny" | The ratchet compares files, not diffs. Run both gates. |
