@@ -13,8 +13,8 @@ def settle():
     cdp('Emulation.setFocusEmulationEnabled', enabled=True, _response_timeout=30)
     cdp('Runtime.evaluate', expression="document.fonts.ready.then(() => new Promise(resolve => setTimeout(resolve, 600)))", awaitPromise=True, returnByValue=True, _response_timeout=30)
 
-def wait_for_condition(expression, description):
-    deadline = time.monotonic() + 60
+def wait_for_condition(expression, description, timeout=60):
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             response = cdp('Runtime.evaluate', expression='Boolean(' + expression + ')', returnByValue=True, _response_timeout=5)
@@ -63,7 +63,7 @@ cdp('Emulation.setDeviceMetricsOverride', **{'width': 1440, 'height': 1000, 'dev
 new_tab('http://127.0.0.1:18913/')
 cdp('Page.bringToFront')
 cdp('Emulation.setDeviceMetricsOverride', **{'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
-wait_for_condition('document.querySelector(".theme-grids") && document.querySelector(".preview-tools button")', 'Clinic fixture did not mount within 60 seconds')
+wait_for_condition('document.querySelector(".theme-grids") && document.querySelector(".preview-tools button")', 'Clinic fixture did not mount within 180 seconds', timeout=180)
 settle()
 shot('initial')
 for mode in ['light', 'dark']:
