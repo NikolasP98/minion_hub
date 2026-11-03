@@ -123,8 +123,10 @@ describe('flag on', () => {
       status: 403,
       body: { code: 'premium_required', feature: 'ai' },
     });
-    expect(h.capture).toHaveBeenCalledWith(
-      expect.objectContaining({ event: 'entitlement_denied', distinctId: `org:${ORG}` }),
+    await vi.waitFor(() =>
+      expect(h.capture).toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'entitlement_denied', distinctId: `org:${ORG}` }),
+      ),
     );
   });
 
