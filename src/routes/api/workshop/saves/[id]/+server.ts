@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * Resolve a save within the current org. Workshop saves are org-shared — any
@@ -26,6 +27,7 @@ async function requireSaveInOrg(tx: CoreTx, tenantId: string, saveId: string) {
 }
 
 export const GET: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
@@ -43,6 +45,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
@@ -80,6 +83,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);

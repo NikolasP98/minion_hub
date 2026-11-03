@@ -3,9 +3,30 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { schedReminders } from '$server/db/pg-reminders-schema';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
-import { dueStages, expandRoles, resolveRecipient, parseYesNo, confirmCta } from '$server/scheduling/reminders';
+import {
+  dueStages,
+  expandRoles,
+  resolveRecipient,
+  parseYesNo,
+  confirmCta,
+} from '$server/scheduling/reminders';
 import type { RecipientRole } from '$server/scheduling/reminders';
-import { getReminderConfig, effectiveChannels } from './reminder-config.service';
+import {
+  getReminderConfig as loadReminderConfig,
+  effectiveChannels,
+} from './reminder-config.service';
+import { orgAllows } from './entitlements.service';
+
+/**
+ * Spec 043: for an org without `ai.proactive`, reminders still send but with the plain template, the
+ * confirmation prompt and the keyword parser (`personalize` / `inferConfirmation` read as false).
+ */
+async function getReminderConfig(ctx: CoreCtx) {
+  const config = await loadReminderConfig(ctx);
+  if (!config.personalize && !config.inferConfirmation) return config;
+  if (await orgAllows(ctx.tenantId, 'ai.proactive', 'reminders')) return config;
+  return { ...config, personalize: false, inferConfirmation: false };
+}
 import { composeReminder, inferConfirmationReply } from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
 import { setBookingStatus } from './scheduling-bookings.service';
@@ -56,7 +77,11 @@ function formatWhen(startIso: string, timezone: string, locale: string): string 
  * row first (unique on org+booking+stage) so overlapping ticks never double-send,
  * then composes + sends via the gateway and records the outcome + a ledger entry.
  */
-export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Promise<ReminderRunResult> {
+export async function processOrgReminders(
+  ctx: CoreCtx,
+  now: Date,
+  cap = 25,
+): Promise<ReminderRunResult> {
   const config = await getReminderConfig(ctx);
   const result: ReminderRunResult = { sent: 0, failed: 0, skipped: 0 };
   if (!config.enabled) return result;
@@ -92,7 +117,12 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
   const ids = candidates.map((c) => c.id);
   const recorded = (await withOrgCore(ctx, (tx) =>
     tx
-      .select({ bookingId: schedReminders.bookingId, stage: schedReminders.stage, channel: schedReminders.channel, role: schedReminders.recipientRole })
+      .select({
+        bookingId: schedReminders.bookingId,
+        stage: schedReminders.stage,
+        channel: schedReminders.channel,
+        role: schedReminders.recipientRole,
+      })
       .from(schedReminders)
       .where(and(eq(schedReminders.orgId, ctx.tenantId), inArray(schedReminders.bookingId, ids))),
   )) as Array<{ bookingId: string; stage: string; channel: string; role: string }>;
@@ -105,7 +135,11 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
     // Timing eligibility is per-stage; per-combo dedup is the claim insert below,
     // so pass an empty sent-set and let each (channel, role) claim guard itself.
     const due = dueStages({
-      booking: { startTime: new Date(b.start_time), createdAt: new Date(b.created_at), status: b.status },
+      booking: {
+        startTime: new Date(b.start_time),
+        createdAt: new Date(b.created_at),
+        status: b.status,
+      },
       stages,
       now,
       sentStageKeys: [],
@@ -133,13 +167,32 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
           const claimed = await withOrgCore(ctx, (tx) =>
             tx
               .insert(schedReminders)
-              .values({ orgId: ctx.tenantId, bookingId: b.id, stage: stage.key, channel: chan.channel, recipientRole: role, recipient, status: 'sending' })
-              .onConflictDoNothing({ target: [schedReminders.orgId, schedReminders.bookingId, schedReminders.stage, schedReminders.channel, schedReminders.recipientRole] })
+              .values({
+                orgId: ctx.tenantId,
+                bookingId: b.id,
+                stage: stage.key,
+                channel: chan.channel,
+                recipientRole: role,
+                recipient,
+                status: 'sending',
+              })
+              .onConflictDoNothing({
+                target: [
+                  schedReminders.orgId,
+                  schedReminders.bookingId,
+                  schedReminders.stage,
+                  schedReminders.channel,
+                  schedReminders.recipientRole,
+                ],
+              })
               .returning({ id: schedReminders.id }),
           );
           if (!claimed.length) continue; // already handled
 
-          const finalize = (status: string, fields: Partial<{ messageId: string; error: string; content: string }>) =>
+          const finalize = (
+            status: string,
+            fields: Partial<{ messageId: string; error: string; content: string }>,
+          ) =>
             withOrgCore(ctx, (tx) =>
               tx
                 .update(schedReminders)
@@ -157,7 +210,9 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
 
           // Opt-out only silences the client; staff notifications still go out.
           if ((optedOut && role === 'client') || !recipient) {
-            await finalize('skipped', { error: optedOut && role === 'client' ? 'opted_out' : 'no_recipient' });
+            await finalize('skipped', {
+              error: optedOut && role === 'client' ? 'opted_out' : 'no_recipient',
+            });
             result.skipped += 1;
             continue;
           }
@@ -177,7 +232,12 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
             // Pending booking + AI inference OFF + notifying the client → append a
             // deterministic SÍ/NO CTA (after personalization so the keyword scan
             // always has it). With inference ON the LLM reads natural replies.
-            if (stage.key === 'confirmation' && b.status === 'pending' && role === 'client' && !config.inferConfirmation) {
+            if (
+              stage.key === 'confirmation' &&
+              b.status === 'pending' &&
+              role === 'client' &&
+              !config.inferConfirmation
+            ) {
               text = `${text}\n\n${confirmCta(config.locale)}`;
             }
             const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
@@ -210,7 +270,13 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
                   success: true,
                   error: null,
                   occurredAt: Date.now(),
-                  metadata: { bookingId: b.id, stage: stage.key, channel: chan.channel, role, kind: 'reminder' },
+                  metadata: {
+                    bookingId: b.id,
+                    stage: stage.key,
+                    channel: chan.channel,
+                    role,
+                    kind: 'reminder',
+                  },
                 },
               ]);
             } catch (e) {
@@ -220,7 +286,10 @@ export async function processOrgReminders(ctx: CoreCtx, now: Date, cap = 25): Pr
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             console.error('[reminders] send failed', b.id, stage.key, chan.channel, role, msg);
-            await finalize('failed', { error: msg.slice(0, 500), ...(text ? { content: text } : {}) });
+            await finalize('failed', {
+              error: msg.slice(0, 500),
+              ...(text ? { content: text } : {}),
+            });
             result.failed += 1;
           }
         }
@@ -374,7 +443,11 @@ export async function getReminderActivity(ctx: CoreCtx, limit = 30): Promise<Rem
     `)) as unknown as Array<Record<string, unknown>>;
     const c = counts[0] ?? {};
     return {
-      counts: { sent: Number(c.sent ?? 0), failed: Number(c.failed ?? 0), skipped: Number(c.skipped ?? 0) },
+      counts: {
+        sent: Number(c.sent ?? 0),
+        failed: Number(c.failed ?? 0),
+        skipped: Number(c.skipped ?? 0),
+      },
       recent: recent.map((r) => ({
         id: String(r.id),
         bookingId: String(r.booking_id),

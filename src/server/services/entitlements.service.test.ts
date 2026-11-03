@@ -46,10 +46,14 @@ vi.mock('$server/db/pg-client', () => {
 });
 
 import {
+  orgAllows,
+  orgAllowsForConfig,
+  orgFeatureCheck,
   requireFeature,
   requireOrgFeature,
   resolveEntitlements,
   setOrgPlan,
+  skippedField,
 } from './entitlements.service';
 import { orgPlans, orgPlanEvents } from '$server/db/pg-schema/entitlements';
 
@@ -77,11 +81,19 @@ describe('flag off', () => {
     expect(r.features).toEqual(['ai', 'ai.chat', 'ai.proactive', 'marketplace']);
     expect(r.enforced).toBe(false);
     await expect(requireFeature(member(), 'ai')).resolves.toBeUndefined();
-    expect(console.warn).toHaveBeenCalledWith(
-      'entitlement.would_deny',
-      expect.stringContaining('"feature":"ai"'),
+    await vi.waitFor(() =>
+      expect(console.warn).toHaveBeenCalledWith(
+        'entitlement.would_deny',
+        expect.stringContaining('"feature":"ai"'),
+      ),
     );
     expect(h.capture).not.toHaveBeenCalled();
+  });
+
+  it('a request never waits on the shadow lookup (a hung DB does not hang the route)', async () => {
+    h.execute.mockImplementation(() => new Promise(() => {}));
+    await expect(requireFeature(member(), 'ai')).resolves.toBeUndefined();
+    await expect(requireOrgFeature(ORG, 'ai')).resolves.toBeUndefined();
   });
 });
 
@@ -175,5 +187,69 @@ describe('setOrgPlan', () => {
     await expect(setOrgPlan(member(), ORG, 'premium')).rejects.toMatchObject({ status: 403 });
     await expect(setOrgPlan(admin(), ORG, 'gold')).rejects.toMatchObject({ status: 400 });
     expect(h.inserts).toHaveLength(0);
+  });
+});
+
+describe('orgAllows (ticks, jobs, gateway mirrors)', () => {
+  it('flag off: true with no lookup', async () => {
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(true);
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+  it('enforced: Base false, Premium true, lookup error false; never a PostHog event', async () => {
+    h.env.ENTITLEMENTS_ENFORCED = 'true';
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(false);
+    h.execute.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(true);
+    h.cacheFail = true;
+    expect(await orgAllows(ORG, 'ai.proactive', 'tick:x')).toBe(false);
+    expect(h.capture).not.toHaveBeenCalled();
+  });
+  it('orgFeatureCheck names a lookup error so jobs can retry instead of finishing', async () => {
+    expect(await orgFeatureCheck(ORG, 'ai', 'job:x')).toBeNull();
+    h.env.ENTITLEMENTS_ENFORCED = 'true';
+    expect(await orgFeatureCheck(ORG, 'ai', 'job:x')).toBe('not_in_plan');
+    h.cacheFail = true;
+    expect(await orgFeatureCheck(ORG, 'ai', 'job:x')).toBe('lookup_error');
+  });
+  it('skippedField only adds the key when something was skipped', () => {
+    expect(skippedField(0)).toEqual({});
+    expect(skippedField(2)).toEqual({ skippedByEntitlement: 2 });
+  });
+});
+
+describe('orgAllowsForConfig (gateway channel mirror: an outage never demotes a paying org)', () => {
+  const org = (n: number) => `33333333-3333-3333-3333-33333333333${n}`;
+  beforeEach(() => {
+    h.env.ENTITLEMENTS_ENFORCED = 'true';
+  });
+  it('flag off: true with no lookup', async () => {
+    delete h.env.ENTITLEMENTS_ENFORCED;
+    expect(await orgAllowsForConfig(org(1), 'ai', 'channels.resolved')).toBe(true);
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+  it('enforced: Base false, Premium true', async () => {
+    expect(await orgAllowsForConfig(org(2), 'ai', 'channels.resolved')).toBe(false);
+    h.execute.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
+    expect(await orgAllowsForConfig(org(3), 'ai', 'channels.resolved')).toBe(true);
+  });
+  it('lookup error with no earlier answer: true, logged as lookup_error', async () => {
+    h.cacheFail = true;
+    expect(await orgAllowsForConfig(org(4), 'ai', 'channels.resolved')).toBe(true);
+    expect(console.warn).toHaveBeenCalledWith(
+      'entitlement.lookup_error',
+      expect.stringContaining('"fallback":"allow"'),
+    );
+  });
+  it('lookup error after an answer: the last answer (Base stays false, Premium stays true)', async () => {
+    expect(await orgAllowsForConfig(org(5), 'ai', 'channels.resolved')).toBe(false);
+    h.execute.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
+    expect(await orgAllowsForConfig(org(6), 'ai', 'channels.resolved')).toBe(true);
+    h.cacheFail = true;
+    expect(await orgAllowsForConfig(org(5), 'ai', 'channels.resolved')).toBe(false);
+    expect(await orgAllowsForConfig(org(6), 'ai', 'channels.resolved')).toBe(true);
+    expect(console.warn).toHaveBeenCalledWith(
+      'entitlement.lookup_error',
+      expect.stringContaining('"fallback":"last_answer"'),
+    );
   });
 });

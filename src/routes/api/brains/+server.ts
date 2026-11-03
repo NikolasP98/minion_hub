@@ -4,9 +4,11 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { listBrains, createBrain, resolvePrincipal } from '$server/services/brains.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /** GET /api/brains — brains visible to the caller (org-visible + private w/ access). */
 export const GET: RequestHandler = async ({ locals }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const principal = await resolvePrincipal(ctx);
@@ -22,10 +24,14 @@ const postSchema = z.object({
 
 /** POST /api/brains — create a brain. Write-gated centrally (brains:edit) by hooks.server.ts. */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   const brain = await createBrain(ctx, body, actor);
   return json(brain, { status: 201 });
 };

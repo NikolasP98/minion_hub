@@ -4,6 +4,7 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { env } from '$env/dynamic/private';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 // Was a direct api.anthropic.com call keyed on ANTHROPIC_API_KEY; routed through
 // the shared OpenRouter factory (no ANTHROPIC_API_KEY-specific requirement, and
@@ -32,6 +33,7 @@ const agentPersonaSchema = z.object({
 });
 
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'marketplace');
   if (!locals.tenantCtx) throw error(401);
 
   const body = await request.json();

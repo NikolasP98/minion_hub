@@ -1,8 +1,10 @@
 import { error, json } from '@sveltejs/kit';
 import { workforceRawFetch } from '$lib/server/workforce-fetch';
 import type { RequestHandler } from './$types';
+import { requireFeature } from '$server/services/entitlements.service';
 
 export const GET: RequestHandler = async (event) => {
+  await requireFeature(event.locals, 'ai');
   if (!event.locals.user) throw error(401, 'Authentication required');
   if (!event.locals.workforceIdentity) {
     return json(

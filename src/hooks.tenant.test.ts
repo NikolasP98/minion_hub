@@ -80,15 +80,12 @@ vi.mock('$lib/server/workforce-viewer', () => ({ trustedWorkforceViewerRoleKeys:
 vi.mock('$server/services/user-preferences.service', () => ({
   getUserPreferences: async () => ({}),
 }));
-vi.mock('$server/ai-usage', () => ({
-  runWithAiUsageScope: (_scope: unknown, fn: () => unknown) => fn(),
-  setAiUsageOrg: vi.fn(),
-}));
 vi.mock('$server/services/gateway.pg.service', () => ({
   isGatewayChannel: (channel: string) => ['prd', 'dev'].includes(channel),
 }));
 
 import { handle } from './hooks.server';
+import { currentAiUsageScope } from '$server/ai-usage';
 
 // SvelteKit's real sequence requires the request store normally opened by its server.
 const kitRuntimePath = '@sveltejs/kit/internal/server';
@@ -175,6 +172,31 @@ beforeEach(() => {
       ],
     },
     builtin: {},
+  });
+});
+
+describe('AI usage scope (spec 043 chokepoint)', () => {
+  it('carries the org and the signed-in mark for a route that never calls getTenantCtx', async () => {
+    mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+    let seen: ReturnType<typeof currentAiUsageScope>;
+    const resolve = vi.fn(async () => {
+      seen = currentAiUsageScope();
+      return new Response('ok');
+    });
+    await runHook({ event: event('/api/notes/spelling'), resolve });
+    expect(resolve).toHaveBeenCalledOnce();
+    expect(seen!).toMatchObject({ orgId: 'member-org', authenticated: true });
+  });
+  it('leaves an anonymous request unauthenticated with no org', async () => {
+    mocks.identity.mockResolvedValue({ locals: {}, bypassGate: false });
+    let seen: ReturnType<typeof currentAiUsageScope>;
+    const resolve = vi.fn(async () => {
+      seen = currentAiUsageScope();
+      return new Response('ok');
+    });
+    await runHook({ event: event('/api/jobs/tick', 'GET'), resolve });
+    expect(seen!).toMatchObject({ orgId: null });
+    expect(seen!.authenticated).toBeFalsy();
   });
 });
 

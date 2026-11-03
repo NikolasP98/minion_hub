@@ -5,6 +5,7 @@ import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { requireAuth } from '$server/auth/authorize';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 // Fast/cheap model for inline ghost text; override via env if a different model
 // is provisioned on the OpenRouter key. Gemini Flash has very low time-to-first-
@@ -22,6 +23,7 @@ const MAX_CONTEXT = 4000;
  * One-shot (non-streaming) — the caller shows it as Tab-to-accept ghost text.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
 
   const apiKey = env.OPENROUTER_API_KEY;
@@ -42,7 +44,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
         temperature: 0.7,
         headers,
         system:
-          'You extend a user\'s todo checklist. Given the existing items, suggest 3 to 5 additional, ' +
+          "You extend a user's todo checklist. Given the existing items, suggest 3 to 5 additional, " +
           'concrete, relevant items. Reply with ONLY the new items, one per line, no numbering, ' +
           'no bullets, no commentary. Keep each item short.',
         prompt: context || '(empty checklist)',
@@ -61,7 +63,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       temperature: 0.6,
       headers,
       system:
-        'You are an inline autocomplete for a notes app. Continue the user\'s note naturally from ' +
+        "You are an inline autocomplete for a notes app. Continue the user's note naturally from " +
         'exactly where it ends. Reply with ONLY the continuation text — no preamble, no quotes, no ' +
         'restating what they wrote. At most about 30 words. If the text ends mid-word, complete it.',
       prompt: context || '(empty note)',

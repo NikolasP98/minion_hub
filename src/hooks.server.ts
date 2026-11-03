@@ -31,7 +31,7 @@ import { initCache, initCacheDataPlane } from '$lib/server/cache';
 import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
 import { applyOrgTxScope } from '$server/db/with-org-core';
 import { createAmbientOrgTx } from '$server/db/ambient-org-tx';
-import { runWithAiUsageScope } from '$server/ai-usage';
+import { markAiUsageAuthenticated, runWithAiUsageScope, setAiUsageOrg } from '$server/ai-usage';
 import { getUserPreferences } from '$server/services/user-preferences.service';
 import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { availableLanguageTags } from '$lib/paraglide/runtime';
@@ -244,6 +244,9 @@ const appHandle: Handle = async ({ event, resolve }) => {
   // /api/metrics bearer path resolve directly, as before).
   const { locals, bypassGate } = await resolveIdentity(event);
   Object.assign(event.locals, locals);
+  // Spec 043: the model-call backstop needs the org even on routes that never call getTenantCtx.
+  if (event.locals.tenantCtx?.tenantId) setAiUsageOrg(event.locals.tenantCtx.tenantId);
+  if (event.locals.user) markAiUsageAuthenticated();
   if (bypassGate) {
     // AUTH_DISABLED bypass skips finishApp, so mirror its "/" → landing redirect
     // here or the root URL 404s in dev (there is no +page at "/").
