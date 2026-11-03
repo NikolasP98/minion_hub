@@ -310,6 +310,11 @@ const fields: Record<string, Rule> = {
   p_brain: probabilityField,
   p_changelog: probabilityField,
   p_sandbox: probabilityField,
+  // Entitlement denials (spec 043): catalog keys and fixed vocabularies only.
+  entitlement_feature: (v): v is string => typeof v === 'string' && /^[a-z][a-z.]{0,31}$/.test(v),
+  entitlement_reason: oneOf('not_in_plan', 'rule_false', 'lookup_error', 'no_org'),
+  entitlement_surface: (v): v is string =>
+    typeof v === 'string' && /^[a-z][a-z0-9_.:-]{0,63}$/.test(v),
 };
 const identityFields = [
   'environment',
@@ -364,6 +369,12 @@ const eventFields: Record<string, readonly string[]> = {
   ],
   app_layout_slow_load: [...identityFields, 'duration_ms'],
   server_added: [...identityFields, 'server_id'],
+  entitlement_denied: [
+    ...identityFields,
+    'entitlement_feature',
+    'entitlement_reason',
+    'entitlement_surface',
+  ],
   provision_run_started: [...identityFields, 'server_id', 'start_from'],
   agent_installed_from_marketplace: [...identityFields, 'server_id', 'agent_id'],
   // Producer not wired yet — the booking service lives on another branch;

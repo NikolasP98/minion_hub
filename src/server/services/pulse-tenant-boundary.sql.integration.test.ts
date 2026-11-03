@@ -74,6 +74,7 @@ vi.mock('$server/services/user-preferences.service', () => ({
   getUserPreferences: async () => ({}),
 }));
 vi.mock('$server/ai-usage', () => ({
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
   runWithAiUsageScope: (_scope: unknown, fn: () => unknown) => fn(),
   setAiUsageOrg: vi.fn(),
 }));

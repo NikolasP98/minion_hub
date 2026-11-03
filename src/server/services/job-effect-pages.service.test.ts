@@ -7,7 +7,10 @@ vi.mock('$server/db/pg-pool', () => ({
   getCriticalPgClient: vi.fn(),
 }));
 vi.mock('$env/dynamic/private', () => ({ env: { OPENROUTER_API_KEY: 'synthetic-page-fixture' } }));
-vi.mock('$server/ai-usage', () => ({ recordAiUsage: vi.fn() }));
+vi.mock('$server/ai-usage', () => ({
+  recordAiUsage: vi.fn(),
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 import { bindJobEffectPage, type PageInput } from './job-effect-pages.service';
 
 const input = (): PageInput => ({

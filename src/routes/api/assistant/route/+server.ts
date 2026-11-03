@@ -9,6 +9,7 @@ import {
 import { captureServerEvent } from '$lib/server/posthog';
 import { canonicalUuid } from '$lib/assistant/turn-router';
 import { distinctIdFor, requestIdentity } from '$lib/server/observability-context';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/assistant/route — classify ONE assistant turn so the client can
@@ -28,6 +29,7 @@ import { distinctIdFor, requestIdentity } from '$lib/server/observability-contex
  * `API_WRITE_PREFIXES`; see rbac.service.ts `apiWriteCapability`).
  */
 export const POST: RequestHandler = async ({ locals, request, route }) => {
+  await requireFeature(locals, 'ai.chat');
   requireAuth(locals);
 
   const body = (await request.json().catch(() => null)) as {

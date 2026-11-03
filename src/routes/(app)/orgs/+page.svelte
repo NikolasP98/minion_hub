@@ -1,5 +1,7 @@
 <script lang="ts">
   import { Building2 } from 'lucide-svelte';
+  import * as m from '$lib/paraglide/messages';
+  import { canViewPath } from '$lib/access/can.svelte';
   import { iconSizes, PageHeader } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
 
@@ -15,6 +17,9 @@
     {#snippet leading()}<Building2 size={iconSizes.md} class="shrink-0 text-accent" />{/snippet}
   </PageHeader>
   <PageBody width="content">
+    {#if canViewPath('/orgs/plans')}
+      <a class="plans-link text-sm" href="/orgs/plans">{m.admin_plans_link()}</a>
+    {/if}
     <AsyncBoundary
       state={data.orgs.length === 0
         ? {
@@ -46,6 +51,11 @@
 </PageShell>
 
 <style>
+  .plans-link {
+    display: inline-block;
+    margin-bottom: var(--space-3, 12px);
+    color: var(--color-accent);
+  }
   .organization-list {
     display: grid;
     gap: var(--space-2, 8px);

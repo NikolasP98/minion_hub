@@ -5,6 +5,7 @@ import {
   SECURITY_GROUP_IDS,
   getGroupsForTab,
   extractGroups,
+  resolveSettingsTab,
 } from './config-schema';
 import type { ConfigGroup } from '$lib/types/config';
 
@@ -218,5 +219,18 @@ describe('extractGroups', () => {
     };
     const groups = extractGroups(schema, hints);
     expect(groups[0].id).toBe('agents');
+  });
+});
+
+describe('resolveSettingsTab (spec 043)', () => {
+  it('defaults to ai and honours the URL when the org has ai (unchanged)', () => {
+    expect(resolveSettingsTab(null, true)).toBe('ai');
+    expect(resolveSettingsTab('agents', true)).toBe('agents');
+  });
+  it('defaults to comms without ai and never lands on the ai or agents tab', () => {
+    expect(resolveSettingsTab(null, false)).toBe('comms');
+    expect(resolveSettingsTab('ai', false)).toBe('comms');
+    expect(resolveSettingsTab('agents', false)).toBe('comms');
+    expect(resolveSettingsTab('security', false)).toBe('security');
   });
 });

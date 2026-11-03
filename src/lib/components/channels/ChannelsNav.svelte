@@ -4,6 +4,8 @@
   import { SectionNav, type SectionNavItem } from '$lib/components/ui/foundations';
   import { resolvePluginIcon } from '$lib/plugins/icon-map';
   import * as m from '$lib/paraglide/messages';
+  import { hasFeature } from '$lib/access/premium';
+  import { channelHref } from './channel-href';
 
   let { channels }: { channels: Array<{ pluginId: string; title: string; icon?: string }> } =
     $props();
@@ -13,7 +15,7 @@
       id: e.pluginId,
       label: e.title,
       icon: resolvePluginIcon(e.icon),
-      href: `/channels/${e.pluginId}`,
+      href: channelHref(e.pluginId, hasFeature('ai')),
     })),
   );
 

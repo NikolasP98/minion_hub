@@ -1,4 +1,4 @@
-import { Activity, Store, Cloud, Power } from 'lucide-svelte';
+import { Activity, Store, Cloud, Power, ShieldCheck } from 'lucide-svelte';
 import * as m from '$lib/paraglide/messages';
 import type { Section } from './sections';
 
@@ -9,6 +9,7 @@ export function utilityLinks(canViewPath: (href: string) => boolean) {
     { href: '/marketplace', label: m.nav_marketplace(), icon: Store },
     { href: '/cloud', label: m.nav_cloud(), icon: Cloud },
     { href: '/killswitches', label: m.nav_killSwitches(), icon: Power },
+    { href: '/orgs/plans', label: m.nav_orgPlans(), icon: ShieldCheck },
   ].filter((item) => canViewPath(item.href));
 }
 

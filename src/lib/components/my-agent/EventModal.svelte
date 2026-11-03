@@ -18,6 +18,7 @@
     Sparkles,
   } from 'lucide-svelte';
   import type { CalendarItem } from '$lib/services/my-agent-rpc';
+  import { hasFeature } from '$lib/access/premium';
 
   interface Props {
     item: CalendarItem | null;
@@ -31,6 +32,9 @@
   }
 
   let { item, open = $bindable(false), onclose, onask }: Props = $props();
+
+  // Spec 043: RSVP, edit, cancel and "ask" all hand a prompt to the agent; not rendered without it.
+  const aiChat = $derived(hasFeature('ai.chat'));
 
   const title = $derived(item?.title?.trim() || '(untitled event)');
 
@@ -80,7 +84,41 @@
   }
 </script>
 
-<Modal bind:open {title} size="md" {onclose}>
+{#snippet eventActions()}
+  <div class="footer-actions">
+    <Button
+      type="button"
+      class="icon-act"
+      onclick={() =>
+        ask(`Edit my calendar event "${title}" (${whenLabel}). Ask me what to change.`)}
+      title={m.event_editEvent()}
+      aria-label={m.event_editEvent()}
+    >
+      <Pencil size={iconSizes.md} />
+    </Button>
+    <Button
+      type="button"
+      class="icon-act danger"
+      onclick={() =>
+        ask(`Cancel my calendar event "${title}" (${whenLabel}). Confirm with me first.`)}
+      title={m.event_cancelEvent()}
+      aria-label={m.event_cancelEvent()}
+    >
+      <Trash2 size={iconSizes.md} />
+    </Button>
+  </div>
+  <Button
+    type="button"
+    class="ev-act primary"
+    onclick={() =>
+      ask(`Tell me about my event "${title}" (${whenLabel}) and what I should prepare.`)}
+  >
+    <Sparkles size={iconSizes.sm} />
+    {m.event_askAgent()}
+  </Button>
+{/snippet}
+
+<Modal bind:open {title} size="md" {onclose} footer={aiChat ? eventActions : undefined}>
   {#snippet header()}
     <div class="hdr">
       <h2 class="hdr-title" {title}>{title}</h2>
@@ -128,75 +166,43 @@
         <div class="rsvp-state">{rsvpLabel}</div>
       {/if}
 
-      <!-- RSVP — handed to the agent (gws attendee-patch) until a direct RPC lands. -->
-      <div class="section">
-        <span class="section-label">{m.event_rsvp()}</span>
-        <div class="btn-row">
-          <Button
-            type="button"
-            class="chip yes {rsvp === 'accepted' ? 'active' : ''}"
-            onclick={() =>
-              ask(`RSVP "Yes / Going" to my calendar event "${title}" (${whenLabel}).`)}
-          >
-            <Check size={iconSizes.sm} />
-            {m.event_going()}
-          </Button>
-          <Button
-            type="button"
-            class="chip maybe {rsvp === 'tentative' ? 'active' : ''}"
-            onclick={() =>
-              ask(`RSVP "Maybe / Tentative" to my calendar event "${title}" (${whenLabel}).`)}
-          >
-            <HelpCircle size={iconSizes.sm} />
-            {m.event_maybe()}
-          </Button>
-          <Button
-            type="button"
-            class="chip no {rsvp === 'declined' ? 'active' : ''}"
-            onclick={() =>
-              ask(`RSVP "No / Decline" to my calendar event "${title}" (${whenLabel}).`)}
-          >
-            <X size={iconSizes.sm} />
-            {m.event_decline()}
-          </Button>
+      {#if aiChat}
+        <!-- RSVP — handed to the agent (gws attendee-patch) until a direct RPC lands. -->
+        <div class="section">
+          <span class="section-label">{m.event_rsvp()}</span>
+          <div class="btn-row">
+            <Button
+              type="button"
+              class="chip yes {rsvp === 'accepted' ? 'active' : ''}"
+              onclick={() =>
+                ask(`RSVP "Yes / Going" to my calendar event "${title}" (${whenLabel}).`)}
+            >
+              <Check size={iconSizes.sm} />
+              {m.event_going()}
+            </Button>
+            <Button
+              type="button"
+              class="chip maybe {rsvp === 'tentative' ? 'active' : ''}"
+              onclick={() =>
+                ask(`RSVP "Maybe / Tentative" to my calendar event "${title}" (${whenLabel}).`)}
+            >
+              <HelpCircle size={iconSizes.sm} />
+              {m.event_maybe()}
+            </Button>
+            <Button
+              type="button"
+              class="chip no {rsvp === 'declined' ? 'active' : ''}"
+              onclick={() =>
+                ask(`RSVP "No / Decline" to my calendar event "${title}" (${whenLabel}).`)}
+            >
+              <X size={iconSizes.sm} />
+              {m.event_decline()}
+            </Button>
+          </div>
         </div>
-      </div>
+      {/if}
     </div>
   {/if}
-
-  {#snippet footer()}
-    <div class="footer-actions">
-      <Button
-        type="button"
-        class="icon-act"
-        onclick={() =>
-          ask(`Edit my calendar event "${title}" (${whenLabel}). Ask me what to change.`)}
-        title={m.event_editEvent()}
-        aria-label={m.event_editEvent()}
-      >
-        <Pencil size={iconSizes.md} />
-      </Button>
-      <Button
-        type="button"
-        class="icon-act danger"
-        onclick={() =>
-          ask(`Cancel my calendar event "${title}" (${whenLabel}). Confirm with me first.`)}
-        title={m.event_cancelEvent()}
-        aria-label={m.event_cancelEvent()}
-      >
-        <Trash2 size={iconSizes.md} />
-      </Button>
-    </div>
-    <Button
-      type="button"
-      class="ev-act primary"
-      onclick={() =>
-        ask(`Tell me about my event "${title}" (${whenLabel}) and what I should prepare.`)}
-    >
-      <Sparkles size={iconSizes.sm} />
-      {m.event_askAgent()}
-    </Button>
-  {/snippet}
 </Modal>
 
 <style>

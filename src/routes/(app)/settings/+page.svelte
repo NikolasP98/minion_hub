@@ -15,7 +15,14 @@
     restartState,
   } from '$lib/state/config/config.svelte';
   import { createHotkey } from '$lib/hotkeys';
-  import { countConfiguredKeys, getGroupsForTab, TABS } from '$lib/utils/config-schema';
+  import {
+    AI_CONFIG_TAB_IDS,
+    countConfiguredKeys,
+    getGroupsForTab,
+    resolveSettingsTab,
+    TABS,
+  } from '$lib/utils/config-schema';
+  import { hasFeature } from '$lib/access/premium';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import SettingsSkeleton from '$lib/components/settings/SettingsSkeleton.svelte';
   import ConfigSection from '$lib/components/config/ConfigSection.svelte';
@@ -109,10 +116,14 @@
   // appearance + backups are now their own routes; gateway connections live at
   // /settings/gateways. None of those live here.
   const GATEWAY_TAB_IDS = new Set(['ai', 'agents', 'comms', 'security', 'system']);
-  const gatewayTabsList = TABS.filter((t) => GATEWAY_TAB_IDS.has(t.id));
+  // Spec 043: the AI and Agents tabs are not rendered for an org without `ai`.
+  const aiEnabled = $derived(hasFeature('ai'));
+  const gatewayTabsList = $derived(
+    TABS.filter((t) => GATEWAY_TAB_IDS.has(t.id) && (aiEnabled || !AI_CONFIG_TAB_IDS.has(t.id))),
+  );
 
   // URL-persisted active tab
-  const activeTab = $derived(page.url.searchParams.get('s') ?? 'ai');
+  const activeTab = $derived(resolveSettingsTab(page.url.searchParams.get('s'), aiEnabled));
 
   const isConfigTab = $derived(GATEWAY_TAB_IDS.has(activeTab));
 

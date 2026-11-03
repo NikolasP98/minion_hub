@@ -18,6 +18,7 @@
     X,
   } from 'lucide-svelte';
   import type { EmailItem } from '$lib/services/my-agent-rpc';
+  import { hasFeature } from '$lib/access/premium';
   import { renderEmailBody } from '$lib/utils/email-body';
   import {
     getEmailBody,
@@ -38,6 +39,10 @@
   }
 
   let { item, open = $bindable(false), onclose, onask }: Props = $props();
+
+  // Spec 043: the summary and every action below go through the agent, so without `ai` they
+  // are not rendered and the summary is never fetched.
+  const aiEnabled = $derived(hasFeature('ai'));
 
   const sender = $derived(item?.fromName?.trim() || item?.from?.trim() || 'Unknown sender');
   const subject = $derived(item?.subject?.trim() || '(no subject)');
@@ -92,7 +97,7 @@
     bodyError = false;
     summary = null;
     bodyLoading = true;
-    summaryLoading = true;
+    summaryLoading = aiEnabled;
 
     // Fire both in parallel; they de-dupe the gws read on the gateway side.
     const bodyP = getEmailBody(messageId, sourceEmail)
@@ -110,7 +115,7 @@
         if (loadedId === messageId) bodyLoading = false;
       });
 
-    const sumP = getEmailSummary(messageId, sourceEmail)
+    const sumP = (aiEnabled ? getEmailSummary(messageId, sourceEmail) : Promise.resolve(null))
       .then((s) => {
         if (loadedId !== messageId) return;
         summary = s;
@@ -191,7 +196,86 @@
   }
 </script>
 
-<Modal bind:open title={subject || m.email_unknownSender()} size="lg" {onclose}>
+{#snippet emailActions()}
+  {#if composeMode}
+    <Button type="button" class="em-act" onclick={resetComposer}>{m.common_cancel()}</Button>
+    <Button
+      type="button"
+      class="em-act send"
+      onclick={sendDraft}
+      disabled={!draft.trim() || draftLoading}
+    >
+      <Send size={iconSizes.sm} />
+      {m.common_save()}
+    </Button>
+  {:else}
+    <div class="footer-actions">
+      <Button
+        type="button"
+        class="icon-act"
+        onclick={() => startReply('reply')}
+        title={m.email_reply()}
+        aria-label={m.email_reply()}
+      >
+        <Reply size={iconSizes.md} />
+      </Button>
+      <Button
+        type="button"
+        class="icon-act"
+        onclick={() => startReply('replyAll')}
+        title={m.email_replyAll()}
+        aria-label={m.email_replyAll()}
+      >
+        <ReplyAll size={iconSizes.md} />
+      </Button>
+      <Button
+        type="button"
+        class="icon-act"
+        onclick={() => ask(`Forward this ${ref}. Ask me the recipient.`)}
+        title={m.email_forward()}
+        aria-label={m.email_forward()}
+      >
+        <Forward size={iconSizes.md} />
+      </Button>
+      <span class="divider"></span>
+      <Button
+        type="button"
+        class="icon-act"
+        onclick={() => ask(`Add a label to this ${ref}. Ask me which label.`)}
+        title={m.email_label()}
+        aria-label={m.email_label()}
+      >
+        <Tag size={iconSizes.md} />
+      </Button>
+      <Button
+        type="button"
+        class="icon-act"
+        onclick={() => ask(`Archive this ${ref}.`)}
+        title={m.email_archive()}
+        aria-label={m.email_archive()}
+      >
+        <Archive size={iconSizes.md} />
+      </Button>
+      <Button
+        type="button"
+        class="icon-act danger"
+        onclick={() => ask(`Move this ${ref} to trash. Confirm with me first.`)}
+        title={m.common_delete()}
+        aria-label={m.common_delete()}
+      >
+        <Trash2 size={iconSizes.md} />
+      </Button>
+    </div>
+  {/if}
+{/snippet}
+
+<Modal
+  bind:open
+  title={subject || m.email_unknownSender()}
+  size="lg"
+  {onclose}
+  footer={aiEnabled ? emailActions : undefined}
+>
   {#snippet header()}
     <div class="hdr">
       <h2 class="hdr-title" title={subject}>{subject}</h2>
@@ -298,79 +382,6 @@
       {/if}
     </div>
   {/if}
-
-  {#snippet footer()}
-    {#if composeMode}
-      <Button type="button" class="em-act" onclick={resetComposer}>{m.common_cancel()}</Button>
-      <Button
-        type="button"
-        class="em-act send"
-        onclick={sendDraft}
-        disabled={!draft.trim() || draftLoading}
-      >
-        <Send size={iconSizes.sm} />
-        {m.common_save()}
-      </Button>
-    {:else}
-      <div class="footer-actions">
-        <Button
-          type="button"
-          class="icon-act"
-          onclick={() => startReply('reply')}
-          title={m.email_reply()}
-          aria-label={m.email_reply()}
-        >
-          <Reply size={iconSizes.md} />
-        </Button>
-        <Button
-          type="button"
-          class="icon-act"
-          onclick={() => startReply('replyAll')}
-          title={m.email_replyAll()}
-          aria-label={m.email_replyAll()}
-        >
-          <ReplyAll size={iconSizes.md} />
-        </Button>
-        <Button
-          type="button"
-          class="icon-act"
-          onclick={() => ask(`Forward this ${ref}. Ask me the recipient.`)}
-          title={m.email_forward()}
-          aria-label={m.email_forward()}
-        >
-          <Forward size={iconSizes.md} />
-        </Button>
-        <span class="divider"></span>
-        <Button
-          type="button"
-          class="icon-act"
-          onclick={() => ask(`Add a label to this ${ref}. Ask me which label.`)}
-          title={m.email_label()}
-          aria-label={m.email_label()}
-        >
-          <Tag size={iconSizes.md} />
-        </Button>
-        <Button
-          type="button"
-          class="icon-act"
-          onclick={() => ask(`Archive this ${ref}.`)}
-          title={m.email_archive()}
-          aria-label={m.email_archive()}
-        >
-          <Archive size={iconSizes.md} />
-        </Button>
-        <Button
-          type="button"
-          class="icon-act danger"
-          onclick={() => ask(`Move this ${ref} to trash. Confirm with me first.`)}
-          title={m.common_delete()}
-          aria-label={m.common_delete()}
-        >
-          <Trash2 size={iconSizes.md} />
-        </Button>
-      </div>
-    {/if}
-  {/snippet}
 </Modal>
 
 <style>

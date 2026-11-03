@@ -19,6 +19,8 @@ declare global {
        *  (and any other route that wants a client-distinguishable 409/4xx
        *  without string-matching `message`). */
       code?: string;
+      /** Entitlement feature key on a `premium_required` 403 (spec 043). */
+      feature?: string;
     }
     interface Locals {
       /**
@@ -82,6 +84,12 @@ declare global {
        * spec S2/R3/R5).
        */
       moduleStates?: ModuleStates;
+      /**
+       * Org plan features for the UI (spec 043), resolved once by the module guard in
+       * hooks.server.ts for authenticated `(app)` page requests. Full catalog when
+       * ENTITLEMENTS_ENFORCED is off or the lookup failed.
+       */
+      entitlements?: { plan: string; features: string[] };
       // workforceIdentity is minted per-request by workforceIdentityHandle in hooks.server.ts
       workforceIdentity?: {
         token: string;
