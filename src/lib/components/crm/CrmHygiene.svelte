@@ -29,6 +29,7 @@
   import { contactLabel, identityValue } from '$lib/components/crm/crm-format';
   import { metaLabel } from '$lib/components/crm/crm-meta';
   import CrmMergeResolver from '$lib/components/crm/CrmMergeResolver.svelte';
+  import { hasFeature } from '$lib/access/premium';
   import {
     applyContactMerge,
     type MergeField,
@@ -401,15 +402,17 @@
                 class="ghost"
               />{/if}
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onclick={runReview}
-            disabled={reviewing || rows.length === 0}
-          >
-            <Sparkles size={iconSizes.sm} class={reviewing ? 'animate-pulse' : ''} />
-            {reviewing ? m.crm_reviewing() : m.crm_ai_review()}
-          </Button>
+          {#if hasFeature('ai')}
+            <Button
+              variant="outline"
+              size="sm"
+              onclick={runReview}
+              disabled={reviewing || rows.length === 0}
+            >
+              <Sparkles size={iconSizes.sm} class={reviewing ? 'animate-pulse' : ''} />
+              {reviewing ? m.crm_reviewing() : m.crm_ai_review()}
+            </Button>
+          {/if}
           {#if batchMode}
             <Button
               variant="primary"

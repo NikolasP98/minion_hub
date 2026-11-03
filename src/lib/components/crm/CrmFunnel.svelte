@@ -14,6 +14,7 @@
     type FunnelStage,
   } from './crm-funnel';
   import { funnelStageLabel } from './crm-i18n';
+  import { hasFeature } from '$lib/access/premium';
 
   let {
     contactId,
@@ -65,8 +66,11 @@
     }
   }
 
+  // Spec 043: the funnel analysis is a model call; without `ai` no button and no auto-run.
+  const aiEnabled = $derived(hasFeature('ai'));
+
   async function analyze() {
-    if (analyzing) return;
+    if (analyzing || !aiEnabled) return;
     analyzing = true;
     try {
       const res = await fetch(`/api/crm/contacts/${contactId}/funnel/analyze`, { method: 'POST' });
@@ -90,7 +94,7 @@
   // never re-fires within the session even if the call fails.
   let autoTried = $state(false);
   $effect(() => {
-    if (!autoTried && !meta && inbound > 0 && !analyzing) {
+    if (aiEnabled && !autoTried && !meta && inbound > 0 && !analyzing) {
       autoTried = true;
       analyze();
     }
@@ -100,16 +104,18 @@
 <section class="card">
   <header class="card-h">
     <span>{m.crm_funnel_title()}</span>
-    <Button
-      class="reanalyze"
-      onclick={analyze}
-      disabled={analyzing || busy}
-      loading={analyzing}
-      title={m.crm_funnel_analyze()}
-    >
-      <Sparkles size={iconSizes.sm} />
-      <span>{analyzing ? m.crm_funnel_analyzing() : m.crm_funnel_analyze()}</span>
-    </Button>
+    {#if aiEnabled}
+      <Button
+        class="reanalyze"
+        onclick={analyze}
+        disabled={analyzing || busy}
+        loading={analyzing}
+        title={m.crm_funnel_analyze()}
+      >
+        <Sparkles size={iconSizes.sm} />
+        <span>{analyzing ? m.crm_funnel_analyzing() : m.crm_funnel_analyze()}</span>
+      </Button>
+    {/if}
   </header>
 
   <div class="funnel" class:busy>

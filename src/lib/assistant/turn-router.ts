@@ -17,6 +17,7 @@
  * today's full envelope" (see `gateManifests`).
  */
 import { env } from '$env/dynamic/public';
+import { hasFeature } from '$lib/access/premium';
 
 export type RouteMode =
   'navigate' | 'record_action' | 'data_question' | 'knowledge_question' | 'chat';
@@ -343,7 +344,8 @@ export async function requestRouteDecisionWithEvidence(
   opts: { signal?: AbortSignal; submissionId?: string } = {},
 ): Promise<RouteEvidence> {
   const empty = { decision: null, attempt: null };
-  if (routerMode() === 'off') return empty;
+  // Spec 043: no route call without the assistant; a premium_required 403 falls into `!res.ok` below.
+  if (routerMode() === 'off' || !hasFeature('ai.chat')) return empty;
   try {
     const res = await fetch('/api/assistant/route', {
       method: 'POST',

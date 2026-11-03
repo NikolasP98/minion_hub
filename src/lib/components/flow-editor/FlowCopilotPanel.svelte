@@ -8,6 +8,7 @@
   import type { WorkingFlow } from '$lib/flows/flow-ops';
   import { Button, Textarea } from '@minion-stack/ui';
   import { fetchJson } from '$lib/api/fetch-json';
+  import { isPremiumRequired } from '$lib/access/premium';
 
   let {
     flowId,
@@ -51,7 +52,8 @@
       validation = data.validation;
       onpreview(data.proposedFlow);
     } catch (e) {
-      errorMsg = e instanceof Error ? e.message : m.common_error();
+      // Spec 043: a premium_required answer (tab opened before a downgrade) is dropped silently.
+      if (!isPremiumRequired(e)) errorMsg = e instanceof Error ? e.message : m.common_error();
     } finally {
       busy = false;
     }

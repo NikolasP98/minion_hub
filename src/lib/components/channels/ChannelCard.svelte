@@ -18,6 +18,7 @@
   import { isSyncActive } from '$lib/state/gateway';
   import WhatsAppQrPairing from './WhatsAppQrPairing.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { hasFeature } from '$lib/access/premium';
   import { createOptimistic } from '$lib/utils/optimistic';
   import { fetchChannels } from '$lib/state/channels';
 
@@ -696,11 +697,13 @@
                 {m.channel_routingPeerRules({ count: peerBindingCount })}
               </p>
             {/if}
-            <a
-              href="/settings?s=agents"
-              class="text-xs text-accent hover:underline mt-1 inline-block"
-              onclick={(e) => e.stopPropagation()}>{m.channel_routingEdit()}</a
-            >
+            {#if hasFeature('ai')}
+              <a
+                href="/settings?s=agents"
+                class="text-xs text-accent hover:underline mt-1 inline-block"
+                onclick={(e) => e.stopPropagation()}>{m.channel_routingEdit()}</a
+              >
+            {/if}
           </div>
         {/if}
 

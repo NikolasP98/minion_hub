@@ -46,6 +46,7 @@
   import NoteIconButton from './NoteIconButton.svelte';
   import PolishMenu from './PolishMenu.svelte';
   import { runPolish, clearAllProposals } from '$lib/state/features/note-polish.svelte';
+  import { hasFeature } from '$lib/access/premium';
   import TodoChecklist from './TodoChecklist.svelte';
   import TranscribeButton from './TranscribeButton.svelte';
   import { detectLang } from '$lib/utils/detect-lang';
@@ -351,7 +352,8 @@
                   </div>
                 {/if}
               </div>
-              {#if note.kind === 'note'}
+              <!-- Spec 043: polish and transcription are AI; not rendered without the plan. -->
+              {#if note.kind === 'note' && hasFeature('ai')}
                 <div class="polish-wrap">
                   <Button
                     type="button"

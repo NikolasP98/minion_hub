@@ -6,6 +6,8 @@ import {
   resolveModuleForPath,
   isModuleAvailable,
   effectiveModuleEnabled,
+  FEATURE_PAGES,
+  featureForPath,
 } from './availability';
 
 // NOTE (S3/WP1, specs/2026-07-22-personal-org-differentiation-spec.md R1):
@@ -261,5 +263,54 @@ describe('filesystem coverage sweep', () => {
       (dir) => !topLevelDirs.includes(dir),
     );
     expect(staleAllowlistEntries).toEqual([]);
+  });
+});
+
+// Spec 043: the plan-gated page table the route guard and canViewPath share.
+const AI_PAGES = [
+  '/agents',
+  '/agents/autonomous',
+  '/agents/workshop',
+  '/agents/builder',
+  '/builder',
+  '/workshop',
+  '/sessions',
+  '/brains',
+  '/prompt',
+  '/capabilities',
+  '/tools',
+  '/flow-editor/skills',
+  '/workforce',
+  '/workforce/projects',
+  '/reliability',
+  '/plugins',
+  '/settings/plugins',
+];
+describe('featureForPath (spec 043)', () => {
+  test.each(AI_PAGES)('%s needs ai', (path) => expect(featureForPath(path)).toBe('ai'));
+  test('pulse needs ai.proactive, marketplace needs marketplace', () => {
+    expect(featureForPath('/pulse')).toBe('ai.proactive');
+    expect(featureForPath('/settings/pulse')).toBe('ai.proactive');
+    expect(featureForPath('/marketplace/x')).toBe('marketplace');
+    expect(featureForPath('/home/settings')).toBe('ai.chat');
+  });
+  test('non-AI pages, channels and the flow editor need nothing', () => {
+    for (const p of [
+      '/home',
+      '/crm',
+      '/settings',
+      '/channels',
+      '/channels/whatsapp',
+      '/flow-editor',
+      '/flow-editor/abc',
+      '/agentsx',
+      '/cloud',
+    ])
+      expect(featureForPath(p), p).toBeNull();
+  });
+  test('every gated prefix is a real (app) route', () => {
+    const appDir = fileURLToPath(new URL('../../routes/(app)/', import.meta.url));
+    for (const prefix of Object.keys(FEATURE_PAGES))
+      expect(() => readdirSync(appDir + prefix.slice(1)), prefix).not.toThrow();
   });
 });

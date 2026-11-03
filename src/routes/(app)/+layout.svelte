@@ -34,6 +34,7 @@
   import AssistGuide from '$lib/components/assistant/AssistGuide.svelte';
   import RecordPeek from '$lib/records/RecordPeek.svelte';
   import { registerGlobalTools } from '$lib/assistant/global-tools';
+  import { hasFeature } from '$lib/access/premium';
 
   let { children }: { children: Snippet } = $props();
 
@@ -181,9 +182,11 @@
   <AssistGuide />
 
   {#if idleReady}
-    {#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}
-      <FloatingAssistant />
-    {/await}
+    {#if hasFeature('ai.chat')}
+      {#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}
+        <FloatingAssistant />
+      {/await}
+    {/if}
     {#await import('$lib/components/layout/CommandPalette.svelte') then { default: CommandPalette }}
       <CommandPalette />
     {/await}
