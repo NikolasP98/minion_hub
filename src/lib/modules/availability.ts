@@ -1,4 +1,6 @@
 import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
+import { manifestFrom } from './sdk';
+import { stockFacts } from './stock/facts';
 
 /**
  * Module availability manifest — characterization of CURRENT hub behavior
@@ -40,11 +42,11 @@ export type ModuleAvailability = {
 export const MODULE_MANIFEST = {
   crm: {
     appPrefixes: ['/crm'],
-    // settings/modules exposes a toggle for 'crm', but NO current (app)/crm
-    // route calls isModuleEnabled('crm') — pre-existing nav-hidden-but-
-    // route-open gap (same class the routing-simplification spec calls out
-    // for pos/stock/workforce). toggleId reflects intent/DB row identity,
-    // not current route enforcement.
+    // settings/modules exposes a toggle for 'crm'. No (app)/crm route calls
+    // isModuleEnabled('crm') itself, but none needs to: the hook's
+    // applyModuleAvailabilityGuard → isAppRouteBlocked → isModuleAvailable
+    // already 404s every toggleId module (crm included) when its app_modules
+    // row is false.
     toggleId: 'crm',
   },
   finances: {
@@ -107,11 +109,8 @@ export const MODULE_MANIFEST = {
     toggleId: 'pos',
     kinds: ['business'],
   },
-  stock: {
-    appPrefixes: ['/stock'],
-    toggleId: 'stock',
-    kinds: ['business'],
-  },
+  // Derived from the module definition (spec 047): `$lib/modules/stock/facts`.
+  ...manifestFrom([stockFacts]),
   // No isModuleEnabled('workforce') call anywhere — /workforce/+layout.server.ts
   // only gates on org provisioning (ensureWorkforceCompany), not a toggle.
   // The nested /workforce/projects subpage gates on a DIFFERENT id,
