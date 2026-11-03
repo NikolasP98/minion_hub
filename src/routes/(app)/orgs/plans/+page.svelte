@@ -83,7 +83,9 @@
               <span class="block truncate text-sm font-medium text-foreground">{org.name}</span>
               <span class="block truncate font-mono text-xs text-muted">
                 {kindLabel(org.kind)} · {m.admin_plans_members({ count: org.members })} ·
-                {org.planSource === 'row' ? m.admin_plans_sourceSet() : m.admin_plans_sourceDefault()}
+                {org.planSource === 'row'
+                  ? m.admin_plans_sourceSet()
+                  : m.admin_plans_sourceDefault()}
               </span>
             </Button>
             <Select
@@ -114,7 +116,10 @@
             <tbody>
               {#each selected.effective as f (f.key)}
                 <tr>
-                  <td>{featureLabel(f.key, f.label)} <span class="font-mono text-xs text-muted">{f.key}</span></td>
+                  <td
+                    >{featureLabel(f.key, f.label)}
+                    <span class="font-mono text-xs text-muted">{f.key}</span></td
+                  >
                   <td>{f.allowed ? m.admin_plans_yes() : m.admin_plans_no()}</td>
                   <td class="text-muted">{reasonLabel(f.reason)}</td>
                 </tr>
@@ -135,7 +140,9 @@
                 <span class="font-medium text-foreground">{e.orgName}</span>
                 {e.fromPlan ? planLabel(e.fromPlan) : '—'} → {planLabel(e.toPlan)}
                 <span class="text-muted">
-                  · {e.byUser ? m.admin_plans_byAdmin() : m.admin_plans_bySystem()} · {when(e.createdAt)}
+                  · {e.byUser ? m.admin_plans_byAdmin() : m.admin_plans_bySystem()} · {when(
+                    e.createdAt,
+                  )}
                   {#if e.note}· {e.note}{/if}
                 </span>
               </li>

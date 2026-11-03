@@ -133,4 +133,3 @@ describe.skipIf(!dbUrl)('setOrgPlan against real SQL', () => {
     await expect(setOrgPlan(admin, org, 'constructor')).rejects.toMatchObject({ status: 400 });
   });
 });
-
