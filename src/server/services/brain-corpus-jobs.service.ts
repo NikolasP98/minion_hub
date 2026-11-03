@@ -397,8 +397,16 @@ export async function advanceBrainCorpusJob(
   }
 }
 
-registerJobHandler({ type: BRAIN_CORPUS_JOB_TYPE, advance: advanceBrainCorpusJob });
-registerJobHandler({ type: LEGACY_BRAIN_CORPUS_JOB_TYPE, advance: advanceBrainCorpusJob });
+registerJobHandler({
+  type: BRAIN_CORPUS_JOB_TYPE,
+  feature: 'ai.proactive',
+  advance: advanceBrainCorpusJob,
+});
+registerJobHandler({
+  type: LEGACY_BRAIN_CORPUS_JOB_TYPE,
+  feature: 'ai.proactive',
+  advance: advanceBrainCorpusJob,
+});
 
 /** Optional on-demand kick after enqueue; the cron remains authoritative. */
 export async function advanceBrainCorpusJobNow(jobId: string): Promise<void> {

@@ -13,7 +13,10 @@ vi.mock('$server/db/pg-pool', () => ({
   getCriticalPgClient: boundary.pool,
   resetAllPgPools: vi.fn(),
 }));
-vi.mock('$server/ai-usage', () => ({ recordAiUsage: boundary.usage }));
+vi.mock('$server/ai-usage', () => ({
+  recordAiUsage: boundary.usage,
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 vi.mock('$env/dynamic/private', () => ({ env: { OPENROUTER_API_KEY: 'synthetic' } }));
 import { getCoreDb, getOrgTransactionDb } from '$server/db/pg-client';
 import { withOrgCoreTransaction, type CoreTx, type OrgScope } from '$server/db/with-org-core';

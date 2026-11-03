@@ -3,6 +3,15 @@
 // note → a short paragraph continuation; todo → a list of suggested items.
 // Used by the Tiptap autofill extension (note) and the todo ghost-suggester.
 
+import { isPremiumResponse } from '$lib/access/premium';
+
+/** Throws on a failed response; a premium_required 403 keeps that code in `details` (spec 043). */
+async function assertOk(res: Response, what: string): Promise<void> {
+  if (res.ok) return;
+  const details = (await isPremiumResponse(res)) ? { code: 'premium_required' } : undefined;
+  throw Object.assign(new Error(`${what} failed: ${res.status}`), { details });
+}
+
 export interface NoteAutocompleteResult {
   suggestion: string;
 }
@@ -26,7 +35,7 @@ export async function fetchAutocomplete(
     body: JSON.stringify(req),
     signal,
   });
-  if (!res.ok) throw new Error(`autocomplete failed: ${res.status}`);
+  await assertOk(res, 'autocomplete');
   return (await res.json()) as AutocompleteResult;
 }
 
@@ -45,7 +54,7 @@ export async function polishTranscript(
     body: JSON.stringify({ text, intent }),
     signal,
   });
-  if (!res.ok) throw new Error(`polish failed: ${res.status}`);
+  await assertOk(res, 'polish');
   const { text: out } = (await res.json()) as { text: string };
   return out;
 }
@@ -85,6 +94,8 @@ export async function refineNote(
     body: JSON.stringify(input),
     signal,
   });
-  if (!res.ok) throw new Error(`refine failed: ${res.status}`);
+  // Spec 043: a premium_required answer is "nothing to change", so runPolish shows no error.
+  if (await isPremiumResponse(res)) return { title: '', blocks: [], textBlocks: [] };
+  await assertOk(res, 'refine');
   return (await res.json()) as RefineResult;
 }

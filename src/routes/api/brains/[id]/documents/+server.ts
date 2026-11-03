@@ -4,9 +4,11 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { listDocuments, addDocument, resolvePrincipal } from '$server/services/brains.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /** GET /api/brains/:id/documents */
 export const GET: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const principal = await resolvePrincipal(ctx);
@@ -38,7 +40,11 @@ const postSchema = z
     }
     const bytes = body.contentMd ? Buffer.byteLength(body.contentMd, 'utf8') : 0;
     if (bytes === 0) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['contentMd'], message: 'Upload content is empty.' });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['contentMd'],
+        message: 'Upload content is empty.',
+      });
     } else if (bytes > UPLOAD_MAX_BYTES) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -51,11 +57,15 @@ const postSchema = z
 /** POST /api/brains/:id/documents — add a document (any sourceType); ingestion
  *  runs async via the brain_ingest bg job (see brains.service.ts). */
 export const POST: RequestHandler = async ({ locals, params, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
   const principal = await resolvePrincipal(ctx);
-  const actor = { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null };
+  const actor = {
+    id: ctx.profileId ?? null,
+    name: locals.user?.displayName ?? locals.user?.email ?? null,
+  };
   const doc = await addDocument(ctx, params.id!, body, principal, actor);
   return json(doc, { status: 201 });
 };

@@ -62,8 +62,10 @@ vi.mock('$server/services/user-preferences.service', () => ({
   getUserPreferences: async () => ({}),
 }));
 vi.mock('$server/ai-usage', () => ({
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
   runWithAiUsageScope: (_scope: unknown, fn: () => unknown) => fn(),
   setAiUsageOrg: vi.fn(),
+  markAiUsageAuthenticated: vi.fn(),
 }));
 vi.mock('$server/services/gateway.pg.service', () => ({
   isGatewayChannel: (channel: string) => ['prd', 'dev'].includes(channel),

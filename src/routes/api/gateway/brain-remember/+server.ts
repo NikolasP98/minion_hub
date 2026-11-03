@@ -4,6 +4,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import { addNote } from '$server/services/brains.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { requireOrgFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/gateway/brain-remember?agentId=personal-<uuid>[&orgId=<org>]
@@ -17,8 +18,12 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { principalId, orgId, capabilities } = await resolveAssistantPrincipal(locals, url);
+  await requireOrgFeature(orgId, 'ai', 'gateway.brain-remember');
   if (!capabilities.can('brains', 'edit')) {
-    return json({ error: 'Your role does not permit writing to this organization’s brains.' }, { status: 403 });
+    return json(
+      { error: 'Your role does not permit writing to this organization’s brains.' },
+      { status: 403 },
+    );
   }
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
   const agentId = url.searchParams.get('agentId');
@@ -37,7 +42,14 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 
   const actor = { id: principalId, name: agentId };
   try {
-    const doc = await addNote(ctx, brainId, title, contentMd, { profileId: principalId, agentId, roles: capabilities.roles }, actor);
+    const doc = await addNote(
+      ctx,
+      brainId,
+      title,
+      contentMd,
+      { profileId: principalId, agentId, roles: capabilities.roles },
+      actor,
+    );
     return json({ orgId, document: doc }, { status: 201 });
   } catch (e) {
     if (isHttpError(e)) return json({ error: e.body.message }, { status: e.status });

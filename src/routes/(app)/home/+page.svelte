@@ -105,6 +105,7 @@
   import type { PageData } from './$types';
   import { Button, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
+  import { hasFeature } from '$lib/access/premium';
 
   import { floatingLayer } from '$lib/components/ui/floating-layer.svelte';
   const { data }: { data: PageData } = $props();
@@ -925,7 +926,7 @@
       <h1 id="my-agent-greeting" class="sr-only">{data.greeting}</h1>
       <header class="greeting-row">
         <div class="identity">
-          {#if !voiceCall.active}
+          {#if !voiceCall.active && hasFeature('ai.chat')}
             <div class="mini-avatar">
               <AiOrbFace
                 diameter={40}
@@ -938,28 +939,30 @@
             <AgentGreeting greeting={data.greeting} userName={data.userName} />
           </div>
         </div>
-        <div class="chat-header-actions">
-          {#if agentId}
-            <ChatHistoryPopover
-              {agentId}
-              activeSessionKey={chat?.sessionKey ?? `agent:${agentId}:main`}
-              disabled={!conn.connected || sending}
-              onselect={selectConversation}
-            />
-          {/if}
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            class="new-chat"
-            disabled={!agentId || !conn.connected || sending}
-            title={m.chat_newChat()}
-            onclick={startNewChat}
-          >
-            <MessageSquarePlus size={iconSizes.sm} />
-            <span>{m.chat_newChat()}</span>
-          </Button>
-        </div>
+        {#if hasFeature('ai.chat')}
+          <div class="chat-header-actions">
+            {#if agentId}
+              <ChatHistoryPopover
+                {agentId}
+                activeSessionKey={chat?.sessionKey ?? `agent:${agentId}:main`}
+                disabled={!conn.connected || sending}
+                onselect={selectConversation}
+              />
+            {/if}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              class="new-chat"
+              disabled={!agentId || !conn.connected || sending}
+              title={m.chat_newChat()}
+              onclick={startNewChat}
+            >
+              <MessageSquarePlus size={iconSizes.sm} />
+              <span>{m.chat_newChat()}</span>
+            </Button>
+          </div>
+        {/if}
       </header>
 
       {#if voiceCall.error}
@@ -1313,33 +1316,37 @@
         {/if}
       </section>
 
-      <div class="composer">
-        <div class="composer-input">
-          <ChatInput
-            bind:value={draft}
-            {agentId}
-            onsubmit={handleSubmit}
-            ownerKey={preferenceOwner()}
-            running={routing ||
-              sending ||
-              stream !== null ||
-              !!streamMessage ||
-              !!$acceptedActivity}
-            onstop={stopReply}
-          />
+      <!-- Spec 043: chat and voice call are the assistant; not rendered without it. -->
+      <!-- Without ai.chat the orb is not rendered and assistant.personalAgentId is null, so no thread or history load; the feed stays. -->
+      {#if hasFeature('ai.chat')}
+        <div class="composer">
+          <div class="composer-input">
+            <ChatInput
+              bind:value={draft}
+              {agentId}
+              onsubmit={handleSubmit}
+              ownerKey={preferenceOwner()}
+              running={routing ||
+                sending ||
+                stream !== null ||
+                !!streamMessage ||
+                !!$acceptedActivity}
+              onstop={stopReply}
+            />
+          </div>
+          <div class="composer-call">
+            <CallControls
+              active={voiceCall.active}
+              muted={voiceCall.muted}
+              status={voiceCall.status}
+              disabled={!canCall}
+              onstart={handleStartCall}
+              onend={endCall}
+              ontoggleMute={toggleMute}
+            />
+          </div>
         </div>
-        <div class="composer-call">
-          <CallControls
-            active={voiceCall.active}
-            muted={voiceCall.muted}
-            status={voiceCall.status}
-            disabled={!canCall}
-            onstart={handleStartCall}
-            onend={endCall}
-            ontoggleMute={toggleMute}
-          />
-        </div>
-      </div>
+      {/if}
     </div>
   </div>
 

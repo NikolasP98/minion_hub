@@ -29,6 +29,7 @@
   import { createAutosave } from '$lib/records/autosave.svelte';
   import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
+  import { hasFeature } from '$lib/access/premium';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
 
   type PageData = Granted<LoadedPageData['scheduling']>;
@@ -162,6 +163,8 @@
   }
 
   // ── AI preview ──────────────────────────────────────────────────────────
+  // Spec 043: personalization and confirmation inference are model calls (`ai.proactive`).
+  const aiProactive = $derived(hasFeature('ai.proactive'));
   let previewText = $state('');
   let previewLoading = $state(false);
   async function regenerate() {
@@ -185,7 +188,7 @@
   }
   $effect(() => {
     // Fetch a first preview when AI personalization is turned on and none shown.
-    if (personalize.value && !previewText && !previewLoading) void regenerate();
+    if (aiProactive && personalize.value && !previewText && !previewLoading) void regenerate();
   });
 </script>
 
@@ -320,28 +323,30 @@
       >
     </Card>
 
-    <!-- Confirmations -->
-    <Card padding="lg">
-      <div class="t-label">{m.sched_rem_confirm_title()}</div>
-      <div class="mt-2 flex items-center justify-between gap-4">
-        <div>
-          <div class="font-medium text-sm flex items-center gap-1">
-            <Sparkles size={iconSizes.sm} class="text-accent" />
-            {m.sched_rem_infer()}
+    {#if aiProactive}
+      <!-- Confirmations -->
+      <Card padding="lg">
+        <div class="t-label">{m.sched_rem_confirm_title()}</div>
+        <div class="mt-2 flex items-center justify-between gap-4">
+          <div>
+            <div class="font-medium text-sm flex items-center gap-1">
+              <Sparkles size={iconSizes.sm} class="text-accent" />
+              {m.sched_rem_infer()}
+            </div>
+            <div class="t-caption">
+              {inferConfirmation.value ? m.sched_rem_infer_on() : m.sched_rem_infer_off()}
+            </div>
           </div>
-          <div class="t-caption">
-            {inferConfirmation.value ? m.sched_rem_infer_on() : m.sched_rem_infer_off()}
-          </div>
+          <Toggle
+            checked={inferConfirmation.value}
+            pending={inferConfirmation.pending}
+            onchange={(v) => (inferConfirmation.value = v)}
+            size="sm"
+            ariaLabel={m.sched_rem_infer()}
+          />
         </div>
-        <Toggle
-          checked={inferConfirmation.value}
-          pending={inferConfirmation.pending}
-          onchange={(v) => (inferConfirmation.value = v)}
-          size="sm"
-          ariaLabel={m.sched_rem_infer()}
-        />
-      </div>
-    </Card>
+      </Card>
+    {/if}
 
     <!-- Message + personalization -->
     <Card padding="lg">
@@ -355,40 +360,42 @@
         />
         <span class="t-caption">{m.sched_rem_fromName_help()}</span>
       </label>
-      <div class="mt-4 flex items-center justify-between gap-4">
-        <div>
-          <div class="font-medium text-sm flex items-center gap-1">
-            <Sparkles size={iconSizes.sm} class="text-accent" />
-            {m.sched_rem_personalize()}
+      {#if aiProactive}
+        <div class="mt-4 flex items-center justify-between gap-4">
+          <div>
+            <div class="font-medium text-sm flex items-center gap-1">
+              <Sparkles size={iconSizes.sm} class="text-accent" />
+              {m.sched_rem_personalize()}
+            </div>
+            <div class="t-caption">{m.sched_rem_personalize_desc()}</div>
           </div>
-          <div class="t-caption">{m.sched_rem_personalize_desc()}</div>
+          <Toggle
+            checked={personalize.value}
+            pending={personalize.pending}
+            onchange={(v) => (personalize.value = v)}
+            size="sm"
+            ariaLabel={m.sched_rem_personalize()}
+          />
         </div>
-        <Toggle
-          checked={personalize.value}
-          pending={personalize.pending}
-          onchange={(v) => (personalize.value = v)}
-          size="sm"
-          ariaLabel={m.sched_rem_personalize()}
-        />
-      </div>
-      {#if personalize.value}
-        <div class="preview mt-3">
-          <div class="flex items-center justify-between mb-1">
-            <span class="t-caption">{m.sched_rem_preview()}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="icon-btn"
-              onclick={regenerate}
-              loading={previewLoading}
-              title={m.sched_rem_regenerate()}
-            >
-              <RefreshCw size={iconSizes.sm} />
-              {m.sched_rem_regenerate()}
-            </Button>
+        {#if personalize.value}
+          <div class="preview mt-3">
+            <div class="flex items-center justify-between mb-1">
+              <span class="t-caption">{m.sched_rem_preview()}</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="icon-btn"
+                onclick={regenerate}
+                loading={previewLoading}
+                title={m.sched_rem_regenerate()}
+              >
+                <RefreshCw size={iconSizes.sm} />
+                {m.sched_rem_regenerate()}
+              </Button>
+            </div>
+            <p class="preview-text">{previewLoading && !previewText ? '…' : previewText || '—'}</p>
           </div>
-          <p class="preview-text">{previewLoading && !previewText ? '…' : previewText || '—'}</p>
-        </div>
+        {/if}
       {/if}
     </Card>
 

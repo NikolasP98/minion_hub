@@ -208,6 +208,14 @@
     "reverifiedAt": null
   },
   {
+    "page": "/orgs/plans",
+    "rule": "archetype",
+    "class": null,
+    "reason": "org list with plan selects (spec 043 S1), a card/feed list without a query toolbar (no DataView, FilterToolbar or DataTable)",
+    "drift": null,
+    "reverifiedAt": null
+  },
+  {
     "page": "/plugins/[id]",
     "rule": "archetype",
     "class": null,

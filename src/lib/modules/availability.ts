@@ -1,4 +1,6 @@
 import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
+import { manifestFrom } from './sdk';
+import { stockFacts } from './stock/facts';
 
 /**
  * Module availability manifest — characterization of CURRENT hub behavior
@@ -40,11 +42,11 @@ export type ModuleAvailability = {
 export const MODULE_MANIFEST = {
   crm: {
     appPrefixes: ['/crm'],
-    // settings/modules exposes a toggle for 'crm', but NO current (app)/crm
-    // route calls isModuleEnabled('crm') — pre-existing nav-hidden-but-
-    // route-open gap (same class the routing-simplification spec calls out
-    // for pos/stock/workforce). toggleId reflects intent/DB row identity,
-    // not current route enforcement.
+    // settings/modules exposes a toggle for 'crm'. No (app)/crm route calls
+    // isModuleEnabled('crm') itself, but none needs to: the hook's
+    // applyModuleAvailabilityGuard → isAppRouteBlocked → isModuleAvailable
+    // already 404s every toggleId module (crm included) when its app_modules
+    // row is false.
     toggleId: 'crm',
   },
   finances: {
@@ -107,11 +109,8 @@ export const MODULE_MANIFEST = {
     toggleId: 'pos',
     kinds: ['business'],
   },
-  stock: {
-    appPrefixes: ['/stock'],
-    toggleId: 'stock',
-    kinds: ['business'],
-  },
+  // Derived from the module definition (spec 047): `$lib/modules/stock/facts`.
+  ...manifestFrom([stockFacts]),
   // No isModuleEnabled('workforce') call anywhere — /workforce/+layout.server.ts
   // only gates on org provisioning (ensureWorkforceCompany), not a toggle.
   // The nested /workforce/projects subpage gates on a DIFFERENT id,
@@ -139,7 +138,10 @@ export function resolveModuleForPath(
   canonicalPath: string,
 ): { moduleId: ModuleId; entry: ModuleAvailability } | null {
   let best: { moduleId: ModuleId; entry: ModuleAvailability; prefix: string } | null = null;
-  for (const [moduleId, entry] of Object.entries(MODULE_MANIFEST) as [ModuleId, ModuleAvailability][]) {
+  for (const [moduleId, entry] of Object.entries(MODULE_MANIFEST) as [
+    ModuleId,
+    ModuleAvailability,
+  ][]) {
     for (const prefix of entry.appPrefixes) {
       const matches = canonicalPath === prefix || canonicalPath.startsWith(`${prefix}/`);
       if (matches && (!best || prefix.length > best.prefix.length)) {
@@ -148,6 +150,44 @@ export function resolveModuleForPath(
     }
   }
   return best ? { moduleId: best.moduleId, entry: best.entry } : null;
+}
+
+/**
+ * Spec 043: app pages an org's plan must grant (feature key per prefix). Kept apart from
+ * MODULE_MANIFEST because that table is pinned to dataset modules (spec 039 ratchet,
+ * CORE_UNMANAGED sweep); these pages are not modules. Longest prefix wins.
+ */
+export const FEATURE_PAGES: Readonly<Record<string, string>> = {
+  '/agents': 'ai',
+  '/builder': 'ai',
+  '/workshop': 'ai',
+  '/sessions': 'ai',
+  '/brains': 'ai',
+  '/prompt': 'ai',
+  '/capabilities': 'ai',
+  '/tools': 'ai',
+  '/flow-editor/skills': 'ai',
+  '/workforce': 'ai',
+  '/reliability': 'ai',
+  // R8: not AI. `ai` is exactly "this session holds the shared gateway token", which plugin UIs need.
+  // TODO(handoff): drop these two once plugin UIs get a JWT path (spec 043 R8, proposals/2026-10-29-hub-org-entitlements-followups.md).
+  '/plugins': 'ai',
+  '/settings/plugins': 'ai',
+  '/pulse': 'ai.proactive',
+  '/settings/pulse': 'ai.proactive',
+  '/marketplace': 'marketplace',
+  // The personal agent's own settings (tone, workspace, channel links); /home itself stays.
+  '/home/settings': 'ai.chat',
+};
+
+/** The plan feature a canonical path needs, or null when it needs none. */
+export function featureForPath(canonicalPath: string): string | null {
+  let best = '';
+  for (const prefix of Object.keys(FEATURE_PAGES)) {
+    const matches = canonicalPath === prefix || canonicalPath.startsWith(`${prefix}/`);
+    if (matches && prefix.length > best.length) best = prefix;
+  }
+  return best ? FEATURE_PAGES[best] : null;
 }
 
 /** Per-org module toggle map, matching listModuleStates()'s shape (modules.service.ts:26) — absent id = enabled. */
@@ -170,7 +210,8 @@ function resolvedKind(kind: OrgKind | undefined | null): OrgKind {
 export function isModuleAvailable(moduleId: string, ctx: ModuleAvailabilityContext): boolean {
   const entry = MODULE_MANIFEST[moduleId as ModuleId] as ModuleAvailability | undefined;
   if (!entry) return true;
-  if (entry.kinds && !(entry.kinds as readonly OrgKind[]).includes(resolvedKind(ctx.kind))) return false;
+  if (entry.kinds && !(entry.kinds as readonly OrgKind[]).includes(resolvedKind(ctx.kind)))
+    return false;
   if (entry.toggleId && ctx.moduleStates[entry.toggleId] === false) return false;
   if (entry.requires) {
     for (const dep of entry.requires) {

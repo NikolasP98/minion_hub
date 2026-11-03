@@ -16,11 +16,17 @@
  * STT + lip-sync logic ported from the meeting-agent demo's useVoiceLoop.ts.
  */
 import { Lipsync } from 'wawa-lipsync';
-import { REST_MOUTH, visemeToMouth, type AgentVoiceState, type MouthShape } from '$lib/voice/visemeMap';
+import {
+  REST_MOUTH,
+  visemeToMouth,
+  type AgentVoiceState,
+  type MouthShape,
+} from '$lib/voice/visemeMap';
 import { agentChat, onAgentReplyFinal } from '$lib/state/chat/chat.svelte';
 import { sendVoiceTurn } from '$lib/services/gateway.svelte';
 import { extractText, extractTtsSpoken } from '$lib/utils/text';
 import { txPrefs, speechLang } from '$lib/state/features/transcription-prefs.svelte';
+import { hasFeature, isPremiumResponse } from '$lib/access/premium';
 
 // --- Minimal Web Speech API typings (not in TS DOM lib) ---------------------
 interface SpeechRecognitionResult {
@@ -189,6 +195,7 @@ function startReplyWatcher(agentId: string) {
  */
 export function startCall(agentId: string): void {
   ui.error = null;
+  if (!hasFeature('ai.chat')) return; // spec 043: the call control is not rendered without it
   const Ctor = getRecognitionCtor();
   if (!Ctor) {
     ui.error = 'This browser has no Web Speech API. Use Chrome or Edge.';
@@ -294,8 +301,12 @@ export async function speakReply(text: string, key: string | number): Promise<vo
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       // lang steers the synthesis language/voice; 'auto' lets the model decide.
-      body: JSON.stringify({ text: clean, lang: txPrefs.lang === 'auto' ? undefined : txPrefs.lang }),
+      body: JSON.stringify({
+        text: clean,
+        lang: txPrefs.lang === 'auto' ? undefined : txPrefs.lang,
+      }),
     });
+    if (await isPremiumResponse(res)) return; // spec 043: dropped silently, no error banner
     if (!res.ok) throw new Error(`tts ${res.status}`);
     const blob = await res.blob();
     url = URL.createObjectURL(blob);

@@ -15,7 +15,10 @@ vi.mock('$server/db/pg-pool', () => ({
   getCriticalPgClient: boundary.pool,
   resetAllPgPools: vi.fn(),
 }));
-vi.mock('$server/ai-usage', () => ({ recordAiUsage: vi.fn() }));
+vi.mock('$server/ai-usage', () => ({
+  recordAiUsage: vi.fn(),
+  withAiUsageOrg: (_org: unknown, _feature: unknown, fn: () => unknown) => fn(),
+}));
 vi.mock('$env/dynamic/private', () => ({ env: boundary.env }));
 import { getCoreDb } from '$server/db/pg-client';
 import { advanceJob, cancelJobsByRef, enqueueJob } from './bg-runtime';

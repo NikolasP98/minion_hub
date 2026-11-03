@@ -10,6 +10,8 @@
  * always aliased `t`; `orgColumn`/`ownerColumn` are qualified expressions.
  */
 import type { Module } from '$server/services/rbac.service';
+import { col, datasetsFrom } from '$server/modules/sdk.server';
+import { stockServer } from '$server/modules/stock.server';
 
 export type ColumnType = 'text' | 'number' | 'timestamp' | 'boolean' | 'uuid';
 
@@ -39,15 +41,6 @@ export interface Dataset {
   /** Columns selected when the spec has no `select`. */
   defaultColumns: string[];
   columns: DatasetColumn[];
-}
-
-function col(
-  name: string,
-  type: ColumnType,
-  meaning: string,
-  extra: { pii?: boolean; expr?: string } = {},
-): DatasetColumn {
-  return { name, type, meaning, ...extra };
 }
 
 export const DATASETS: readonly Dataset[] = [
@@ -198,35 +191,7 @@ export const DATASETS: readonly Dataset[] = [
       col('product_id', 'uuid', 'Booked catalog product id'),
     ],
   },
-  {
-    id: 'stock.items',
-    module: 'stock',
-    meaning: 'Stock items with their current on-hand quantity and valuation across all bins.',
-    from: [
-      'stk_items t',
-      'left join lateral (',
-      'select coalesce(sum(b.qty), 0) as qty_on_hand,',
-      'coalesce(sum(b.qty * b.valuation_rate), 0) as valuation',
-      'from stk_bins b where b.org_id = t.org_id and b.item_id = t.id',
-      ') bins on true',
-    ].join(' '),
-    orgColumn: 't.org_id',
-    defaultOrder: 'name asc',
-    defaultColumns: ['code', 'name', 'uom', 'qty_on_hand'],
-    columns: [
-      col('code', 'text', 'Item code / SKU'),
-      col('name', 'text', 'Item name'),
-      col('uom', 'text', 'Unit of measure'),
-      col('item_group', 'text', 'Item group / family'),
-      col('reorder_level', 'number', 'Quantity at which to reorder'),
-      col('qty_on_hand', 'number', 'Sum of stk_bins.qty across warehouses', {
-        expr: 'bins.qty_on_hand',
-      }),
-      col('valuation', 'number', 'Sum of qty * valuation_rate across warehouses', {
-        expr: 'bins.valuation',
-      }),
-    ],
-  },
+  ...datasetsFrom([stockServer]),
 ];
 
 const BY_ID = new Map(DATASETS.map((d) => [d.id, d]));

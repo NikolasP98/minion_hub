@@ -785,6 +785,17 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/services/entitlements.sql.integration.test.ts',
+      minimumAssertions: 5,
+      requiredBehaviors: [
+        'setOrgPlan against real SQL no-op on Base, then insert, then update, each change audited once',
+        'setOrgPlan against real SQL rejects prototype keys as plans',
+        'org_plans RLS (org_guc, select only) a member reads its own plan row and no other org',
+        'org_plans RLS (org_guc, select only) denies INSERT, UPDATE and DELETE to the app role',
+        'org_plans RLS (org_guc, select only) the audit table is unreadable by the app role',
+      ],
+    },
+    {
       file: 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
       minimumAssertions: 4,
       requiredBehaviors: [
@@ -800,6 +811,14 @@ export const NATIVE_POSTGRES_MANIFEST = {
       requiredBehaviors: [
         'RLS coverage of org-scoped tables every org table is forced-RLS with a current_org_id policy, or allowlisted',
         'RLS coverage of org-scoped tables every allowlisted table still exists and is still uncovered',
+      ],
+    },
+    {
+      file: 'src/server/modules/links.sql.integration.test.ts',
+      minimumAssertions: 2,
+      requiredBehaviors: [
+        'stock module links against PostgreSQL every declared link joins two real columns, with a foreign key unless it is soft',
+        'stock module links against PostgreSQL every foreign key between a stk_ table and another module is declared',
       ],
     },
     {

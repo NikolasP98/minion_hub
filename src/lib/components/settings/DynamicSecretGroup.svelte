@@ -3,6 +3,7 @@
   import { appLocale } from '$lib/utils/format';
   import type { SecretsSummary } from '$lib/types/secrets';
   import { Button } from '$lib/components/ui';
+  import { hasFeature } from '$lib/access/premium';
   import SecretStatusPill from './SecretStatusPill.svelte';
 
   interface Props {
@@ -50,12 +51,15 @@
         {instances.length === 1 ? 'instance' : 'instances'}
       </p>
     </div>
-    <a
-      href={`/settings/plugins?plugin=${encodeURIComponent(ownerPlugin)}`}
-      class="text-[length:var(--font-size-label)] text-accent hover:underline whitespace-nowrap"
-    >
-      {m.dynamicSecretGroup_manage({ plugin: ownerPlugin })} →
-    </a>
+    <!-- Spec 043 R8: /settings/plugins 404s for an org without `ai`; no dead link. -->
+    {#if hasFeature('ai')}
+      <a
+        href={`/settings/plugins?plugin=${encodeURIComponent(ownerPlugin)}`}
+        class="text-[length:var(--font-size-label)] text-accent hover:underline whitespace-nowrap"
+      >
+        {m.dynamicSecretGroup_manage({ plugin: ownerPlugin })} →
+      </a>
+    {/if}
   </header>
 
   {#if instances.length === 0}

@@ -12,6 +12,7 @@ import {
 import { coerceFunnelStage, type FunnelStage } from '$lib/components/crm/crm-funnel';
 import { getOpenRouterModel } from '$server/llm';
 import { getTenant } from '$server/services/tenant.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const funnelResultSchema = z.object({
   stage: z.string().optional(),
@@ -20,7 +21,10 @@ const funnelResultSchema = z.object({
 });
 
 const MODEL =
-  env.CRM_FUNNEL_MODEL || env.CRM_CLEANUP_MODEL || env.NOTES_POLISH_MODEL || 'google/gemini-2.5-flash';
+  env.CRM_FUNNEL_MODEL ||
+  env.CRM_CLEANUP_MODEL ||
+  env.NOTES_POLISH_MODEL ||
+  'google/gemini-2.5-flash';
 const MAX_MSGS = 20;
 
 /**
@@ -32,6 +36,7 @@ const MAX_MSGS = 20;
  *   ← { stage, confidence, reason, applied, effective }
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   // The marketing funnel is a business-CRM concept — personal orgs shouldn't
@@ -49,7 +54,13 @@ export const POST: RequestHandler = async ({ locals, params }) => {
       reason: `${visits} distinct visits`,
       confidence: 1,
     });
-    return json({ stage: 'loyal', confidence: 1, reason: `${visits} distinct visits`, applied: r.applied, effective: r.stage });
+    return json({
+      stage: 'loyal',
+      confidence: 1,
+      reason: `${visits} distinct visits`,
+      applied: r.applied,
+      effective: r.stage,
+    });
   }
 
   const apiKey = env.OPENROUTER_API_KEY;
@@ -58,7 +69,9 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   // Pull recent inbound message bodies from the journey view.
   const rows = await getContactTimeline(ctx, id, 120);
   const inbound = rows
-    .filter((r) => r.direction === 'inbound' && typeof r.body === 'string' && (r.body as string).trim())
+    .filter(
+      (r) => r.direction === 'inbound' && typeof r.body === 'string' && (r.body as string).trim(),
+    )
     .map((r) => (r.body as string).trim())
     .slice(0, MAX_MSGS)
     .reverse(); // chronological (oldest → newest)
@@ -102,7 +115,8 @@ ${transcript}`;
 
   const coerced = coerceFunnelStage(parsed.stage); // accepts legacy ids too
   const detected: FunnelStage | null = coerced && coerced !== 'loyal' ? coerced : null;
-  const confidence = typeof parsed.confidence === 'number' ? Math.max(0, Math.min(1, parsed.confidence)) : 0;
+  const confidence =
+    typeof parsed.confidence === 'number' ? Math.max(0, Math.min(1, parsed.confidence)) : 0;
   const reason = typeof parsed.reason === 'string' ? parsed.reason.slice(0, 200) : '';
 
   if (!detected) {
@@ -110,5 +124,12 @@ ${transcript}`;
   }
 
   const r = await setFunnelStage(ctx, id, detected, { by: 'agent', reason, confidence });
-  return json({ stage: detected, confidence, reason, applied: r.applied, effective: r.stage, model: MODEL });
+  return json({
+    stage: detected,
+    confidence,
+    reason,
+    applied: r.applied,
+    effective: r.stage,
+    model: MODEL,
+  });
 };

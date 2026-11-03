@@ -95,6 +95,14 @@ describe('gateway JWT issuance', () => {
       });
       expect(payload.jti).toMatch(/^[0-9a-f-]{36}$/);
       expect(next.jti).not.toBe(payload.jti);
+      // Spec 043: no plan claims unless the caller passes them (mintOrgGatewayJwt never does).
+      expect(payload).not.toHaveProperty('plan');
+      expect(payload).not.toHaveProperty('features');
+      const claimed = await issueGatewayJwt(ctx as never, '3ab72ffb-6cac-4933-b35e-cd12aa7ccbd6', {
+        plan: 'base',
+        features: [],
+      });
+      expect((await verify(claimed.token)).payload).toMatchObject({ plan: 'base', features: [] });
       expect(payload.exp! - payload.iat!).toBe(3600);
       expect(result.expiresAt).toBe(payload.exp! * 1000);
       expect(mocks.loadCanonicalProfile).toHaveBeenCalledWith(

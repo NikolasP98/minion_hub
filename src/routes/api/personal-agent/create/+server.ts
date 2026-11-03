@@ -6,6 +6,7 @@ import {
   getPendingProvisioningForUser,
   activatePersonalAgent,
 } from '$server/services/personal-agent-provisioner';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/personal-agent/create
@@ -28,6 +29,7 @@ import {
  * which the user can personalize later in /home/settings.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   if (!locals.user) {
     return json({ error: 'Authentication required' }, { status: 401 });
   }

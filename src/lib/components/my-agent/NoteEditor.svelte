@@ -30,6 +30,7 @@
   import { createHotkey } from '$lib/hotkeys';
   import { detectLang } from '$lib/utils/detect-lang';
   import { polishTranscript } from '$lib/state/features/notes-autocomplete';
+  import { hasFeature } from '$lib/access/premium';
   import { txPrefs } from '$lib/state/features/transcription-prefs.svelte';
   import {
     updateNote,
@@ -101,7 +102,7 @@
     'Alt+Space',
     () => editor?.commands.triggerAutofill(),
     () => ({
-      enabled: editorFocused,
+      enabled: editorFocused && hasFeature('ai'),
       ignoreInputs: false,
       meta: { name: m.note_hkAiComplete(), description: m.note_hkAiCompleteDesc() },
     }),
@@ -155,7 +156,7 @@
     if (!raw) return;
     let text = raw;
     // Auto-polish the dictation before committing, if the user enabled it.
-    if (txPrefs.autoPolish) {
+    if (txPrefs.autoPolish && hasFeature('ai')) {
       try {
         const cleaned = await polishTranscript(raw, txPrefs.intent);
         if (cleaned) text = cleaned;
@@ -209,7 +210,7 @@
 
   export async function polishPending() {
     const raw = (pending + interim).trim();
-    if (!raw || polishing) return;
+    if (!raw || polishing || !hasFeature('ai')) return;
     polishing = true;
     try {
       const cleaned = await polishTranscript(raw, txPrefs.intent);
@@ -378,7 +379,8 @@
   }
 
   async function checkSpelling(pos: number) {
-    const w = wordAt(pos);
+    // Spec 043: the suggestions come from a model; a premium_required 403 falls into `!res.ok`.
+    const w = hasFeature('ai') ? wordAt(pos) : null;
     if (!w) {
       spell = null;
       return;

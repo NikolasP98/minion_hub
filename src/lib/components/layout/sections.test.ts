@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { getSections, getDynamicPluginsSections, getNavSections } from './sections';
 import type { PluginUiManifestOccupant } from '$lib/plugins/plugin-types';
+import { isAppRouteBlocked } from '$lib/modules/route-guard';
 
 describe('getSections — core nav taxonomy', () => {
   it('exposes Organization (Home/Overview/Team/Sandbox) and Agents groups', () => {
@@ -162,5 +163,35 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     const org = secs.find((s) => s.id === 'organization');
     expect(org?.label).toBe('Organization');
     expect(org?.items.map((i) => i.href)).toEqual(['/home', '/overview', '/team', '/sandbox']);
+  });
+});
+
+// Spec 043: a Base org (no plan features) is offered exactly what its route guard serves, and
+// the Agents group keeps only the (non-AI) flow editor — a new AI link there must be gated.
+describe('Base-org nav (spec 043)', () => {
+  const plugin = (pluginId: string, category: 'tool' | 'channel'): PluginUiManifestOccupant => ({
+    pluginId,
+    slot: 'plugins.controlCenter' as const,
+    title: pluginId,
+    description: '',
+    entrypoint: 'c.html',
+    category,
+  });
+  const entries = [plugin('studio', 'tool'), plugin('whatsapp', 'channel')];
+  it.each(['business', 'personal'] as const)('%s: AI items are not offered', (kind) => {
+    const base = { kind, moduleStates: {}, features: [] as string[] };
+    const offered = getNavSections(kind, entries, {})
+      .flatMap((s) => s.items.map((i) => i.href))
+      .filter((href) => !isAppRouteBlocked(href.split('?')[0], base));
+    expect(offered).toContain('/channels');
+    expect(offered).toContain('/flow-editor');
+    expect(offered).toContain('/crm');
+    expect(
+      offered.filter((h) => /^\/(agents|plugins|workforce|pulse|brains|sessions)/.test(h)),
+    ).toEqual([]);
+    const agents = getSections(kind).find((s) => s.id === 'agents');
+    expect(
+      agents?.items.map((i) => i.href).filter((h) => !isAppRouteBlocked(h.split('?')[0], base)),
+    ).toEqual(['/flow-editor']);
   });
 });

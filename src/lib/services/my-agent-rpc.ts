@@ -11,6 +11,13 @@
  */
 
 import { sendRequest } from './gateway-rpc';
+import { isPremiumRequired } from '$lib/access/premium';
+
+/** Spec 043: a plan-gated answer is "no result", like a summary the model could not produce. */
+function nullIfPremium(e: unknown): null {
+  if (isPremiumRequired(e)) return null;
+  throw e;
+}
 
 export type ObservationDirection = 'inbound' | 'outbound';
 
@@ -177,8 +184,10 @@ export async function getEmailSummary(
 ): Promise<string | null> {
   const params: Record<string, string> = { messageId };
   if (sourceEmail) params.sourceEmail = sourceEmail;
-  const res = (await sendRequest('myAgent.emailSummary', params)) as { summary?: string | null };
-  return res.summary ?? null;
+  const res = (await sendRequest('myAgent.emailSummary', params).catch(nullIfPremium)) as {
+    summary?: string | null;
+  } | null;
+  return res?.summary ?? null;
 }
 
 /**
@@ -193,6 +202,8 @@ export async function draftEmailReply(
   const params: Record<string, string> = { messageId };
   if (opts.sourceEmail) params.sourceEmail = opts.sourceEmail;
   if (opts.instructions) params.instructions = opts.instructions;
-  const res = (await sendRequest('myAgent.emailDraftReply', params)) as { draft?: string | null };
-  return res.draft ?? null;
+  const res = (await sendRequest('myAgent.emailDraftReply', params).catch(nullIfPremium)) as {
+    draft?: string | null;
+  } | null;
+  return res?.draft ?? null;
 }

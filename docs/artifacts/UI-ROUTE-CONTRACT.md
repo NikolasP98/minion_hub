@@ -23,7 +23,10 @@ It also owns the Phase 5 migration wave. The executable totals are A: 30, B: 67,
 C: 16, D: 23, and E: 10 endpoints, including redirect ownership. This closes
 the prose-spec gaps for Account/organization and auxiliary platform routes
 (Wave A), Memberships (Wave B), installed-plugin detail (Wave D), and the legacy
-Workshop proxy (Wave D).
+Workshop proxy (Wave D). `/orgs/plans` (spec 043 S1, platform-admin plan
+management, gated by `capability:orgs.all`) is a Wave A organization screen; the
+totals above predate it and the executable totals live in
+`route-design-contracts.test.ts`.
 
 The `immersive-workspaces` family maps to Figma page `50 Immersive workspaces`
 and contains Home, Autonomous Agents, every Workshop screen, Cloud, and Terminal.
