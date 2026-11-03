@@ -23,6 +23,8 @@ export interface AiUsageScope {
   orgId: string | null;
   route: string | null;
   feature: string | null;
+  /** A signed-in request (spec 043): with no org, the model-call backstop denies. */
+  authenticated?: boolean;
 }
 
 const scopeContext = new AsyncLocalStorage<AiUsageScope>();
@@ -38,6 +40,12 @@ export function setAiUsageOrg(orgId: string): void {
   if (scope && !scope.orgId) scope.orgId = orgId;
 }
 
+/** Mark the request scope as signed in. Set by `hooks.server.ts` after identity resolves. */
+export function markAiUsageAuthenticated(): void {
+  const scope = scopeContext.getStore();
+  if (scope) scope.authenticated = true;
+}
+
 /**
  * Label a block of work with a logical feature name, so cost can be attributed
  * to a pipeline rather than only to the HTTP route that triggered it. The five
@@ -47,7 +55,12 @@ export function setAiUsageOrg(orgId: string): void {
 export function withAiUsageFeature<T>(feature: string, fn: () => T): T {
   const parent = scopeContext.getStore();
   return scopeContext.run(
-    { orgId: parent?.orgId ?? null, route: parent?.route ?? null, feature },
+    {
+      orgId: parent?.orgId ?? null,
+      route: parent?.route ?? null,
+      feature,
+      authenticated: parent?.authenticated ?? false,
+    },
     fn,
   );
 }
@@ -58,7 +71,10 @@ export function withAiUsageFeature<T>(feature: string, fn: () => T): T {
  */
 export function withAiUsageOrg<T>(orgId: string | null, feature: string | null, fn: () => T): T {
   const parent = scopeContext.getStore();
-  return scopeContext.run({ route: parent?.route ?? null, feature, orgId }, fn);
+  return scopeContext.run(
+    { route: parent?.route ?? null, feature, orgId, authenticated: parent?.authenticated ?? false },
+    fn,
+  );
 }
 
 export function currentAiUsageScope(): AiUsageScope | undefined {

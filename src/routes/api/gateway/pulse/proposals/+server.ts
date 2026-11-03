@@ -9,6 +9,7 @@ import {
   readPulseRequestObject,
   validatePulseProposals,
 } from '$server/services/pulse-ingest-contract';
+import { requireOrgFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/gateway/pulse/proposals  (gateway server-token channel)
@@ -24,6 +25,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (!locals.serverId?.trim() || !canonicalOrgId?.trim()) {
     return json({ ok: false, error: 'machine_identity_required' }, { status: 401 });
   }
+  await requireOrgFeature(canonicalOrgId, 'ai.proactive', 'gateway.pulse.proposals');
 
   try {
     const body = await readPulseRequestObject(request);

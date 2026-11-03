@@ -5,6 +5,7 @@ import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import { embedText } from '$server/services/embeddings';
 import { similarConversations } from '$server/services/crm-conversation-vectors.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { requireOrgFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/gateway/search-crm-conversations?agentId=personal-<uuid>[&orgId=<org>]
@@ -17,8 +18,12 @@ import type { CoreCtx } from '$server/auth/core-ctx';
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { principalId, orgId, capabilities } = await resolveAssistantPrincipal(locals, url);
+  await requireOrgFeature(orgId, 'ai', 'gateway.search-crm-conversations');
   if (!capabilities.can('crm', 'view')) {
-    return json({ error: 'Your role does not permit reading this organization’s CRM data.' }, { status: 403 });
+    return json(
+      { error: 'Your role does not permit reading this organization’s CRM data.' },
+      { status: 403 },
+    );
   }
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
 

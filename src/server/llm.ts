@@ -2,6 +2,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { wrapLanguageModel, type LanguageModelMiddleware } from 'ai';
 import { env } from '$env/dynamic/private';
 import { recordAiUsage, type ProviderUsage } from '$server/ai-usage';
+import { assertAiCallAllowed, isEnforced } from '$server/services/entitlements.service';
 import { estimateCostUsd } from '$lib/utils/model-pricing';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
@@ -64,6 +65,8 @@ function openrouter() {
  */
 const usageMiddleware: LanguageModelMiddleware = {
   async wrapGenerate({ doGenerate, model }) {
+    // Spec 043 backstop: refuse before the provider is called (no-op unless enforced).
+    if (isEnforced()) await assertAiCallAllowed('llm');
     const startedAt = Date.now();
     try {
       const result = await doGenerate();
@@ -84,6 +87,7 @@ const usageMiddleware: LanguageModelMiddleware = {
   },
 
   async wrapStream({ doStream, model }) {
+    if (isEnforced()) await assertAiCallAllowed('llm');
     const startedAt = Date.now();
     const { stream, ...rest } = await doStream();
     let usage: ProviderUsage | undefined;

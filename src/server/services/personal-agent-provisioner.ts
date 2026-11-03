@@ -13,6 +13,7 @@ import {
   PersonalAgentBindingError,
 } from './personal-agent-binding';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { orgAllows } from './entitlements.service';
 
 const MAX_RETRIES = 5;
 // Backoff: 5s, 30s, 2min, 10min, 10min
@@ -63,6 +64,8 @@ export async function getPendingProvisioningForUser(
   ctx: CoreCtx,
   userId: string,
 ): Promise<{ agent: PersonalAgentRow; payload: ReturnType<typeof getProvisioningPayload> } | null> {
+  // Spec 043: an org without `ai` never gets a pending flag, so the browser sends no agents.create.
+  if (!(await orgAllows(ctx.tenantId, 'ai', 'personal-agent.pending'))) return null;
   const agent = await getPersonalAgent(ctx, userId);
   if (!agent) return null;
   if (!shouldRetryAgent(agent)) return null;
@@ -191,6 +194,8 @@ export async function ensureActivePersonalAgent(
   params: { userId: string; email: string },
 ): Promise<boolean> {
   if (!ctx.profileId || ctx.profileId !== params.userId) return false;
+  // Spec 043: no provisioning for an org without `ai` (existing agents stay, R21).
+  if (!(await orgAllows(ctx.tenantId, 'ai', 'personal-agent.ensure'))) return false;
   try {
     let agent = await getPersonalAgent(ctx, params.userId);
     if (!agent) {

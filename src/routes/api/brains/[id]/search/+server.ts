@@ -6,6 +6,7 @@ import { parseBody } from '$server/api/validate';
 import { resolvePrincipal } from '$server/services/brains.service';
 import { searchBrainHybrid } from '$server/services/brain-hybrid-retrieval.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const postSchema = z.object({
   query: z.string().trim().min(1).max(2000),
@@ -22,6 +23,7 @@ const postSchema = z.object({
 
 /** POST /api/brains/:id/search — deterministic hybrid evidence retrieval. */
 export const POST: RequestHandler = async ({ locals, params, request }) => {
+  await requireFeature(locals, 'ai');
   await requireOrgCapability(locals, 'brains', 'view');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);

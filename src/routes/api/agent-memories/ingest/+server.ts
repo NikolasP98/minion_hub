@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { upsertMemories, type MemoryInput } from '$server/services/agent-memories.service';
 import { embedTexts, embeddingsEnabled } from '$server/services/embeddings';
+import { requireFeature } from '$server/services/entitlements.service';
 
 /**
  * POST /api/agent-memories/ingest  { rows: MemoryInput[] }
@@ -12,6 +13,7 @@ import { embedTexts, embeddingsEnabled } from '$server/services/embeddings';
  * OpenAI key. Idempotent on (org, source, source_id).
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   if (!locals.tenantCtx) throw error(401, 'Unauthorized');
   const orgId = locals.tenantCtx.tenantId;
   const serverId = (locals as Record<string, unknown>).serverId as string | undefined;

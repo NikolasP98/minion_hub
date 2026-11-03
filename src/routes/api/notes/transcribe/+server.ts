@@ -3,6 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { requireAuth } from '$server/auth/authorize';
 import { gatewayCall } from '$lib/server/gateway-rpc';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const MODEL = env.NOTES_TRANSCRIBE_MODEL || 'whisper-1';
 const MAX_BYTES = 25 * 1024 * 1024; // OpenAI's per-file limit
@@ -20,6 +21,7 @@ const MAX_BYTES = 25 * 1024 * 1024; // OpenAI's per-file limit
  * Web Speech). Degrades gracefully (502) when the gateway/STT is unavailable.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   requireAuth(locals);
 
   const inForm = await request.formData();

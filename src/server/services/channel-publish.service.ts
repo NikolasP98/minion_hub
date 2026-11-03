@@ -97,6 +97,8 @@ export interface HydrationItem {
    *  classify by orgId instead. Additive — P0 carries the class, no enforcement yet. */
   ownerProfileId: string | null;
   projection: ChannelProjection;
+  /** Spec 043: whether the owning org's plan includes `ai` (agent replies). Read by the gateway mirror. */
+  aiEnabled: boolean;
 }
 
 /** The channel types the gateway mirror covers (P3-T1: all three, not whatsapp-only). */
@@ -105,7 +107,11 @@ const HYDRATABLE_TYPES = new Set(['whatsapp', 'telegram', 'discord']);
 /** Pure: rows → hydration items for the gateway pull. All migrated channel types,
  *  account-keyed; allowlisted projection (settings/authRef pointer — never secrets).
  *  Shared by the /api/internal/channels/resolved route. */
-export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
+export function toResolvedChannels(
+  rows: ChannelRowLite[],
+  /** tenantId → `ai` allowed; a missing org (or a null tenantId) is `true`. */
+  aiEnabledByOrg: ReadonlyMap<string, boolean> = new Map(),
+): HydrationItem[] {
   return rows
     .filter(
       (r): r is ChannelRowLite & { accountId: string } =>
@@ -117,6 +123,7 @@ export function toResolvedChannels(rows: ChannelRowLite[]): HydrationItem[] {
       orgId: r.tenantId ?? null,
       ownerProfileId: r.ownerProfileId ?? null,
       projection: projectChannelRow(r),
+      aiEnabled: r.tenantId ? (aiEnabledByOrg.get(r.tenantId) ?? true) : true,
     }));
 }
 

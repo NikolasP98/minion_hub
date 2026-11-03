@@ -5,6 +5,7 @@ import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { env } from '$env/dynamic/private';
 import { hubBaseUrl } from '$server/config/urls';
 import { getOpenRouterModel } from '$server/llm';
+import { requireFeature } from '$server/services/entitlements.service';
 
 const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
 
@@ -13,6 +14,7 @@ const DEFAULT_MODEL = 'anthropic/claude-sonnet-5';
  * Receives the chapter's instructions + upstream context, returns what the agent would produce.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
+  await requireFeature(locals, 'ai');
   const ctx = await getOrCreateTenantCtx(locals);
   if (!ctx) throw error(401);
 
