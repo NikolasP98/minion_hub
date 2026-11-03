@@ -30,6 +30,9 @@ await build({
     alias: {
       '$app/navigation': hub + 'tests/fixtures/mobile-composition/stubs/app-navigation.js',
       '$app/environment': hub + 'tests/fixtures/mobile-composition/stubs/app-environment.js',
+      '$app/state': hub + 'tests/fixtures/mobile-composition/stubs/app-state.js',
+      '$app/stores': hub + 'tests/fixtures/mobile-composition/stubs/app-stores.js',
+      '$env/dynamic/public': hub + 'tests/fixtures/mobile-composition/stubs/env-public.js',
       $lib: hub + 'src/lib',
     },
     dedupe: ['svelte'],

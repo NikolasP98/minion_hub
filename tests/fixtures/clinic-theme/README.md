@@ -3,7 +3,8 @@
 This isolated preview compiles Hub's real appearance page, theme state/runtime,
 shared Button/Card/Input/Badge components, Chart, and native Dialog. The only
 theme behavior stubbed is server preference synchronization; the real local
-storage path remains active. Navigation is stubbed. All displayed data is
+storage path remains active. Navigation, page data, and public environment are
+stubbed using the existing mobile-composition fixtures. All displayed data is
 synthetic. This fixture makes no production API calls.
 
 ```bash
