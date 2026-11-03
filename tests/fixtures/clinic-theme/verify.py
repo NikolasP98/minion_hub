@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import shutil
+import time
 
 out = Path('test-results/clinic-theme')
 out.mkdir(parents=True, exist_ok=True)
@@ -9,8 +10,32 @@ results = []
 
 def settle():
     # Keep native animation/focus events active in this dedicated headless tab.
-    cdp('Emulation.setFocusEmulationEnabled', enabled=True)
-    js("document.fonts.ready.then(() => new Promise(resolve => setTimeout(resolve, 600)))")
+    cdp('Emulation.setFocusEmulationEnabled', enabled=True, _response_timeout=30)
+    cdp('Runtime.evaluate', expression="document.fonts.ready.then(() => new Promise(resolve => setTimeout(resolve, 600)))", awaitPromise=True, returnByValue=True, _response_timeout=30)
+
+def wait_for_condition(expression, description):
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        try:
+            response = cdp('Runtime.evaluate', expression='Boolean(' + expression + ')', returnByValue=True, _response_timeout=5)
+            if response.get('result', {}).get('value') is True:
+                return
+        except (RuntimeError, TimeoutError):
+            # Navigation may retire the execution context between probes.
+            pass
+        time.sleep(0.1)
+    raise AssertionError(description)
+
+def reload_theme(mode):
+    marker = js('window.__clinicReloadMarker = String(Date.now()) + String(Math.random())')
+    cdp('Page.reload', _response_timeout=30)
+    wait_for_condition(
+        'window.__clinicReloadMarker !== ' + json.dumps(marker) +
+        ' && document.documentElement.dataset.minionTheme === ' + json.dumps('clinic-' + mode) +
+        ' && document.querySelector(".theme-grids")',
+        'Reloaded Clinic theme did not hydrate within 60 seconds',
+    )
+    settle()
 
 def shot(name):
     shutil.copy2(capture_screenshot(), out / (name + '.png'))
@@ -38,7 +63,7 @@ cdp('Emulation.setDeviceMetricsOverride', **{'width': 1440, 'height': 1000, 'dev
 new_tab('http://127.0.0.1:18913/')
 cdp('Page.bringToFront')
 cdp('Emulation.setDeviceMetricsOverride', **{'width': 1440, 'height': 1000, 'deviceScaleFactor': 1, 'mobile': False})
-wait_for_load()
+wait_for_condition('document.querySelector(".theme-grids") && document.querySelector(".preview-tools button")', 'Clinic fixture did not mount within 60 seconds')
 settle()
 shot('initial')
 for mode in ['light', 'dark']:
@@ -46,10 +71,7 @@ for mode in ['light', 'dark']:
     state = js("fetch('/tokens.json').then(r=>r.json()).then(tokens=>({count:tokens.length,missing:tokens.filter(t=>!getComputedStyle(document.documentElement).getPropertyValue(t).trim()),theme:document.documentElement.dataset.minionTheme,scheme:getComputedStyle(document.documentElement).colorScheme,overflow:document.documentElement.scrollWidth>innerWidth}))")
     assert state == {'count': 169, 'missing': [], 'theme': 'clinic-' + mode, 'scheme': mode, 'overflow': False}, state
     shot(mode + '-desktop')
-    js('location.reload()')
-    wait_for_load()
-    settle()
-    assert js('document.documentElement.dataset.minionTheme') == 'clinic-' + mode
+    reload_theme(mode)
     click_button('Open dialog')
     assert js("!!document.querySelector('dialog[open]') && document.querySelector('dialog[open]').contains(document.activeElement)")
     for _ in range(6):
@@ -83,10 +105,7 @@ for mode in ['light', 'dark']:
     assert js('document.querySelector(' + json.dumps(selector) + ').getAttribute("aria-pressed")') == 'true'
     assert js('document.documentElement.scrollWidth <= innerWidth')
     shot('picker-' + mode + '-desktop')
-    js('location.reload()')
-    wait_for_load()
-    settle()
-    assert js('document.documentElement.dataset.minionTheme') == 'clinic-' + mode
+    reload_theme(mode)
     results.append({'actualAppearancePicker': True, 'mode': mode, 'desktopWidth': 1440, 'persisted': True, 'reload': True, 'overflow': False})
     print('Desktop appearance picker passed: ' + mode, flush=True)
 
