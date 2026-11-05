@@ -32,6 +32,27 @@ describe('getPgClient', () => {
       .__minionHubPgPoolReset;
   });
 
+  test('holdUntilPoolIdle outlives the idle timeout after the LAST request, one shared promise', async () => {
+    vi.useFakeTimers();
+    try {
+      const pg = await import('./pg-pool');
+      expect(pg.holdUntilPoolIdle()).toBeNull(); // no pool, nothing to drain
+      pg.getPgClient();
+      let settled = false;
+      const first = pg.holdUntilPoolIdle()!;
+      void first.then(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(pg.holdUntilPoolIdle()).toBe(first); // a new request extends the same hold
+      await vi.advanceTimersByTimeAsync(21_000);
+      expect(settled).toBe(false); // 36 s total, but only 21 s since the last request
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(settled).toBe(true);
+      expect(pg.holdUntilPoolIdle()).not.toBe(first);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('graceful shutdown closes every distinct pool without a destructive timeout', async () => {
     const pg = await import('./pg-pool');
     pg.getPgClient();

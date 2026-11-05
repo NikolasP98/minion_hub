@@ -47,6 +47,8 @@ export type BookingsViewData = {
   eventTypes: BookingsViewEventType[];
   stockEnabled: boolean;
   accrualSummaries: BookingsViewAccrualSummary[];
+  /** booking id → attachment count; when given, rows without files skip the list fetch. */
+  attachmentCounts?: Record<string, number>;
   /** Contact-scope keys — present only when the loader ran with `contactScope`. */
   contactId?: string | null;
   contactName?: string | null;

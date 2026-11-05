@@ -19,6 +19,7 @@ import { listResources, listEventTypes } from '$server/services/scheduling.servi
 import { getContact } from '$server/services/crm-contacts.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getInvoiceLabelsByIds } from '$server/services/finance.service';
+import { countAttachmentsByObjects } from '$server/services/attachments.service';
 import { effectiveModuleEnabled } from '$lib/modules/availability';
 import { schedulingTimeZone } from '$lib/components/scheduling/calendar-window';
 
@@ -67,6 +68,10 @@ export interface BookingsViewLoadData {
   }>;
   stockEnabled: boolean;
   accrualSummaries: AccrualSummaries;
+  /** booking id → live attachment count (absent = 0). One grouped query, so the
+   *  list mounts an AttachmentList (2 requests each) only where files exist —
+   *  ~750 parallel requests per visit filled the 200 pooler slots (2026-11-04). */
+  attachmentCounts: Record<string, number>;
 }
 
 export interface BookingsViewContactScope {
@@ -147,6 +152,14 @@ export async function loadBookingsView(
     }
   }
 
+  const attachmentCounts = Object.fromEntries(
+    await countAttachmentsByObjects(
+      ctx,
+      'booking',
+      bookings.map((b) => b.id),
+    ),
+  );
+
   const base: BookingsViewLoadData = {
     orgTz: schedulingTimeZone(resources),
     bookings,
@@ -161,6 +174,7 @@ export async function loadBookingsView(
     })),
     stockEnabled,
     accrualSummaries,
+    attachmentCounts,
   };
   if (!opts.contactScope) return base;
   return {
