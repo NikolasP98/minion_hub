@@ -3,6 +3,7 @@ import { parsePgArray } from 'drizzle-orm/pg-core';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 import { recordSqlRoundTrip, sqlTraceEnabled } from './sql-trace';
+import { IDLE_TIMEOUT_S } from './pool-idle-hold';
 
 type PgClient = ReturnType<typeof postgres>;
 
@@ -51,7 +52,6 @@ declare global {
 // the pooler's client limit (compute size) if bursts still hit 200.
 const DEFAULT_POOL_SIZE = 3;
 const MAX_POOL_SIZE = 4;
-const IDLE_TIMEOUT_S = 20;
 
 function poolSize(): number {
   const configured = Number.parseInt(env.SUPABASE_DB_POOL_SIZE ?? '', 10);
@@ -71,40 +71,6 @@ function databaseUrl(): string {
   const url = env.SUPABASE_DB_URL?.trim();
   if (!url) throw new Error('SUPABASE_DB_URL is required for the PG client');
   return url;
-}
-
-let idleHold: {
-  promise: Promise<void>;
-  resolve: () => void;
-  timer?: ReturnType<typeof setTimeout>;
-} | null = null;
-
-/**
- * A promise that settles IDLE_TIMEOUT_S + 2 s after the LAST call in this process,
- * or null when no pool exists yet. Pass it to Vercel `waitUntil` after every
- * request: a frozen (suspended) isolate never runs postgres.js's idle timer, so
- * its sockets kept pooler client slots for minutes. 2026-11-03 and 2026-11-04:
- * one /scheduling/bookings visit (~750 parallel requests) left 200 slots held
- * ~5-11 min after the burst. `attachDatabasePool` does this for `pg`, not
- * postgres.js. Every request resets the timer, so one promise serves them all.
- */
-export function holdUntilPoolIdle(): Promise<void> | null {
-  if (!globalThis.__minionHubPgPool && !globalThis.__minionHubPgRlsPool) return null;
-  if (!idleHold) {
-    let resolve!: () => void;
-    const promise = new Promise<void>((r) => (resolve = r));
-    idleHold = { promise, resolve };
-  }
-  const hold = idleHold;
-  clearTimeout(hold.timer);
-  hold.timer = setTimeout(
-    () => {
-      idleHold = null;
-      hold.resolve();
-    },
-    (IDLE_TIMEOUT_S + 2) * 1000,
-  );
-  return hold.promise;
 }
 
 /**

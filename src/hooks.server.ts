@@ -69,7 +69,7 @@ import {
 import { BUILD_CHANNEL_COOKIE, runWithBuildChannel } from '$server/gateway-channel';
 import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { waitUntil } from '@vercel/functions';
-import { holdUntilPoolIdle } from '$server/db/pg-pool';
+import { holdUntilPoolIdle } from '$server/db/pool-idle-hold';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';

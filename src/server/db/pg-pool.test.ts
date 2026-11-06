@@ -36,18 +36,19 @@ describe('getPgClient', () => {
     vi.useFakeTimers();
     try {
       const pg = await import('./pg-pool');
-      expect(pg.holdUntilPoolIdle()).toBeNull(); // no pool, nothing to drain
+      const { holdUntilPoolIdle } = await import('./pool-idle-hold');
+      expect(holdUntilPoolIdle()).toBeNull(); // no pool, nothing to drain
       pg.getPgClient();
       let settled = false;
-      const first = pg.holdUntilPoolIdle()!;
+      const first = holdUntilPoolIdle()!;
       void first.then(() => (settled = true));
       await vi.advanceTimersByTimeAsync(15_000);
-      expect(pg.holdUntilPoolIdle()).toBe(first); // a new request extends the same hold
+      expect(holdUntilPoolIdle()).toBe(first); // a new request extends the same hold
       await vi.advanceTimersByTimeAsync(21_000);
       expect(settled).toBe(false); // 36 s total, but only 21 s since the last request
       await vi.advanceTimersByTimeAsync(1_000);
       expect(settled).toBe(true);
-      expect(pg.holdUntilPoolIdle()).not.toBe(first);
+      expect(holdUntilPoolIdle()).not.toBe(first);
     } finally {
       vi.useRealTimers();
     }
