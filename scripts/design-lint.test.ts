@@ -14,6 +14,8 @@ function fixture() {
   writeFileSync(join(root, 'src/legacy.svelte'), '<div style="color: #ffffff">Text</div>');
   const git = (...args: string[]) => execFileSync('git', args, { cwd: root, stdio: 'pipe' });
   git('init', '-q');
+  // This is a disposable test repository, not the release checkout.
+  git('config', '--local', 'commit.gpgsign', 'false');
   git('add', 'src');
   git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'base');
   git('update-ref', 'refs/remotes/origin/master', 'HEAD');
