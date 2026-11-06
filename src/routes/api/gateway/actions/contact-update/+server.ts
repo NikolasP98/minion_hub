@@ -2,6 +2,8 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
+import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
+import { sanitizeContactFields } from '$lib/pii';
 import { requireAssistantCapability } from '../../_shared/action-auth';
 import { updateContact, setFunnelStage, addNote } from '$server/services/crm-contacts.service';
 import { StaleWriteError } from '$server/services/errors';
@@ -45,10 +47,28 @@ const bodySchema = z
  * (spec 2026-08-18-hub-funnel-atomic-write, S2): a contact-detail PATCH or a
  * second agent call landing between this handler's read and its write had its
  * key silently dropped. The patch form has no read to go stale.
+ *
+ * Every `custom_fields` this route returns (200 `contact`, 409 `current`) goes
+ * through `sanitizeContactFields`, so the internal leases (`_icpClaim`,
+ * `_relationshipClaim`) reach no caller. Masking comes from the resolved
+ * assistant `capabilities.fieldLevel('crm')`, NOT `shouldMaskSensitive(locals,…)`:
+ * that helper keys off `locals.user`, unset for gateway/server-token callers
+ * (same reasoning as `query/finance`).
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
-  const { ctx } = await requireAssistantCapability(locals, url, 'crm', 'edit');
+  const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'crm', 'edit');
   const b = await parseBody(request, bodySchema);
+  const maskSensitive = capabilities.fieldLevel('crm') < SENSITIVE_FIELD_LEVEL;
+  const serializeContact = <T extends { customFields?: unknown } | null>(row: T): T =>
+    row
+      ? {
+          ...row,
+          customFields: sanitizeContactFields(
+            row.customFields as Record<string, unknown> | null,
+            maskSensitive,
+          ),
+        }
+      : row;
 
   if (!b.confirm) {
     return json({
@@ -78,10 +98,17 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
       );
     } catch (e) {
       if (e instanceof StaleWriteError)
-        return json({ error: 'stale', current: e.current }, { status: 409 });
+        return json(
+          {
+            error: 'stale',
+            current: serializeContact(e.current as { customFields?: unknown } | null),
+          },
+          { status: 409 },
+        );
       throw e;
     }
     if (!updatedContact) throw error(404, 'contact not found');
+    updatedContact = serializeContact(updatedContact as { customFields?: unknown });
   }
 
   let funnel: { applied: boolean; stage: string } | null = null;

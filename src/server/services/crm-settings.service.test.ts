@@ -2,8 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 import {
   normalizeDepositRule,
+  normalizeIcpDefinition,
   readCrmSettingsValue,
   resolveDepositRule,
+  resolveIcpDefinition,
+  saveIcpDefinition,
 } from './crm-settings.service';
 import { DEFAULT_DEPOSIT_RULE } from './crm-deposit-rule';
 
@@ -190,5 +193,101 @@ describe('resolveDepositRule', () => {
     } as never;
     expect(await resolveDepositRule(ctx(db))).toEqual(DEFAULT_DEPOSIT_RULE);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── ICP definition (`crm_settings.value.icp`) ───────────────────────────────
+
+const VALID_ICP = {
+  description: 'Clinics with 3+ chairs',
+  criteria: [{ id: 'size', label: 'Has 3+ chairs', weight: 3 }],
+  disqualifiers: ['Student'],
+  version: 3,
+  updatedAt: '2026-08-20T00:00:00.000Z',
+};
+
+describe('normalizeIcpDefinition', () => {
+  it('treats an absent icp key as "unconfigured": null, no warning', () => {
+    const warn = warnSpy();
+    expect(normalizeIcpDefinition(undefined)).toBeNull();
+    expect(normalizeIcpDefinition(null)).toBeNull();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a bare string', 'clinics'],
+    ['wrong field types', { ...VALID_ICP, criteria: 'size' }],
+    ['a missing version', { ...VALID_ICP, version: undefined }],
+    ['a string version', { ...VALID_ICP, version: '3' }],
+    [
+      'over-cap criteria',
+      {
+        ...VALID_ICP,
+        criteria: Array.from({ length: 9 }, (_v, i) => ({ id: `c${i}`, label: 'x', weight: 1 })),
+      },
+    ],
+  ])('warns once and returns null as a whole for %s', (_label, raw) => {
+    const warn = warnSpy();
+    expect(normalizeIcpDefinition(raw)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns a well-formed definition unchanged', () => {
+    const warn = warnSpy();
+    expect(normalizeIcpDefinition(VALID_ICP)).toEqual(VALID_ICP);
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveIcpDefinition', () => {
+  it('returns null when no crm_settings row exists', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([]);
+    expect(await resolveIcpDefinition(ctx(db))).toBeNull();
+  });
+
+  it('returns null when the row has no icp key', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ value: { accounts: [] } }]);
+    expect(await resolveIcpDefinition(ctx(db))).toBeNull();
+  });
+
+  it('returns the stored definition', async () => {
+    const { db, resolve } = createMockDb();
+    resolve([{ value: { deposit: { keywords: [] }, icp: VALID_ICP } }]);
+    expect(await resolveIcpDefinition(ctx(db))).toEqual(VALID_ICP);
+  });
+
+  it('warns and returns null when the read throws', async () => {
+    const warn = warnSpy();
+    const db = {
+      transaction: () => {
+        throw new Error('boom');
+      },
+    } as never;
+    expect(await resolveIcpDefinition(ctx(db))).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('saveIcpDefinition — input validation', () => {
+  const { description, criteria, disqualifiers } = VALID_ICP;
+  const transaction = vi.fn();
+  const db = { transaction } as never;
+
+  it.each([
+    [
+      '9 criteria',
+      {
+        description,
+        disqualifiers,
+        criteria: Array.from({ length: 9 }, (_v, i) => ({ id: `c${i}`, label: 'x', weight: 1 })),
+      },
+    ],
+    ['a client-supplied version', { description, criteria, disqualifiers, version: 99 }],
+  ])('throws before any DB statement for %s', async (_label, input) => {
+    transaction.mockClear();
+    await expect(saveIcpDefinition(ctx(db), input as never)).rejects.toThrow();
+    expect(transaction).not.toHaveBeenCalled();
   });
 });

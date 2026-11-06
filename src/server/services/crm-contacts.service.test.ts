@@ -20,6 +20,7 @@ import {
   getMetaKeys,
   listContactChannels,
   softDeleteContacts,
+  createContact,
 } from './crm-contacts.service';
 
 /**
@@ -278,6 +279,38 @@ describe('setContactCustomField (S1 — shared atomic setter)', () => {
       await client.close();
     }
   }, 15_000); // PGlite WASM cold-start is slower under the fully parallel suite.
+});
+
+describe('createContact (reserved-key write boundary — ICP S1)', () => {
+  it('drops every `_`-reserved key from client customFields before the insert', async () => {
+    const inserted: Array<{ table: unknown; value: Record<string, unknown> }> = [];
+    const tx = {
+      insert: (table: unknown) => ({
+        values: (value: Record<string, unknown>) => {
+          inserted.push({ table, value });
+          // Audit insert is awaited directly; the contact insert chains `.returning()`.
+          return Object.assign(Promise.resolve(undefined), {
+            returning: () => Promise.resolve([{ id: 'c1', ownerId: 'owner-1', ...value }]),
+          });
+        },
+      }),
+    };
+    mockWithOrgCore.mockImplementationOnce((_scope, fn) => fn(tx as never));
+
+    await createContact({ tenantId: 'org-1', profileId: null } as never, {
+      displayName: 'Ana',
+      customFields: {
+        email: 'a@b.c',
+        _icp: { score: 99 },
+        _icpClaim: { token: 'x' },
+        _funnel: 'won',
+        _relationship: {},
+      },
+    });
+
+    const contactInsert = inserted.find((i) => i.table === crmContacts);
+    expect(contactInsert?.value.customFields).toEqual({ email: 'a@b.c' });
+  });
 });
 
 describe('assertJsonValue (S1 — reject non-JSON values before they reach SQL)', () => {
@@ -1006,6 +1039,27 @@ describe('getMetaKeys (S3 meta-column discovery)', () => {
     const second = await getMetaKeys(scoped);
     expect(second).toEqual(first);
     expect(poison).not.toHaveBeenCalled();
+  });
+
+  it('never lists the AI lease keys but keeps other internal keys', async () => {
+    mockWithOrgCore.mockReset();
+    mockWithOrgCore.mockImplementation(defaultWithOrgCore);
+
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-meta-keys-lease-test' });
+    const scoped = { db: {} as never, tenantId: 'org-meta-keys-lease' };
+
+    useExecMock(
+      vi
+        .fn()
+        .mockResolvedValueOnce([
+          { key: '_icp' },
+          { key: '_icpClaim' },
+          { key: '_relationshipClaim' },
+          { key: 'dni' },
+        ]),
+    );
+    expect(await getMetaKeys(scoped)).toEqual(['_icp', 'dni']);
   });
 });
 

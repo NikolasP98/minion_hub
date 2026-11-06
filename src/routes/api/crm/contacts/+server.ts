@@ -11,6 +11,7 @@ import {
   ROSTER_CAP,
   type RankFilters,
 } from '$server/services/crm-contacts.service';
+import { sanitizeContactFields } from '$lib/pii';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { ServerTiming } from '$lib/server/server-timing';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
@@ -127,5 +128,17 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     displayName: typeof body.displayName === 'string' ? body.displayName.trim() : null,
     customFields: body.customFields ?? {},
   });
-  return json({ contact }, { status: 201 });
+  const maskSensitive = await shouldMaskSensitive(locals, 'crm');
+  return json(
+    {
+      contact: {
+        ...contact,
+        customFields: sanitizeContactFields(
+          contact.customFields as Record<string, unknown>,
+          maskSensitive,
+        ),
+      },
+    },
+    { status: 201 },
+  );
 };

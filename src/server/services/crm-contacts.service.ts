@@ -1,7 +1,7 @@
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { maskPii, sanitizeContactFields } from '$lib/pii';
+import { CONTACT_LEASE_KEYS, maskPii, sanitizeContactFields } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   crmContacts,
@@ -1351,7 +1351,11 @@ export async function getMetaKeys(ctx: CoreCtx): Promise<string[]> {
           where deleted_at is null
           order by 1
         `)) as unknown as { key: string }[];
-        return rows.map((r) => r.key);
+        // Lease-lock key names are as internal as their values: never offered as
+        // a roster column or an exportable `meta:` column.
+        return rows
+          .map((r) => r.key)
+          .filter((k) => !(CONTACT_LEASE_KEYS as readonly string[]).includes(k));
       }),
   );
 }
@@ -1505,10 +1509,19 @@ export async function getContactTimeline(ctx: CoreCtx, id: string, limit = 100) 
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Manually create a contact. Client `customFields` never carry `_`-reserved
+ * keys (`_icp`, `_icpClaim`, `_funnel`, `_relationship`, …): reserved keys are
+ * written only by their setters (`setContactCustomField` and the claim helpers),
+ * so a forged score or lease cannot be planted at creation.
+ */
 export async function createContact(
   ctx: CoreCtx,
   data: { displayName?: string | null; customFields?: Record<string, unknown> },
 ) {
+  const customFields = Object.fromEntries(
+    Object.entries(data.customFields ?? {}).filter(([k]) => !isReservedMetaKey(k)),
+  );
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .insert(crmContacts)
@@ -1516,7 +1529,7 @@ export async function createContact(
         orgId: ctx.tenantId,
         displayName: data.displayName ?? null,
         source: 'manual',
-        customFields: data.customFields ?? {},
+        customFields,
       })
       .returning();
     await recordAuditInTx(tx, ctx, {
