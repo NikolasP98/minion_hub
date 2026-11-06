@@ -151,9 +151,7 @@ export async function updateSnapshotStatus(
 }
 
 export async function deleteSnapshotRecord(ctx: CoreCtx, snapshotId: string): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx.delete(serverBackups).where(eq(serverBackups.id, snapshotId)),
-  );
+  await withOrgCore(ctx, (tx) => tx.delete(serverBackups).where(eq(serverBackups.id, snapshotId)));
 }
 
 // ─── Helper: derive minion user from provision config ───────────────
