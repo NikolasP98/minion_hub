@@ -1,7 +1,7 @@
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { maskPii, sanitizeContactFields } from '$lib/pii';
+import { CONTACT_LEASE_KEYS, maskPii, sanitizeContactFields } from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   crmContacts,
@@ -1351,7 +1351,11 @@ export async function getMetaKeys(ctx: CoreCtx): Promise<string[]> {
           where deleted_at is null
           order by 1
         `)) as unknown as { key: string }[];
-        return rows.map((r) => r.key);
+        // Lease-lock key names are as internal as their values: never offered as
+        // a roster column or an exportable `meta:` column.
+        return rows
+          .map((r) => r.key)
+          .filter((k) => !(CONTACT_LEASE_KEYS as readonly string[]).includes(k));
       }),
   );
 }

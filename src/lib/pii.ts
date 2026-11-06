@@ -39,6 +39,10 @@ export const CRM_PII_FIELD_KEYS = new Set([
   'passport',
 ]);
 
+/** AI lease-lock keys in `custom_fields` — operational state, never user-facing
+ *  (neither their values nor their key names). */
+export const CONTACT_LEASE_KEYS = ['_relationshipClaim', ICP_CLAIM_KEY] as const;
+
 /**
  * Redact PII values inside a contact's custom_fields jsonb (non-PII keys
  * untouched). Also strips `_relationship` and the lease locks
@@ -66,9 +70,8 @@ export function maskContactFields<T extends Record<string, unknown> | null | und
   // expiry) — never user-facing data, so it's stripped here too (belt and
   // braces; `sanitizeContactFields` below also strips it unconditionally,
   // including for an UNMASKED caller, which this function alone can't cover).
-  delete out['_relationshipClaim'];
   // `_icpClaim` is the same kind of lease lock for the ICP scorer.
-  delete out[ICP_CLAIM_KEY];
+  for (const k of CONTACT_LEASE_KEYS) delete out[k];
   // `_icp` (per-contact ICP result) carries AI-written free text (reasons,
   // criteria notes) and evidence chunk ids. Spec §7 default ruling: a masked
   // principal keeps score/band/criteria{id,met}; everything else is dropped.
@@ -100,9 +103,8 @@ export function sanitizeContactFields<T extends Record<string, unknown> | null |
 ): T {
   if (!fields || typeof fields !== 'object') return fields;
   if (maskSensitive) return maskContactFields(fields);
-  if (!('_relationshipClaim' in fields) && !(ICP_CLAIM_KEY in fields)) return fields;
+  if (!CONTACT_LEASE_KEYS.some((k) => k in fields)) return fields;
   const out = { ...fields } as Record<string, unknown>;
-  delete out['_relationshipClaim'];
-  delete out[ICP_CLAIM_KEY];
+  for (const k of CONTACT_LEASE_KEYS) delete out[k];
   return out as T;
 }

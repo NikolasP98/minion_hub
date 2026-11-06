@@ -1040,6 +1040,27 @@ describe('getMetaKeys (S3 meta-column discovery)', () => {
     expect(second).toEqual(first);
     expect(poison).not.toHaveBeenCalled();
   });
+
+  it('never lists the AI lease keys but keeps other internal keys', async () => {
+    mockWithOrgCore.mockReset();
+    mockWithOrgCore.mockImplementation(defaultWithOrgCore);
+
+    const { configureCache, MemoryBackend } = await import('@minion-stack/cache');
+    configureCache({ backend: new MemoryBackend(), namespace: 'crm-meta-keys-lease-test' });
+    const scoped = { db: {} as never, tenantId: 'org-meta-keys-lease' };
+
+    useExecMock(
+      vi
+        .fn()
+        .mockResolvedValueOnce([
+          { key: '_icp' },
+          { key: '_icpClaim' },
+          { key: '_relationshipClaim' },
+          { key: 'dni' },
+        ]),
+    );
+    expect(await getMetaKeys(scoped)).toEqual(['_icp', 'dni']);
+  });
 });
 
 describe('listContactChannels (organization-wide filter options)', () => {

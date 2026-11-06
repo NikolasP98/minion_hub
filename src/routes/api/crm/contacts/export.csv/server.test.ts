@@ -96,6 +96,13 @@ describe('GET /api/crm/contacts/export.csv', () => {
     await expect(call('?columns=password,secret')).rejects.toMatchObject({ status: 400 });
   });
 
+  // getMetaKeys is mocked here; the real filter is covered in
+  // crm-contacts.service.test.ts (lease keys never appear in the key list).
+  it('rejects a lease-key meta column that getMetaKeys no longer lists', async () => {
+    await expect(call('?columns=meta:_icpClaim')).rejects.toMatchObject({ status: 400 });
+    await expect(call('?columns=meta:_relationshipClaim')).rejects.toMatchObject({ status: 400 });
+  });
+
   it('fails explicitly rather than silently truncating above the export safety limit', async () => {
     mocks.rankContactsPageCached.mockResolvedValueOnce({ rows: [], total: 50_001 });
     await expect(call()).rejects.toMatchObject({ status: 413 });
