@@ -126,9 +126,12 @@ The denormalized `client_name`/`client_doc_number`/`client_email` stay (as-bille
 
 The dashboard takes a **period**: `{ from?: ISO, to?: ISO, bucket: 'day'|'week'|'month' }`, parsed from the
 page URL query (`?from=&to=&bucket=`). Default = last 12 months, `bucket=month`. Every aggregate below is
-parameterized by this period and filters `fin_invoices.issued_at` to `[from, to)`; series bucket via
-`date_trunc(bucket, issued_at)`. Validate/clamp inputs server-side (valid ISO, `from<=to`, bucket in the
-enum) → fall back to defaults on bad input. A `parsePeriod(url)` helper (pure, tested) builds the period.
+parameterized by this period and filters `fin_invoices.issued_at` to `[from, to)`. The dashboard load
+resolves picked days to absolute instants in the organization's finance timezone with
+`resolvePeriodWindow`; parsing and fallback rules belong to
+[`parsePeriod`](../../../src/lib/finance/period.ts). Series bucketing, including the optional timezone
+argument and its compatibility default, follows the
+[`revenueSeries` API comment](../../../src/server/services/finance.service.ts).
 
 The assistant endpoint has its own strict business-calendar contract, documented in
 [`query/finance/+server.ts`](../../../src/routes/api/gateway/query/finance/+server.ts).

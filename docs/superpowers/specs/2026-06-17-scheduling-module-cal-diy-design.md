@@ -16,6 +16,7 @@ FACES is hiring onsite team members who attend customer appointments. The org ne
 This module mirrors the existing **CRM** and **Finances** hub modules exactly: `org_id text` tenancy via `withOrgCore` (role `app_ledger` + `app.current_org_id` GUC, forced RLS), a companion hand-written RLS migration at the meta-repo root, a per-org `app_modules` toggle, its own nav section, and cross-module bridge services.
 
 ### Confirmed decisions
+
 - **Port natively** (not run cal.diy as a service, not embed-only).
 - Booking surface: **both** public self-serve `/book/[slug]` **and** internal staff-on-behalf calendar.
 - Resources: **team members (staff) only** for v1. `kind` column reserves room/equipment for later without a migration.
@@ -25,15 +26,15 @@ This module mirrors the existing **CRM** and **Finances** hub modules exactly: `
 
 All tables: `org_id text not null`, `metadata jsonb default '{}'`, queried only through `withOrgCore`.
 
-| Table | Purpose | Key columns |
-|---|---|---|
-| `sched_resources` | A bookable resource (a staff member) | `kind` text default `'staff'`; `profileId` uuid (hub user, soft ref, nullable); `name`; `timezone` text default `'America/Lima'`; `color`; `active` bool |
-| `sched_schedules` | Named availability container | `resourceId` fk; `name`; `timezone`; `isDefault` bool |
-| `sched_availability` | Working-hours rows (cal.diy `Availability` port) | `scheduleId` fk; `days int[]` (0=Sun..6=Sat); `startTime`/`endTime` text `'HH:MM'`; `date` date — **null = weekly recurring; set = single-date override** |
-| `sched_event_types` | A bookable appointment type | `slug`; `title`; `description`; `length` int (min); `slotInterval` int?; `beforeBuffer`/`afterBuffer` int default 0; `minimumBookingNotice` int default 120; `periodType` text default `'rolling'`; `periodDays` int?; `schedulingType` text? (`round_robin`/`collective`); `requiresConfirmation` bool default false; `public` bool default true; `color`; **`productId` uuid? → `fin_products`** (finance bridge); `active` bool. Unique `(orgId, slug)` |
-| `sched_event_type_resources` | M:N — staff who can fulfill an event type | `(eventTypeId, resourceId)` pk |
-| `sched_bookings` | An appointment | `uid` text unique; `eventTypeId` fk; `resourceId` fk; `startTime`/`endTime` timestamptz; `status` text (`accepted`/`pending`/`cancelled`/`rejected`/`completed`/`no_show`); `title`; `notes`; `attendeeName`/`attendeeEmail`/`attendeePhone`; **`crmContactId` uuid? → `crm_contacts`** (CRM bridge); `productId` uuid? (snapshot); `source` text (`public_link`/`internal`/`import`); `rescheduledFromId` uuid?; `createdAt`/`updatedAt`. Indexes: `(orgId, startTime)`, `(resourceId, startTime)`, `(orgId, status)`, unique `uid` |
-| `sched_links` | A shareable scheduling link | `slug` text unique-per-org; `title`; `eventTypeIds uuid[]`; `resourceId` uuid? (pin to a person); `active` bool; `expiresAt` timestamptz? |
+| Table                        | Purpose                                          | Key columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sched_resources`            | A bookable resource (a staff member)             | `kind` text default `'staff'`; `profileId` uuid (hub user, soft ref, nullable); `name`; `timezone` text default `'America/Lima'`; `color`; `active` bool                                                                                                                                                                                                                                                                                                                                                                             |
+| `sched_schedules`            | Named availability container                     | `resourceId` fk; `name`; `timezone`; `isDefault` bool                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `sched_availability`         | Working-hours rows (cal.diy `Availability` port) | `scheduleId` fk; `days int[]` (0=Sun..6=Sat); `startTime`/`endTime` text `'HH:MM'`; `date` date — **null = weekly recurring; set = single-date override**                                                                                                                                                                                                                                                                                                                                                                            |
+| `sched_event_types`          | A bookable appointment type                      | `slug`; `title`; `description`; `length` int (min); `slotInterval` int?; `beforeBuffer`/`afterBuffer` int default 0; `minimumBookingNotice` int default 120; `periodType` text default `'rolling'`; `periodDays` int?; `schedulingType` text? (`round_robin`/`collective`); `requiresConfirmation` bool default false; `public` bool default true; `color`; **`productId` uuid? → `fin_products`** (finance bridge); `active` bool. Unique `(orgId, slug)`                                                                           |
+| `sched_event_type_resources` | M:N — staff who can fulfill an event type        | `(eventTypeId, resourceId)` pk                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `sched_bookings`             | An appointment                                   | `uid` text unique; `eventTypeId` fk; `resourceId` fk; `startTime`/`endTime` timestamptz; `status` text (`accepted`/`pending`/`cancelled`/`rejected`/`completed`/`no_show`); `title`; `notes`; `attendeeName`/`attendeeEmail`/`attendeePhone`; **`crmContactId` uuid? → `crm_contacts`** (CRM bridge); `productId` uuid? (snapshot); `source` text (`public_link`/`internal`/`import`); `rescheduledFromId` uuid?; `createdAt`/`updatedAt`. Indexes: `(orgId, startTime)`, `(resourceId, startTime)`, `(orgId, status)`, unique `uid` |
+| `sched_links`                | A shareable scheduling link                      | `slug` text unique-per-org; `title`; `eventTypeIds uuid[]`; `resourceId` uuid? (pin to a person); `active` bool; `expiresAt` timestamptz?                                                                                                                                                                                                                                                                                                                                                                                            |
 
 **RLS migration:** `supabase/migrations/<ts>_scheduling.sql` at the meta-repo root — `alter table … enable/force row level security`, `grant` to `app_ledger`, `using (org_id = current_setting('app.current_org_id', true))` policies. Drizzle does **not** manage roles/policies (same as CRM/finance).
 
@@ -48,8 +49,12 @@ computeSlots({ eventType, resources, schedules, availability, existingBookings, 
 1. For each candidate resource, expand its schedule's weekly `sched_availability` across `range` in the **resource's** timezone; a row with a `date` **replaces** that day's weekly hours (override).
 2. Subtract busy time: existing bookings (`accepted`/`pending`) padded by `beforeBuffer`/`afterBuffer`; everything before `now + minimumBookingNotice`; everything beyond the rolling `periodDays` window.
 3. Slice remaining free intervals into `length`-minute slots stepping by `slotInterval ?? length`.
-4. `round_robin` → **union** slots across assigned staff (free if *any* is free; each slot tagged with the resource that would take it). `collective` → **intersect** (all must be free). Single-assignee → that resource only.
+4. `round_robin` → **union** slots across assigned staff (free if _any_ is free; each slot tagged with the resource that would take it). `collective` → **intersect** (all must be free). Single-assignee → that resource only.
 5. Convert slot instants to `viewerTz` for display.
+
+Slot listing and transactional booking preflight apply HR exceptions before calling the engine;
+rule precedence is owned by the shared
+[`applyDayOffOverrides` adapter](../../../src/server/scheduling/day-off.ts).
 
 `createBooking` (service, transactional): re-derive slots for the requested instant and reject if no longer free (**double-book prevention**); pick the resource (round-robin = least-loaded that day, else first free); resolve `crmContactId` by phone (last-9-digit, Peru) / email against `crm_contact_identities` (reuse the `crm-finance.service` match pattern); snapshot `productId` from the event type; dedupe by `uid`. `requiresConfirmation` event types insert as `pending`; otherwise `accepted`.
 
@@ -69,7 +74,7 @@ Timezone math via the project's existing date lib (verify: `date-fns-tz` / `Temp
 
 **Public** — `/book/[slug]` **outside** `(app)`, unauthenticated: resolves org + link/event-type from slug, shows slots, takes a booking. API under `/api/scheduling/*`; public booking endpoints resolve the org from the slug then run under a **system core ctx scoped to that org**, rate-limited.
 
-> **Security note (main consideration):** the public path supplies the org id from the slug *without* a user session. RLS still **forces** `org_id` on every `sched_*` table, so the public path can only ever read/write rows for the resolved org. The slug→org resolution and rate-limiting are the trust boundary; everything downstream is RLS-isolated like the rest of the hub.
+> **Security note (main consideration):** the public path supplies the org id from the slug _without_ a user session. RLS still **forces** `org_id` on every `sched_*` table, so the public path can only ever read/write rows for the resolved org. The slug→org resolution and rate-limiting are the trust boundary; everything downstream is RLS-isolated like the rest of the hub.
 
 ## 5. The three visualizations
 
@@ -84,6 +89,7 @@ Timezone math via the project's existing date lib (verify: `date-fns-tz` / `Temp
 ## 7. Testing strategy
 
 TDD on the engine first. Coverage:
+
 - `slots.ts`: weekly expansion, date overrides, before/after buffers, minimum notice, rolling period, timezone + DST boundaries, round-robin union, collective intersect, booking subtraction, slot slicing/interval/offset.
 - `createBooking`: double-book rejection (concurrency), pending vs accepted, CRM contact resolution, product snapshot, uid idempotency.
 - Bridge: phone/email match correctness; utilization aggregate math.
@@ -105,17 +111,17 @@ MVP deliberately **single-assignee or simple round-robin**, **auto-accept** book
 
 ## 9. Future roadmap (post-MVP)
 
-| # | Item | Notes |
-|---|---|---|
-| R1 | **External calendar sync** (Google / Microsoft) | cal.diy `SelectedCalendar` equivalent; pull busy-time into slot computation + push bookings out. Biggest follow-on. |
-| R2 | **Automated reminders & confirmations** | Fire via the gateway's channel extensions (WhatsApp/Telegram/email) — reuse `messages` ledger; reminder N hours before, confirmation on booking, cancellation notice. |
-| R3 | **Reschedule & cancellation self-serve** | Public links to reschedule/cancel via `uid`; `rescheduledFromId` already modeled. |
-| R4 | **Approval queue UI** | Full workflow for `requiresConfirmation` event types (notify admin, accept/reject). |
-| R5 | **Rooms & equipment resources** | Flip `kind`; a booking consumes staff **and** a room — multi-resource conflict checking in `slots.ts`. |
-| R6 | **Recurring appointments & packages** | Series bookings; tie to finance "package" products (e.g. 6-session treatment plans). |
-| R7 | **Payment / deposit on booking** | Collect the 50-soles reserva deposit at booking time via the finance/SUSII path; reconcile booking → `fin_invoices`. |
-| R8 | **No-show & conversion analytics** | Did the appointment convert to a paid procedure? Deep revenue/CRM overlay, no-show rates per staff, lead→appointment→procedure funnel (extends the CRM funnel). |
-| R9 | **Round-robin fairness & load-balancing** | Weighted assignment, max-bookings-per-day caps, skill/service matching (staff who can do which procedures). |
-| R10 | **Waitlists & overbooking policy** | Queue for full slots; auto-promote on cancellation. |
-| R11 | **Embeddable widget + API** | `/book` embed snippet for the marketing site (`minion_site`); public booking API for partners. |
-| R12 | **Promote `sched_*` to `@minion-stack/db`** | Only if the gateway ever needs scheduling (same criterion CRM/finance use). |
+| #   | Item                                            | Notes                                                                                                                                                                 |
+| --- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | **External calendar sync** (Google / Microsoft) | cal.diy `SelectedCalendar` equivalent; pull busy-time into slot computation + push bookings out. Biggest follow-on.                                                   |
+| R2  | **Automated reminders & confirmations**         | Fire via the gateway's channel extensions (WhatsApp/Telegram/email) — reuse `messages` ledger; reminder N hours before, confirmation on booking, cancellation notice. |
+| R3  | **Reschedule & cancellation self-serve**        | Public links to reschedule/cancel via `uid`; `rescheduledFromId` already modeled.                                                                                     |
+| R4  | **Approval queue UI**                           | Full workflow for `requiresConfirmation` event types (notify admin, accept/reject).                                                                                   |
+| R5  | **Rooms & equipment resources**                 | Flip `kind`; a booking consumes staff **and** a room — multi-resource conflict checking in `slots.ts`.                                                                |
+| R6  | **Recurring appointments & packages**           | Series bookings; tie to finance "package" products (e.g. 6-session treatment plans).                                                                                  |
+| R7  | **Payment / deposit on booking**                | Collect the 50-soles reserva deposit at booking time via the finance/SUSII path; reconcile booking → `fin_invoices`.                                                  |
+| R8  | **No-show & conversion analytics**              | Did the appointment convert to a paid procedure? Deep revenue/CRM overlay, no-show rates per staff, lead→appointment→procedure funnel (extends the CRM funnel).       |
+| R9  | **Round-robin fairness & load-balancing**       | Weighted assignment, max-bookings-per-day caps, skill/service matching (staff who can do which procedures).                                                           |
+| R10 | **Waitlists & overbooking policy**              | Queue for full slots; auto-promote on cancellation.                                                                                                                   |
+| R11 | **Embeddable widget + API**                     | `/book` embed snippet for the marketing site (`minion_site`); public booking API for partners.                                                                        |
+| R12 | **Promote `sched_*` to `@minion-stack/db`**     | Only if the gateway ever needs scheduling (same criterion CRM/finance use).                                                                                           |
