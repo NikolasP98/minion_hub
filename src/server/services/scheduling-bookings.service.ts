@@ -62,6 +62,8 @@ import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
+import { loadDayOffOverrides } from './hr.service';
+import { zonedDateKey } from '$server/scheduling/tz';
 import { assertOrgEventKind, catalogPrice } from './scheduling.service';
 import { putCustomPropertyValueInTx } from './custom-properties.service';
 import { emitHubEvent } from '$server/events/emit';
@@ -345,6 +347,25 @@ async function prepareOccurrenceInTx(
     chosen = candidateIds[0];
   } else {
     const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
+    if (availability.length) {
+      const dates = availability
+        .flatMap((res) => [
+          zonedDateKey(new Date(start.getTime() - et.beforeBuffer * MS_PER_MIN), res.timezone),
+          zonedDateKey(new Date(end.getTime() + et.afterBuffer * MS_PER_MIN), res.timezone),
+        ])
+        .sort();
+      const dayOff = await loadDayOffOverrides(
+        tx,
+        ctx.tenantId,
+        candidateIds,
+        dates[0],
+        dates[dates.length - 1],
+      );
+      for (const res of availability) {
+        for (const date of dayOff.get(res.resourceId) ?? [])
+          res.rules.push({ days: [], startTime: '00:00', endTime: '00:00', date });
+      }
+    }
     const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + fitLength) * MS_PER_MIN;
     const busy = await loadBusyInTx(
       tx,

@@ -12,6 +12,7 @@ import {
   schedAvailability,
 } from '../db/pg-scheduling-schema';
 import { crmContacts } from '../db/pg-crm-schema';
+import { hrEmployees, hrHolidays, hrLeaveRequests, hrSettings } from '../db/pg-hr-schema';
 import type { CoreCtx } from '../auth/core-ctx';
 
 const effects = vi.hoisted(() => ({
@@ -111,6 +112,10 @@ const tables = [
   schedSchedules,
   schedAvailability,
   crmContacts,
+  hrEmployees,
+  hrHolidays,
+  hrLeaveRequests,
+  hrSettings,
 ];
 beforeAll(async () => {
   for (const table of tables) {
@@ -174,6 +179,27 @@ async function tableSnapshot() {
   );
 }
 
+async function seedDayOff(kind: 'leave' | 'holiday', date = '2030-01-07') {
+  if (kind === 'holiday') {
+    await pg.query('INSERT INTO hr_holidays(org_id,date,name,enabled) VALUES ($1,$2,$3,true)', [
+      ctx.tenantId,
+      date,
+      'Synthetic Holiday',
+    ]);
+  } else {
+    await pg.query('INSERT INTO hr_employees(id,org_id,resource_id,name) VALUES ($1,$2,$3,$4)', [
+      missing,
+      ctx.tenantId,
+      resource,
+      'Synthetic Employee',
+    ]);
+    await pg.query(
+      "INSERT INTO hr_leave_requests(org_id,employee_id,from_date,to_date,status) VALUES ($1,$2,$3,$3,'approved')",
+      [ctx.tenantId, missing, date],
+    );
+  }
+}
+
 async function rejectsReadOnlyPreview(patch: Partial<typeof input> = {}) {
   const before = await tableSnapshot();
   statements.length = 0;
@@ -192,6 +218,7 @@ async function rejectsReadOnlyPreview(patch: Partial<typeof input> = {}) {
 
 describe('C03 native shared slot preflight', () => {
   it('resolves identities and timezone without mutating any table or invoking effects', async () => {
+    const before = await tableSnapshot();
     const preview = await previewAssistantBooking(ctx, input);
     expect(preview).toMatchObject({
       eventTypeId: service,
@@ -212,7 +239,61 @@ describe('C03 native shared slot preflight', () => {
     expect(effects.emit).not.toHaveBeenCalled();
     expect(effects.accrual).not.toHaveBeenCalled();
     expect(effects.ensureContact).not.toHaveBeenCalled();
+    expect(await tableSnapshot()).toEqual(before);
   });
+  it.each(['leave', 'holiday'] as const)(
+    'rejects %s during preview and revalidates at commit without writes or effects',
+    async (kind) => {
+      expect(await previewAssistantBooking(ctx, input)).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+      });
+      await seedDayOff(kind);
+      await rejectsReadOnlyPreview();
+      const before = await tableSnapshot();
+      await expect(createBooking(ctx, input)).rejects.toThrow('slot no longer available');
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['pending', 'rejected', 'cancelled'])(
+    'keeps ordinary availability for %s leave and disabled or foreign holidays',
+    async (status) => {
+      await seedDayOff('leave');
+      await pg.query('UPDATE hr_leave_requests SET status=$1', [status]);
+      await seedDayOff('holiday');
+      await pg.exec('UPDATE hr_holidays SET enabled=false');
+      await pg.query('INSERT INTO hr_holidays(org_id,date,name,enabled) VALUES ($1,$2,$3,true)', [
+        'foreign-org',
+        '2030-01-07',
+        'Foreign Holiday',
+      ]);
+      const before = await tableSnapshot();
+      expect(await previewAssistantBooking(ctx, input)).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+      });
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['leave', 'holiday'] as const)(
+    'honors %s on the resource local date when UTC is the next day',
+    async (kind) => {
+      const late = { ...input, start: new Date('2030-01-08T02:00:00Z') };
+      await pg.exec("UPDATE sched_availability SET start_time='20:00',end_time='23:00'");
+      expect(await previewAssistantBooking(ctx, late)).toMatchObject({
+        availability: 'available-at-preview',
+      });
+      await seedDayOff(kind);
+      await rejectsReadOnlyPreview({ start: late.start });
+      await expect(createBooking(ctx, late)).rejects.toThrow('slot no longer available');
+    },
+  );
   it.each([{ eventTypeId: missing }, { preferredResourceId: missing }, { crmContactId: missing }])(
     'rejects unknown/foreign reference %j',
     async (patch) => {
