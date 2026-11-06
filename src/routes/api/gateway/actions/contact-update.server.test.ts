@@ -84,14 +84,14 @@ import { POST as contactUpdatePOST } from './contact-update/+server';
 const ORG = 'org-1';
 const PRINCIPAL = '11111111-1111-4111-8111-111111111111';
 
-function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
+function makeCaps(allowed: Record<string, boolean> = {}, fieldLevel = 0): Capabilities {
   return {
     roles: ['staff'],
     can: (module, action) => allowed[`${module}.${action}`] ?? false,
     canRunAnalytics: () => false,
     visibleModules: () => [],
     ownerScoped: () => false,
-    fieldLevel: () => 0,
+    fieldLevel: () => fieldLevel,
     explicitView: () => undefined,
   };
 }
@@ -405,6 +405,68 @@ describe('POST /api/gateway/actions/contact-update — the email write is atomic
         stage: 'customer',
         auto: false,
       });
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+});
+
+describe('POST /api/gateway/actions/contact-update — response sanitisation (ICP S1)', () => {
+  const leased = {
+    email: 'old@example.com',
+    _icp: { score: 70, band: 'strong' },
+    _icpClaim: { token: 'lease', untilEpoch: 4102444800000 },
+    _relationshipClaim: { token: 'lease', untilEpoch: 4102444800000 },
+  };
+
+  it('200 contact carries neither internal lease; an unmasked principal keeps `_icp`', async () => {
+    const { client } = await createDb();
+    try {
+      const contactId = await seed(client, leased);
+      mockResolveAssistantPrincipal.mockResolvedValue({
+        ...allowed,
+        capabilities: makeCaps({ 'crm.edit': true }, 1),
+      });
+
+      const res = await contactUpdatePOST(
+        makeEvent({ confirm: true, contactId, email: 'ana@example.com' }),
+      );
+      const body = (await res.json()) as { contact: { customFields: Record<string, unknown> } };
+
+      expect(body.contact.customFields._icpClaim).toBeUndefined();
+      expect(body.contact.customFields._relationshipClaim).toBeUndefined();
+      expect(body.contact.customFields._icp).toEqual(leased._icp);
+      expect(body.contact.customFields.email).toBe('ana@example.com');
+      // The stored row still has the leases — only the wire copy is sanitised.
+      expect((await readFields(client, contactId))._icpClaim).toEqual(leased._icpClaim);
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+
+  it('409 stale `current` carries neither internal lease', async () => {
+    const { client } = await createDb();
+    try {
+      const contactId = await seed(client, leased);
+      mockResolveAssistantPrincipal.mockResolvedValue(allowed);
+
+      const res = await contactUpdatePOST(
+        makeEvent({
+          confirm: true,
+          contactId,
+          email: 'ana@example.com',
+          expectedUpdatedAt: '2000-01-01T00:00:00.000Z',
+        }),
+      );
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as {
+        error: string;
+        current: { customFields: Record<string, unknown> };
+      };
+
+      expect(body.error).toBe('stale');
+      expect(body.current.customFields._icpClaim).toBeUndefined();
+      expect(body.current.customFields._relationshipClaim).toBeUndefined();
     } finally {
       await client.close();
     }

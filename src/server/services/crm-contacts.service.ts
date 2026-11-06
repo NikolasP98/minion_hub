@@ -1505,10 +1505,19 @@ export async function getContactTimeline(ctx: CoreCtx, id: string, limit = 100) 
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
+/**
+ * Manually create a contact. Client `customFields` never carry `_`-reserved
+ * keys (`_icp`, `_icpClaim`, `_funnel`, `_relationship`, …): reserved keys are
+ * written only by their setters (`setContactCustomField` and the claim helpers),
+ * so a forged score or lease cannot be planted at creation.
+ */
 export async function createContact(
   ctx: CoreCtx,
   data: { displayName?: string | null; customFields?: Record<string, unknown> },
 ) {
+  const customFields = Object.fromEntries(
+    Object.entries(data.customFields ?? {}).filter(([k]) => !isReservedMetaKey(k)),
+  );
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .insert(crmContacts)
@@ -1516,7 +1525,7 @@ export async function createContact(
         orgId: ctx.tenantId,
         displayName: data.displayName ?? null,
         source: 'manual',
-        customFields: data.customFields ?? {},
+        customFields,
       })
       .returning();
     await recordAuditInTx(tx, ctx, {

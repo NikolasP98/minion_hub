@@ -11,6 +11,7 @@ vi.mock('$server/services/rbac.service', () => ({
 }));
 
 const mockRankContactsPage = vi.fn();
+const mockCreateContact = vi.fn();
 const mockListTags = vi.fn(async () => [] as unknown[]);
 const mockLoadCustomPropertyBundle = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
@@ -18,7 +19,7 @@ vi.mock('$server/services/crm-contacts.service', () => ({
   rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
   rankContactsPageCached: (...a: unknown[]) => mockRankContactsPage(...a),
   listTags: () => mockListTags(),
-  createContact: vi.fn(),
+  createContact: (...a: unknown[]) => mockCreateContact(...a),
 }));
 
 vi.mock('$server/services/crm-scoring', () => ({
@@ -29,7 +30,7 @@ vi.mock('$server/services/custom-property-bundle.service', () => ({
   loadCustomPropertyBundle: (...a: unknown[]) => mockLoadCustomPropertyBundle(...a),
 }));
 
-import { GET } from './+server';
+import { GET, POST } from './+server';
 
 /** A page row shaped like the service's RankedContact (the golden element shape). */
 const row = (id: string) => ({
@@ -224,5 +225,51 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
       expect.anything(),
       expect.objectContaining({ maskSensitive: true }),
     );
+  });
+});
+
+describe('POST /api/crm/contacts (reserved-key write boundary — ICP S1)', () => {
+  /** The created row as the service hands it back, carrying internal leases. */
+  const created = () => ({
+    id: 'c1',
+    displayName: 'Ana',
+    customFields: {
+      email: 'ana@example.com',
+      _icp: { score: 80, band: 'strong' },
+      _icpClaim: { token: 'lease', untilEpoch: 1 },
+      _relationship: { label: 'mamá' },
+      _relationshipClaim: { token: 'lease', untilEpoch: 1 },
+    },
+  });
+
+  const callPOST = (body: unknown) =>
+    POST({
+      locals: {},
+      request: { json: async () => body },
+    } as unknown as Parameters<typeof POST>[0]);
+
+  it('201s and never serialises the internal leases', async () => {
+    mockCreateContact.mockResolvedValue(created());
+    const res = await callPOST({
+      displayName: 'Ana',
+      customFields: { _icp: { score: 99 }, _icpClaim: { token: 'x' } },
+    });
+    expect(res.status).toBe(201);
+    const { contact } = await res.json();
+    expect(contact.customFields._icpClaim).toBeUndefined();
+    expect(contact.customFields._relationshipClaim).toBeUndefined();
+    // Unmasked principal keeps the stored verdict.
+    expect(contact.customFields._icp).toEqual({ score: 80, band: 'strong' });
+    expect(contact.customFields.email).toBe('ana@example.com');
+  });
+
+  it('masks PII (and drops `_relationship`) for a field-level-masked principal', async () => {
+    mockShouldMask.mockResolvedValue(true);
+    mockCreateContact.mockResolvedValue(created());
+    const { contact } = await (await callPOST({ displayName: 'Ana' })).json();
+    expect(contact.customFields.email).not.toBe('ana@example.com');
+    expect(contact.customFields._relationship).toBeUndefined();
+    expect(contact.customFields._icpClaim).toBeUndefined();
+    expect(contact.customFields._relationshipClaim).toBeUndefined();
   });
 });
