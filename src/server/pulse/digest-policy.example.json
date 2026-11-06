@@ -14,10 +14,10 @@
         "package": "ai",
         "version": "^7",
         "file": "package.json",
-        "fileHash": "414630467f55fe315264d5874c916fc4bf779bf2378f3a5384237a1846abdf65",
-        "commit": "4c9b5bf19d9e298df2795324f3f9f8f105b3cf08",
+        "fileHash": "bda26da28d6d513b6f75555437b375b56eeb0aa8395367c0dd9e5fcd7360459f",
+        "commit": "0f821fff0ea7bba78228c6058e366f447af7c79c",
         "lockFile": "bun.lock",
-        "lockHash": "c5e63e6b708c7abc562da19c95d7c317f2fd329fc558b43267e3853d15e454f0"
+        "lockHash": "7a25c6883b7c01c6318ac8010420107e9a10d526cff47042c48dc0347d6cc5eb"
       }
     }
   ],

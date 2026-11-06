@@ -1,38 +1,40 @@
 {
   "name": "@minion-stack/design-tokens",
-  "version": "0.1.1-durability.h3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d",
-  "artifact": "minion-stack-design-tokens-0.1.1-durability.h3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d.tgz",
-  "sha256": "9cb3b7075dc5587024af05d8b6b7b0863c6178196b5f3911d7ae4424faa77450",
-  "sourceDigest": "3bfd6bda4307905e96ae4bea7aa8777d6e5e87b247c72de1763d155aa366749d",
+  "version": "0.1.1-durability.ha762eb478fcde01441ff271adcc4797b6c34a65ce56c55036e89a1b7d1f4b35d",
+  "artifact": "minion-stack-design-tokens-0.1.1-durability.ha762eb478fcde01441ff271adcc4797b6c34a65ce56c55036e89a1b7d1f4b35d.tgz",
+  "sha256": "79e3c19819f7e7e471d6e4548b202db5d6e2cd050e28c62570cd7dd6803ea3a9",
+  "sourceDigest": "a762eb478fcde01441ff271adcc4797b6c34a65ce56c55036e89a1b7d1f4b35d",
   "packingRecipe": {
     "schemaVersion": 1,
-    "node": "v22.23.2",
+    "node": "v22.23.3",
     "pnpm": "10.15.0",
     "packageManager": "pnpm@10.15.0",
     "packerSha256": "6572f6db95303d3d8f34989ce3bcf2717c7bb1a745a7a9603d07f7fefb1f386b"
   },
   "sourceMembers": {
-    "README.md": "ec4d00df0f99cb224028468731b3df918cae32a85c4c3ebc1f8afe701758951b",
+    "README.md": "de2df0af88bd800dfb4a8f122528a60ff3f9c31707a34f13e94ca05cefd41c52",
     "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
-    "contract.json": "166eb59ab0811cb82544a1f705c41cc696683445b2026e13e495d074cdbe9c9c",
-    "contract.schema.json": "276cd76f29075d0d20b6cb9d67e80febbb1df8106358cd59b853eafda39ad497",
-    "inventory.json": "b24177763a3035f3a039e76426b31cf5bae2db680c2d0d47cc867ab3cbb65276",
+    "contract.json": "344449d0e78b0fb7c0836479c93525649e50a1d0a9f74bb134f4362ec6bf9729",
+    "contract.schema.json": "a3e8a07c2fe44fbb3ca0bb171fd5225192e6406be324d971451eeacb9de1278b",
+    "inventory.json": "d486b5efc97b1cb6d11f10f242d0b8fcf7baa12a8ee23b5464ddc6a30a9608f5",
     "package.json": "cf86413351ac312602668b32ce2c07766c9c5cf36316abdfefd9fad7424d6044",
-    "tokens.css": "6655f03e50cfab7cbb1c1932f1e8d272397aa2485d3dfe1082e63324efbf83dc",
+    "tokens.css": "1a02417a4ca730b699eb0f9687e54cfaae3ece60de5c43e5721b0e20d5c465f3",
     "utilities.css": "2aaac943e0d4718055f0fe605738546bd0255025df5bdc8a05204ed80ce3d1e6"
   },
   "members": {
-    "README.md": "ec4d00df0f99cb224028468731b3df918cae32a85c4c3ebc1f8afe701758951b",
+    "README.md": "de2df0af88bd800dfb4a8f122528a60ff3f9c31707a34f13e94ca05cefd41c52",
     "audit.mjs": "710b45e50cb309ec59d514513ecec8283dabef62c6cd56515bd992982dc228d5",
-    "contract.json": "166eb59ab0811cb82544a1f705c41cc696683445b2026e13e495d074cdbe9c9c",
-    "contract.schema.json": "276cd76f29075d0d20b6cb9d67e80febbb1df8106358cd59b853eafda39ad497",
-    "inventory.json": "b24177763a3035f3a039e76426b31cf5bae2db680c2d0d47cc867ab3cbb65276",
-    "package.json": "dc87e1630e051e91fbd5a23d17ef4304682112b3cd356aa16f533bb832fb8668",
-    "tokens.css": "6655f03e50cfab7cbb1c1932f1e8d272397aa2485d3dfe1082e63324efbf83dc",
+    "contract.json": "344449d0e78b0fb7c0836479c93525649e50a1d0a9f74bb134f4362ec6bf9729",
+    "contract.schema.json": "a3e8a07c2fe44fbb3ca0bb171fd5225192e6406be324d971451eeacb9de1278b",
+    "inventory.json": "d486b5efc97b1cb6d11f10f242d0b8fcf7baa12a8ee23b5464ddc6a30a9608f5",
+    "package.json": "8581116b02f85d8975475a06c3ac56554d0f4d054115943c62ebe5a434ddbfbe",
+    "tokens.css": "1a02417a4ca730b699eb0f9687e54cfaae3ece60de5c43e5721b0e20d5c465f3",
     "utilities.css": "2aaac943e0d4718055f0fe605738546bd0255025df5bdc8a05204ed80ce3d1e6"
   },
   "repacksByteIdentical": true,
   "sourceRepository": "NikolasP98/minion-meta",
-  "baseCommit": "17bce12fcba0c72c42691c8c05d613124f3d88fb",
-  "canonicalReceipt": "design-system-provenance.json"
+  "contractVersion": "1.1.0",
+  "packer": "scripts/pack-design-system.mjs",
+  "canonicalReceipt": "design-system-provenance.json",
+  "baseCommit": "87f3262fcea0252b4241c84f8c8b3c50ace5624d"
 }

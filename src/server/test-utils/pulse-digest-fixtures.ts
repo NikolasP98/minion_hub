@@ -25,6 +25,9 @@ export function digestFixturePolicy(namespace = 'fixture-v1') {
   policy.sources[0].dependency.fileHash = createHash('sha256')
     .update(readFileSync('package.json'))
     .digest('hex');
+  policy.sources[0].dependency.lockHash = createHash('sha256')
+    .update(readFileSync('bun.lock'))
+    .digest('hex');
   return parseDigestPolicy(policy);
 }
 export async function digestFixtureSnapshot(

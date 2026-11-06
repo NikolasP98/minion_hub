@@ -2,23 +2,41 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { compile } from 'tailwindcss';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import designTokens from '@minion-stack/design-tokens/contract.json';
 import { ACCENT_OPTIONS, PRESETS } from '$lib/themes/presets';
 import { applyTheme } from '$lib/themes/runtime';
 
-const semanticTokens = readFileSync(
-  resolve(process.cwd(), 'node_modules/@minion-stack/design-tokens/tokens.css'),
-  'utf8',
-);
+const semanticTokens = (
+  await compile(
+    readFileSync(
+      resolve(process.cwd(), 'node_modules/@minion-stack/design-tokens/tokens.css'),
+      'utf8',
+    ),
+    // Polyfills.None is 0; its ambient const enum cannot be imported with verbatimModuleSyntax.
+    { polyfills: 0 },
+  )
+).build([]);
 const appStyles = readFileSync(resolve(process.cwd(), 'src/app.css'), 'utf8');
+let stylesheets: HTMLStyleElement[];
 
 describe('runtime theme semantic contract', () => {
   beforeEach(() => {
+    stylesheets = [semanticTokens, appStyles].map((css) => {
+      const stylesheet = document.createElement('style');
+      stylesheet.textContent = css;
+      document.head.append(stylesheet);
+      return stylesheet;
+    });
     const root = document.documentElement;
     root.removeAttribute('data-minion-theme');
     root.removeAttribute('data-theme');
     root.removeAttribute('style');
+  });
+
+  afterEach(() => {
+    for (const stylesheet of stylesheets) stylesheet.remove();
   });
 
   it('selects the shared semantic preset and keeps custom accent roles aligned', () => {
@@ -43,7 +61,7 @@ describe('runtime theme semantic contract', () => {
     expect(root.style.getPropertyValue('--color-accent-foreground')).toBe('');
   });
 
-  it('has one shared semantic selector for every non-default Hub preset', () => {
+  it('resolves shared semantic styles for every Hub preset', () => {
     // The shared contract also carries consumer-specific themes (currently the
     // Site's Concourse pair). Hub's picker is intentionally a curated subset;
     // every Hub preset must exist in the contract, while additive themes for a
@@ -56,11 +74,41 @@ describe('runtime theme semantic contract', () => {
       Object.keys(designTokens.accentOptions).sort(),
     );
     for (const preset of PRESETS) {
-      if (preset.id === 'new-york') continue;
-      expect(semanticTokens).toContain(`data-minion-theme='${preset.id}'`);
+      applyTheme(preset, preset.colors.accent);
+      expect(
+        getComputedStyle(document.documentElement).getPropertyValue('--color-canvas').trim(),
+      ).toBe(designTokens.themes[preset.id].colors.canvas);
     }
-    expect(appStyles).toContain('--theme-radius: var(--radius-md)');
   });
+
+  it('resolves the compatibility radius from every selected semantic preset', () => {
+    const root = document.documentElement;
+    root.style.borderRadius = 'var(--theme-radius)';
+    for (const preset of PRESETS) {
+      const theme = designTokens.themes[preset.id];
+      const scale = theme.radiusScale as keyof typeof designTokens.radiusScales;
+      applyTheme(preset, preset.colors.accent);
+      expect(getComputedStyle(root).borderRadius).toBe(
+        designTokens.radiusScales[scale]['--radius-md'],
+      );
+    }
+    root.style.setProperty('--radius-md', '23px');
+    expect(getComputedStyle(root).borderRadius).toBe('23px');
+  });
+
+  it.each(['clinic-light', 'clinic-dark'] as const)(
+    'activates %s through the shared runtime and preserves the chosen accent',
+    (id) => {
+      const preset = PRESETS.find((candidate) => candidate.id === id)!;
+      expect(preset).toBeDefined();
+      expect(preset.mode).toBe(designTokens.themes[id].mode);
+      applyTheme(preset, '#9333ea');
+      expect(document.documentElement.dataset.minionTheme).toBe(id);
+      expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+      expect(document.documentElement.style.getPropertyValue('--color-accent')).toBe('#9333ea');
+      expect(document.documentElement.style.getPropertyValue('--color-on-accent')).toBe('#ffffff');
+    },
+  );
 
   it('retains decorative data-theme hooks without using them as token authority', () => {
     const light = PRESETS.find((candidate) => candidate.id === 'ayu-light');

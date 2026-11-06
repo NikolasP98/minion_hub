@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { PRESETS } from '../../../src/lib/themes/presets';
 import { composite, contrast, OKLAB_SELF_CHECK, parseCssColor, toHex } from './css-color';
 import {
   CHAT_MESSAGE,
@@ -57,7 +58,7 @@ describe('resolved .mention contrast (shipped app.css × tokens.css × runtime a
   const rows = measureAll();
 
   it('measures every supported preset, every runtime accent and every surface', () => {
-    expect(new Set(rows.map((r) => r.theme)).size).toBe(16);
+    expect(new Set(rows.map((r) => r.theme))).toEqual(new Set(PRESETS.map((p) => p.id)));
     expect(new Set(rows.map((r) => r.accent)).size).toBe(11); // theme default + 10 runtime options
     expect(new Set(rows.map((r) => r.surface))).toEqual(new Set(SURFACES));
   });
