@@ -12,6 +12,7 @@ import {
 } from '$server/db/pg-scheduling-schema';
 import { computeSlots } from '$server/scheduling/slots';
 import { loadDayOffOverrides } from './hr.service';
+import { applyDayOffOverrides } from '$server/scheduling/day-off';
 import type {
   ResourceAvailability,
   BusyInterval,
@@ -232,10 +233,7 @@ export async function getSlotsForEventType(
       from.toISOString().slice(0, 10),
       to.toISOString().slice(0, 10),
     );
-    for (const res of availability) {
-      for (const date of dayOff.get(res.resourceId) ?? [])
-        res.rules.push({ days: [], startTime: '00:00', endTime: '00:00', date });
-    }
+    applyDayOffOverrides(availability, dayOff);
     // Pad the busy lookup by the buffers so edge bookings are seen.
     const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + visitLength) * 60_000;
     const busy = await loadBusy(

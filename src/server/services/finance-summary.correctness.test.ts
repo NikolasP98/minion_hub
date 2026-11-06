@@ -5,6 +5,7 @@ import { configureCache, MemoryBackend } from '@minion-stack/cache';
 
 const fixture = vi.hoisted(() => ({
   query: null as null | ((sql: string, params: unknown[]) => Promise<unknown[]>),
+  queryCount: 0,
 }));
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: async (_ctx: unknown, work: (tx: unknown) => unknown) =>
@@ -34,13 +35,17 @@ import {
   rankCustomers,
 } from './crm-finance.service';
 import { sql } from 'drizzle-orm';
+import { parseAssistantPeriod } from './assistant-period';
 
 const db = new PGlite();
 const ctx = { db: {} as never, tenantId: 'finance-summary-fixture' };
 const period = { from: null, to: null, bucket: 'month' as const };
 
 beforeAll(async () => {
-  fixture.query = async (sql, params) => (await db.query(sql, params)).rows;
+  fixture.query = async (sql, params) => {
+    fixture.queryCount++;
+    return (await db.query(sql, params)).rows;
+  };
   await db.exec(`
     create table fin_invoices (
       id text primary key default gen_random_uuid()::text, client_name text, document_id text,
@@ -59,7 +64,9 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
+  fixture.queryCount = 0;
   configureCache({ backend: new MemoryBackend(), namespace: 'finance-summary-correctness' });
+  await db.exec("SET TIME ZONE 'UTC'");
   await db.exec(
     'truncate fin_invoices, fin_invoice_items, fin_products, fin_clients, crm_contacts, stk_entries, stk_ledger;',
   );
@@ -74,13 +81,112 @@ async function invoice(client: string, status: string, amount: number, issued = 
     [ctx.tenantId, client, issued, status, amount],
   );
 }
-async function cost(amount: number) {
-  await db.exec(`insert into stk_entries values ('issue', 'issue')`);
-  await db.query("insert into stk_ledger values ('issue', $1, $2, '2026-01-10')", [
+async function cost(amount: number, posted = '2026-01-10') {
+  await db.exec(`insert into stk_entries values ('issue', 'issue') on conflict do nothing`);
+  await db.query("insert into stk_ledger values ('issue', $1, $2, $3)", [
     ctx.tenantId,
     -amount,
+    posted,
   ]);
 }
+
+describe('assistant finance series calendar buckets on a real SQL engine', () => {
+  it.each([
+    { from: '2030-01-07', to: '2030-01-07', bucket: 'day', label: '2030-01-07' },
+    { from: '2030-01-01', to: '2030-01-31', bucket: 'month', label: '2030-01-01' },
+  ])(
+    'filters and groups revenue and cost in the business $bucket',
+    async ({ from, to, bucket, label }) => {
+      const { period } = parseAssistantPeriod(
+        new URL(`https://fixture.invalid/?from=${from}&to=${to}&bucket=${bucket}`),
+        'America/Lima',
+      );
+      const lower = Date.parse(period.from!);
+      const upper = Date.parse(period.to!);
+      await invoice('before', 'paid', 1000, new Date(lower - 1).toISOString());
+      await invoice('first', 'paid', 10, period.from!);
+      await invoice('last', 'paid', 100, new Date(upper - 3 * 3_600_000).toISOString());
+      await invoice('after', 'paid', 1000, period.to!);
+      await cost(1000, new Date(lower - 1).toISOString());
+      await cost(20, period.from!);
+      await cost(40, new Date(upper - 2 * 3_600_000).toISOString());
+      await cost(1000, period.to!);
+      const result = await revenueSeries(ctx, period, 'business', {}, { timezone: 'America/Lima' });
+      expect(result).toEqual([
+        {
+          bucket: label,
+          invoices: 2,
+          revenue: 110,
+          discount: 0,
+          gross: 110,
+          voided: 0,
+          tax: 0,
+          opCost: 60,
+        },
+      ]);
+    },
+  );
+
+  it.each(['day', 'month'] as const)(
+    'separates %s timezone caches while retaining session-timezone defaults',
+    async (bucket) => {
+      await invoice('boundary', 'paid', 100, '2030-02-01T02:00:00Z');
+      await cost(40, '2030-02-01T03:00:00Z');
+      const p = { from: null, to: null, bucket };
+      const lima = await revenueSeries(ctx, p, 'business', {}, { timezone: 'America/Lima' });
+      const utc = await revenueSeries(ctx, p, 'business', {}, { timezone: 'UTC' });
+      await db.exec("SET TIME ZONE 'Asia/Tokyo'");
+      const legacy = await revenueSeries(ctx, p, 'business');
+      expect(lima).toEqual([
+        {
+          bucket: bucket === 'day' ? '2030-01-31' : '2030-01-01',
+          invoices: 1,
+          revenue: 100,
+          discount: 0,
+          gross: 100,
+          voided: 0,
+          tax: 0,
+          opCost: 40,
+        },
+      ]);
+      expect(utc).toEqual([
+        {
+          bucket: '2030-02-01',
+          invoices: 1,
+          revenue: 100,
+          discount: 0,
+          gross: 100,
+          voided: 0,
+          tax: 0,
+          opCost: 40,
+        },
+      ]);
+      expect(legacy).toEqual(utc);
+      expect(fixture.queryCount).toBe(3);
+      expect(await revenueSeries(ctx, p, 'business', {}, { timezone: 'America/Lima' })).toEqual(
+        lima,
+      );
+      expect(await revenueSeries(ctx, p, 'business', {}, { timezone: 'UTC' })).toEqual(utc);
+      expect(await revenueSeries(ctx, p, 'business')).toEqual(legacy);
+      expect(fixture.queryCount).toBe(3);
+    },
+  );
+
+  it('retains the session calendar for callers without an explicit timezone', async () => {
+    await invoice('boundary', 'paid', 100, '2030-02-01T02:00:00Z');
+    await cost(40, '2030-02-01T03:00:00Z');
+    await db.exec("SET TIME ZONE 'America/Lima'");
+    const result = await revenueSeries(ctx, { from: null, to: null, bucket: 'day' }, 'business');
+    expect(result).toMatchObject([{ bucket: '2030-01-31', revenue: 100, opCost: 40 }]);
+  });
+
+  it('rejects invalid explicit timezones before SQL or cache access', () => {
+    expect(() => revenueSeries(ctx, period, 'business', {}, { timezone: 'Invalid/Zone' })).toThrow(
+      RangeError,
+    );
+    expect(fixture.queryCount).toBe(0);
+  });
+});
 
 describe('finance summary populations and cache on a real SQL engine', () => {
   it('keeps losses signed instead of reporting break-even', async () => {

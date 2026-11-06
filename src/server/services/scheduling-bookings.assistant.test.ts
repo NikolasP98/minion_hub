@@ -70,9 +70,7 @@ vi.mock('./pos/settings', () => ({
 vi.mock('./pos-accounts.logic', () => ({
   grantToday: vi.fn(),
 }));
-vi.mock('./scheduling-slots.service', () => ({
-  serviceRulesOf: () => undefined,
-}));
+import { getSlotsForEventType } from './scheduling-slots.service';
 import {
   queryAssistantBookings,
   listBookings,
@@ -252,6 +250,47 @@ describe('C03 native shared slot preflight', () => {
       await rejectsReadOnlyPreview();
       const before = await tableSnapshot();
       await expect(createBooking(ctx, input)).rejects.toThrow('slot no longer available');
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['leave', 'holiday'] as const)(
+    '%s replaces dated working hours for preview, confirmation and slot listing',
+    async (kind) => {
+      await pg.exec('UPDATE sched_availability SET days=ARRAY[]::integer[]');
+      await pg.exec(`
+        INSERT INTO sched_availability(schedule_id,days,start_time,end_time,date) VALUES
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'08:00','18:00','2030-01-07'),
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'10:00','12:00','2030-01-08')
+      `);
+      expect(await previewAssistantBooking(ctx, input)).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+      });
+      const from = new Date('2030-01-07T05:00:00Z');
+      const to = new Date('2030-01-09T05:00:00Z');
+      const beforeSlots = await getSlotsForEventType(ctx, service, from, to);
+      expect(beforeSlots?.slots.some((slot) => slot.start.getTime() === start.getTime())).toBe(
+        true,
+      );
+      await seedDayOff(kind);
+      await rejectsReadOnlyPreview();
+      const before = await tableSnapshot();
+      await expect(createBooking(ctx, input)).rejects.toThrow('slot no longer available');
+      const afterSlots = await getSlotsForEventType(ctx, service, from, to);
+      expect(afterSlots?.slots.map((slot) => slot.start.toISOString())).toEqual([
+        '2030-01-08T15:00:00.000Z',
+        '2030-01-08T16:00:00.000Z',
+      ]);
+      expect(
+        await previewAssistantBooking(ctx, {
+          ...input,
+          start: new Date('2030-01-08T15:00:00Z'),
+        }),
+      ).toMatchObject({ availability: 'available-at-preview', reservesSlot: false });
+      await rejectsReadOnlyPreview({ start: new Date('2030-01-08T14:00:00Z') });
       expect(await tableSnapshot()).toEqual(before);
       expect(effects.emit).not.toHaveBeenCalled();
       expect(effects.ensureContact).not.toHaveBeenCalled();

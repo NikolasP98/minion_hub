@@ -63,6 +63,7 @@ import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
 import { loadDayOffOverrides } from './hr.service';
+import { applyDayOffOverrides } from '$server/scheduling/day-off';
 import { zonedDateKey } from '$server/scheduling/tz';
 import { assertOrgEventKind, catalogPrice } from './scheduling.service';
 import { putCustomPropertyValueInTx } from './custom-properties.service';
@@ -361,10 +362,7 @@ async function prepareOccurrenceInTx(
         dates[0],
         dates[dates.length - 1],
       );
-      for (const res of availability) {
-        for (const date of dayOff.get(res.resourceId) ?? [])
-          res.rules.push({ days: [], startTime: '00:00', endTime: '00:00', date });
-      }
+      applyDayOffOverrides(availability, dayOff);
     }
     const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + fitLength) * MS_PER_MIN;
     const busy = await loadBusyInTx(

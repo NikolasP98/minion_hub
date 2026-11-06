@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
 
   const [rawSummary, series, products, clients] = await Promise.all([
     financeSummary(ctx, period),
-    revenueSeries(ctx, period),
+    revenueSeries(ctx, period, undefined, undefined, { timezone }),
     topProducts(ctx, period, { limit: 15 }),
     topClients(ctx, period, { limit: 10 }),
   ]);

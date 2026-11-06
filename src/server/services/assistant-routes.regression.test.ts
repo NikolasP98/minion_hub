@@ -216,6 +216,13 @@ describe('C05 actual agent parser and finance route', () => {
       dateTo: 'inclusive-local-day',
     });
     expect(fixture.summary.mock.calls[0][1]).toEqual(result.period);
+    expect(fixture.series).toHaveBeenCalledWith(
+      expect.anything(),
+      result.period,
+      undefined,
+      undefined,
+      { timezone: 'America/Lima' },
+    );
     expect(result.summary).toEqual({ masked: true });
   });
   it('handles DST day boundaries using the native timezone helper', () => {

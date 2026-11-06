@@ -21,6 +21,7 @@ import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availabi
 import type { OrgKind } from '$lib/org-kind';
 import { DEFAULT_FINANCE_CURRENCY } from '$lib/finance/defaults';
 import { financeSummaryMetrics } from './finance-summary.logic';
+import { scopeData } from './base';
 
 const numStr = (n: number | null) => (n == null ? null : String(n));
 
@@ -852,8 +853,16 @@ function periodWhere(p: Period, alias = '') {
   return sql.join(conds, sql` and `);
 }
 
-const ck = (org: string, name: string, p: Period) =>
-  keys.hub(`fin-${name}`, { t: org, d: { f: p.from ?? '', e: p.to ?? '', b: p.bucket } });
+const ck = (org: string, name: string, p: Period, timezone?: string) =>
+  keys.hub(`fin-${name}`, {
+    t: org,
+    d: scopeData({
+      f: p.from ?? '',
+      e: p.to ?? '',
+      b: p.bucket,
+      timezone,
+    }),
+  });
 
 const ctags = (org: string) => [...financeCacheTags(org)];
 
@@ -984,10 +993,17 @@ export function revenueSeries(
   p: Period,
   kind?: OrgKind | null,
   moduleStates: ModuleStates = {},
+  options: { timezone?: string } = {},
 ) {
+  const { timezone } = options;
+  if (timezone !== undefined) new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+  const issuedAt =
+    timezone === undefined ? sql`issued_at` : sql`issued_at at time zone ${timezone}`;
+  const postedAt =
+    timezone === undefined ? sql`l.posted_at` : sql`l.posted_at at time zone ${timezone}`;
   const stockEnabled = effectiveModuleEnabled(kind, moduleStates, 'stock');
   return cached(
-    ck(ctx.tenantId, `series-stock-${Number(stockEnabled)}`, p),
+    ck(ctx.tenantId, `series-stock-${Number(stockEnabled)}`, p, timezone),
     { ttl: '2m', swr: '30s', tags: ctags(ctx.tenantId) },
     () =>
       withOrgCore(ctx, async (tx) => {
@@ -998,7 +1014,7 @@ export function revenueSeries(
         // `cost` yields no rows at all when stock isn't effectively enabled.
         const rows = (await tx.execute(sql`
         with inv as (
-          select date_trunc(${p.bucket}, issued_at) b,
+          select date_trunc(${p.bucket}, ${issuedAt}) b,
                  count(*) filter (where status is distinct from 'void')::int invoices,
                  coalesce(sum(${effTotal()}) filter (where status is distinct from 'void'),0)::float8 revenue,
                  coalesce(sum(discount) filter (where status is distinct from 'void'),0)::float8 discount,
@@ -1009,7 +1025,7 @@ export function revenueSeries(
           group by 1
         ),
         cost as (
-          select date_trunc(${p.bucket}, l.posted_at) b,
+          select date_trunc(${p.bucket}, ${postedAt}) b,
                  coalesce(-sum(l.value_delta::numeric),0)::float8 op_cost
           from stk_ledger l join stk_entries e on e.id = l.entry_id
           where e.type = 'issue'
