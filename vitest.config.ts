@@ -8,10 +8,14 @@ const sqlLane = Object.keys(process.env).some((key) => /^REQUIRE_[A-Z_]+_POSTGRE
 export default defineConfig({
   plugins: [svelte({ compilerOptions: { hmr: false } })],
   resolve: {
-    // Keep Node's condition while opting Svelte's root export into its client
-    // entry. `browser` alone makes Vite 8's Rolldown optimizer treat its own
-    // node:module import as a browser dependency under Bun.
-    conditions: ['node', 'module', 'browser', 'development|production'],
+    // Vitest-only: the DataTable DOM-mount specs need Svelte's root export to
+    // resolve to its client entry (`browser`), and the gate keeps `browser` out
+    // of any non-Vitest load of this file. Keep Node's condition: `browser`
+    // alone makes Vite 8's Rolldown optimizer treat its own node:module import
+    // as a browser dependency under Bun. `undefined` leaves Vite's defaults.
+    conditions: process.env.VITEST
+      ? ['node', 'module', 'browser', 'development|production']
+      : undefined,
   },
   test: {
     include: [
