@@ -232,6 +232,45 @@ describe('ticketToEmission', () => {
     expect(invoice.client).toEqual({ docType: '6', docNumber: '20611172967', name: 'ACME SAC' });
   });
 
+  it('a fully-discounted line keeps its list price as the gratuita reference value', () => {
+    // POS-2026-00016: list price 50, 100% line discount -> total 0. The
+    // reference value is the UNDISCOUNTED price, so it is NOT scaled by the
+    // ticket-level ratio.
+    const { invoice } = ticketToEmission(
+      { subtotal: '1750', total: '1700' },
+      [
+        { description: 'Reserva de Consulta', qty: '1', total: '0', unitPrice: '50' },
+        { description: 'Faja L', qty: '1', total: '0', unitPrice: '0' },
+        { description: 'Afinamiento', qty: '1', total: '1700', unitPrice: '1700' },
+      ],
+      null,
+      settings,
+      allocation,
+      emitter,
+      DEFAULT_IGV_RATE,
+    );
+    expect(invoice.lines[0]).toEqual({
+      description: 'Reserva de Consulta',
+      quantity: 1,
+      unitPriceInclTax: 0,
+      referenceUnitPriceInclTax: 50,
+    });
+    expect(invoice.lines[1].referenceUnitPriceInclTax).toBe(0);
+  });
+
+  it('omits the reference value when the caller has no list price', () => {
+    const { invoice } = ticketToEmission(
+      { subtotal: '100', total: '100' },
+      [{ description: 'Servicio', qty: '1', total: '100' }],
+      null,
+      settings,
+      allocation,
+      emitter,
+      DEFAULT_IGV_RATE,
+    );
+    expect(invoice.lines[0].referenceUnitPriceInclTax).toBeUndefined();
+  });
+
   it('a ticket-level discount is folded proportionally into every line', () => {
     // subtotal 200 (two S/100 lines), ticket discount 20 -> total 180, ratio 0.9
     const { invoice } = ticketToEmission(
