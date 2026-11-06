@@ -22,6 +22,7 @@ vi.mock('$server/services/crm-contacts.service', () => ({
 }));
 
 import { GET } from './+server';
+import { sanitizeContactFields } from '$lib/pii';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -98,5 +99,59 @@ describe('GET /api/crm/contacts/export.csv', () => {
   it('fails explicitly rather than silently truncating above the export safety limit', async () => {
     mocks.rankContactsPageCached.mockResolvedValueOnce({ rows: [], total: 50_001 });
     await expect(call()).rejects.toMatchObject({ status: 413 });
+  });
+
+  // TODO(handoff): the service is mocked wholesale, so this test cannot prove the
+  // service calls sanitizeContactFields before the route reads custom_fields. It
+  // re-applies the real sanitizer inside the mock (as rankContactsPage does) to
+  // prove a sanitized `_icp` serialises to a leak-free CSV cell; the service-side
+  // wiring is covered by crm-contacts.service tests (ICP S1 node 4).
+  it('a masked caller exporting meta:_icp gets no reason, note or evidence text', async () => {
+    mocks.shouldMaskSensitive.mockResolvedValueOnce(true);
+    mocks.getMetaKeys.mockResolvedValueOnce(['_icp']);
+    mocks.rankContactsPageCached.mockImplementationOnce(async (_ctx, filters) => ({
+      rows: [
+        {
+          contact_id: 'c1',
+          display_name: 'Ana',
+          score: 88,
+          stage: 'Active',
+          funnel_stage: null,
+          dni_verified: false,
+          sex: null,
+          lead_origin: null,
+          finance: null,
+          channels: [],
+          total_msgs: 0,
+          inbound_msgs: 0,
+          last_contact_at: null,
+          custom_fields: sanitizeContactFields(
+            {
+              _icp: {
+                score: 72,
+                band: 'moderate',
+                criteria: [{ id: 'c1', met: true, note: 'NOTE-SECRET-text' }],
+                reasons: ['REASON-SECRET-text'],
+                evidenceRefs: [{ chunkId: 'chunk-SECRET-1' }],
+                inputSig: 'sig-abc',
+                icpVersion: 2,
+                model: 'm',
+                promptVersion: 1,
+                scoredAt: '2026-11-06T10:00:00.000Z',
+              },
+            },
+            filters.maskSensitive,
+          ),
+        },
+      ],
+      total: 1,
+      hasMore: false,
+      financeEnabled: false,
+    }));
+    const text = await (await call('?columns=name,meta:_icp')).text();
+    expect(text).toContain('72');
+    for (const secret of ['REASON-SECRET', 'NOTE-SECRET', 'chunk-SECRET', 'sig-abc']) {
+      expect(text).not.toContain(secret);
+    }
   });
 });
