@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	ICP_CLAIM_KEY,
+	ICP_CRITERION_ID_MAX,
 	ICP_KEY,
 	icpDefinitionSchema,
 	icpDefinitionWriteSchema,
@@ -168,6 +169,16 @@ describe('icpResultSchema', () => {
 		expect(icpResultSchema.safeParse(validResult(over)).success).toBe(false);
 	});
 
+	it('bounds criteria[].id to the slug contract', () => {
+		const withId = (id: string) =>
+			validResult({ criteria: [{ id, met: true, note: 'books online' }] });
+		const ok = (id: string) => icpResultSchema.safeParse(withId(id)).success;
+		expect(ok('books-online_2')).toBe(true);
+		expect(ok('a'.repeat(ICP_CRITERION_ID_MAX))).toBe(true);
+		expect(ok('a'.repeat(ICP_CRITERION_ID_MAX + 1))).toBe(false);
+		for (const bad of ['has spaces', 'Upper', 'punct!', '-lead', '']) expect(ok(bad)).toBe(false);
+	});
+
 	it('accepts disqualified with score 10', () => {
 		expect(icpResultSchema.safeParse(validResult({ band: 'disqualified', score: 10 })).success).toBe(
 			true,
@@ -207,6 +218,18 @@ describe('maskIcpResult', () => {
 		expect(maskIcpResult(validResult({ score: 500 }))).toBeUndefined();
 		expect(maskIcpResult('x')).toBeUndefined();
 		expect(maskIcpResult(undefined)).toBeUndefined();
+	});
+
+	it('returns undefined for an off-contract criterion id (no free-text channel)', () => {
+		const freeText = 'Patient said she was diagnosed with cancer; DNI 12345678';
+		expect(
+			maskIcpResult(validResult({ criteria: [{ id: freeText, met: true, note: 'n' }] })),
+		).toBeUndefined();
+		expect(
+			maskIcpResult(
+				validResult({ criteria: [{ id: 'a'.repeat(ICP_CRITERION_ID_MAX + 1), met: true, note: 'n' }] }),
+			),
+		).toBeUndefined();
 	});
 
 	it('does not mutate its input', () => {

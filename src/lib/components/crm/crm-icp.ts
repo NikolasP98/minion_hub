@@ -90,7 +90,7 @@ export function isIcpConfigured(def: IcpDefinition | null | undefined): def is I
 const evidenceRefSchema = z.strictObject({ chunkId: z.string().min(1) });
 
 const criterionResultSchema = z.strictObject({
-	id: z.string(),
+	id: z.string().max(ICP_CRITERION_ID_MAX).regex(ICP_CRITERION_ID_RE),
 	met: z.boolean(),
 	note: z.string().max(ICP_NOTE_MAX),
 });

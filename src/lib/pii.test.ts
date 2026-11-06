@@ -108,6 +108,15 @@ describe('sanitizeContactFields — ICP keys', () => {
     expect(out.edad).toBe('34');
   });
 
+  test('masked: a free-text criteria[].id drops _icp (id is not a leak channel)', () => {
+    const freeText = 'Patient said she was diagnosed with cancer; DNI 12345678';
+    const icp = { ...validIcp(), criteria: [{ id: freeText, met: true, note: 'n' }] };
+    const out = sanitizeContactFields(deepFreeze({ _icp: icp, edad: '34' }), true);
+    expect(out).not.toHaveProperty('_icp');
+    expect(JSON.stringify(out)).not.toContain('diagnosed');
+    expect(out.edad).toBe('34');
+  });
+
   test('neither mode mutates the input', () => {
     const make = () => ({
       _icp: validIcp(),
