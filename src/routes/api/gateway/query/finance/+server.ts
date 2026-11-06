@@ -13,10 +13,22 @@ import {
 } from '$server/services/finance.service';
 
 /**
- * GET /api/gateway/query/finance?agentId=personal-<uuid>[&orgId=][&from=][&to=][&bucket=]
+ * GET /api/gateway/query/finance?agentId=personal-<uuid>[&orgId=][&from=][&to=][&bucket=][&range=all]
  *
- * Invoices/payments summary + date-range revenue series + top products/clients —
- * the same service calls as /finances +page.server.ts, reused verbatim.
+ * Finance summary, revenue/cost series and top products/clients use the shared
+ * finance services with assistant-specific period parsing. Explicit from/to
+ * must be real YYYY-MM-DD dates, ordered when both are present; a single bound
+ * leaves the other open. range=all opens both bounds and cannot accompany dates.
+ * bucket accepts day/week/month (default month); invalid explicit input is 400.
+ * With no dates or range, the default is rolling 12 months in business days.
+ *
+ * The organization's finance timezone defines calendar days and series buckets
+ * for both revenue and cost. from includes local midnight; to includes its whole
+ * local day, converted to an exclusive next-midnight SQL bound (including DST).
+ * Returns { period, periodSemantics, summary, series, products, clients };
+ * period contains resolved instants, while periodSemantics discloses mode,
+ * timezone, calendarFrom/calendarTo and bound inclusivity. Dashboard parsing
+ * and callers using the default revenueSeries timezone retain their own rules.
  *
  * Field-level masking uses the resolved `capabilities` from the trusted
  * principal (NOT `shouldMaskSensitive(locals,...)` — that helper keys off

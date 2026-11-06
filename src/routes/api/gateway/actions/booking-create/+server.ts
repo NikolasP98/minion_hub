@@ -28,9 +28,18 @@ const bodySchema = z.object({
  * body: { confirm, eventTypeId, start, attendeeName?, attendeeEmail?, attendeePhone?,
  *         notes?, crmContactId?, resourceId? }
  *
- * confirm:false → validated preview, no write. confirm:true → creates the
- * booking via the same service the human internal-booking UI uses (bypasses
- * min-notice, still respects conflicts).
+ * confirm:false runs the native slot and identity preflight without creating a
+ * contact, booking, status log, event or accrual. The preview resolves service,
+ * resource and optional contact names plus the resource timezone; it reports
+ * availability:'available-at-preview' and reservesSlot:false. Confirmation
+ * repeats preflight in the write transaction, so a preview is no reservation.
+ * Nonexistent, foreign or deleted explicit crmContactId values fail with 409 rather
+ * than falling back to phone/email; absent contact ids resolve/create only on
+ * confirmation. Unavailable slots also return 409.
+ *
+ * Uses internal-booking rules (bypasses minimum notice and the rolling booking
+ * window, still checks availability and conflicts). Preview email/phone are
+ * masked according to the resolved principal's scheduling field level.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { ctx, capabilities } = await requireAssistantCapability(

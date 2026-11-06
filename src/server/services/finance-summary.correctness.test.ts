@@ -1,5 +1,9 @@
 import { PGlite } from '@electric-sql/pglite';
-import { PgDialect } from 'drizzle-orm/pg-core';
+import { PgDialect, getTableConfig } from 'drizzle-orm/pg-core';
+import { drizzle } from 'drizzle-orm/pglite';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { finSettings } from '../db/pg-finance-schema';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { configureCache, MemoryBackend } from '@minion-stack/cache';
 
@@ -8,13 +12,20 @@ const fixture = vi.hoisted(() => ({
   queryCount: 0,
 }));
 vi.mock('$server/db/with-org-core', () => ({
-  withOrgCore: async (_ctx: unknown, work: (tx: unknown) => unknown) =>
-    work({
+  withOrgCore: async (_ctx: unknown, work: (tx: unknown) => unknown) => {
+    const orm = drizzle(db);
+    return work({
+      select: orm.select.bind(orm),
       execute: (statement: Parameters<PgDialect['sqlToQuery']>[0]) => {
         const query = new PgDialect().sqlToQuery(statement);
         return fixture.query!(query.sql, query.params);
       },
-    }),
+    });
+  },
+}));
+// Only identity is supplied by the fixture; the route reads settings and aggregates real SQL.
+vi.mock('../../routes/api/gateway/_shared/action-auth', () => ({
+  requireAssistantCapability: async () => ({ ctx, capabilities: { fieldLevel: () => 99 } }),
 }));
 vi.mock('./modules.service', () => ({ bothEnabled: async () => true }));
 vi.mock('./crm-settings.service', () => ({
@@ -36,6 +47,7 @@ import {
 } from './crm-finance.service';
 import { sql } from 'drizzle-orm';
 import { parseAssistantPeriod } from './assistant-period';
+import { GET } from '../../routes/api/gateway/query/finance/+server';
 
 const db = new PGlite();
 const ctx = { db: {} as never, tenantId: 'finance-summary-fixture' };
@@ -61,6 +73,10 @@ beforeAll(async () => {
     create table stk_ledger (entry_id text, org_id text, value_delta numeric, posted_at timestamptz);
     select set_config('app.current_org_id', 'finance-summary-fixture', false);
   `);
+  const settings = getTableConfig(finSettings);
+  await db.exec(
+    `CREATE TABLE "${settings.name}" (${settings.columns.map((c) => `"${c.name}" ${c.getSQLType()}`).join(',')})`,
+  );
 });
 
 beforeEach(async () => {
@@ -68,7 +84,12 @@ beforeEach(async () => {
   configureCache({ backend: new MemoryBackend(), namespace: 'finance-summary-correctness' });
   await db.exec("SET TIME ZONE 'UTC'");
   await db.exec(
-    'truncate fin_invoices, fin_invoice_items, fin_products, fin_clients, crm_contacts, stk_entries, stk_ledger;',
+    'truncate fin_invoices, fin_invoice_items, fin_products, fin_clients, crm_contacts, stk_entries, stk_ledger, fin_settings;',
+  );
+  await db.query(
+    `INSERT INTO fin_settings(org_id,currency,tax_rate,timezone,fx_base,fx_quote,fx_mode)
+    VALUES ($1,'PEN',0.18,'America/Lima','USD','PEN','auto')`,
+    [ctx.tenantId],
   );
 });
 afterAll(async () => {
@@ -89,6 +110,72 @@ async function cost(amount: number, posted = '2026-01-10') {
     posted,
   ]);
 }
+
+function recordApiEvidence(name: string, result: unknown) {
+  const directory = process.env.HUB_TEST_EVIDENCE_DIR;
+  if (!directory) return;
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(path.join(directory, name + '.json'), JSON.stringify(result, null, 2) + '\n');
+}
+
+describe('assistant finance Request/Response through persisted settings and SQL', () => {
+  it.each([
+    { from: '2030-01-07', to: '2030-01-07', bucket: 'day', label: '2030-01-07' },
+    { from: '2030-01-01', to: '2030-01-31', bucket: 'month', label: '2030-01-01' },
+  ])(
+    'returns business-local $bucket buckets with matching summary revenue and cost',
+    async ({ from, to, bucket, label }) => {
+      const query = `from=${from}&to=${to}&bucket=${bucket}`;
+      const { period: window } = parseAssistantPeriod(
+        new URL('https://fixture.invalid/?' + query),
+        'America/Lima',
+      );
+      await invoice(
+        'excluded-before',
+        'paid',
+        1000,
+        new Date(Date.parse(window.from!) - 1).toISOString(),
+      );
+      await invoice('first', 'paid', 10, window.from!);
+      await invoice(
+        'last',
+        'paid',
+        100,
+        new Date(Date.parse(window.to!) - 3 * 3_600_000).toISOString(),
+      );
+      await invoice('excluded-after', 'paid', 1000, window.to!);
+      await cost(20, window.from!);
+      await cost(40, new Date(Date.parse(window.to!) - 2 * 3_600_000).toISOString());
+      await cost(1000, window.to!);
+      const response = await GET({
+        locals: {},
+        url: new URL('https://fixture.invalid/api/gateway/query/finance?' + query),
+      } as never);
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.period).toEqual(window);
+      expect(body.periodSemantics).toMatchObject({
+        timezone: 'America/Lima',
+        mode: 'explicit-days',
+      });
+      expect(body.series).toMatchObject([{ bucket: label, revenue: 110, opCost: 60, invoices: 2 }]);
+      expect(body.series).toHaveLength(1);
+      expect(body.summary).toMatchObject({ totalNet: 110, totalCogs: 60, netRevenue: 50 });
+      recordApiEvidence('finance-api-' + bucket, {
+        boundary:
+          'Real Request/Response handler, settings read, parser and finance SQL on in-memory PGlite; synthetic identity. No HTTP server or native RLS qualification.',
+        request: 'GET /api/gateway/query/finance?' + query,
+        settings: (await db.query('SELECT org_id,timezone FROM fin_settings')).rows,
+        invoices: (
+          await db.query('SELECT client_id,issued_at,total FROM fin_invoices ORDER BY issued_at')
+        ).rows,
+        costs: (await db.query('SELECT posted_at,value_delta FROM stk_ledger ORDER BY posted_at'))
+          .rows,
+        response: { status: response.status, body },
+      });
+    },
+  );
+});
 
 describe('assistant finance series calendar buckets on a real SQL engine', () => {
   it.each([
@@ -169,6 +256,15 @@ describe('assistant finance series calendar buckets on a real SQL engine', () =>
       expect(await revenueSeries(ctx, p, 'business', {}, { timezone: 'UTC' })).toEqual(utc);
       expect(await revenueSeries(ctx, p, 'business')).toEqual(legacy);
       expect(fixture.queryCount).toBe(3);
+      recordApiEvidence('finance-cache-' + bucket, {
+        boundary: 'Production revenueSeries SQL and MemoryBackend cache on in-memory PGlite.',
+        instant: '2030-02-01T02:00:00Z',
+        lima,
+        utc,
+        legacy,
+        sqlExecutionsAfterFirstReads: 3,
+        sqlExecutionsAfterRepeatReads: fixture.queryCount,
+      });
     },
   );
 

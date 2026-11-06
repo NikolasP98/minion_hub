@@ -5,9 +5,18 @@ import { requireAssistantCapability } from '../../_shared/action-auth';
 import { queryAssistantBookings } from '$server/services/scheduling-bookings.service';
 
 /**
- * GET /api/gateway/query/bookings?agentId=personal-<uuid>[&orgId=][&from=][&to=][&status=][&contact=]
+ * GET /api/gateway/query/bookings?agentId=personal-<uuid>[&orgId=][&from=][&to=][&status=][&contact=][&limit=][&mode=]
  *
- * Upcoming/past bookings, filterable by contact/date/status.
+ * from/to are inclusive booking-start instant bounds; invalid dates or reversed
+ * bounds return 400. status accepts comma-separated values; contact is a CRM id.
+ * limit is an integer 1..500 (default 500), mode is list (default) or count;
+ * invalid limit/mode values return 400.
+ *
+ * Returns { bookings, total, returned, truncated, limit, mode }. List rows and
+ * total share one SQL snapshot, ordered by startTime then id descending. A
+ * truncated list is incomplete; there is no continuation cursor. Count mode
+ * returns the exact filtered total with bookings:[], returned:0, truncated:false.
+ * Email/phone masking follows the resolved principal's scheduling field level.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'scheduling', 'view');

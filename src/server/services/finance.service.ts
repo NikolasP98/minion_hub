@@ -987,6 +987,11 @@ export function maskFinanceSummary(s: FinanceSummary): FinanceSummary {
  * See `financeSummary` for the `kind`/`moduleStates` contract (S3/WP1 R6) —
  * op_cost (COGS) is forced to zero, not just omitted, when stock isn't
  * effectively enabled for this org.
+ *
+ * options.timezone opts into local-calendar bucketing for both revenue and
+ * cost; invalid zones throw before cache/SQL access. Omit it to retain database
+ * session-timezone buckets. Period bounds remain absolute instants in either
+ * mode; assistant callers resolve their calendar dates via parseAssistantPeriod.
  */
 export function revenueSeries(
   ctx: CoreCtx,

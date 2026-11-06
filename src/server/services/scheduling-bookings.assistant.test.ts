@@ -14,6 +14,14 @@ import {
 import { crmContacts } from '../db/pg-crm-schema';
 import { hrEmployees, hrHolidays, hrLeaveRequests, hrSettings } from '../db/pg-hr-schema';
 import type { CoreCtx } from '../auth/core-ctx';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { isHttpError } from '@sveltejs/kit';
+
+// The identity boundary is synthetic; routes, validation, scheduling and SQL run unchanged.
+vi.mock('../../routes/api/gateway/_shared/action-auth', () => ({
+  requireAssistantCapability: async () => ({ ctx, capabilities: { fieldLevel: () => 0 } }),
+}));
 
 const effects = vi.hoisted(() => ({
   emit: vi.fn(),
@@ -71,6 +79,8 @@ vi.mock('./pos-accounts.logic', () => ({
   grantToday: vi.fn(),
 }));
 import { getSlotsForEventType } from './scheduling-slots.service';
+import { POST } from '../../routes/api/gateway/actions/booking-create/+server';
+import { GET } from '../../routes/api/gateway/query/bookings/+server';
 import {
   queryAssistantBookings,
   listBookings,
@@ -86,7 +96,7 @@ const db = drizzle(pg, {
 const ctx = {
   db: db as unknown as CoreCtx['db'],
   tenantId: 'synthetic-org',
-  profileId: 'synthetic-actor',
+  profileId: '10000000-0000-4000-8000-000000000001',
 };
 const resource = '20000000-0000-4000-8000-000000000001';
 const service = '30000000-0000-4000-8000-000000000001';
@@ -124,6 +134,7 @@ beforeAll(async () => {
   }
   // Native create's conflict target needs its actual uniqueness contract.
   await pg.exec('CREATE UNIQUE INDEX booking_uid ON sched_bookings(org_id,uid)');
+  await pg.exec('ALTER TABLE sched_bookings ALTER COLUMN id SET DEFAULT gen_random_uuid()');
 });
 afterAll(() => pg.close());
 beforeEach(async () => {
@@ -213,6 +224,118 @@ async function rejectsReadOnlyPreview(patch: Partial<typeof input> = {}) {
   expect(effects.ensureContact).not.toHaveBeenCalled();
   expect(effects.accrual).not.toHaveBeenCalled();
 }
+
+function recordApiEvidence(name: string, result: unknown) {
+  const directory = process.env.HUB_TEST_EVIDENCE_DIR;
+  if (!directory) return;
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(path.join(directory, name + '.json'), JSON.stringify(result, null, 2) + '\n');
+}
+
+async function bookingRequest(confirm: boolean, at = start) {
+  try {
+    const response = await POST({
+      locals: {},
+      url: new URL('https://fixture.invalid/api/gateway/actions/booking-create'),
+      request: new Request('https://fixture.invalid/api/gateway/actions/booking-create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          confirm,
+          eventTypeId: service,
+          resourceId: resource,
+          crmContactId: contact,
+          start: at.toISOString(),
+          attendeeEmail: 'fixture@example.invalid',
+          attendeePhone: '+15550000000',
+        }),
+      }),
+    } as never);
+    return { status: response.status, body: await response.json() };
+  } catch (err) {
+    if (!isHttpError(err)) throw err;
+    return { status: err.status, body: err.body };
+  }
+}
+
+describe('assistant Request/Response to persisted SQL booking flow', () => {
+  it.each(['leave', 'holiday'] as const)(
+    'previews without reservation, rejects competing %s hours, then books an open dated override',
+    async (kind) => {
+      await pg.exec(`
+        UPDATE sched_availability SET days=ARRAY[]::integer[];
+        INSERT INTO sched_availability(schedule_id,days,start_time,end_time,date) VALUES
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'08:00','18:00','2030-01-07'),
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'10:00','12:00','2030-01-08')
+      `);
+      const before = await tableSnapshot();
+      const preview = await bookingRequest(false);
+      expect(preview.status).toBe(200);
+      expect(preview.body.preview).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+        timezone: 'America/Lima',
+      });
+      expect(preview.body.preview.attendeeEmail).not.toBe('fixture@example.invalid');
+      expect(preview.body.preview.attendeePhone).not.toBe('+15550000000');
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+      await seedDayOff(kind);
+      const blockedBefore = await tableSnapshot();
+      const blockedPreview = await bookingRequest(false);
+      const blockedConfirm = await bookingRequest(true);
+      expect(blockedPreview).toEqual({ status: 409, body: { message: 'slot unavailable' } });
+      expect(blockedConfirm).toEqual(blockedPreview);
+      expect(await tableSnapshot()).toEqual(blockedBefore);
+      expect(effects.emit).not.toHaveBeenCalled();
+      const open = new Date('2030-01-08T15:00:00Z');
+      const openPreview = await bookingRequest(false, open);
+      expect(openPreview.status).toBe(200);
+      expect(await tableSnapshot()).toEqual(blockedBefore);
+      const committed = await bookingRequest(true, open);
+      expect(committed.status).toBe(200);
+      expect(committed.body.booking).toMatchObject({
+        id: expect.any(String),
+        status: 'accepted',
+        crmContactId: contact,
+        resourceId: resource,
+        startTime: open.toISOString(),
+      });
+      const persisted = (
+        await pg.query(
+          'SELECT id,org_id,resource_id,crm_contact_id,start_time,status FROM sched_bookings',
+        )
+      ).rows;
+      expect(persisted).toMatchObject([{ id: committed.body.booking.id, org_id: ctx.tenantId }]);
+      expect(
+        (await pg.query('SELECT booking_id,to_status FROM sched_booking_status_log')).rows,
+      ).toEqual([{ booking_id: committed.body.booking.id, to_status: 'accepted' }]);
+      const listed = await GET({
+        locals: {},
+        url: new URL('https://fixture.invalid/api/gateway/query/bookings'),
+      } as never);
+      const listBody = await listed.json();
+      expect(listBody).toMatchObject({ total: 1, returned: 1, truncated: false });
+      expect(listBody.bookings[0].id).toBe(committed.body.booking.id);
+      expect(listBody.bookings[0].attendeeEmail).not.toBe('fixture@example.invalid');
+      recordApiEvidence('booking-' + kind, {
+        boundary:
+          'Real Request/Response handlers and production services on in-memory PGlite; synthetic identity; events and external effects mocked. No HTTP server or native RLS qualification.',
+        preview,
+        previewTablesUnchanged: true,
+        blockedPreview,
+        blockedConfirm,
+        blockedTablesUnchanged: true,
+        openPreview,
+        committed,
+        persisted,
+        list: { status: listed.status, body: listBody },
+      });
+    },
+  );
+});
 
 describe('C03 native shared slot preflight', () => {
   it('resolves identities and timezone without mutating any table or invoking effects', async () => {
@@ -414,6 +537,25 @@ describe('C04 actual SQL completeness and masking', () => {
       mode: 'count',
     });
     expect(await listBookings(ctx, opts)).toHaveLength(500);
+    const listResponse = await GET({
+      locals: {},
+      url: new URL('https://fixture.invalid/api/gateway/query/bookings'),
+    } as never);
+    const listBody = await listResponse.json();
+    expect(listBody).toMatchObject({ total: 501, returned: 500, truncated: true, limit: 500 });
+    expect(listBody.bookings).toHaveLength(500);
+    const countResponse = await GET({
+      locals: {},
+      url: new URL('https://fixture.invalid/api/gateway/query/bookings?mode=count'),
+    } as never);
+    const countBody = await countResponse.json();
+    expect(countBody).toMatchObject({ total: 501, returned: 0, bookings: [], mode: 'count' });
+    recordApiEvidence('booking-bounded-list', {
+      boundary:
+        'Production bookings GET handler and queryAssistantBookings SQL on in-memory PGlite; synthetic identity.',
+      list: { status: listResponse.status, body: listBody },
+      count: { status: countResponse.status, body: countBody },
+    });
   });
   it('proves complete narrow/empty ranges and keeps inclusive instant boundaries', async () => {
     await seedBookings(2);

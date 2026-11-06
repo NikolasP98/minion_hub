@@ -436,9 +436,9 @@ async function bookOccurrenceInTx(
 ): Promise<{ row: SchedBooking; created: boolean }> {
   const { et, start, end, chosen } = await prepareOccurrenceInTx(tx, ctx, input, occ);
 
-  // A client-supplied crmContactId must belong to THIS org — validate under the
-  // RLS-scoped tx (don't trust it as authoritative; ignore foreign/stale ids and
-  // fall back to resolve/create by phone/email).
+  // Validate client-supplied crmContactId under the RLS-scoped tx. Shared UI
+  // callers retain phone/email fallback for foreign/stale ids; strict assistant
+  // references must instead identify a live contact in this org or fail closed.
   let crmContactId: string | null = null;
   if (input.crmContactId) {
     const [hit] = await tx
