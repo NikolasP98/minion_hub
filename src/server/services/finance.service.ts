@@ -20,6 +20,7 @@ import { emitHubEvent } from '$server/events/emit';
 import { effectiveModuleEnabled, type ModuleStates } from '$lib/modules/availability';
 import type { OrgKind } from '$lib/org-kind';
 import { DEFAULT_FINANCE_CURRENCY } from '$lib/finance/defaults';
+import { instantParts } from '$lib/time/zoned';
 import { financeSummaryMetrics } from './finance-summary.logic';
 import { scopeData } from './base';
 
@@ -1001,7 +1002,7 @@ export function revenueSeries(
   options: { timezone?: string } = {},
 ) {
   const { timezone } = options;
-  if (timezone !== undefined) new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+  if (timezone !== undefined) instantParts(new Date(0), timezone);
   const issuedAt =
     timezone === undefined ? sql`issued_at` : sql`issued_at at time zone ${timezone}`;
   const postedAt =
