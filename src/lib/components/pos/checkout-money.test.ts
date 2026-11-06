@@ -273,6 +273,22 @@ describe('lineKey', () => {
     expect(keys.size).toBe(3);
   });
 
+  it("keeps a booking's service line apart from the product it consumed (same bookingId)", () => {
+    // Prod 2026-10-13: a completed appointment charged from the calendar carried its
+    // service AND one consumed product under ONE bookingId — identical keys crashed
+    // /pos/sell with each_key_duplicate on every load until the stored cart was replaced.
+    const product = { productId: 'prod-1', unitPrice: 10 } as unknown as CartLine['sellable'];
+    const service: CartLine = { sellable, qty: 1, unitPrice: 50, discount: 0, bookingId: 'bk-1' };
+    const consumed: CartLine = {
+      sellable: product,
+      qty: 1,
+      unitPrice: 10,
+      discount: 0,
+      bookingId: 'bk-1',
+    };
+    expect(lineKey(service)).not.toBe(lineKey(consumed));
+  });
+
   it('keys package and instalment lines on their own ids', () => {
     const base: CartLine = { sellable, qty: 1, unitPrice: 50, discount: 0 };
     expect(lineKey({ ...base, planId: 'p1', bookingId: 'bk-1' })).toBe('p1');
