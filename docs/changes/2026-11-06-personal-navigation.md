@@ -45,3 +45,9 @@ Two-pass spec review and implementation review completed by navigation_review. C
 ## Verification in progress
 
 Focused source tests passed; check reports 0 errors and 0 warnings. Full test/build and actual local QA browser paths remain in progress. This is a draft delivery state, not a deployment claim.
+
+## Runtime correction: shared autosave scope
+
+The full action provider initializes its scope after child editors construct autosave. Before this correction, autosave getters retired stale owners by writing reactive state from a derived read (`state_unsafe_mutation`). Plain owner/status-scope stamps then prevented derived controls from resubscribing when a write adopted the new generation. Value/status/pending/message getters now read without writes; the owner and save-status scope stamps are reactive. Dispatch/completion still retire stale work.
+
+The actual-provider mounted fixture covers late root initialization, immediate draft projection, unknown feedback and owner replacement. Independent actual-Home/provider qualification covers lost-response Review latest and preserving a newer edit during delayed review, with a preserved pre-fix failing control. Existing autosave and save-status tests are also required, plus full CI. This shared correction is necessary for the requested personal navigation controls; no lifecycle stage is skipped.
