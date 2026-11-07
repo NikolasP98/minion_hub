@@ -217,10 +217,10 @@ export interface CreateBookingInput {
   attendeeEmail?: string | null;
   attendeePhone?: string | null;
   notes?: string | null;
-  /** Link to a specific CRM contact (internal booking picked one). When set it's
-   *  used directly; otherwise the contact is resolved/created from phone/email. */
+  /** Optional CRM contact reference; validation and fallback follow strictContactReference. */
   crmContactId?: string | null;
-  /** Agent-only explicit identity contract; shared UI fallback remains unchanged. */
+  /** Reject nonexistent, foreign or deleted explicit contacts instead of falling
+   *  back to phone/email. Assistant callers opt in; shared UI retains its fallback. */
   strictContactReference?: boolean;
   /** Party-spine pick (CustomerPicker). Resolves to the party's CRM contact when
    *  no crmContactId is given; a party without a contact falls back to phone/email. */

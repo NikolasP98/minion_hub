@@ -56,7 +56,7 @@ Slot listing and transactional booking preflight apply HR exceptions before call
 rule precedence is owned by the shared
 [`applyDayOffOverrides` adapter](../../../src/server/scheduling/day-off.ts).
 
-`createBooking` (service, transactional): re-derive slots for the requested instant and reject if no longer free (**double-book prevention**); pick the resource (round-robin = least-loaded that day, else first free); resolve `crmContactId` by phone (last-9-digit, Peru) / email against `crm_contact_identities` (reuse the `crm-finance.service` match pattern); snapshot `productId` from the event type; dedupe by `uid`. `requiresConfirmation` event types insert as `pending`; otherwise `accepted`.
+`createBooking` (service, transactional): re-derive slots for the requested instant and reject if no longer free (**double-book prevention**); pick the resource (round-robin = least-loaded that day, else first free); resolve contact references according to the [`CreateBookingInput` contract](../../../src/server/services/scheduling-bookings.service.ts); snapshot `productId` from the event type; dedupe by `uid`. `requiresConfirmation` event types insert as `pending`; otherwise `accepted`.
 
 Timezone math via the project's existing date lib (verify: `date-fns-tz` / `Temporal` availability during implementation; do not add a new heavy dep without checking).
 
@@ -73,6 +73,11 @@ Timezone math via the project's existing date lib (verify: `date-fns-tz` / `Temp
 - `/scheduling/settings` — module settings
 
 **Public** — `/book/[slug]` **outside** `(app)`, unauthenticated: resolves org + link/event-type from slug, shows slots, takes a booking. API under `/api/scheduling/*`; public booking endpoints resolve the org from the slug then run under a **system core ctx scoped to that org**, rate-limited.
+
+**Assistant API** — preview/confirmation semantics are documented in
+[`actions/booking-create/+server.ts`](../../../src/routes/api/gateway/actions/booking-create/+server.ts);
+bounded list/count responses in
+[`query/bookings/+server.ts`](../../../src/routes/api/gateway/query/bookings/+server.ts).
 
 > **Security note (main consideration):** the public path supplies the org id from the slug _without_ a user session. RLS still **forces** `org_id` on every `sched_*` table, so the public path can only ever read/write rows for the resolved org. The slug→org resolution and rate-limiting are the trust boundary; everything downstream is RLS-isolated like the rest of the hub.
 
