@@ -11,7 +11,6 @@ import { getFinSettings, updateFinSettings } from '$server/services/finance.serv
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { updateSupabaseProfile } from '$server/services/supabase-credential';
 import { upsertUserPreference } from '$server/services/user-preferences.service';
-import { invalidateLandingCache } from '$server/landing-cache';
 
 /** Timezones offered by the org flow. Narrow on purpose — anything else is set
  *  later in /finances settings, which accepts any IANA zone. */
@@ -44,7 +43,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     activeOrg,
   });
   // Nothing left to set up — the hook on "/" resolves the user's landing page.
-  if (!scope) throw redirect(303, '/home');
+  if (!scope) throw redirect(303, '/');
 
   if (scope === 'org') {
     const ctx = await getCoreCtx(locals as App.Locals);
@@ -133,7 +132,6 @@ export const actions: Actions = {
       // Same shape the language toggle saves; the "/" hook reads it to pick the
       // locale-prefixed landing page below.
       await upsertUserPreference(getCoreDb(), supabaseId, 'locale', { tag: language });
-      invalidateLandingCache(supabaseId);
     }
 
     const { error } = await supabaseAdmin()
@@ -142,6 +140,6 @@ export const actions: Actions = {
       .eq('id', supabaseId);
     if (error) return fail(500, { error: error.message });
 
-    throw redirect(303, '/home');
+    throw redirect(303, '/');
   },
 };

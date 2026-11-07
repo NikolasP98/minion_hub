@@ -163,7 +163,7 @@ describe('ambientOrgTxHandle', () => {
 
   it.each([
     ['a POS write', '/(app)/pos/sell', '/pos/sell', 'POST'],
-    ['a non-POS GET', '/(app)/home', '/home', 'GET'],
+    ['a non-POS GET', '/(app)/chat', '/chat', 'GET'],
     ['a non-POS API GET', '/api/crm/parties', '/api/crm/parties', 'GET'],
   ])('opens no shared transaction for %s', async (_label, routeId, pathname, method) => {
     fakeTransaction();

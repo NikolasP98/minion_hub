@@ -19,8 +19,8 @@ describe('Wave D route composition contract', () => {
     ['agents/workshop/compare/+page.svelte', 'archetype="workspace"'],
     ['agents/workshop/groupchat/+page.svelte', 'archetype="workspace"'],
     ['agents/workshop/leaderboard/+page.svelte', 'archetype="collection"'],
-    ['home/+page.svelte', 'archetype="dashboard"'],
-    ['home/settings/+page.svelte', 'archetype="form"'],
+    ['chat/+page.svelte', 'archetype="dashboard"'],
+    ['chat/settings/+page.svelte', 'archetype="form"'],
     ['marketplace/+page.svelte', 'archetype="dashboard"'],
     ['marketplace/agents/+page.svelte', 'archetype="collection"'],
     ['marketplace/agents/[slug]/+page.svelte', 'archetype="record-detail"'],
@@ -50,12 +50,12 @@ describe('Wave D route composition contract', () => {
 
   it('keeps immersive workspaces explicit about internal scroll ownership', () => {
     expect(routeSource('agents/workshop/[id]/+page.svelte')).toContain('scroll="none"');
-    expect(routeSource('home/+page.svelte')).toContain('@container agentcol');
+    expect(routeSource('chat/+page.svelte')).toContain('@container agentcol');
     expect(routeSource('marketplace/plugins/+page.svelte')).toContain('scroll="region"');
   });
 
   it('docks Notes and Todos on the trailing edge of the Home workspace', () => {
-    const home = routeSource('home/+page.svelte');
+    const home = routeSource('chat/+page.svelte');
     // The dock carries section toggles (notes/omnichat) + a context menu now,
     // so assert its class bindings rather than one literal opening tag.
     expect(home).toContain('class="notes-dock"');
@@ -73,7 +73,7 @@ describe('Wave D route composition contract', () => {
   });
 
   it('keeps the implementation archetypes aligned with route metadata', () => {
-    expect(SCREEN_DESIGN_MANIFEST.find((route) => route.pattern === '/home')?.archetype).toBe(
+    expect(SCREEN_DESIGN_MANIFEST.find((route) => route.pattern === '/chat')?.archetype).toBe(
       'dashboard',
     );
     expect(

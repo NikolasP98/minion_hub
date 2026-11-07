@@ -273,7 +273,7 @@ export function cleanInboundForDisplay(text: string): string {
 
 /**
  * Context-aware equivalent of sendChatMsg. Floating surfaces use the default
- * main session; `/home` passes its selected conversation key explicitly. The
+ * main session; the chat screen passes its selected conversation key explicitly. The
  * message the gateway sees is prefixed with a page-context envelope (route,
  * focus, navigation instructions) so the assistant is situationally aware.
  * The clean user text — not the envelope — is what's stored in the visible

@@ -68,12 +68,9 @@
   const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
   const topItems = $derived(utilityLinks(canViewPath));
 
-  // The user's chosen landing page (right-click → Set as home). Falls back to
-  // /home. Stored per-user in Supabase prefs (section "landingPage").
-  const currentHome = $derived(
-    ((page.data as { preferences?: { preferences?: Record<string, unknown> } })?.preferences
-      ?.preferences?.landingPage as string | undefined) ?? '/home',
-  );
+  // Where "/" lands for this member — the layout runs the same resolver as the
+  // root redirect (spec 046), so the home mark never disagrees with it.
+  const currentHome = $derived(page.data.landingPage as string);
 
   // Two responsive tiers:
   //   <md  : sidebar hidden — the mobile hamburger (Topbar) takes over.

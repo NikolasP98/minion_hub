@@ -34,6 +34,7 @@ import {
 } from 'lucide-svelte';
 import type { ComponentType, SvelteComponent } from 'svelte';
 import * as m from '$lib/paraglide/messages';
+import { CHAT_PATH } from '$lib/nav/landing';
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5.
 export type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
@@ -81,10 +82,10 @@ const startsWith = (prefix: string) => (p: string) => p.startsWith(prefix);
 export const ROUTES: RouteMeta[] = [
   // ── Organization ─────────────────────────────────────────────────────────
   {
-    path: '/home',
-    title: () => m.nav_home(),
+    path: CHAT_PATH,
+    title: () => m.nav_chat(),
     icon: Home,
-    matcher: (p) => p === '/home' || p.startsWith('/home/'),
+    matcher: (p) => p === CHAT_PATH || p.startsWith(`${CHAT_PATH}/`),
     section: 'organization',
     inNav: true,
     inPalette: true,

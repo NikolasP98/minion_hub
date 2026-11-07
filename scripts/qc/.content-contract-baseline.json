@@ -266,7 +266,7 @@
     "src/routes/(app)/finances/purchases/[id]/PageBody.svelte": 1,
     "src/routes/(app)/finances/settings/PageBody.svelte": 5,
     "src/routes/(app)/flow-editor/+page.svelte": 1,
-    "src/routes/(app)/home/+page.svelte": 5,
+    "src/routes/(app)/chat/+page.svelte": 5,
     "src/routes/(app)/marketplace/agents/+page.svelte": 1,
     "src/routes/(app)/marketplace/agents/[slug]/_components/IdBadgeCard.svelte": 1,
     "src/routes/(app)/marketplace/agents/[slug]/_components/OverviewTab.svelte": 3,

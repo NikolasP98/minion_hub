@@ -10,13 +10,13 @@
   import { BUILTIN_PLUGIN_ITEMS } from '$lib/components/layout/sections';
   import { canViewPath } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { page } from '$app/state';
 
   // Hand-rolled path → single-letter mnemonic. Deliberately short — only the
   // handful of top-level destinations worth a one-key jump, not every route
   // in the two registries. `G` is reserved as the chord initiator, so it's
   // never assigned as a destination letter.
   const CHORD_DEFS = [
-    { key: 'H', path: '/home' },
     { key: 'O', path: '/overview' },
     { key: 'T', path: '/team' },
     { key: 'A', path: '/agents' },
@@ -35,11 +35,11 @@
   // Literal union ('H' | 'O' | ... ) preserved from the `as const` array so
   // `createHotkeySequence(['G', c.key], ...)` type-checks against `Hotkey`
   // without a cast.
-  type ChordKey = (typeof CHORD_DEFS)[number]['key'];
+  type ChordKey = (typeof CHORD_DEFS)[number]['key'] | 'H';
 
   interface Chord {
     key: ChordKey;
-    path: string;
+    path: () => string;
     label: () => string;
     enabled: () => boolean;
   }
@@ -54,7 +54,7 @@
     if (route) {
       return {
         key: c.key,
-        path: c.path,
+        path: () => c.path,
         label: () => route.title(),
         enabled: () => canViewPath(c.path),
       };
@@ -63,18 +63,25 @@
     if (item) {
       return {
         key: c.key,
-        path: c.path,
+        path: () => c.path,
         label: () => item.label(),
         enabled: () => canViewPath(c.path),
       };
     }
     return null;
   }).filter((c): c is Chord => c !== null);
+  // H = Inicio: wherever "/" resolves for this member (spec 046), always viewable.
+  chords.unshift({
+    key: 'H',
+    path: () => page.data.landingPage as string,
+    label: () => m.nav_home(),
+    enabled: () => true,
+  });
 
   for (const c of chords) {
     createHotkeySequence(
       ['G', c.key],
-      () => goto(c.path),
+      () => goto(c.path()),
       () => ({
         enabled: c.enabled(),
         timeout: 1500,

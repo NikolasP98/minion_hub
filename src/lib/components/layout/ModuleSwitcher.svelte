@@ -1,9 +1,10 @@
 <script lang="ts">
   /**
    * ERPNext-style module switcher: the sidebar's top-left control. Picking a
-   * module scopes the whole sidebar to that module's pages; "All sections"
-   * returns to the full platform nav. Which one a user gets on first load is
-   * role-derived (see `navMode`).
+   * module scopes the whole sidebar to that module's pages. "Inicio" (first)
+   * goes to the member's resolved landing page and does NOT touch the stored
+   * nav mode (spec 046 US4): outside a module the sidebar already shows the
+   * full nav. Which mode a user gets on first load is role-derived (`navMode`).
    *
    * Collapsed (mini rail) it is NOT a picker: stacking a separate expand
    * button under it wasted the rail's vertical budget, so the same slot doubles
@@ -12,7 +13,8 @@
    * rail.
    */
   import { goto } from '$app/navigation';
-  import { ChevronsUpDown, LayoutList, Check, PanelLeft } from 'lucide-svelte';
+  import { page } from '$app/state';
+  import { ChevronsUpDown, Check, Home, PanelLeft } from 'lucide-svelte';
   import { Button, Dropdown, Spinner, iconSizes, type DropdownItem } from '$lib/components/ui';
   import { visibleModules } from '$lib/nav/modules';
   import { navMode, navModuleData } from '$lib/state/ui/nav-mode.svelte';
@@ -29,23 +31,21 @@
   }
   let { collapsed = false, onExpand, busy = false }: Props = $props();
 
-  const FULL = '__full';
-
   const modules = $derived(visibleModules(navModuleData(), canViewPath));
 
   const active = $derived(navMode.isModule ? navMode.activeModule : null);
-  const ActiveIcon = $derived(active?.icon ?? LayoutList);
-  const label = $derived(active?.label ?? m.nav_allSections());
+  const ActiveIcon = $derived(active?.icon ?? Home);
+  const label = $derived(active?.label ?? m.nav_home());
 
   const items = $derived<DropdownItem[]>([
-    ...modules.map((mod) => ({ value: mod.id, label: mod.label, icon: mod.icon })),
+    { value: 'home', label: m.nav_home(), icon: Home },
     { value: 'div', label: '', divider: true },
-    { value: FULL, label: m.nav_allSections(), icon: LayoutList },
+    ...modules.map((mod) => ({ value: mod.id, label: mod.label, icon: mod.icon })),
   ]);
 
   function onSelect(value: string) {
-    if (value === FULL) {
-      navMode.setMode('full');
+    if (value === 'home') {
+      void goto(page.data.landingPage as string);
       return;
     }
     const mod = modules.find((x) => x.id === value);
@@ -55,7 +55,7 @@
   }
 
   function isSelected(value: string): boolean {
-    return value === FULL ? !navMode.isModule : navMode.isModule && active?.id === value;
+    return value === 'home' ? !navMode.isModule : navMode.isModule && active?.id === value;
   }
 </script>
 
@@ -79,9 +79,16 @@
   <div class="switcher-wrap">
     <Dropdown {items} {onSelect} placement="bottom" class="min-w-52">
       {#snippet trigger()}
-        <span class="switcher">
+        <span
+          class="switcher"
+          class:in-module={active !== null}
+          title={active ? m.nav_back_home() : undefined}
+        >
           <span class="icon-cell" class:is-busy={busy}>
             <ActiveIcon size={iconSizes.md} class="mod-icon shrink-0" />
+            {#if active}
+              <Home size={iconSizes.md} class="home-icon shrink-0" />
+            {/if}
             <Spinner size="md" class="busy-ring shrink-0" />
           </span>
           <span class="t-label switcher-label">{label}</span>
@@ -155,6 +162,27 @@
   .icon-cell.is-busy > :global(.mod-icon),
   .mini-icons.is-busy > :global(.mod-icon) {
     opacity: 0;
+  }
+
+  /* Inside a module, hovering the trigger previews "back to Inicio": the house
+     takes the icon's cell (same box, no shift). The click still opens the menu. */
+  .icon-cell > :global(.home-icon) {
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .switcher.in-module:hover .icon-cell > :global(.home-icon) {
+    opacity: 1;
+  }
+  .switcher.in-module:hover .icon-cell > :global(.mod-icon),
+  .switcher.in-module:hover .icon-cell > :global(.busy-ring) {
+    opacity: 0;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .icon-cell > :global(.home-icon),
+    .icon-cell > :global(.mod-icon),
+    .icon-cell > :global(.busy-ring) {
+      transition: none;
+    }
   }
 
   /* Mini rail: one 36px square that lines up with the icon-only nav rows. */

@@ -3,12 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const requireAuth = vi.fn();
 const getCoreDb = vi.fn(() => ({}));
 const upsertUserPreference = vi.fn();
-const invalidateLandingCache = vi.fn();
 
 vi.mock('$server/auth/authorize', () => ({ requireAuth }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb }));
 vi.mock('$server/services/user-preferences.service', () => ({ upsertUserPreference }));
-vi.mock('$server/landing-cache', () => ({ invalidateLandingCache }));
 
 const { PUT } = await import('./+server');
 

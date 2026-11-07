@@ -4,7 +4,7 @@ import { json, error } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { getCoreDb } from '$server/db/pg-client';
 import { upsertUserPreference } from '$server/services/user-preferences.service';
-import { invalidateLandingCache } from '$server/landing-cache';
+import { SAFE_PATH } from '$lib/nav/landing';
 import { isThinkingStyle } from '$lib/components/assistant/thinking-shader';
 
 const VALID_SECTIONS = new Set([
@@ -143,7 +143,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   // backslash tricks; allows query strings (e.g. /agents?archetype=copilot).
   if (section === 'landingPage') {
     const v = body.value;
-    if (typeof v !== 'string' || !/^\/(?![/\\])[A-Za-z0-9/_\-?=&.]*$/.test(v)) {
+    if (typeof v !== 'string' || !SAFE_PATH.test(v)) {
       throw error(400, 'Invalid landing page path');
     }
   }
@@ -183,9 +183,5 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
   }
 
   await upsertUserPreference(getCoreDb(), user.supabaseId, section, body.value);
-  // Drop the per-instance landing cache so the next `/` hit reflects the change
-  // immediately instead of redirecting to the old home for up to the TTL.
-  // Both sections feed the `/` redirect (path + locale prefix).
-  if (section === 'landingPage' || section === 'locale') invalidateLandingCache(user.supabaseId);
   return json({ ok: true });
 };

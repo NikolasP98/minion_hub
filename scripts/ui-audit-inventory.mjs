@@ -31,6 +31,19 @@ const REDIRECT_CONTRACTS = {
     location: '/crm/settings?tab=hygiene',
     outcomes: ['preserves-tab-target'],
   },
+  // The assistant screen moved to /chat (spec 046 S3).
+  '/home': {
+    probePath: '/home',
+    statuses: [308],
+    location: '/chat',
+    outcomes: ['legacy-route'],
+  },
+  '/home/settings': {
+    probePath: '/home/settings',
+    statuses: [308],
+    location: '/chat/settings',
+    outcomes: ['legacy-route'],
+  },
   '/pos': {
     probePath: '/pos',
     statuses: [302, 403],

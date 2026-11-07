@@ -174,7 +174,7 @@ export const PERMISSIONS = [
  *
  * Deliberately NOT gated here: `/settings` (holds personal preferences everyone
  * needs; its org-config subroutes + write APIs gate themselves), `/team` + `/users`
- * (own RBAC guards via requireOrgCapability), `/home` + `/overview` (universal).
+ * (own RBAC guards via requireOrgCapability), the chat screen + `/overview` (universal).
  * `/config` and `/orgs` stay platform-admin super-views.
  */
 export function requiredViewPermForPath(pathname: string): string | null {

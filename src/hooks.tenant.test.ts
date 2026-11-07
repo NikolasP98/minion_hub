@@ -93,6 +93,7 @@ vi.mock('$server/services/gateway.pg.service', () => ({
 
 import { handle } from './hooks.server';
 import { currentAiUsageScope } from '$server/ai-usage';
+import { EMPTY_NAV_CONFIG } from '$lib/nav/custom-sections';
 
 // SvelteKit's real sequence requires the request store normally opened by its server.
 const kitRuntimePath = '@sveltejs/kit/internal/server';
@@ -602,8 +603,11 @@ describe('plan-gated pages through the module guard', () => {
     expect(r.locals.entitlements?.features).toEqual(FULL);
   });
 
-  it('flag on, Base: a landing page on an AI prefix falls back to /home (no 404 after login)', async () => {
+  it('flag on, Base: a landing page on an AI prefix falls back to /chat (no 404 after login)', async () => {
     mocks.prefs.mockResolvedValue({ landingPage: '/agents/autonomous', locale: { tag: 'es' } });
+    // Spec 046: the resolver honours a landing choice only if the member can open it.
+    mocks.perms.mockReturnValue(['agents:view']);
+    mocks.navConfig.mockResolvedValue(EMPTY_NAV_CONFIG);
     mocks.identity.mockResolvedValue({
       locals: { user, tenantCtx: ctx, orgKind: 'business' },
       bypassGate: false,
@@ -616,7 +620,7 @@ describe('plan-gated pages through the module guard', () => {
     };
     expect(await at()).toBe('/es/agents/autonomous');
     mocks.cronEnv.ENTITLEMENTS_ENFORCED = 'true';
-    expect(await at()).toBe('/es/home');
+    expect(await at()).toBe('/es/chat');
     mocks.planRows.mockResolvedValue([{ kind: 'business', plan_key: 'premium' }]);
     expect(await at()).toBe('/es/agents/autonomous');
   });

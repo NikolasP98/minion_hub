@@ -192,7 +192,7 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
 
   test('deliberately ungated routes stay open (personal/admin-own-guard/universal)', () => {
     expect(requiredViewPermForPath('/overview')).toBeNull();
-    expect(requiredViewPermForPath('/home')).toBeNull();
+    expect(requiredViewPermForPath('/chat')).toBeNull();
     expect(requiredViewPermForPath('/settings')).toBeNull();
     expect(requiredViewPermForPath('/settings/roles')).toBeNull();
     expect(requiredViewPermForPath('/team')).toBe('scheduling:view'); // HR page (spec 2026-09-02-hub-team-hr-module)

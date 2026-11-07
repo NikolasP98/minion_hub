@@ -112,7 +112,7 @@
     "reverifiedAt": null
   },
   {
-    "page": "/home",
+    "page": "/chat",
     "rule": "archetype",
     "class": null,
     "reason": "chat home renders its own composition, not a KPI grid",

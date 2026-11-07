@@ -59,6 +59,7 @@ import { getSections } from '$lib/components/layout/sections';
 import { resolvePluginIcon } from '$lib/plugins/icon-map';
 import type { LucideIcon } from '$lib/nav/routes';
 import * as m from '$lib/paraglide/messages';
+import { CHAT_PATH } from '$lib/nav/landing';
 import { EMPTY_NAV_CONFIG, type NavConfig } from '$lib/nav/custom-sections';
 import { applyBuiltinOverrides, customModules } from '$lib/nav/custom-sections-nav';
 
@@ -602,10 +603,10 @@ export function getModules(data: ModuleNavData = {}): ModuleDef[] {
       id: 'organization',
       label: m.nav_organization(),
       icon: Building2,
-      href: '/home',
+      href: CHAT_PATH,
       matcher: (p) =>
         p === '/' ||
-        p.startsWith('/home') ||
+        p.startsWith(CHAT_PATH) ||
         p.startsWith('/overview') ||
         p.startsWith('/team') ||
         p.startsWith('/sandbox'),

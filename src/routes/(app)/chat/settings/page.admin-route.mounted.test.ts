@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 /**
- * Spec 045 T038 (H2): /home/settings saves the member's own agent through the hub
+ * Spec 045 T038 (H2): /chat/settings (was /home/settings, spec 046) saves the member's own agent through the hub
  * route, in both flag states, and never sends `config.patch` from the browser.
  */
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';

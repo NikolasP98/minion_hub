@@ -14,14 +14,12 @@ import { pluginNavState } from '$lib/state/plugin-nav.svelte';
 import { isChannelPlugin } from '$lib/components/layout/sections';
 import { posPendingWork } from '$lib/nav/pos-pending';
 import { navConfig } from '$lib/nav/nav-config.svelte';
+import { defaultNavMode, type NavMode } from '$lib/nav/nav-mode-default';
 
-export type NavMode = 'full' | 'module';
+export { defaultNavMode, type NavMode };
 
 const MODE_KEY = 'hub-nav-mode';
 const MODULE_KEY = 'hub-nav-module';
-
-/** Org roles that see the full sidebar by default. */
-const FULL_NAV_ROLES = new Set(['owner', 'admin', 'manager']);
 
 let modeOverride = $state<NavMode | null>(null);
 let pickedModuleId = $state<string | null>(null);
@@ -54,16 +52,6 @@ function navData(): ModuleNavData & { roles?: string[]; platformRole?: string } 
     roles: data?.permissions?.roles,
     platformRole: data?.user?.role,
   };
-}
-
-/**
- * Role-derived default, used until the user picks a mode explicitly. Unknown
- * roles fall back to the full nav — never hide surfaces on a guess.
- */
-export function defaultNavMode(roles: string[] | undefined, platformRole?: string): NavMode {
-  if (platformRole === 'admin') return 'full';
-  if (!roles || roles.length === 0) return 'full';
-  return roles.some((r) => FULL_NAV_ROLES.has(r)) ? 'full' : 'module';
 }
 
 function roleDefault(): NavMode {

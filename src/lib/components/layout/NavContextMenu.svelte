@@ -7,11 +7,13 @@
    */
   import type { Snippet } from 'svelte';
   import {
-    Check,
+    ChevronDown,
+    ChevronRight,
     ClipboardPaste,
     Copy,
     CopyPlus,
     Eye,
+    ShieldCheck,
     EyeOff,
     FolderInput,
     Pencil,
@@ -22,8 +24,17 @@
   } from 'lucide-svelte';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ui/ContextMenu.svelte';
   import Picker from '$lib/components/ui/Picker.svelte';
-  import { Button, Input } from '$lib/components/ui';
+  import { Button, Input, iconSizes } from '$lib/components/ui';
   import { Dialog, ConfirmDialog, FormField } from '$lib/components/ui/foundations';
+  import PageAccessDialog from './PageAccessDialog.svelte';
+  import AccessRoleRows, {
+    FIXED_ROLES,
+    loadAccessRows,
+    putAccessRow,
+    saveAccessChoice,
+    type AccessChoice,
+    type AccessRole,
+  } from './AccessRoleRows.svelte';
   import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import { canonicalPath } from '$lib/canonical-path';
@@ -34,6 +45,7 @@
   import { navConfig } from '$lib/nav/nav-config.svelte';
   import {
     NavSaveError,
+    canEditAccess,
     canEditNav,
     navClipboard,
     newIssues,
@@ -43,8 +55,12 @@
     EMPTY_NAV_CONFIG,
     addLink,
     addSection,
+    builtinPageKey,
+    pageViewKey,
+    sectionViewKey,
     aliasableTargets,
     duplicatePage,
+    freshNavId,
     instancePath,
     moveBuiltin,
     movePage,
@@ -56,7 +72,8 @@
     renameSection,
     resolveNavInstance,
     setHidden,
-    slugify,
+    uniqueSectionSlug,
+    setOrgLandingPage,
     type NavConfig,
     type NavConfigIssue,
     type NavPage,
@@ -95,10 +112,7 @@
   const customSection = $derived<NavSection | null>(
     customId ? (config.sections.find((s) => s.id === customId) ?? null) : null,
   );
-  const currentHome = $derived(
-    ((page.data as { preferences?: { preferences?: Record<string, unknown> } })?.preferences
-      ?.preferences?.landingPage as string | undefined) ?? '/home',
-  );
+  const currentHome = $derived(page.data.landingPage as string);
 
   async function setAsHome() {
     if (currentHome === href) return;
@@ -165,9 +179,21 @@
         selection: 'checkbox',
         checked: currentHome === href,
       });
-      if (!canEditNav()) return out;
+      if (canEditNav())
+        out.push({
+          id: 'org-home',
+          label: config.landingPage === href ? m.nav_org_isHome() : m.nav_org_setAsHome(),
+          icon: Star,
+          selection: 'checkbox',
+          checked: config.landingPage === href,
+        });
       const target = instance?.target ?? builtinTarget;
       if (!target) return out;
+      const access = { id: 'access', label: m.nav_access_menu(), icon: ShieldCheck };
+      if (!canEditNav()) {
+        if (canEditAccess()) out.push(access);
+        return out;
+      }
       out.push({ id: 'copy', label: m.nav_menu_copy(), icon: Copy });
       out.push({ id: 'duplicate', label: m.nav_menu_duplicate(), icon: CopyPlus });
       out.push({ id: 'move', label: m.nav_menu_move(), icon: FolderInput });
@@ -185,9 +211,13 @@
         });
       else if (instance)
         out.push({ id: 'delete', label: m.nav_menu_delete(), icon: Trash2, danger: true });
-      // TODO(handoff): "Access…" (users:manage) is omitted until S5 ships PageAccessDialog — add `access` here.
+      if (canEditAccess()) out.push(access);
     } else if (kind === 'header') {
-      if (!canEditNav()) return out;
+      if (!canEditNav()) {
+        if (customSection && canEditAccess())
+          out.push({ id: 'access', label: m.nav_access_menu(), icon: ShieldCheck });
+        return out;
+      }
       const paste = {
         id: 'paste',
         label: m.nav_menu_paste(),
@@ -203,7 +233,8 @@
           label: toggled(customSection.hidden),
           icon: customSection.hidden ? Eye : EyeOff,
         });
-        // TODO(handoff): section "Access…" (users:manage) arrives with S5.
+        if (canEditAccess())
+          out.push({ id: 'access', label: m.nav_access_menu(), icon: ShieldCheck });
         out.push({
           id: 'delete-section',
           label: m.nav_menu_delete_section(),
@@ -275,10 +306,21 @@
     | { t: 'move' }
     | { t: 'delete' }
     | { t: 'restore' }
-    | { t: 'delete-section' };
+    | { t: 'delete-section' }
+    | { t: 'access' };
   let fLabel = $state('');
-  let fSlug = $state('');
-  let slugEdited = $state(false);
+  let fIcon = $state('');
+  /** The id a new section is created with (pre-generated so its access rows can be written after the save). */
+  let fNewId = '';
+  /** Set once the section document is saved: a retry of Save then writes only the access rows. */
+  let createdSectionId = $state<string | null>(null);
+  let accessError = $state('');
+  let advOpen = $state(false);
+  let accessLoaded = false;
+  let accessLoading = $state(false);
+  let accessLoadFailed = $state(false);
+  let accessRoles = $state<AccessRole[]>([]);
+  let accessValues = $state<Record<string, AccessChoice>>({});
   let serverIssues = $state<NavConfigIssue[]>([]);
   let pending = $state(false);
 
@@ -295,13 +337,19 @@
         customSection?.label ??
         config.builtin[builtinTarget ?? '']?.label ??
         label;
-      fSlug = instance?.page.slug ?? customSection?.slug ?? '';
-      slugEdited = true;
+      fIcon = customSection?.icon ?? '';
     } else if (d.t === 'new-section') {
       fLabel = '';
-      fSlug = '';
-      slugEdited = false;
+      fIcon = '';
+      fNewId = freshNavId(config);
     }
+    createdSectionId = null;
+    accessError = '';
+    advOpen = false;
+    accessLoaded = false;
+    accessLoadFailed = false;
+    accessRoles = [];
+    accessValues = {};
     serverIssues = [];
     dlg = d;
     dlgOpen = true;
@@ -327,6 +375,8 @@
     const clip = navClipboard.item;
     const pageId = instance?.page.id;
     if (id === 'home') return void setAsHome();
+    if (id === 'org-home')
+      return void run((c) => setOrgLandingPage(c, c.landingPage === href ? null : href));
     if (id === 'copy') {
       const target = instance?.target ?? builtinTarget;
       if (target)
@@ -390,30 +440,40 @@
       id === 'move' ||
       id === 'delete' ||
       id === 'restore' ||
-      id === 'delete-section'
+      id === 'delete-section' ||
+      id === 'access'
     )
       openDlg({ t: id });
   }
 
+  /** The view-rule key the Access dialog edits: section header, page instance, or built-in screen. */
+  const accessSubject = $derived.by(() => {
+    if (customSection) return { key: sectionViewKey(customSection), label: customSection.label };
+    if (instance) return { key: pageViewKey(instance.page), label: instance.page.label };
+    if (builtinTarget)
+      return {
+        key: builtinPageKey(builtinTarget),
+        label: config.builtin[builtinTarget]?.label ?? label,
+      };
+    return null;
+  });
+
   // Rename / New section form ───────────────────────────────────────────────
-  const hasSlug = $derived(dlg?.t === 'new-section' || !!instance || !!customSection);
+  const hasAdvanced = $derived(
+    dlg?.t === 'new-section' || (dlg?.t === 'rename' && !!customSection),
+  );
   const draftOp = $derived.by<((c: NavConfig) => NavConfig) | null>(() => {
-    if (dlg?.t === 'new-section') return (c) => addSection(c, { label: fLabel, slug: fSlug });
+    if (dlg?.t === 'new-section')
+      return (c) => addSection(c, { label: fLabel, id: fNewId, icon: fIcon });
     if (dlg?.t !== 'rename') return null;
-    if (instance) return (c) => renamePage(c, instance.page.id, { label: fLabel, slug: fSlug });
+    if (instance) return (c) => renamePage(c, instance.page.id, { label: fLabel });
     if (customSection)
-      return (c) => renameSection(c, customSection.id, { label: fLabel, slug: fSlug });
+      return (c) => renameSection(c, customSection.id, { label: fLabel, icon: fIcon });
     if (builtinTarget) return (c) => renameBuiltin(c, builtinTarget, fLabel.trim() ? fLabel : null);
     return null;
   });
-  const issueText = (i: NavConfigIssue): { field: 'label' | 'slug' | 'form'; text: string } => {
+  const issueText = (i: NavConfigIssue): { field: 'label' | 'form'; text: string } => {
     switch (i.code) {
-      case 'slug.reserved':
-        return { field: 'slug', text: m.nav_error_reserved() };
-      case 'slug.format':
-        return { field: 'slug', text: m.nav_error_format() };
-      case 'slug.duplicate':
-        return { field: 'slug', text: m.nav_error_duplicate() };
       case 'label.length':
         return { field: 'label', text: m.nav_error_label() };
       default:
@@ -422,7 +482,7 @@
   };
   const draftIssues = $derived(draftOp ? newIssues(base, draftOp(base)) : []);
   const shown = $derived([...draftIssues, ...serverIssues].map(issueText));
-  const errorFor = (f: 'label' | 'slug' | 'form') => shown.find((s) => s.field === f)?.text;
+  const errorFor = (f: 'label' | 'form') => shown.find((s) => s.field === f)?.text;
   // Built-in labels may be emptied (that resets the override); everything else needs a label.
   const canSave = $derived(
     !pending &&
@@ -431,21 +491,64 @@
       (builtinTarget && dlg?.t === 'rename' ? true : fLabel.trim().length > 0),
   );
   const urlPreview = $derived.by(() => {
-    if (dlg?.t === 'new-section') return `/${fSlug}`;
-    if (instance) return instancePath(instance.sectionSlug, { slug: fSlug, id: instance.page.id });
-    if (customSection) return `/${fSlug}`;
+    if (dlg?.t === 'new-section') return `/${uniqueSectionSlug(base, fLabel)}`;
+    if (instance) return instancePath(instance.sectionSlug, instance.page);
+    if (customSection) return `/${customSection.slug}`;
     return '';
   });
 
-  function onLabelInput() {
-    if (dlg?.t === 'new-section' && !slugEdited) fSlug = slugify(fLabel);
+  async function toggleAdvanced() {
+    advOpen = !advOpen;
+    if (!advOpen || accessLoaded || !canEditAccess()) return;
+    accessLoaded = true;
+    accessLoading = true;
+    try {
+      const r = await loadAccessRows(
+        customSection && dlg?.t === 'rename' ? sectionViewKey(customSection) : null,
+      );
+      accessRoles = r.roles;
+      accessValues = r.values;
+    } catch {
+      accessLoadFailed = true;
+    } finally {
+      accessLoading = false;
+    }
+  }
+
+  async function onAccessChange(roleKey: string, next: AccessChoice) {
+    const prev = accessValues[roleKey];
+    if (next === prev) return;
+    accessValues[roleKey] = next;
+    // New section: rows are written with the save. Rename: each row is written at once.
+    if (dlg?.t === 'new-section' || !customSection) return;
+    if (!(await saveAccessChoice(sectionViewKey(customSection), roleKey, next)))
+      accessValues[roleKey] = prev;
   }
 
   async function submitForm() {
     if (!canSave || !draftOp) return;
     pending = true;
+    accessError = '';
     try {
-      await saveNavConfig(draftOp);
+      if (dlg?.t === 'new-section') {
+        if (!createdSectionId) {
+          await saveNavConfig(draftOp);
+          createdSectionId = fNewId;
+        }
+        const key = sectionViewKey({ id: createdSectionId });
+        const rules = Object.entries(accessValues).filter(
+          ([k, v]) => v !== 'inherit' && !FIXED_ROLES.has(k),
+        );
+        if (rules.length) {
+          try {
+            await Promise.all(rules.map(([k, v]) => putAccessRow(key, k, v)));
+            await Promise.all([invalidate('app:permissions'), invalidate('app:nav-config')]);
+          } catch {
+            accessError = m.nav_error_access_save();
+            return;
+          }
+        }
+      } else await saveNavConfig(draftOp);
       closeDlg();
     } catch (e) {
       if (e instanceof NavSaveError) serverIssues = e.issues.length ? e.issues : [];
@@ -502,7 +605,9 @@
   <ContextMenu {...at} {items} label={m.nav_menu_label()} onclose={close} {onselect} />
 {/if}
 
-{#if dlg && (dlg.t === 'rename' || dlg.t === 'new-section')}
+{#if dlg?.t === 'access' && accessSubject}
+  <PageAccessDialog bind:open={dlgOpen} subject={accessSubject} onclose={closeDlg} />
+{:else if dlg && (dlg.t === 'rename' || dlg.t === 'new-section')}
   <Dialog
     bind:open={dlgOpen}
     title={dlg.t === 'rename' ? m.nav_menu_rename() : m.nav_menu_new_section()}
@@ -517,27 +622,56 @@
         void submitForm();
       }}
     >
-      <FormField label={m.nav_dialog_label()} error={errorFor('label')} required>
+      <FormField
+        label={m.nav_dialog_label()}
+        helper={urlPreview && (dlg.t === 'rename' || fLabel.trim())
+          ? m.nav_dialog_url_preview({ url: urlPreview })
+          : undefined}
+        error={errorFor('label')}
+        required
+      >
         {#snippet children(control)}
-          <Input {...control} bind:value={fLabel} oninput={onLabelInput} maxlength={40} />
+          <Input {...control} bind:value={fLabel} maxlength={40} />
         {/snippet}
       </FormField>
-      {#if hasSlug}
-        <FormField
-          label={m.nav_dialog_slug()}
-          helper={urlPreview ? m.nav_dialog_url_preview({ url: urlPreview }) : undefined}
-          error={errorFor('slug')}
-          required
-        >
-          {#snippet children(control)}
-            <Input
-              {...control}
-              bind:value={fSlug}
-              oninput={() => (slugEdited = true)}
-              maxlength={32}
-            />
-          {/snippet}
-        </FormField>
+      {#if hasAdvanced}
+        <div class="nav-adv">
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            onclick={() => void toggleAdvanced()}
+            aria-expanded={advOpen}
+            aria-controls="nav-adv-body"
+          >
+            {#if advOpen}
+              <ChevronDown size={iconSizes.sm} />
+            {:else}
+              <ChevronRight size={iconSizes.sm} />
+            {/if}
+            {m.nav_dialog_advanced()}
+          </Button>
+          {#if advOpen}
+            <div id="nav-adv-body" class="nav-adv-body">
+              <FormField label={m.nav_dialog_icon()}>
+                {#snippet children(control)}
+                  <Input {...control} bind:value={fIcon} maxlength={40} />
+                {/snippet}
+              </FormField>
+              {#if canEditAccess()}
+                <p class="nav-adv-title">{m.nav_dialog_access_rows()}</p>
+                <AccessRoleRows
+                  roles={accessRoles}
+                  bind:values={accessValues}
+                  loading={accessLoading}
+                  loadFailed={accessLoadFailed}
+                  onchange={(k, v) => void onAccessChange(k, v)}
+                />
+                {#if accessError}<p class="nav-form-error" role="alert">{accessError}</p>{/if}
+              {/if}
+            </div>
+          {/if}
+        </div>
       {/if}
       {#if errorFor('form')}<p class="nav-form-error" role="alert">{errorFor('form')}</p>{/if}
     </form>
@@ -632,6 +766,16 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+  .nav-adv-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+  }
+  .nav-adv-title {
+    font-size: var(--font-size-body);
+    font-weight: 500;
   }
   .nav-form-error {
     color: var(--color-destructive);

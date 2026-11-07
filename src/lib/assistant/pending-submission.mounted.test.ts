@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { flushSync, tick, type ComponentProps } from 'svelte';
 import { page } from '../../../tests/fixtures/pending-submission/page.svelte';
-import Home from '../../routes/(app)/home/+page.svelte';
+import Home from '../../routes/(app)/chat/+page.svelte';
 import Floating from '$lib/components/layout/FloatingAssistant.svelte';
 import { assistant } from '$lib/state/features/assistant.svelte';
 import { conn } from '$lib/state/gateway/connection.svelte';

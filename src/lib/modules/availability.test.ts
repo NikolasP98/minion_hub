@@ -58,7 +58,7 @@ describe('resolveModuleForPath', () => {
   });
 
   test('unknown path resolves to null', () => {
-    expect(resolveModuleForPath('/home')).toBeNull();
+    expect(resolveModuleForPath('/chat')).toBeNull();
     expect(resolveModuleForPath('/nonexistent')).toBeNull();
   });
 });
@@ -217,7 +217,8 @@ const CORE_UNMANAGED: Record<string, string> = {
   cloud: 'core cloud workstation, no module toggle',
   config: 'core gateway config editor, no module toggle',
   'flow-editor': 'core agent-stack (agent builder), no module toggle',
-  home: 'core landing page, no module toggle',
+  chat: 'assistant chat screen, no module toggle',
+  home: 'legacy /home + /home/settings, 308 to the chat screen (spec 046)',
   killswitches: 'core admin surface, no module toggle',
   marketplace: 'core plugin browsing, no module toggle',
   notifications: 'core, no module toggle',
