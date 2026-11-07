@@ -117,9 +117,18 @@ describe('generic join request flow', () => {
     expect(mocks.pending).not.toHaveBeenCalled();
   });
   it('bounds form bytes before decoding or selecting a workspace', async () => {
-    await expect(actions.request!(formEvent('x'.repeat(4097)))).rejects.toMatchObject({
-      status: 413,
-    });
+    // A raw body, not FormData: cancelling the reader mid-pull on undici's
+    // FormData source enqueues into a closed stream and surfaces as an
+    // unhandled rejection under full-suite load (CI test lane, 2026-11-06).
+    const oversized = {
+      locals: {},
+      request: new Request('http://localhost/join?/request', {
+        method: 'POST',
+        headers: { 'content-type': 'multipart/form-data; boundary=join' },
+        body: 'x'.repeat(4097),
+      }),
+    } as never;
+    await expect(actions.request!(oversized)).rejects.toMatchObject({ status: 413 });
     expect(mocks.target).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });

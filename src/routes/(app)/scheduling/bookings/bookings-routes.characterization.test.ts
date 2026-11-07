@@ -74,6 +74,9 @@ vi.mock('$server/services/tag-links.service', () => ({
   getTagLinks: async () => new Map(),
   getContactTagsBulk: async () => new Map(),
 }));
+vi.mock('$server/services/attachments.service', () => ({
+  countAttachmentsByObjects: async () => new Map([['b-1', 2]]),
+}));
 vi.mock('$server/services/stock-accruals.service', () => ({
   accrualSummaryForSources: (ctx: unknown, source: unknown, ids: unknown) =>
     mocks.accrualSummaryForSources(ctx, source, ids),
@@ -198,6 +201,7 @@ describe('/scheduling/bookings load — pinned key set', () => {
         'contactId',
         'contactName',
         'accrualSummaries',
+        'attachmentCounts',
         'orgTz',
       ].sort(),
     );

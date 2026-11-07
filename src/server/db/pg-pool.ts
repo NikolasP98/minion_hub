@@ -3,6 +3,7 @@ import { parsePgArray } from 'drizzle-orm/pg-core';
 import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 import { recordSqlRoundTrip, sqlTraceEnabled } from './sql-trace';
+import { IDLE_TIMEOUT_S } from './pool-idle-hold';
 
 type PgClient = ReturnType<typeof postgres>;
 
@@ -51,7 +52,6 @@ declare global {
 // the pooler's client limit (compute size) if bursts still hit 200.
 const DEFAULT_POOL_SIZE = 3;
 const MAX_POOL_SIZE = 4;
-const IDLE_TIMEOUT_S = 20;
 
 function poolSize(): number {
   const configured = Number.parseInt(env.SUPABASE_DB_POOL_SIZE ?? '', 10);

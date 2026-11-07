@@ -69,6 +69,7 @@ import {
 import { BUILD_CHANNEL_COOKIE, runWithBuildChannel } from '$server/gateway-channel';
 import { isGatewayChannel } from '$server/services/gateway.pg.service';
 import { waitUntil } from '@vercel/functions';
+import { holdUntilPoolIdle } from '$server/db/pool-idle-hold';
 import { storePerformanceSample } from '$server/services/performance-monitor.service';
 import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
@@ -810,7 +811,19 @@ const requestMemoHandle: Handle = ({ event, resolve }) =>
     ? withRequestMemo(async () => resolve(event))
     : resolve(event);
 
+// Outermost: after any request that touched the DB, keep the isolate alive until
+// postgres.js has closed its idle connections (see holdUntilPoolIdle).
+const poolIdleHoldHandle: Handle = async ({ event, resolve }) => {
+  const response = await resolve(event);
+  if (!building) {
+    const hold = holdUntilPoolIdle();
+    if (hold) waitUntil(hold);
+  }
+  return response;
+};
+
 export const handle = sequence(
+  poolIdleHoldHandle,
   sqlTraceHandle,
   requestMemoHandle,
   planOperationCacheHandle,

@@ -301,12 +301,14 @@
                     [b.id]: (attachmentsRefreshKey[b.id] ?? 0) + 1,
                   })}
               />
-              <AttachmentList
-                objectType="booking"
-                objectId={b.id}
-                refreshKey={attachmentsRefreshKey[b.id] ?? 0}
-                compact
-              />
+              {#if !data.attachmentCounts || (data.attachmentCounts[b.id] ?? 0) > 0 || attachmentsRefreshKey[b.id]}
+                <AttachmentList
+                  objectType="booking"
+                  objectId={b.id}
+                  refreshKey={attachmentsRefreshKey[b.id] ?? 0}
+                  compact
+                />
+              {/if}
             </div>
           </Card>
         {/each}
