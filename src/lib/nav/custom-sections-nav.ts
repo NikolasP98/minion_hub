@@ -79,6 +79,7 @@ export function builtinInstances(config: NavConfig, module: string): ModuleNavIt
 export function customModules(config: NavConfig): ModuleDef[] {
   return usable(config).map(({ section, pages }) => {
     const items = pages.map((page) => instanceItem(section.slug, page));
+    // TODO(handoff): ModuleDef.icon is a lucide component only, so an emoji section icon (valid per iconOk) falls back to LayoutGrid; render emoji like pageIcon does (spec 046 S2 follow-up).
     const icon = section.icon ? resolvePluginIcon(section.icon) : LayoutGrid;
     return {
       id: `custom:${section.id}`,

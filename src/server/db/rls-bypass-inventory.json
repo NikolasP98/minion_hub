@@ -265,6 +265,11 @@
     "class": "cross-org-by-design"
   },
   {
+    "file": "src/routes/api/roles/overrides/+server.ts",
+    "calls": ["supabaseAdmin"],
+    "class": "todo"
+  },
+  {
     "file": "src/routes/api/scheduling/reminders/tick/+server.ts",
     "calls": ["getCoreDb"],
     "class": "cross-org-by-design"
