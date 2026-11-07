@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { ArrowUp, ArrowDown, LayoutGrid } from 'lucide-svelte';
   import { Button, EmptyState, PageHeader, iconSizes } from '$lib/components/ui';
   import { PageShell, PageBody } from '$lib/components/ui/foundations';
@@ -13,7 +13,7 @@
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import {
     personalCatalog,
-    personalDraft,
+    personalEditor,
     committedPersonalNavigation,
     personalPreferenceKey,
   } from '$lib/nav/personal-navigation.svelte';
@@ -27,7 +27,11 @@
     const owner = preferenceOwner();
     const revision = ++editRevision;
     await invalidate('app:preferences');
-    if (owner !== preferenceOwner() || personalDraft.token !== token || revision !== editRevision)
+    if (
+      owner !== preferenceOwner() ||
+      personalEditor.current?.token !== token ||
+      revision !== editRevision
+    )
       return;
     layout.cancel();
     saveStatus.reset();
@@ -52,24 +56,19 @@
         ).then(() => undefined);
     },
   });
-  $effect(() => {
-    personalDraft.owner = preferenceOwner();
-    personalDraft.token = token;
-    personalDraft.value = layout.value;
+  const currentLayout = $derived(layout.value);
+  onMount(() => {
+    personalEditor.current = { owner: preferenceOwner(), token, read: () => currentLayout };
   });
   onDestroy(() => {
-    if (personalDraft.token === token) {
-      personalDraft.owner = null;
-      personalDraft.value = null;
-      personalDraft.token = null;
-    }
+    if (personalEditor.current?.token === token) personalEditor.current = null;
   });
-  const sections = $derived(orderPersonalSections(personalCatalog(), layout.value));
+  const sections = $derived(orderPersonalSections(personalCatalog(), currentLayout));
   const selectedId = $derived(page.url.searchParams.get('section'));
   const selected = $derived(selectedId ? sections.find((s) => s.id === selectedId) : undefined);
   function toggle(id: string) {
     editRevision++;
-    const value = layout.value;
+    const value = currentLayout;
     layout.value = {
       ...value,
       hidden: value.hidden.includes(id)
@@ -84,7 +83,7 @@
     if (index < 0 || next < 0 || next >= order.length) return;
     editRevision++;
     [order[index], order[next]] = [order[next], order[index]];
-    layout.value = { ...layout.value, order };
+    layout.value = { ...currentLayout, order };
   }
 </script>
 
@@ -138,9 +137,9 @@
               <Button
                 variant="ghost"
                 size="sm"
-                aria-pressed={!layout.value.hidden.includes(section.id)}
+                aria-pressed={!currentLayout.hidden.includes(section.id)}
                 onclick={() => toggle(section.id)}
-                >{layout.value.hidden.includes(section.id)
+                >{currentLayout.hidden.includes(section.id)
                   ? m.nav_showInSidebar()
                   : m.nav_hideInSidebar()}</Button
               >
@@ -200,7 +199,15 @@
     margin: var(--space-3) 0;
     color: var(--color-text-secondary);
   }
+  .section-actions :global(button),
+  .section-actions :global(a) {
+    min-height: var(--control-height-touch);
+    min-width: var(--control-height-touch);
+  }
   .page-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height-touch);
     color: var(--color-text-primary);
     padding: var(--space-2);
     border-radius: var(--radius-md);

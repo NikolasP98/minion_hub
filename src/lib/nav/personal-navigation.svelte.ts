@@ -9,10 +9,13 @@ import {
   type PersonalNavigation,
 } from './personal-navigation';
 
-export const personalDraft = new (class {
-  owner = $state<string | null>(null);
-  token: symbol | null = null;
-  value = $state.raw<PersonalNavigation | null>(null);
+/** A mounted editor exposes its live autosave value; never copy reactive snapshots between owners. */
+export const personalEditor = new (class {
+  current = $state.raw<{
+    owner: string | null;
+    token: symbol;
+    read: () => PersonalNavigation;
+  } | null>(null);
 })();
 export function personalPreferenceKey(org = page.data.activeOrgId ?? '') {
   return `personalNavigation:${org}`;
@@ -22,9 +25,8 @@ export function committedPersonalNavigation(): PersonalNavigation {
   return personalNavigation(page.data.preferences?.preferences?.[personalPreferenceKey(org)], org);
 }
 export function personalLayout(): PersonalNavigation {
-  return personalDraft.owner === preferenceOwner() && personalDraft.value
-    ? personalDraft.value
-    : committedPersonalNavigation();
+  const editor = personalEditor.current;
+  return editor?.owner === preferenceOwner() ? editor.read() : committedPersonalNavigation();
 }
 export function personalCatalog() {
   return orderPersonalSections(visibleModules(navModuleData(), canViewPath), personalLayout());
