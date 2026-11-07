@@ -381,3 +381,19 @@ describe('empty section access', () => {
     expect(visibleNavConfig(denied, new Set(), true).sections).toEqual([]);
   });
 });
+
+describe('section discovery when permitted pages are hidden', () => {
+  it('retains the permitted section as empty without exposing hidden page data', () => {
+    const config = cfg([
+      section('aaaaaa', 'empty', [page('bbbbbb', 'sell', '/pos/sell', { hidden: true })]),
+    ]);
+    const result = visibleNavConfig(
+      config,
+      new Set(['section:aaaaaa:view', 'page:bbbbbb:view']),
+      false,
+    );
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].pages).toEqual([]);
+    expect(visibleNavConfig(config, new Set(['section:aaaaaa:view']), false).sections).toEqual([]);
+  });
+});

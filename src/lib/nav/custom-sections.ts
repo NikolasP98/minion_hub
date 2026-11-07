@@ -254,7 +254,9 @@ export function visibleNavConfig(
     const pages = section.pages.filter(keep);
     if (
       pages.length > 0 ||
-      (section.pages.length === 0 && permissions.has(`${sectionViewKey(section)}:view`))
+      (permissions.has(`${sectionViewKey(section)}:view`) &&
+        (section.pages.length === 0 ||
+          section.pages.some((p) => permissions.has(`${pageViewKey(p)}:view`))))
     )
       sections.push({ ...section, pages });
   }
