@@ -3,16 +3,32 @@ import { json } from '@sveltejs/kit';
 import { requireAdmin } from '$server/auth/authorize';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { getProvisionConfig } from '$server/services/provision.service';
-import { getBackupConfig, runRestore } from '$server/services/backup.service';
+import { getBackupConfig, listSnapshots, runRestore } from '$server/services/backup.service';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   requireAdmin(locals);
   const ctx = await requireCoreCtx(locals);
 
-  const { snapshotPath } = await request.json();
-  if (!snapshotPath) {
-    return json({ ok: false, error: 'snapshotPath is required' }, { status: 400 });
+  // Never take a path from the client: a restore may only target a snapshot this Hub
+  // recorded for this server (and org). The client names it by id, or by its recorded path.
+  const body = await request.json().catch(() => null);
+  const snapshotId = typeof body?.snapshotId === 'string' ? body.snapshotId : null;
+  const requestedPath = typeof body?.snapshotPath === 'string' ? body.snapshotPath : null;
+  if (!snapshotId && !requestedPath) {
+    return json({ ok: false, error: 'snapshotId is required' }, { status: 400 });
   }
+
+  const snapshots = await listSnapshots(ctx, params.id!);
+  const snapshot = snapshots.find((s) =>
+    snapshotId ? s.id === snapshotId : s.snapshotPath === requestedPath,
+  );
+  if (!snapshot) {
+    return json({ ok: false, error: 'Snapshot not found for this server' }, { status: 404 });
+  }
+  if (snapshot.status !== 'complete') {
+    return json({ ok: false, error: 'Only completed snapshots can be restored' }, { status: 409 });
+  }
+  const snapshotPath = snapshot.snapshotPath;
 
   const provisionConfig = await getProvisionConfig(ctx, params.id!);
   if (!provisionConfig?.sshHost) {

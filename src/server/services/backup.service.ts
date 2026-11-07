@@ -7,7 +7,7 @@ import { resolveGatewayId } from '$server/services/gateway.pg.service';
 import type { ProvisionConfig } from './provision.service';
 import { sshExec } from './provision.service';
 import { spawn } from 'node:child_process';
-import { buildRemotePermissionCommand } from '$server/auth/secure-permissions';
+import { buildRestoreCommand } from './backup-restore-command';
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -151,9 +151,7 @@ export async function updateSnapshotStatus(
 }
 
 export async function deleteSnapshotRecord(ctx: CoreCtx, snapshotId: string): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx.delete(serverBackups).where(eq(serverBackups.id, snapshotId)),
-  );
+  await withOrgCore(ctx, (tx) => tx.delete(serverBackups).where(eq(serverBackups.id, snapshotId)));
 }
 
 // ─── Helper: derive minion user from provision config ───────────────
@@ -307,20 +305,27 @@ export function runRestore(
 
   activeBackups.add(serverId);
 
-  const minionUser = getMinionUser(provisionConfig);
-  const backupUser = backupConfig.backupUser ?? 'root';
-  const backupHost = backupConfig.backupHost!;
-  const backupPort = backupConfig.backupPort ?? 22;
-
-  let rsyncCmd = `rsync -az --stats ${backupUser}@${backupHost}:${snapshotPath}/ /home/${minionUser}/.minion/`;
-  if (backupPort !== 22) {
-    rsyncCmd += ` -e "ssh -p ${backupPort}"`;
+  // Validates and quotes every interpolated value; a bad value fails here, before ssh starts.
+  let fullCmd: string;
+  try {
+    fullCmd = buildRestoreCommand({
+      minionUser: getMinionUser(provisionConfig),
+      backupUser: backupConfig.backupUser ?? 'root',
+      backupHost: backupConfig.backupHost!,
+      backupPort: backupConfig.backupPort ?? 22,
+      basePath: backupConfig.backupBasePath ?? '/mnt/agent-data/backups',
+      snapshotPath,
+    });
+  } catch (err) {
+    activeBackups.delete(serverId);
+    const msg = err instanceof Error ? err.message : 'invalid restore parameters';
+    return new ReadableStream({
+      start(controller) {
+        controller.enqueue(`ERROR: Restore refused: ${msg}\n`);
+        controller.close();
+      },
+    });
   }
-
-  // After rsync, enforce secure permissions then restart the gateway service
-  const permCmd = buildRemotePermissionCommand(minionUser);
-  const restartCmd = `sudo -u ${minionUser} bash -c "XDG_RUNTIME_DIR=/run/user/$(id -u ${minionUser}) systemctl --user restart minion-gateway" 2>/dev/null || true`;
-  const fullCmd = `${rsyncCmd} && echo '--- Enforcing secure permissions ---' && ${permCmd} && echo '--- Restarting gateway ---' && ${restartCmd}`;
 
   const sshArgs = [
     '-o',
