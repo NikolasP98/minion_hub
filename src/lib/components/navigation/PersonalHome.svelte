@@ -89,7 +89,7 @@
 </script>
 
 <svelte:head><title>{m.nav_personalHome()} · MINION hub</title></svelte:head>
-<PageShell archetype="collection" labelledBy="personal-home-title">
+<PageShell archetype="form" labelledBy="personal-home-title">
   <PageHeader
     titleId="personal-home-title"
     title={selected?.label ?? m.nav_personalHome()}
