@@ -375,6 +375,7 @@ describe('empty section access', () => {
       1,
     );
     expect(visibleNavConfig(empty, new Set(), false).sections).toEqual([]);
+    expect(visibleNavConfig(empty, new Set(), true).sections).toEqual([]);
     const denied = cfg([section('aaaaaa', 'empty', [page('bbbbbb', 'sell')])]);
     expect(visibleNavConfig(denied, new Set(['section:aaaaaa:view']), false).sections).toEqual([]);
     expect(visibleNavConfig(denied, new Set(), true).sections).toEqual([]);

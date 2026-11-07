@@ -255,7 +255,7 @@ export function visibleNavConfig(
     if (
       pages.length > 0 ||
       (section.pages.length === 0 &&
-        (canManage || permissions.has(`${sectionViewKey(section)}:view`)))
+        permissions.has(`${sectionViewKey(section)}:view`))
     )
       sections.push({ ...section, pages });
   }
