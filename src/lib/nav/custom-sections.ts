@@ -252,7 +252,12 @@ export function visibleNavConfig(
   for (const section of config.sections) {
     if (section.hidden && !canManage) continue;
     const pages = section.pages.filter(keep);
-    if (pages.length > 0 || canManage) sections.push({ ...section, pages });
+    if (
+      pages.length > 0 ||
+      (section.pages.length === 0 &&
+        (canManage || permissions.has(`${sectionViewKey(section)}:view`)))
+    )
+      sections.push({ ...section, pages });
   }
   const builtinSections: Record<string, NavPage[]> = {};
   for (const [module, all] of Object.entries(config.builtinSections)) {

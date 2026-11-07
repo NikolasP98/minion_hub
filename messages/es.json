@@ -7323,5 +7323,18 @@
   "admin_plans_reason_not_in_plan": "No incluido en el plan",
   "admin_plans_reason_rule_false": "No cumple la regla",
   "admin_plans_kind_business": "Negocio",
-  "admin_plans_kind_personal": "Personal"
+  "admin_plans_kind_personal": "Personal",
+  "nav_personalHome": "Mi inicio",
+  "nav_personalDescription": "Explora tus secciones y elige cuáles aparecen en tu menú lateral. Los cambios son solo para ti.",
+  "nav_emptySection": "Esta sección aún no tiene páginas",
+  "nav_emptySectionDescription": "Tu administrador puede añadir páginas a esta sección.",
+  "nav_noSections": "No hay secciones disponibles",
+  "nav_noSectionsDescription": "Solicita acceso a una sección a tu administrador.",
+  "nav_showInSidebar": "Mostrar en el menú",
+  "nav_hideInSidebar": "Ocultar del menú",
+  "nav_moveUp": "Subir",
+  "nav_moveDown": "Bajar",
+  "nav_openSection": "Abrir sección",
+  "nav_backPersonalHome": "Volver a mi inicio",
+  "nav_noPersonalSections": "Elige las secciones de tu menú en Mi inicio."
 }

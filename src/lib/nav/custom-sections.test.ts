@@ -367,3 +367,16 @@ describe('aliasableTargets / normalizeNavConfig', () => {
     expect(n.sections[0].pages[0].kind).toBe('link');
   });
 });
+
+describe('empty section access', () => {
+  it('retains a truly empty granted section but not a denied-only page list', () => {
+    const empty = cfg([section('aaaaaa', 'empty', [])]);
+    expect(visibleNavConfig(empty, new Set(['section:aaaaaa:view']), false).sections).toHaveLength(
+      1,
+    );
+    expect(visibleNavConfig(empty, new Set(), false).sections).toEqual([]);
+    const denied = cfg([section('aaaaaa', 'empty', [page('bbbbbb', 'sell')])]);
+    expect(visibleNavConfig(denied, new Set(['section:aaaaaa:view']), false).sections).toEqual([]);
+    expect(visibleNavConfig(denied, new Set(), true).sections).toEqual([]);
+  });
+});

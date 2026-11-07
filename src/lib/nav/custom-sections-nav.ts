@@ -14,6 +14,7 @@ import {
   type NavPage,
   type NavSection,
 } from './custom-sections';
+import { emptySectionHref } from './personal-navigation';
 import { getAreaItems, type AreaId, type ModuleDef, type ModuleNavItem } from './modules';
 
 const own = (href: string) => (p: string) => p === href || p.startsWith(`${href}/`);
@@ -48,8 +49,7 @@ function usable(config: NavConfig): { section: NavSection; pages: NavPage[] }[] 
     .map((section) => ({
       section,
       pages: section.pages.filter((p) => !p.hidden && targets.has(p.target)),
-    }))
-    .filter(({ pages }) => pages.length > 0);
+    }));
 }
 
 const instanceItem = (slug: string, page: NavPage): ModuleNavItem => {
@@ -84,7 +84,7 @@ export function customModules(config: NavConfig): ModuleDef[] {
       id: `custom:${section.id}`,
       label: section.label,
       icon: typeof icon === 'string' ? LayoutGrid : icon,
-      href: items[0].href,
+      href: items[0]?.href ?? emptySectionHref(`custom:${section.id}`),
       matcher: (p: string) => p === `/${section.slug}` || p.startsWith(`/${section.slug}/`),
       items,
     };

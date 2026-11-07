@@ -54,6 +54,7 @@ import {
   Wrench,
   Building2,
 } from 'lucide-svelte';
+import { emptySectionHref } from './personal-navigation';
 import { canonicalPath } from '$lib/canonical-path';
 import { getSections } from '$lib/components/layout/sections';
 import { resolvePluginIcon } from '$lib/plugins/icon-map';
@@ -698,10 +699,27 @@ export function visibleModules(
   data: ModuleNavData,
   canView: (href: string) => boolean,
 ): ModuleDef[] {
-  return getModules(data)
-    .map((mod) => ({ ...mod, items: mod.items.filter((it) => canView(it.href)) }))
-    .filter((mod) => mod.items.length > 0)
-    .map((mod) => ({ ...mod, href: canView(mod.href) ? mod.href : mod.items[0].href }));
+  const native = getModules({ ...data, navConfig: EMPTY_NAV_CONFIG });
+  return getModules(data).flatMap((mod) => {
+    const items = mod.items.filter((item) => canView(item.href));
+    // An empty organization section is discoverable. A denied page list is not.
+    const emptyAllowed =
+      mod.items.length === 0 &&
+      (mod.id.startsWith('custom:') ||
+        native.find((base) => base.id === mod.id)?.items.some((item) => canView(item.href)));
+    if (!items.length && !emptyAllowed) return [];
+    return [
+      {
+        ...mod,
+        items,
+        href: items.length
+          ? canView(mod.href)
+            ? mod.href
+            : items[0].href
+          : emptySectionHref(mod.id),
+      },
+    ];
+  });
 }
 
 /** The module owning `path`, or null when the path is outside every module. */
