@@ -31,6 +31,13 @@ export const navConfigSchema = z.object({
     z.string().min(1).max(200),
     z.object({ label: z.string().min(1).max(80).optional(), hidden: z.literal(true).optional() }),
   ),
+  // Kept so a nav edit does not drop the provisioned landing page (spec 047).
+  // TODO(handoff): spec 046 S3 (T034) owns the landing-path rule (SAFE_PATH); align this regex with it.
+  landingPage: z
+    .string()
+    .max(200)
+    .regex(/^\/(?!\/)[\w\-/~.]*$/)
+    .optional(),
 });
 
 export function isNavConfig(value: unknown): value is NavConfig {

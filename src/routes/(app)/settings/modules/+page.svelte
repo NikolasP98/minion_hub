@@ -5,60 +5,50 @@
   import * as m from '$lib/paraglide/messages';
   import { setPluginEnabled, MODULES_QUERY_KEY } from '$lib/state/plugin-nav.svelte';
   import { queryClient } from '$lib/query/client';
+  import { toggleIds } from '$lib/modules/availability';
 
   let { data }: { data: PageData } = $props();
 
+  /** Label + description per manifest toggleId; an id without an entry shows its raw id. */
+  const MODULE_TEXT: Record<string, { label: () => string; desc: () => string }> = {
+    crm: { label: m.fin_module_crm, desc: m.fin_module_crm_desc },
+    finances: { label: m.fin_module_finances, desc: m.fin_module_finances_desc },
+    ads: { label: m.nav_ads, desc: m.settings_modules_adsDesc },
+    sales: { label: m.nav_salesOrders, desc: m.settings_modules_salesOrdersDesc },
+    support: { label: m.nav_support, desc: m.settings_modules_supportDesc },
+    scheduling: { label: m.sched_module_scheduling, desc: m.sched_module_scheduling_desc },
+    pos: { label: m.nav_pos, desc: m.settings_modules_posDesc },
+    stock: { label: m.nav_stock, desc: m.settings_modules_stockDesc },
+  };
+  const ids = toggleIds();
+
   // Default true when absent (absent = enabled per modules.service.ts)
-  let finEnabled = $state(
+  let enabled = $state(
     // svelte-ignore state_referenced_locally
-    data.modules['finances'] ?? true,
-  );
-  let crmEnabled = $state(
-    // svelte-ignore state_referenced_locally
-    data.modules['crm'] ?? true,
-  );
-  let schedEnabled = $state(
-    // svelte-ignore state_referenced_locally
-    data.modules['scheduling'] ?? true,
-  );
-  let supportEnabled = $state(
-    // svelte-ignore state_referenced_locally
-    data.modules['support'] ?? true,
-  );
-  let salesEnabled = $state(
-    // svelte-ignore state_referenced_locally
-    data.modules['sales'] ?? true,
+    Object.fromEntries(ids.map((id) => [id, data.modules[id] ?? true])) as Record<string, boolean>,
   );
   let moduleBusy = $state<string | null>(null);
   let moduleMsg = $state<{ id: string; ok: boolean; text: string } | null>(null);
 
-  async function setModule(moduleId: string, enabled: boolean) {
+  async function setModule(moduleId: string, value: boolean) {
     moduleBusy = moduleId;
     moduleMsg = null;
     try {
       const res = await fetch('/api/modules', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ moduleId, enabled }),
+        body: JSON.stringify({ moduleId, enabled: value }),
       });
       if (res.ok) {
-        setPluginEnabled(moduleId, enabled);
+        setPluginEnabled(moduleId, value);
         void queryClient.invalidateQueries({ queryKey: MODULES_QUERY_KEY });
       } else {
         moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
-        if (moduleId === 'finances') finEnabled = !enabled;
-        if (moduleId === 'crm') crmEnabled = !enabled;
-        if (moduleId === 'scheduling') schedEnabled = !enabled;
-        if (moduleId === 'support') supportEnabled = !enabled;
-        if (moduleId === 'sales') salesEnabled = !enabled;
+        enabled[moduleId] = !value;
       }
     } catch {
       moduleMsg = { id: moduleId, ok: false, text: m.fin_module_error() };
-      if (moduleId === 'finances') finEnabled = !enabled;
-      if (moduleId === 'crm') crmEnabled = !enabled;
-      if (moduleId === 'scheduling') schedEnabled = !enabled;
-      if (moduleId === 'support') supportEnabled = !enabled;
-      if (moduleId === 'sales') salesEnabled = !enabled;
+      enabled[moduleId] = !value;
     } finally {
       moduleBusy = null;
     }
@@ -82,75 +72,22 @@
           <span>{m.fin_modules_card()}</span>
         </header>
 
-        <div class="mod-row">
-          <div class="mod-info">
-            <span class="mod-label">{m.fin_module_finances()}</span>
-            <span class="t-caption">{m.fin_module_finances_desc()}</span>
+        {#each ids as id (id)}
+          {@const text = MODULE_TEXT[id]}
+          <div class="mod-row">
+            <div class="mod-info">
+              <span class="mod-label">{text?.label() ?? id}</span>
+              {#if text}<span class="t-caption">{text.desc()}</span>{/if}
+            </div>
+            <Toggle
+              bind:checked={enabled[id]}
+              ariaLabel={text?.label() ?? id}
+              pending={moduleBusy === id}
+              onchange={(v) => setModule(id, v)}
+              size="md"
+            />
           </div>
-          <Toggle
-            bind:checked={finEnabled}
-            ariaLabel={m.fin_module_finances()}
-            pending={moduleBusy === 'finances'}
-            onchange={(v) => setModule('finances', v)}
-            size="md"
-          />
-        </div>
-
-        <div class="mod-row">
-          <div class="mod-info">
-            <span class="mod-label">{m.fin_module_crm()}</span>
-            <span class="t-caption">{m.fin_module_crm_desc()}</span>
-          </div>
-          <Toggle
-            bind:checked={crmEnabled}
-            ariaLabel={m.fin_module_crm()}
-            pending={moduleBusy === 'crm'}
-            onchange={(v) => setModule('crm', v)}
-            size="md"
-          />
-        </div>
-
-        <div class="mod-row">
-          <div class="mod-info">
-            <span class="mod-label">{m.sched_module_scheduling()}</span>
-            <span class="t-caption">{m.sched_module_scheduling_desc()}</span>
-          </div>
-          <Toggle
-            bind:checked={schedEnabled}
-            ariaLabel={m.sched_module_scheduling()}
-            pending={moduleBusy === 'scheduling'}
-            onchange={(v) => setModule('scheduling', v)}
-            size="md"
-          />
-        </div>
-
-        <div class="mod-row">
-          <div class="mod-info">
-            <span class="mod-label">{m.nav_support()}</span>
-            <span class="t-caption">{m.settings_modules_supportDesc()}</span>
-          </div>
-          <Toggle
-            bind:checked={supportEnabled}
-            ariaLabel={m.nav_support()}
-            pending={moduleBusy === 'support'}
-            onchange={(v) => setModule('support', v)}
-            size="md"
-          />
-        </div>
-
-        <div class="mod-row">
-          <div class="mod-info">
-            <span class="mod-label">{m.nav_salesOrders()}</span>
-            <span class="t-caption">{m.settings_modules_salesOrdersDesc()}</span>
-          </div>
-          <Toggle
-            bind:checked={salesEnabled}
-            ariaLabel={m.nav_salesOrders()}
-            pending={moduleBusy === 'sales'}
-            onchange={(v) => setModule('sales', v)}
-            size="md"
-          />
-        </div>
+        {/each}
 
         {#if moduleMsg && !moduleMsg.ok}
           <p class="err-msg mt-2">{moduleMsg.text}</p>

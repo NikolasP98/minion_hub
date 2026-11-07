@@ -566,7 +566,7 @@
   },
   {
     "file": "src/server/services/organization-provision.service.ts",
-    "calls": ["getDb", "supabaseAdmin"],
+    "calls": ["getCoreDb", "getDb", "supabaseAdmin"],
     "class": "cross-org-by-design"
   },
   {

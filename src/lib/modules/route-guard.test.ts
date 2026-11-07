@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest';
 import { canonicalPath } from '$lib/canonical-path';
+import { BASE_MODULES } from './availability';
 import {
   isAppPageRequest,
   isAppRouteBlocked,
@@ -215,5 +216,14 @@ describe('isAppRouteBlocked — plan features (spec 043)', () => {
         features: [],
       }),
     ).toBe(true);
+  });
+});
+
+describe('isAppRouteBlocked — a freshly provisioned business org (spec 047 SC-004)', () => {
+  const ctx = { kind: 'business' as const, moduleStates: { ...BASE_MODULES } };
+
+  test('/sales is blocked and /crm is not', () => {
+    expect(isAppRouteBlocked('/sales', ctx)).toBe(true);
+    expect(isAppRouteBlocked('/crm', ctx)).toBe(false);
   });
 });

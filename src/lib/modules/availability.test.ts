@@ -2,7 +2,9 @@ import { describe, test, expect } from 'vitest';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  BASE_MODULES,
   MODULE_MANIFEST,
+  toggleIds,
   resolveModuleForPath,
   isModuleAvailable,
   effectiveModuleEnabled,
@@ -312,5 +314,20 @@ describe('featureForPath (spec 043)', () => {
     const appDir = fileURLToPath(new URL('../../routes/(app)/', import.meta.url));
     for (const prefix of Object.keys(FEATURE_PAGES))
       expect(() => readdirSync(appDir + prefix.slice(1)), prefix).not.toThrow();
+  });
+});
+
+describe('BASE_MODULES (spec 047 S4)', () => {
+  test('has exactly one entry per manifest toggleId', () => {
+    expect(Object.keys(BASE_MODULES).sort()).toEqual([...toggleIds()].sort());
+    expect(new Set(toggleIds()).size).toBe(toggleIds().length);
+  });
+
+  test('turns on crm, scheduling, pos, stock and finances only', () => {
+    expect(
+      Object.keys(BASE_MODULES)
+        .filter((id) => BASE_MODULES[id as keyof typeof BASE_MODULES])
+        .sort(),
+    ).toEqual(['crm', 'finances', 'pos', 'scheduling', 'stock']);
   });
 });

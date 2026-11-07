@@ -7,9 +7,18 @@ import { browserSharedTokenOff } from '$lib/gateway-browser-token';
 import { gatewayCallAsUser, resolveCredentialsForUser } from '$lib/server/gateway-rpc';
 import { gatewayAudience, issueGatewayJwt } from '$server/services/gateway-jwt.service';
 import { getDb } from '$server/db/client';
+import { getCoreDb } from '$server/db/pg-client';
+import { installBaseModules } from '$server/services/module-install.service';
 
 export type OrganizationProvisionStepId =
-  'organization' | 'membership' | 'rbac' | 'workforce' | 'gateway' | 'workstation' | 'readiness';
+  | 'organization'
+  | 'membership'
+  | 'rbac'
+  | 'modules'
+  | 'workforce'
+  | 'gateway'
+  | 'workstation'
+  | 'readiness';
 
 export interface OrganizationProvisionStep {
   id: OrganizationProvisionStepId;
@@ -294,6 +303,21 @@ export async function provisionOrganization(
       { onConflict: 'org_id,profile_id,role_key' },
     );
     if (error) throw new Error(`Owner role assignment failed: ${error.message}`);
+  });
+  await step('modules', 'Base modules and landing page installed', async () => {
+    if (!organization) throw new Error('Organization was not created');
+    const { data, error } = await supabaseAdmin()
+      .from('organizations')
+      .select('kind')
+      .eq('id', organization.id)
+      .maybeSingle();
+    if (error) throw new Error(`Organization kind lookup failed: ${error.message}`);
+    const kind =
+      (data as { kind?: string | null } | null)?.kind === 'personal' ? 'personal' : 'business';
+    await installBaseModules(
+      { db: getCoreDb(), tenantId: organization.id, profileId: params.profileId },
+      kind,
+    );
   });
   await step('workforce', 'Workforce workspace is ready', async () => {
     if (!organization) throw new Error('Organization was not created');

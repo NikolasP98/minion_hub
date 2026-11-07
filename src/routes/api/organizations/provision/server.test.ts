@@ -40,7 +40,11 @@ describe('POST /api/organizations/provision', () => {
   });
 
   it('runs the provisioner as the authenticated Supabase profile', async () => {
-    mocks.provisionOrganization.mockResolvedValue({ ok: true, organization: { id: 'org-3' }, steps: [] });
+    mocks.provisionOrganization.mockResolvedValue({
+      ok: true,
+      organization: { id: 'org-3' },
+      steps: [],
+    });
     const requestEvent = event({ name: 'PINONITE' });
     const response = await POST(requestEvent);
     expect(response.status).toBe(200);
@@ -55,10 +59,16 @@ describe('POST /api/organizations/provision', () => {
     mocks.provisionOrganization.mockResolvedValue({
       ok: false,
       organization: { id: 'org-3' },
-      steps: [{ id: 'workforce', status: 'failed', detail: 'backend unavailable', durationMs: 4 }],
+      steps: [
+        { id: 'rbac', status: 'complete', detail: 'ok', durationMs: 2 },
+        { id: 'modules', status: 'complete', detail: 'ok', durationMs: 3 },
+        { id: 'workforce', status: 'failed', detail: 'backend unavailable', durationMs: 4 },
+      ],
     });
     const response = await POST(event({ name: 'PINONITE' }));
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({ ok: false, organization: { id: 'org-3' } });
+    const body = await response.json();
+    expect(body).toMatchObject({ ok: false, organization: { id: 'org-3' } });
+    expect(body.steps.map((s: { id: string }) => s.id)).toEqual(['rbac', 'modules', 'workforce']);
   });
 });

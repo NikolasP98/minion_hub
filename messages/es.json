@@ -7323,5 +7323,9 @@
   "admin_plans_reason_not_in_plan": "No incluido en el plan",
   "admin_plans_reason_rule_false": "No cumple la regla",
   "admin_plans_kind_business": "Negocio",
-  "admin_plans_kind_personal": "Personal"
+  "admin_plans_kind_personal": "Personal",
+  "orgProvision_stepModules": "Módulos base y página de inicio",
+  "settings_modules_posDesc": "Vende servicios y productos en caja.",
+  "settings_modules_stockDesc": "Artículos, almacenes y movimientos de inventario.",
+  "settings_modules_adsDesc": "Publicaciones en redes y campañas de anuncios."
 }
