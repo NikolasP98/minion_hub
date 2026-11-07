@@ -4563,7 +4563,8 @@
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-accent);
-    border-radius: var(--radius-sm);
+    /* xs, not sm: the clinic scale doubles sm to 8px and the blocks read as pills. */
+    border-radius: var(--radius-xs);
     box-shadow: var(--shadow-elevation-1);
     padding: var(--space-0-5) var(--space-2);
     overflow: hidden;
@@ -4581,18 +4582,29 @@
     height: 100%;
     align-items: stretch;
   }
-  /* Status ramp — one hue per level, the same on the box and on the card chip. */
+  /* Status ramp — one hue per level, the same on the box and on the card chip.
+     The bare `*-surface` tint washes out on the clinic palettes, so the box
+     leans on its tone border for both the fill and the outline; the left
+     edge stays the accent sliver. */
   .track :global(.evt.tone-info) {
-    background: var(--color-info-surface);
+    background: color-mix(in srgb, var(--color-info-surface) 65%, var(--color-info-border));
+    border-color: var(--color-info-border) var(--color-info-border) var(--color-info-border)
+      var(--color-accent);
   }
   .track :global(.evt.tone-warning) {
-    background: var(--color-warning-surface);
+    background: color-mix(in srgb, var(--color-warning-surface) 65%, var(--color-warning-border));
+    border-color: var(--color-warning-border) var(--color-warning-border)
+      var(--color-warning-border) var(--color-accent);
   }
   .track :global(.evt.tone-success) {
-    background: var(--color-success-surface);
+    background: color-mix(in srgb, var(--color-success-surface) 65%, var(--color-success-border));
+    border-color: var(--color-success-border) var(--color-success-border)
+      var(--color-success-border) var(--color-accent);
   }
   .track :global(.evt.tone-error) {
-    background: var(--color-danger-surface);
+    background: color-mix(in srgb, var(--color-danger-surface) 65%, var(--color-danger-border));
+    border-color: var(--color-danger-border) var(--color-danger-border) var(--color-danger-border)
+      var(--color-accent);
   }
   /* Any other colour source paints an arbitrary persisted colour (kind, staff,
      service, tag, category). It arrives as `--evt-c` and is TINTED into the
@@ -4601,14 +4613,14 @@
   .track :global(.evt.has-color) {
     background: color-mix(
       in srgb,
-      var(--evt-c, var(--color-surface-2)) 18%,
+      var(--evt-c, var(--color-surface-2)) 30%,
       var(--color-surface-2)
     );
   }
   .track :global(.evt.has-color:hover) {
     background: color-mix(
       in srgb,
-      var(--evt-c, var(--color-surface-2)) 30%,
+      var(--evt-c, var(--color-surface-2)) 42%,
       var(--color-surface-2)
     );
   }
@@ -5211,22 +5223,30 @@
      one level = one hue on every surface. Placed after the plain/hover rules so
      equal specificity resolves here, exactly as on `.evt`. */
   .m-body :global(.m-chip.tone-info) {
-    background: var(--color-info-surface);
+    background: color-mix(in srgb, var(--color-info-surface) 65%, var(--color-info-border));
+    border-color: var(--color-info-border) var(--color-info-border) var(--color-info-border)
+      var(--color-accent);
   }
   .m-body :global(.m-chip.tone-warning) {
-    background: var(--color-warning-surface);
+    background: color-mix(in srgb, var(--color-warning-surface) 65%, var(--color-warning-border));
+    border-color: var(--color-warning-border) var(--color-warning-border)
+      var(--color-warning-border) var(--color-accent);
   }
   .m-body :global(.m-chip.tone-success) {
-    background: var(--color-success-surface);
+    background: color-mix(in srgb, var(--color-success-surface) 65%, var(--color-success-border));
+    border-color: var(--color-success-border) var(--color-success-border)
+      var(--color-success-border) var(--color-accent);
   }
   .m-body :global(.m-chip.tone-error) {
-    background: var(--color-danger-surface);
+    background: color-mix(in srgb, var(--color-danger-surface) 65%, var(--color-danger-border));
+    border-color: var(--color-danger-border) var(--color-danger-border) var(--color-danger-border)
+      var(--color-accent);
   }
   .m-body :global(.m-chip.has-color),
   .m-body :global(.m-chip.has-color:hover) {
     background: color-mix(
       in srgb,
-      var(--evt-c, var(--color-surface-2)) 18%,
+      var(--evt-c, var(--color-surface-2)) 30%,
       var(--color-surface-2)
     );
   }
