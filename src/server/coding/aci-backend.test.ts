@@ -13,6 +13,8 @@ let backend: ACIBackend;
 
 async function initGitRepo(dir: string) {
   await execFileAsync('git', ['init'], { cwd: dir });
+  // Synthetic fixture repositories must not invoke the developer's signing agent.
+  await execFileAsync('git', ['config', '--local', 'commit.gpgsign', 'false'], { cwd: dir });
   await execFileAsync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir });
   await execFileAsync('git', ['config', 'user.name', 'Test'], { cwd: dir });
 }

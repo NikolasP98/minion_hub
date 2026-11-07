@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createVitest } from 'vitest/node';
 import {
   isOrdinaryVitestNativeExclusion,
   NATIVE_POSTGRES_LANES,
@@ -59,7 +60,7 @@ export function validateNativePostgresOwnership(
 }
 
 describe('native PostgreSQL ownership manifest', () => {
-  it('matches every file excluded by the ordinary Vitest native policy exactly once', () => {
+  it('matches every file excluded by the ordinary Vitest native policy exactly once', async () => {
     const discovered = sourceFiles('src')
       .map((file) => path.relative(process.cwd(), file).replaceAll('\\', '/'))
       .filter(isOrdinaryVitestNativeExclusion);
@@ -71,7 +72,36 @@ describe('native PostgreSQL ownership manifest', () => {
     );
     expect(crmBulk?.minimumAssertions).toBe(4);
     expect(crmBulk?.requiredBehaviors).toHaveLength(4);
-  });
+    try {
+      for (const key of Object.keys(process.env)) {
+        if (/^REQUIRE_[A-Z_]+_POSTGRES$/.test(key)) vi.stubEnv(key, undefined);
+      }
+      const discover = async () => {
+        const vitest = await createVitest('test', {
+          config: path.resolve('vitest.config.ts'),
+          watch: false,
+        });
+        try {
+          return new Set(
+            (await vitest.globTestSpecifications()).map((spec) =>
+              path.relative(process.cwd(), spec.moduleId).replaceAll('\\', '/'),
+            ),
+          );
+        } finally {
+          await vitest.close();
+        }
+      };
+      const ordinary = await discover();
+      expect(ordinary.has('src/server/services/scheduling-bookings.assistant.test.ts')).toBe(true);
+      for (const file of discovered) expect(ordinary.has(file), file).toBe(false);
+      vi.stubEnv('REQUIRE_QA_NATIVE_POSTGRES', '1');
+      const native = await discover();
+      for (const file of discovered) expect(native.has(file), file).toBe(true);
+      expect([...native].filter((file) => !ordinary.has(file)).sort()).toEqual(discovered.sort());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }, 30_000);
 
   it('excludes native fixtures from ordinary Vitest discovery', () => {
     const output = execFileSync(

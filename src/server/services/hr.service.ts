@@ -714,9 +714,9 @@ export async function decideLeaveRequest(
 // ── Slot-engine bridge ───────────────────────────────────────────────────────
 
 /**
- * Day-off overrides for the slot engine: org holidays for every resource, plus
- * approved leave days for each resource's employee. An override with an empty
- * range replaces that date's weekly hours (cal.diy semantics in `slots.ts`).
+ * Unavailable dates for the slot engine: org holidays/weekly offs for every
+ * resource, plus approved leave days for each resource's employee. Apply through
+ * `applyDayOffOverrides` in scheduling/day-off.ts, which owns rule precedence.
  */
 export async function loadDayOffOverrides(
   tx: CoreTx,

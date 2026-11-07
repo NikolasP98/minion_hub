@@ -19,8 +19,10 @@ vi.mock('$server/supabase', () => ({
 }));
 
 const mockCreateBooking = vi.fn();
+const mockPreviewAssistantBooking = vi.fn();
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   createBooking: (...args: unknown[]) => mockCreateBooking(...args),
+  previewAssistantBooking: (...args: unknown[]) => mockPreviewAssistantBooking(...args),
   setBookingStatus: vi.fn(),
   SlotUnavailableError: class SlotUnavailableError extends Error {},
 }));
@@ -119,6 +121,17 @@ describe('POST /api/gateway/actions/booking-create', () => {
       orgId: 'org1',
       capabilities: makeCaps({ 'scheduling.create': true }),
     });
+    mockPreviewAssistantBooking.mockResolvedValue({
+      eventTypeId: 'et1',
+      serviceTitle: 'Consultation',
+      resourceId: 'r1',
+      resourceName: 'Clinician',
+      start: '2026-08-01T10:00:00.000Z',
+      end: '2026-08-01T11:00:00.000Z',
+      attendeeName: 'Jane',
+      attendeeEmail: null,
+      attendeePhone: null,
+    });
     const res = await bookingCreatePOST(
       makeEvent('/api/gateway/actions/booking-create', {
         confirm: false,
@@ -131,6 +144,14 @@ describe('POST /api/gateway/actions/booking-create', () => {
     const body = (await res.json()) as { preview: { action: string; eventTypeId: string } };
     expect(body.preview.action).toBe('booking-create');
     expect(body.preview.eventTypeId).toBe('et1');
+    expect(mockPreviewAssistantBooking).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ tenantId: 'org1' }),
+      expect.objectContaining({
+        eventTypeId: 'et1',
+        start: new Date('2026-08-01T10:00:00.000Z'),
+        strictContactReference: true,
+      }),
+    );
     expect(mockCreateBooking).not.toHaveBeenCalled();
   });
 });

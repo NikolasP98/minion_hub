@@ -12,6 +12,7 @@ import {
   asc,
   desc,
   sql,
+  getTableColumns,
 } from 'drizzle-orm';
 import { getTagLinks, getContactTagsBulk } from './tag-links.service';
 import { mergeTags } from '$lib/tags/inherit';
@@ -61,6 +62,9 @@ import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
+import { loadDayOffOverrides } from './hr.service';
+import { applyDayOffOverrides } from '$server/scheduling/day-off';
+import { zonedDateKey } from '$server/scheduling/tz';
 import { assertOrgEventKind, catalogPrice } from './scheduling.service';
 import { putCustomPropertyValueInTx } from './custom-properties.service';
 import { emitHubEvent } from '$server/events/emit';
@@ -213,9 +217,11 @@ export interface CreateBookingInput {
   attendeeEmail?: string | null;
   attendeePhone?: string | null;
   notes?: string | null;
-  /** Link to a specific CRM contact (internal booking picked one). When set it's
-   *  used directly; otherwise the contact is resolved/created from phone/email. */
+  /** Optional CRM contact reference; validation and fallback follow strictContactReference. */
   crmContactId?: string | null;
+  /** Reject nonexistent, foreign or deleted explicit contacts instead of falling
+   *  back to phone/email. Assistant callers opt in; shared UI retains its fallback. */
+  strictContactReference?: boolean;
   /** Party-spine pick (CustomerPicker). Resolves to the party's CRM contact when
    *  no crmContactId is given; a party without a contact falls back to phone/email. */
   partyId?: string | null;
@@ -281,22 +287,13 @@ interface OccurrenceOpts {
   status?: string;
 }
 
-/**
- * Book ONE occurrence inside a caller's transaction. Everything a booking must
- * do atomically lives here: slot validation, the row, the package redemption
- * and the creation entry in the status log.
- *
- * Factored out of `createBooking` so a series can run N of these in a single
- * transaction — occurrences read their own predecessors back through
- * `loadBusyInTx` (same txn sees its own writes), so a series can't double-book
- * itself, and a failure on slot 3 rolls slots 1-2 and their redemptions back.
- */
-async function bookOccurrenceInTx(
+/** Read-only native slot preflight, shared by previews and the write transaction. */
+async function prepareOccurrenceInTx(
   tx: CoreTx,
   ctx: CoreCtx,
   input: CreateBookingInput,
   occ: OccurrenceOpts,
-): Promise<{ row: SchedBooking; created: boolean }> {
+) {
   const [et] = await tx
     .select()
     .from(schedEventTypes)
@@ -351,6 +348,22 @@ async function bookOccurrenceInTx(
     chosen = candidateIds[0];
   } else {
     const availability = await loadAvailability(tx, ctx.tenantId, candidateIds);
+    if (availability.length) {
+      const dates = availability
+        .flatMap((res) => [
+          zonedDateKey(new Date(start.getTime() - et.beforeBuffer * MS_PER_MIN), res.timezone),
+          zonedDateKey(new Date(end.getTime() + et.afterBuffer * MS_PER_MIN), res.timezone),
+        ])
+        .sort();
+      const dayOff = await loadDayOffOverrides(
+        tx,
+        ctx.tenantId,
+        candidateIds,
+        dates[0],
+        dates[dates.length - 1],
+      );
+      applyDayOffOverrides(availability, dayOff);
+    }
     const pad = (Math.max(et.beforeBuffer, et.afterBuffer) + fitLength) * MS_PER_MIN;
     const busy = await loadBusyInTx(
       tx,
@@ -402,17 +415,45 @@ async function bookOccurrenceInTx(
     }
   }
 
-  // A client-supplied crmContactId must belong to THIS org — validate under the
-  // RLS-scoped tx (don't trust it as authoritative; ignore foreign/stale ids and
-  // fall back to resolve/create by phone/email).
+  return { et, start, end, chosen };
+}
+
+/**
+ * Book ONE occurrence inside a caller's transaction. Everything a booking must
+ * do atomically lives here: slot validation, the row, the package redemption
+ * and the creation entry in the status log.
+ *
+ * Factored out of `createBooking` so a series can run N of these in a single
+ * transaction — occurrences read their own predecessors back through
+ * `loadBusyInTx` (same txn sees its own writes), so a series can't double-book
+ * itself, and a failure on slot 3 rolls slots 1-2 and their redemptions back.
+ */
+async function bookOccurrenceInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  input: CreateBookingInput,
+  occ: OccurrenceOpts,
+): Promise<{ row: SchedBooking; created: boolean }> {
+  const { et, start, end, chosen } = await prepareOccurrenceInTx(tx, ctx, input, occ);
+
+  // Validate client-supplied crmContactId under the RLS-scoped tx. Shared UI
+  // callers retain phone/email fallback for foreign/stale ids; strict assistant
+  // references must instead identify a live contact in this org or fail closed.
   let crmContactId: string | null = null;
   if (input.crmContactId) {
     const [hit] = await tx
       .select({ id: crmContacts.id })
       .from(crmContacts)
-      .where(and(eq(crmContacts.id, input.crmContactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(crmContacts.id, input.crmContactId),
+          eq(crmContacts.orgId, ctx.tenantId),
+          input.strictContactReference ? isNull(crmContacts.deletedAt) : undefined,
+        ),
+      )
       .limit(1);
     if (hit) crmContactId = hit.id;
+    else if (input.strictContactReference) throw new SlotUnavailableError();
   }
   // The party-spine pick is stored on the booking too (not only resolved to a
   // contact and dropped): the POS handoff, the accounts view and the customer
@@ -569,6 +610,61 @@ async function accrueForBooking(
   } catch (e) {
     console.error('[scheduling] accrueConsumption failed (booking stands)', e);
   }
+}
+
+/** Agent-only preview: explicit contact references are authoritative, never silently replaced.
+ * No contact creation, booking insert, log, event, or accrual runs here.
+ */
+export async function previewAssistantBooking(ctx: CoreCtx, input: CreateBookingInput) {
+  return withOrgCore(ctx, async (tx) => {
+    const { et, start, end, chosen } = await prepareOccurrenceInTx(tx, ctx, input, {
+      start: input.start,
+    });
+    let contact: { id: string; name: string | null } | null = null;
+    if (input.crmContactId) {
+      const [hit] = await tx
+        .select({ id: crmContacts.id, name: crmContacts.displayName })
+        .from(crmContacts)
+        .where(
+          and(
+            eq(crmContacts.id, input.crmContactId),
+            eq(crmContacts.orgId, ctx.tenantId),
+            isNull(crmContacts.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!hit) throw new SlotUnavailableError();
+      contact = hit;
+    }
+    const [resource] = await tx
+      .select({
+        id: schedResources.id,
+        name: schedResources.name,
+        timezone: schedResources.timezone,
+      })
+      .from(schedResources)
+      .where(and(eq(schedResources.id, chosen), eq(schedResources.orgId, ctx.tenantId)))
+      .limit(1);
+    if (!resource) throw new SlotUnavailableError();
+    return {
+      eventTypeId: et.id,
+      serviceTitle: et.title,
+      start: start.toISOString(),
+      end: end.toISOString(),
+      resourceId: resource.id,
+      resourceName: resource.name,
+      timezone: resource.timezone,
+      crmContactId: contact?.id ?? null,
+      contactName: contact?.name ?? null,
+      contactResolution: contact ? 'existing' : 'resolve-or-create-on-confirm',
+      attendeeName: input.attendeeName ?? null,
+      attendeeEmail: input.attendeeEmail ?? null,
+      attendeePhone: input.attendeePhone ?? null,
+      notes: input.notes ?? null,
+      availability: 'available-at-preview',
+      reservesSlot: false,
+    };
+  });
 }
 
 export async function createBooking(
@@ -809,17 +905,74 @@ export interface ListBookingsOpts {
   maskAttendeePii?: boolean;
 }
 
+function bookingListConditions(ctx: CoreCtx, opts: ListBookingsOpts) {
+  const conds = [eq(schedBookings.orgId, ctx.tenantId)];
+  if (opts.from) conds.push(gte(schedBookings.startTime, opts.from));
+  if (opts.to) conds.push(lte(schedBookings.startTime, opts.to));
+  if (opts.status?.length) conds.push(inArray(schedBookings.status, opts.status));
+  if (opts.resourceId) conds.push(eq(schedBookings.resourceId, opts.resourceId));
+  if (opts.crmContactId) conds.push(eq(schedBookings.crmContactId, opts.crmContactId));
+  return conds;
+}
+
+/** Assistant contract only; window count and rows share one SQL statement/snapshot. */
+export async function queryAssistantBookings(
+  ctx: CoreCtx,
+  opts: ListBookingsOpts & { countOnly?: boolean } = {},
+) {
+  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 500), 1), 500);
+  return withOrgCore(ctx, async (tx) => {
+    const where = and(...bookingListConditions(ctx, opts));
+    if (opts.countOnly) {
+      const [row] = await tx
+        .select({ total: sql<number>`count(*)`.mapWith(Number) })
+        .from(schedBookings)
+        .where(where);
+      return {
+        bookings: [],
+        total: row?.total ?? 0,
+        returned: 0,
+        truncated: false,
+        limit,
+        mode: 'count',
+      };
+    }
+    const rows = await tx
+      .select({
+        ...getTableColumns(schedBookings),
+        total: sql<number>`count(*) over()`.mapWith(Number),
+      })
+      .from(schedBookings)
+      .where(where)
+      .orderBy(desc(schedBookings.startTime), desc(schedBookings.id))
+      .limit(limit);
+    const total = rows[0]?.total ?? 0;
+    const bookings = rows.map(({ total: _total, ...b }) =>
+      opts.maskAttendeePii
+        ? {
+            ...b,
+            attendeeEmail: b.attendeeEmail ? maskPii(b.attendeeEmail) : b.attendeeEmail,
+            attendeePhone: b.attendeePhone ? maskPii(b.attendeePhone) : b.attendeePhone,
+          }
+        : b,
+    );
+    return {
+      bookings,
+      total,
+      returned: bookings.length,
+      truncated: total > bookings.length,
+      limit,
+      mode: 'list',
+    };
+  });
+}
+
 export async function listBookings(
   ctx: CoreCtx,
   opts: ListBookingsOpts = {},
 ): Promise<SchedBooking[]> {
   const rows = await withOrgCore(ctx, (tx) => {
-    const conds = [eq(schedBookings.orgId, ctx.tenantId)];
-    if (opts.from) conds.push(gte(schedBookings.startTime, opts.from));
-    if (opts.to) conds.push(lte(schedBookings.startTime, opts.to));
-    if (opts.status?.length) conds.push(inArray(schedBookings.status, opts.status));
-    if (opts.resourceId) conds.push(eq(schedBookings.resourceId, opts.resourceId));
-    if (opts.crmContactId) conds.push(eq(schedBookings.crmContactId, opts.crmContactId));
+    const conds = bookingListConditions(ctx, opts);
     return tx
       .select()
       .from(schedBookings)

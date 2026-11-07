@@ -1,0 +1,575 @@
+import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import {
+  schedBookings,
+  schedBookingStatusLog,
+  schedEventTypes,
+  schedEventTypeResources,
+  schedResources,
+  schedSchedules,
+  schedAvailability,
+} from '../db/pg-scheduling-schema';
+import { crmContacts } from '../db/pg-crm-schema';
+import { hrEmployees, hrHolidays, hrLeaveRequests, hrSettings } from '../db/pg-hr-schema';
+import type { CoreCtx } from '../auth/core-ctx';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { isHttpError } from '@sveltejs/kit';
+
+// The identity boundary is synthetic; routes, validation, scheduling and SQL run unchanged.
+vi.mock('../../routes/api/gateway/_shared/action-auth', () => ({
+  requireAssistantCapability: async () => ({ ctx, capabilities: { fieldLevel: () => 0 } }),
+}));
+
+const effects = vi.hoisted(() => ({
+  emit: vi.fn(),
+  accrual: vi.fn(),
+  ensureContact: vi.fn(),
+}));
+// TODO(handoff): qualify actual app_ledger role/GUC RLS in a disposable native
+// PostgreSQL fixture before product adoption; this mock proves scoped SQL only.
+// See proposals/2026-11-06-agent-transcript-evals-and-runtime-improvements.md.
+vi.mock('$server/db/with-org-core', () => ({
+  withOrgCore: (ctx: CoreCtx, fn: Parameters<CoreCtx['db']['transaction']>[0]) =>
+    ctx.db.transaction(fn),
+}));
+vi.mock('./tag-links.service', () => ({
+  getTagLinks: vi.fn(),
+  getContactTagsBulk: vi.fn(),
+}));
+vi.mock('./scheduling.service', () => ({
+  assertOrgEventKind: vi.fn(),
+  catalogPrice: vi.fn(),
+}));
+vi.mock('./custom-properties.service', () => ({
+  putCustomPropertyValueInTx: vi.fn(),
+}));
+vi.mock('$server/events/emit', () => ({ emitHubEvent: effects.emit }));
+vi.mock('./stock-accruals.service', () => ({
+  accrueConsumption: effects.accrual,
+  accrualSummaryForSources: vi.fn(),
+  releaseAccruals: vi.fn(),
+}));
+vi.mock('./modules.service', () => ({
+  isModuleEnabled: async () => false,
+}));
+vi.mock('./activity.service', () => ({
+  recordAuditInTx: vi.fn(),
+}));
+vi.mock('./pos-packages.service', () => ({
+  getGrant: vi.fn(),
+  redeemSessionInTx: vi.fn(),
+  reverseRedemptionInTx: vi.fn(),
+}));
+vi.mock('./pos-accounts.service', () => ({
+  getPlan: vi.fn(),
+}));
+vi.mock('./crm-contact-ensure', () => ({
+  ensureCrmContact: effects.ensureContact,
+}));
+vi.mock('./finance.service', () => ({
+  getFinSettings: vi.fn(),
+}));
+vi.mock('./pos/settings', () => ({
+  getPosCurrencyInTx: vi.fn(),
+}));
+vi.mock('./pos-accounts.logic', () => ({
+  grantToday: vi.fn(),
+}));
+import { getSlotsForEventType } from './scheduling-slots.service';
+import { POST } from '../../routes/api/gateway/actions/booking-create/+server';
+import { GET } from '../../routes/api/gateway/query/bookings/+server';
+import {
+  queryAssistantBookings,
+  listBookings,
+  previewAssistantBooking,
+  createBooking,
+} from './scheduling-bookings.service';
+
+const pg = new PGlite();
+const statements: string[] = [];
+const db = drizzle(pg, {
+  logger: { logQuery: (query: string) => statements.push(query) },
+});
+const ctx = {
+  db: db as unknown as CoreCtx['db'],
+  tenantId: 'synthetic-org',
+  profileId: '10000000-0000-4000-8000-000000000001',
+};
+const resource = '20000000-0000-4000-8000-000000000001';
+const service = '30000000-0000-4000-8000-000000000001';
+const contact = '40000000-0000-4000-8000-000000000001';
+const missing = '40000000-0000-4000-8000-000000000002';
+const start = new Date('2030-01-07T14:00:00Z');
+const input = {
+  eventTypeId: service,
+  start,
+  crmContactId: contact,
+  preferredResourceId: resource,
+  bypassRules: true,
+  strictContactReference: true,
+};
+const tables = [
+  schedBookings,
+  schedBookingStatusLog,
+  schedEventTypes,
+  schedEventTypeResources,
+  schedResources,
+  schedSchedules,
+  schedAvailability,
+  crmContacts,
+  hrEmployees,
+  hrHolidays,
+  hrLeaveRequests,
+  hrSettings,
+];
+beforeAll(async () => {
+  for (const table of tables) {
+    const cfg = getTableConfig(table);
+    await pg.exec(
+      `CREATE TABLE "${cfg.name}" (${cfg.columns.map((c) => `"${c.name}" ${c.getSQLType()}`).join(',')})`,
+    );
+  }
+  // Native create's conflict target needs its actual uniqueness contract.
+  await pg.exec('CREATE UNIQUE INDEX booking_uid ON sched_bookings(org_id,uid)');
+  await pg.exec('ALTER TABLE sched_bookings ALTER COLUMN id SET DEFAULT gen_random_uuid()');
+});
+afterAll(() => pg.close());
+beforeEach(async () => {
+  vi.clearAllMocks();
+  effects.ensureContact.mockResolvedValue(null);
+  await pg.exec('TRUNCATE ' + tables.map((t) => getTableConfig(t).name).join(','));
+  await pg.query(
+    'INSERT INTO sched_resources(id,org_id,name,timezone,active) VALUES ($1,$2,$3,$4,true)',
+    [resource, ctx.tenantId, 'Synthetic Staff', 'America/Lima'],
+  );
+  await pg.query(
+    `INSERT INTO sched_event_types(id,org_id,title,active,length,before_buffer,after_buffer,minimum_booking_notice,period_type,requires_confirmation) VALUES ($1,$2,$3,true,60,0,0,0,'unlimited',false)`,
+    [service, ctx.tenantId, 'Synthetic Service'],
+  );
+  await pg.query(
+    'INSERT INTO sched_event_type_resources(event_type_id,resource_id) VALUES ($1,$2)',
+    [service, resource],
+  );
+  await pg.query(
+    "INSERT INTO sched_schedules(id,org_id,resource_id,timezone) VALUES ('50000000-0000-4000-8000-000000000001',$1,$2,'America/Lima')",
+    [ctx.tenantId, resource],
+  );
+  await pg.exec(
+    "INSERT INTO sched_availability(schedule_id,days,start_time,end_time) VALUES ('50000000-0000-4000-8000-000000000001',ARRAY[1,2,3,4,5],'08:00','18:00')",
+  );
+  await pg.query('INSERT INTO crm_contacts(id,org_id,display_name) VALUES ($1,$2,$3)', [
+    contact,
+    ctx.tenantId,
+    'Synthetic Customer',
+  ]);
+});
+async function seedBookings(n: number) {
+  // Tied start times deliberately exercise stable id ordering, with 1 foreign row.
+  await pg.query(
+    `INSERT INTO sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,status,attendee_email,attendee_phone)
+    SELECT ('60000000-0000-4000-8000-'||lpad(i::text,12,'0'))::uuid,$1,i::text,$2,$3,$4::timestamptz,$4::timestamptz+interval '1 hour','accepted','fixture@example.invalid','+15550000000' FROM generate_series(1,$5::integer) i`,
+    [ctx.tenantId, service, resource, start, n],
+  );
+  await pg.query(
+    "INSERT INTO sched_bookings(id,org_id,start_time,status) VALUES ('70000000-0000-4000-8000-000000000001','foreign-org',$1,'accepted')",
+    [start],
+  );
+}
+
+async function tableSnapshot() {
+  return Promise.all(
+    tables.map(async (table) => {
+      const name = getTableConfig(table).name;
+      return { name, rows: (await pg.query(`SELECT * FROM "${name}"`)).rows };
+    }),
+  );
+}
+
+async function seedDayOff(kind: 'leave' | 'holiday', date = '2030-01-07') {
+  if (kind === 'holiday') {
+    await pg.query('INSERT INTO hr_holidays(org_id,date,name,enabled) VALUES ($1,$2,$3,true)', [
+      ctx.tenantId,
+      date,
+      'Synthetic Holiday',
+    ]);
+  } else {
+    await pg.query('INSERT INTO hr_employees(id,org_id,resource_id,name) VALUES ($1,$2,$3,$4)', [
+      missing,
+      ctx.tenantId,
+      resource,
+      'Synthetic Employee',
+    ]);
+    await pg.query(
+      "INSERT INTO hr_leave_requests(org_id,employee_id,from_date,to_date,status) VALUES ($1,$2,$3,$3,'approved')",
+      [ctx.tenantId, missing, date],
+    );
+  }
+}
+
+async function rejectsReadOnlyPreview(patch: Partial<typeof input> = {}) {
+  const before = await tableSnapshot();
+  statements.length = 0;
+  await expect(previewAssistantBooking(ctx, { ...input, ...patch })).rejects.toThrow(
+    'slot no longer available',
+  );
+  expect(statements.some((query) => /^\s*select\b/i.test(query))).toBe(true);
+  expect(
+    statements.filter((query) => /^\s*(insert|update|delete|truncate|alter|create)\b/i.test(query)),
+  ).toEqual([]);
+  expect(await tableSnapshot()).toEqual(before);
+  expect(effects.emit).not.toHaveBeenCalled();
+  expect(effects.ensureContact).not.toHaveBeenCalled();
+  expect(effects.accrual).not.toHaveBeenCalled();
+}
+
+function recordApiEvidence(name: string, result: unknown) {
+  const directory = process.env.HUB_TEST_EVIDENCE_DIR;
+  if (!directory) return;
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(path.join(directory, name + '.json'), JSON.stringify(result, null, 2) + '\n');
+}
+
+async function bookingRequest(confirm: boolean, at = start) {
+  try {
+    const response = await POST({
+      locals: {},
+      url: new URL('https://fixture.invalid/api/gateway/actions/booking-create'),
+      request: new Request('https://fixture.invalid/api/gateway/actions/booking-create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          confirm,
+          eventTypeId: service,
+          resourceId: resource,
+          crmContactId: contact,
+          start: at.toISOString(),
+          attendeeEmail: 'fixture@example.invalid',
+          attendeePhone: '+15550000000',
+        }),
+      }),
+    } as never);
+    return { status: response.status, body: await response.json() };
+  } catch (err) {
+    if (!isHttpError(err)) throw err;
+    return { status: err.status, body: err.body };
+  }
+}
+
+describe('assistant Request/Response to persisted SQL booking flow', () => {
+  it.each(['leave', 'holiday'] as const)(
+    'previews without reservation, rejects competing %s hours, then books an open dated override',
+    async (kind) => {
+      await pg.exec(`
+        UPDATE sched_availability SET days=ARRAY[]::integer[];
+        INSERT INTO sched_availability(schedule_id,days,start_time,end_time,date) VALUES
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'08:00','18:00','2030-01-07'),
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'10:00','12:00','2030-01-08')
+      `);
+      const before = await tableSnapshot();
+      const preview = await bookingRequest(false);
+      expect(preview.status).toBe(200);
+      expect(preview.body.preview).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+        timezone: 'America/Lima',
+      });
+      expect(preview.body.preview.attendeeEmail).not.toBe('fixture@example.invalid');
+      expect(preview.body.preview.attendeePhone).not.toBe('+15550000000');
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+      await seedDayOff(kind);
+      const blockedBefore = await tableSnapshot();
+      const blockedPreview = await bookingRequest(false);
+      const blockedConfirm = await bookingRequest(true);
+      expect(blockedPreview).toEqual({ status: 409, body: { message: 'slot unavailable' } });
+      expect(blockedConfirm).toEqual(blockedPreview);
+      expect(await tableSnapshot()).toEqual(blockedBefore);
+      expect(effects.emit).not.toHaveBeenCalled();
+      const open = new Date('2030-01-08T15:00:00Z');
+      const openPreview = await bookingRequest(false, open);
+      expect(openPreview.status).toBe(200);
+      expect(await tableSnapshot()).toEqual(blockedBefore);
+      const committed = await bookingRequest(true, open);
+      expect(committed.status).toBe(200);
+      expect(committed.body.booking).toMatchObject({
+        id: expect.any(String),
+        status: 'accepted',
+        crmContactId: contact,
+        resourceId: resource,
+        startTime: open.toISOString(),
+      });
+      const persisted = (
+        await pg.query(
+          'SELECT id,org_id,resource_id,crm_contact_id,start_time,status FROM sched_bookings',
+        )
+      ).rows;
+      expect(persisted).toMatchObject([{ id: committed.body.booking.id, org_id: ctx.tenantId }]);
+      expect(
+        (await pg.query('SELECT booking_id,to_status FROM sched_booking_status_log')).rows,
+      ).toEqual([{ booking_id: committed.body.booking.id, to_status: 'accepted' }]);
+      const listed = await GET({
+        locals: {},
+        url: new URL('https://fixture.invalid/api/gateway/query/bookings'),
+      } as never);
+      const listBody = await listed.json();
+      expect(listBody).toMatchObject({ total: 1, returned: 1, truncated: false });
+      expect(listBody.bookings[0].id).toBe(committed.body.booking.id);
+      expect(listBody.bookings[0].attendeeEmail).not.toBe('fixture@example.invalid');
+      recordApiEvidence('booking-' + kind, {
+        boundary:
+          'Real Request/Response handlers and production services on in-memory PGlite; synthetic identity; events and external effects mocked. No HTTP server or native RLS qualification.',
+        preview,
+        previewTablesUnchanged: true,
+        blockedPreview,
+        blockedConfirm,
+        blockedTablesUnchanged: true,
+        openPreview,
+        committed,
+        persisted,
+        list: { status: listed.status, body: listBody },
+      });
+    },
+  );
+});
+
+describe('C03 native shared slot preflight', () => {
+  it('resolves identities and timezone without mutating any table or invoking effects', async () => {
+    const before = await tableSnapshot();
+    const preview = await previewAssistantBooking(ctx, input);
+    expect(preview).toMatchObject({
+      eventTypeId: service,
+      resourceId: resource,
+      crmContactId: contact,
+      serviceTitle: 'Synthetic Service',
+      contactName: 'Synthetic Customer',
+      resourceName: 'Synthetic Staff',
+      timezone: 'America/Lima',
+      start: start.toISOString(),
+      end: '2030-01-07T15:00:00.000Z',
+      reservesSlot: false,
+    });
+    expect((await pg.query('SELECT count(*)::int n FROM sched_bookings')).rows).toEqual([{ n: 0 }]);
+    expect((await pg.query('SELECT count(*)::int n FROM sched_booking_status_log')).rows).toEqual([
+      { n: 0 },
+    ]);
+    expect(effects.emit).not.toHaveBeenCalled();
+    expect(effects.accrual).not.toHaveBeenCalled();
+    expect(effects.ensureContact).not.toHaveBeenCalled();
+    expect(await tableSnapshot()).toEqual(before);
+  });
+  it.each(['leave', 'holiday'] as const)(
+    'rejects %s during preview and revalidates at commit without writes or effects',
+    async (kind) => {
+      expect(await previewAssistantBooking(ctx, input)).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+      });
+      await seedDayOff(kind);
+      await rejectsReadOnlyPreview();
+      const before = await tableSnapshot();
+      await expect(createBooking(ctx, input)).rejects.toThrow('slot no longer available');
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['leave', 'holiday'] as const)(
+    '%s replaces dated working hours for preview, confirmation and slot listing',
+    async (kind) => {
+      await pg.exec('UPDATE sched_availability SET days=ARRAY[]::integer[]');
+      await pg.exec(`
+        INSERT INTO sched_availability(schedule_id,days,start_time,end_time,date) VALUES
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'08:00','18:00','2030-01-07'),
+          ('50000000-0000-4000-8000-000000000001',ARRAY[]::integer[],'10:00','12:00','2030-01-08')
+      `);
+      expect(await previewAssistantBooking(ctx, input)).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+      });
+      const from = new Date('2030-01-07T05:00:00Z');
+      const to = new Date('2030-01-09T05:00:00Z');
+      const beforeSlots = await getSlotsForEventType(ctx, service, from, to);
+      expect(beforeSlots?.slots.some((slot) => slot.start.getTime() === start.getTime())).toBe(
+        true,
+      );
+      await seedDayOff(kind);
+      await rejectsReadOnlyPreview();
+      const before = await tableSnapshot();
+      await expect(createBooking(ctx, input)).rejects.toThrow('slot no longer available');
+      const afterSlots = await getSlotsForEventType(ctx, service, from, to);
+      expect(afterSlots?.slots.map((slot) => slot.start.toISOString())).toEqual([
+        '2030-01-08T15:00:00.000Z',
+        '2030-01-08T16:00:00.000Z',
+      ]);
+      expect(
+        await previewAssistantBooking(ctx, {
+          ...input,
+          start: new Date('2030-01-08T15:00:00Z'),
+        }),
+      ).toMatchObject({ availability: 'available-at-preview', reservesSlot: false });
+      await rejectsReadOnlyPreview({ start: new Date('2030-01-08T14:00:00Z') });
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['pending', 'rejected', 'cancelled'])(
+    'keeps ordinary availability for %s leave and disabled or foreign holidays',
+    async (status) => {
+      await seedDayOff('leave');
+      await pg.query('UPDATE hr_leave_requests SET status=$1', [status]);
+      await seedDayOff('holiday');
+      await pg.exec('UPDATE hr_holidays SET enabled=false');
+      await pg.query('INSERT INTO hr_holidays(org_id,date,name,enabled) VALUES ($1,$2,$3,true)', [
+        'foreign-org',
+        '2030-01-07',
+        'Foreign Holiday',
+      ]);
+      const before = await tableSnapshot();
+      expect(await previewAssistantBooking(ctx, input)).toMatchObject({
+        availability: 'available-at-preview',
+        reservesSlot: false,
+      });
+      expect(await tableSnapshot()).toEqual(before);
+      expect(effects.emit).not.toHaveBeenCalled();
+      expect(effects.ensureContact).not.toHaveBeenCalled();
+      expect(effects.accrual).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['leave', 'holiday'] as const)(
+    'honors %s on the resource local date when UTC is the next day',
+    async (kind) => {
+      const late = { ...input, start: new Date('2030-01-08T02:00:00Z') };
+      await pg.exec("UPDATE sched_availability SET start_time='20:00',end_time='23:00'");
+      expect(await previewAssistantBooking(ctx, late)).toMatchObject({
+        availability: 'available-at-preview',
+      });
+      await seedDayOff(kind);
+      await rejectsReadOnlyPreview({ start: late.start });
+      await expect(createBooking(ctx, late)).rejects.toThrow('slot no longer available');
+    },
+  );
+  it.each([{ eventTypeId: missing }, { preferredResourceId: missing }, { crmContactId: missing }])(
+    'rejects unknown/foreign reference %j',
+    async (patch) => {
+      await expect(previewAssistantBooking(ctx, { ...input, ...patch })).rejects.toThrow();
+    },
+  );
+  it('rejects a foreign service, contact and resource even when their ids exist', async () => {
+    for (const table of ['sched_event_types', 'crm_contacts', 'sched_resources']) {
+      await pg.query(`UPDATE ${table} SET org_id='foreign-org'`);
+      await expect(previewAssistantBooking(ctx, input)).rejects.toThrow();
+      await pg.query(`UPDATE ${table} SET org_id=$1`, [ctx.tenantId]);
+    }
+  });
+  it('rejects an inactive event type before preview without writes or effects', async () => {
+    await pg.query('UPDATE sched_event_types SET active=false WHERE id=$1', [service]);
+    await rejectsReadOnlyPreview();
+  });
+  it('rejects an inactive assigned resource before preview without writes or effects', async () => {
+    await pg.query('UPDATE sched_resources SET active=false WHERE id=$1', [resource]);
+    await rejectsReadOnlyPreview();
+  });
+  it('rejects an existing same-tenant unassigned resource before preview without writes or effects', async () => {
+    await pg.query(
+      'INSERT INTO sched_resources(id,org_id,name,timezone,active) VALUES ($1,$2,$3,$4,true)',
+      [missing, ctx.tenantId, 'Synthetic Unassigned Staff', 'America/Lima'],
+    );
+    await rejectsReadOnlyPreview({ preferredResourceId: missing });
+  });
+  it('rejects a soft-deleted explicit contact before preview without writes or effects', async () => {
+    await pg.query('UPDATE crm_contacts SET deleted_at=$1 WHERE id=$2', [
+      new Date('2030-01-01T00:00:00Z'),
+      contact,
+    ]);
+    await rejectsReadOnlyPreview();
+  });
+  it('rejects an already occupied slot before preview without writes or effects', async () => {
+    await seedBookings(1);
+    await rejectsReadOnlyPreview();
+  });
+  it('revalidates availability at commit after another booking takes the previewed slot', async () => {
+    await previewAssistantBooking(ctx, input);
+    await seedBookings(1);
+    await expect(createBooking(ctx, input)).rejects.toThrow('slot no longer available');
+    expect(effects.emit).not.toHaveBeenCalled();
+  });
+  it('revalidates strict contact at commit; shared UI fallback remains optional', async () => {
+    await previewAssistantBooking(ctx, input);
+    await pg.exec('DELETE FROM crm_contacts');
+    await expect(createBooking(ctx, input)).rejects.toThrow();
+    expect(effects.ensureContact).not.toHaveBeenCalled();
+  });
+});
+
+describe('C04 actual SQL completeness and masking', () => {
+  it('reports 501 with 500 bounded rows, ties ordered stably, and exact count mode', async () => {
+    await seedBookings(501);
+    const opts = {
+      from: start,
+      to: start,
+      status: ['accepted'],
+      maskAttendeePii: true,
+    };
+    const result = await queryAssistantBookings(ctx, opts);
+    expect(result).toMatchObject({
+      total: 501,
+      returned: 500,
+      truncated: true,
+      limit: 500,
+      mode: 'list',
+    });
+    expect(result.bookings[0].id).toBe('60000000-0000-4000-8000-000000000501');
+    expect(result.bookings[499].id).toBe('60000000-0000-4000-8000-000000000002');
+    expect(result.bookings[0].attendeeEmail).not.toBe('fixture@example.invalid');
+    expect(result.bookings[0].attendeePhone).not.toBe('+15550000000');
+    expect(await queryAssistantBookings(ctx, { ...opts, countOnly: true })).toMatchObject({
+      total: 501,
+      returned: 0,
+      bookings: [],
+      mode: 'count',
+    });
+    expect(await listBookings(ctx, opts)).toHaveLength(500);
+    const listResponse = await GET({
+      locals: {},
+      url: new URL('https://fixture.invalid/api/gateway/query/bookings'),
+    } as never);
+    const listBody = await listResponse.json();
+    expect(listBody).toMatchObject({ total: 501, returned: 500, truncated: true, limit: 500 });
+    expect(listBody.bookings).toHaveLength(500);
+    const countResponse = await GET({
+      locals: {},
+      url: new URL('https://fixture.invalid/api/gateway/query/bookings?mode=count'),
+    } as never);
+    const countBody = await countResponse.json();
+    expect(countBody).toMatchObject({ total: 501, returned: 0, bookings: [], mode: 'count' });
+    recordApiEvidence('booking-bounded-list', {
+      boundary:
+        'Production bookings GET handler and queryAssistantBookings SQL on in-memory PGlite; synthetic identity.',
+      list: { status: listResponse.status, body: listBody },
+      count: { status: countResponse.status, body: countBody },
+    });
+  });
+  it('proves complete narrow/empty ranges and keeps inclusive instant boundaries', async () => {
+    await seedBookings(2);
+    expect(await queryAssistantBookings(ctx, { from: start, to: start })).toMatchObject({
+      total: 2,
+      truncated: false,
+    });
+    expect(
+      await queryAssistantBookings(ctx, {
+        from: new Date(start.getTime() + 1),
+      }),
+    ).toMatchObject({ total: 0, returned: 0, truncated: false });
+    expect(await queryAssistantBookings(ctx, { status: ['cancelled'] })).toMatchObject({
+      total: 0,
+    });
+  });
+});

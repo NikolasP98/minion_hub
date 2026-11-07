@@ -46,6 +46,8 @@ describe('UI audit route inventory', () => {
       await mkdir(path.dirname(routeFile), { recursive: true });
       await writeFile(routeFile, '<h1>Tracked screen</h1>\n');
       execFileSync('git', ['init', '--quiet'], { cwd: root });
+      // Keep signing isolated to real repositories, not disposable test fixtures.
+      execFileSync('git', ['config', '--local', 'commit.gpgsign', 'false'], { cwd: root });
       execFileSync('git', ['add', '.'], { cwd: root });
       execFileSync(
         'git',
@@ -93,6 +95,8 @@ describe('UI audit route inventory', () => {
         })}\n`,
       );
       execFileSync('git', ['init', '--quiet'], { cwd: root });
+      // Keep signing isolated to real repositories, not disposable test fixtures.
+      execFileSync('git', ['config', '--local', 'commit.gpgsign', 'false'], { cwd: root });
       execFileSync('git', ['add', '.'], { cwd: root });
       execFileSync(
         'git',

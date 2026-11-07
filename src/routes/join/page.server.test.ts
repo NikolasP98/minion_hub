@@ -32,15 +32,22 @@ const actor = {
   displayName: 'Applicant',
 };
 const event = () => ({ locals: {}, url: new URL('http://localhost/join') }) as never;
-const formEvent = (message: string | Blob = ' hello ') => {
+const formEvent = async (message: string | Blob = ' hello ') => {
   const body = new FormData();
   body.set('message', message);
   body.set('targetOrganizationId', 'configured-org');
   body.set('organizationId', 'foreign');
   body.set('userId', 'foreign');
+  // Materialize multipart bytes before the bounded reader can cancel the synthetic producer.
+  const encoded = new Request('http://localhost/join?/request', { method: 'POST', body });
+  const bytes = await encoded.arrayBuffer();
   return {
     locals: {},
-    request: new Request('http://localhost/join?/request', { method: 'POST', body }),
+    request: new Request(encoded.url, {
+      method: 'POST',
+      headers: encoded.headers,
+      body: bytes,
+    }),
   } as never;
 };
 beforeEach(() => {
@@ -80,7 +87,7 @@ describe('generic join request flow', () => {
   });
   it('refuses a form whose target changed before submission without using its old target as authority', async () => {
     mocks.target.mockResolvedValue({ id: 'changed-org', name: 'Changed workspace' });
-    expect(await actions.request!(formEvent())).toMatchObject({ status: 409 });
+    expect(await actions.request!(await formEvent())).toMatchObject({ status: 409 });
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it('keeps a failed pending read visible instead of offering another request', async () => {
@@ -88,7 +95,7 @@ describe('generic join request flow', () => {
     await expect(load(event())).rejects.toThrow('Unavailable');
   });
   it('binds the form write to the authenticated user and shared configured target', async () => {
-    await expect(actions.request!(formEvent())).rejects.toMatchObject({
+    await expect(actions.request!(await formEvent())).rejects.toMatchObject({
       status: 303,
       location: '/join/sent',
     });
@@ -97,13 +104,15 @@ describe('generic join request flow', () => {
   });
   it('does not write or claim success after ambiguous target resolution', async () => {
     mocks.target.mockRejectedValue(new Error('Ambiguous'));
-    await expect(actions.request!(formEvent())).rejects.toThrow('Ambiguous');
+    await expect(actions.request!(await formEvent())).rejects.toThrow('Ambiguous');
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it.each(['x'.repeat(501), new Blob(['file'])])(
     'rejects invalid form messages before target selection and mutation',
     async (message) => {
-      await expect(actions.request!(formEvent(message))).rejects.toMatchObject({ status: 400 });
+      await expect(actions.request!(await formEvent(message))).rejects.toMatchObject({
+        status: 400,
+      });
       expect(mocks.target).not.toHaveBeenCalled();
       expect(mocks.create).not.toHaveBeenCalled();
     },
@@ -129,6 +138,9 @@ describe('generic join request flow', () => {
       }),
     } as never;
     await expect(actions.request!(oversized)).rejects.toMatchObject({ status: 413 });
+    await expect(actions.request!(await formEvent('x'.repeat(4097)))).rejects.toMatchObject({
+      status: 413,
+    });
     expect(mocks.target).not.toHaveBeenCalled();
     expect(mocks.create).not.toHaveBeenCalled();
   });

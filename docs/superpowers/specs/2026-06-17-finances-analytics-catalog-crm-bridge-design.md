@@ -25,13 +25,14 @@ Build order **C-schema → S → C-rest → A → P → B** (see Rollout):
   page, additively and without coupling the two modules.
 
 ## Constraints / DRY-relational principles (user steer: "keep the database tables DRY, avoid duplicate data,
+
 promote relational connections")
 
 - **Canonical/mutable attributes live in exactly one table**, referenced by FK. Product name/category/price
   live only in `fin_products`; client identity lives in `fin_clients`.
 - **As-billed snapshots are kept, deliberately.** The line item's `code`/`description` and the invoice's
   `client_name`/`client_doc_number`/`client_email` are historical facts (what was actually billed — the 5
-  drifted codes prove names change over time). These are NOT redundant duplication; they stay. We *add*
+  drifted codes prove names change over time). These are NOT redundant duplication; they stay. We _add_
   relations alongside them.
 - **No finance data is copied into CRM tables.** The bridge computes revenue/invoice aggregates via a
   relational join at read time, so nothing goes stale.
@@ -61,17 +62,17 @@ promote relational connections")
 `fin_products` (Drizzle in `src/server/db/pg-finance-schema.ts`; migration
 `supabase/migrations/20260617140000_fin_products.sql`):
 
-| column      | type        | notes                                   |
-| ----------- | ----------- | --------------------------------------- |
-| `id`        | uuid pk     | `gen_random_uuid()`                     |
-| `org_id`    | text        | RLS GUC scope                           |
-| `code`      | text        | billing code (e.g. `AF1`); the join key |
-| `name`      | text        | canonical display name                  |
-| `category`  | text        | nullable                                |
-| `unit_price`| numeric     | nullable reference price                |
-| `active`    | boolean     | default true                            |
-| `metadata`  | jsonb       | default `{}`                            |
-| `created_at`/`updated_at` | timestamptz | defaultNow                |
+| column                    | type        | notes                                   |
+| ------------------------- | ----------- | --------------------------------------- |
+| `id`                      | uuid pk     | `gen_random_uuid()`                     |
+| `org_id`                  | text        | RLS GUC scope                           |
+| `code`                    | text        | billing code (e.g. `AF1`); the join key |
+| `name`                    | text        | canonical display name                  |
+| `category`                | text        | nullable                                |
+| `unit_price`              | numeric     | nullable reference price                |
+| `active`                  | boolean     | default true                            |
+| `metadata`                | jsonb       | default `{}`                            |
+| `created_at`/`updated_at` | timestamptz | defaultNow                              |
 
 - Unique `(org_id, code)`. RLS enable+force + `fin_products_org_guc` policy. Grant to `app_ledger`.
 
@@ -88,7 +89,7 @@ public.fin_products(id) on delete set null`; index `(product_id)`. The item keep
 - `importFromBilling(ctx)` — insert a catalog row for every distinct billed `code` using the most-recent
   `description` as the seed name, `onConflictDoNothing` on `(org_id, code)` (never clobbers a curated name).
   Then backfill: `update fin_invoice_items set product_id = p.id from fin_products p where items.org_id =
-  p.org_id and items.code = p.code and items.product_id is null`. Returns `{ created, linked }`.
+p.org_id and items.code = p.code and items.product_id is null`. Returns `{ created, linked }`.
 - `catalogCoverage(ctx)` — `{ cataloged, billedCodesNotInCatalog, catalogEntriesNeverBilled }` for the
   match-coverage banner.
 
@@ -125,15 +126,21 @@ The denormalized `client_name`/`client_doc_number`/`client_email` stay (as-bille
 
 The dashboard takes a **period**: `{ from?: ISO, to?: ISO, bucket: 'day'|'week'|'month' }`, parsed from the
 page URL query (`?from=&to=&bucket=`). Default = last 12 months, `bucket=month`. Every aggregate below is
-parameterized by this period and filters `fin_invoices.issued_at` to `[from, to)`; series bucket via
-`date_trunc(bucket, issued_at)`. Validate/clamp inputs server-side (valid ISO, `from<=to`, bucket in the
-enum) → fall back to defaults on bad input. A `parsePeriod(url)` helper (pure, tested) builds the period.
+parameterized by this period and filters `fin_invoices.issued_at` to `[from, to)`. The dashboard load
+resolves picked days to absolute instants in the organization's finance timezone with
+`resolvePeriodWindow`; parsing and fallback rules belong to
+[`parsePeriod`](../../../src/lib/finance/period.ts). Series bucketing, including the optional timezone
+argument and its compatibility default, follows the
+[`revenueSeries` API comment](../../../src/server/services/finance.service.ts).
+
+The assistant endpoint has its own strict business-calendar contract, documented in
+[`query/finance/+server.ts`](../../../src/routes/api/gateway/query/finance/+server.ts).
 
 ### Service aggregates (`finance.service.ts`) — all take `(ctx, period)`
 
 - `financeSummary(ctx, period)` → `{ totalNet, totalGross, totalDiscount, discountRate (discount/gross),
-  invoiceCount, avgTicket (net/invoiceCount), uniqueClients, newClients (clients whose FIRST-EVER invoice
-  falls in the period), voidCount, voidRate, currency }`. These are the industry-standard sales KPIs the data
+invoiceCount, avgTicket (net/invoiceCount), uniqueClients, newClients (clients whose FIRST-EVER invoice
+falls in the period), voidCount, voidRate, currency }`. These are the industry-standard sales KPIs the data
   supports (revenue, AOV/avg-ticket, discount rate, unique/new customers, void rate). MoM/period growth is
   derived in the UI from the series (last bucket vs previous).
 - `revenueSeries(ctx, period)` → rows `{ bucket, invoices, revenue (net), discount, gross }` over the bucketed
@@ -145,8 +152,7 @@ enum) → fall back to defaults on bad input. A `parsePeriod(url)` helper (pure,
   Revenue/Quantity toggle modes (UI sorts/relabels).
 - `topClients(ctx, period, { limit = 10 })` → per-client net revenue within the period (group by `client_id`,
   join `fin_clients` for name), top 10.
-- Every aggregate is **Valkey-cached** keyed by `(org, from, to, bucket)` and busted on sync completion — see
-  the Caching section.
+- Aggregate caching and invalidation follow the [Caching section](#caching-valkey-not-cloudflare).
 
 ### UI (`/finances/+page.{server.ts,svelte}`)
 
@@ -159,7 +165,7 @@ enum) → fall back to defaults on bad input. A `parsePeriod(url)` helper (pure,
   growth % · Void rate.
 - **Revenue area chart** (ECharts via `src/lib/components/charts/Chart.svelte`): x = bucket; **toggle**
   ([Per period ↔ Cumulative]) switches the net series between bucket value and running total; a **discount**
-  series overlaid (matching mode) so discounts are visible. *"Includes discounts"* = net area + visible
+  series overlaid (matching mode) so discounts are visible. _"Includes discounts"_ = net area + visible
   discount series + Discount KPI.
 - **Avg-ticket chart** (ECharts line): avg ticket (net/invoices) per bucket over the range.
 - **Top Products** bar with a **toggle** ([Revenue ↔ Quantity]); labels use catalog names.
@@ -183,7 +189,7 @@ enum) → fall back to defaults on bad input. A `parsePeriod(url)` helper (pure,
   `bothEnabled(ctx,'crm','finances')`. Keyed by `contact_id` (the roster already has it — no need to expose
   phones to the client). This service is the ONLY place the two domains meet; neither imports the other.
 - `contactFinanceSummary(ctx, contactId)` → `{ revenue, invoices, lastPurchaseAt, recentInvoices: [{ id,
-  documentId, issuedAt, total, status }] }` (recent limit 10) via the same join scoped to one contact; `null`
+documentId, issuedAt, total, status }] }` (recent limit 10) via the same join scoped to one contact; `null`
   unless `bothEnabled` and a match exists.
 
 ### `/crm/customers`
@@ -215,15 +221,16 @@ report.
 
 **Fix — `upsertInvoicesBatch(ctx, invoices: CanonicalInvoice[], productMap: Map<code,id>)`:** one `withOrgCore`
 transaction per **page** (not per invoice), with **set-based** statements:
+
 1. Multi-row upsert all clients in the page → `insert … values (…N rows) on conflict (org,provider,
-   provider_ref) do update …` returning `(provider_ref → id)`.
+provider_ref) do update …` returning `(provider_ref → id)`.
 2. Multi-row upsert all invoices (resolving `client_id` from step 1's map, `product_id` not here) → returning
    `(provider_ref → invoice id)`.
 3. `delete from fin_invoice_items where invoice_id = any($invoiceIds)` (one statement for the whole page).
 4. Multi-row insert all items (resolving `product_id` from `productMap` by `code`).
 5. `delete from fin_payments where invoice_id = any($invoiceIds)` + multi-row insert all payments.
-→ ~6 statements + 2 tx-overhead **per page** instead of per invoice: **~100× fewer round-trips**. A 100-row
-page goes from ~100s to ~1s; full backfill from ~30–60 min to ~½–1 min.
+   → ~6 statements + 2 tx-overhead **per page** instead of per invoice: **~100× fewer round-trips**. A 100-row
+   page goes from ~100s to ~1s; full backfill from ~30–60 min to ~½–1 min.
 
 - `advanceJob` calls `upsertInvoicesBatch(page.invoices, productMap)` once per page (replacing the per-invoice
   loop), builds `productMap` once per run (`select code,id from fin_products`), and `heartbeat`s after each page
@@ -251,7 +258,9 @@ set (e.g. 5000) so client-side search/sort is complete. This mirrors `crm-slowne
 - **Valkey-cache the finance aggregates** (`financeSummary`, `revenueSeries`, `topProducts`, `topClients`, and
   `clientRevenueRows`) with the existing `cached(key, {ttl,swr,tags}, fn)` + `keys.hub(name,{t,…})` helper
   (same pattern as `listContactsCached`). Key includes the org AND the period `(from,to,bucket)` so each range
-  is cached independently. TTL ~2m + short SWR. Define `financeCacheTags(orgId)`; **bust them on sync
+  is cached independently. Series keys also distinguish stock-module availability and explicit bucket
+  timezones from callers using the database session default. TTL ~2m + short SWR.
+  Define `financeCacheTags(orgId)`; **bust them on sync
   completion** (in `advanceJob` on success/finish) and on catalog/source writes, so a finished sync
   immediately reflects fresh numbers.
 - **Cloudflare is NOT applicable here:** these are per-org, authenticated, dynamic API/page responses — CF edge
@@ -269,7 +278,8 @@ set (e.g. 5000) so client-side search/sort is complete. This mirrors `crm-slowne
 - Batch sync: a page is atomic; on any row error the page tx rolls back, the job ends `failed` with the cursor
   preserved, and the resume re-pulls the page idempotently.
 - Bridge degrades to empty when either module is disabled or no phone match — never errors.
-- Bad period query params clamp to defaults; charts render only available data (empty series omitted).
+- Dashboard period parsing follows [Period filter](#period-filter-drives-every-aggregate); charts render
+  only available data (empty series omitted).
 - Cache miss/failure falls back to a live query (the `cached` helper degrades, per the cache-backend hardening).
 
 ## Testing
