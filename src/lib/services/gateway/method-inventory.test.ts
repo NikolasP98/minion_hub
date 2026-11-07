@@ -165,7 +165,7 @@ const NOT_RPC: Record<string, string> = {
 const NOT_RPC_TEMPLATES: Record<string, string> = {
   'src/lib/utils/agent-settings-schema.ts agents.': 'gateway config path',
   'src/lib/components/agents/AgentSettingsPanel.svelte agents.': 'gateway config path',
-  'src/routes/(app)/home/settings/+page.svelte agents.': 'gateway config path',
+  'src/routes/(app)/chat/settings/+page.svelte agents.': 'gateway config path',
   'src/lib/plugins/PluginIframe.svelte plugins.': 'error message text',
 };
 
