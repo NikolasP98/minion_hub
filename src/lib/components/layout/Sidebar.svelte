@@ -16,6 +16,7 @@
   import SidebarUtilities from './SidebarUtilities.svelte';
   import OrgPicker from './OrgPicker.svelte';
   import ModuleSwitcher from './ModuleSwitcher.svelte';
+  import PersonalSidebar from '$lib/components/navigation/PersonalSidebar.svelte';
   import { navMode } from '$lib/state/ui/nav-mode.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -356,6 +357,8 @@
             </Tooltip>
           </NavContextMenu>
         {/each}
+      {:else if navMode.mode === 'personal' || !navMode.canUseFull}
+        <PersonalSidebar {collapsed} />
       {:else}
         {#each orderedSections as section (section.id)}
           {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}

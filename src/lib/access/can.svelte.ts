@@ -1,7 +1,12 @@
 import { page } from '$app/state';
 import { can } from './policy';
 import { canAccessRoute, type RouteAccessContext } from '$lib/routes/route-access-policies';
-import { featureForPath, resolveModuleForPath } from '$lib/modules/availability';
+import {
+  featureForPath,
+  resolveModuleForPath,
+  isModuleAvailable,
+  type ModuleStates,
+} from '$lib/modules/availability';
 import { isModuleVisibleForKind, type OrgKind } from '$lib/org-kind';
 import { canonicalPath } from '$lib/canonical-path';
 import { instanceAllowed, resolveNavInstance } from '$lib/nav/custom-sections';
@@ -13,6 +18,7 @@ interface ClientAccessData {
   user?: { role?: 'user' | 'admin' } | null;
   permissions?: { permissions?: string[] } | null;
   activeOrgKind?: OrgKind | null;
+  moduleStates?: ModuleStates;
 }
 
 function accessData(): ClientAccessData {
@@ -91,10 +97,20 @@ export function canViewPath(path: string): boolean {
   if (hit) {
     if (!planGrantsPath(hit.target)) return false;
     const m = resolveModuleForPath(hit.target);
-    if (m && !isModuleVisibleForKind(m.moduleId, kind)) return false;
+    if (
+      m &&
+      (!isModuleVisibleForKind(m.moduleId, kind) ||
+        !isModuleAvailable(m.moduleId, { kind, moduleStates: accessData().moduleStates ?? {} }))
+    )
+      return false;
     return instanceAllowed(hit.page, new Set(accessData().permissions?.permissions ?? []));
   }
   const match = resolveModuleForPath(path.split(/[?#]/, 1)[0] || '/');
-  if (match && !isModuleVisibleForKind(match.moduleId, kind)) return false;
+  if (
+    match &&
+    (!isModuleVisibleForKind(match.moduleId, kind) ||
+      !isModuleAvailable(match.moduleId, { kind, moduleStates: accessData().moduleStates ?? {} }))
+  )
+    return false;
   return canAccessRoute(path, routeAccessContext());
 }

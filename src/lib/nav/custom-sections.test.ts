@@ -367,3 +367,33 @@ describe('aliasableTargets / normalizeNavConfig', () => {
     expect(n.sections[0].pages[0].kind).toBe('link');
   });
 });
+
+describe('empty section access', () => {
+  it('retains a truly empty granted section but not a denied-only page list', () => {
+    const empty = cfg([section('aaaaaa', 'empty', [])]);
+    expect(visibleNavConfig(empty, new Set(['section:aaaaaa:view']), false).sections).toHaveLength(
+      1,
+    );
+    expect(visibleNavConfig(empty, new Set(), false).sections).toEqual([]);
+    expect(visibleNavConfig(empty, new Set(), true).sections).toEqual([]);
+    const denied = cfg([section('aaaaaa', 'empty', [page('bbbbbb', 'sell')])]);
+    expect(visibleNavConfig(denied, new Set(['section:aaaaaa:view']), false).sections).toEqual([]);
+    expect(visibleNavConfig(denied, new Set(), true).sections).toEqual([]);
+  });
+});
+
+describe('section discovery when permitted pages are hidden', () => {
+  it('retains the permitted section as empty without exposing hidden page data', () => {
+    const config = cfg([
+      section('aaaaaa', 'empty', [page('bbbbbb', 'sell', '/pos/sell', { hidden: true })]),
+    ]);
+    const result = visibleNavConfig(
+      config,
+      new Set(['section:aaaaaa:view', 'page:bbbbbb:view']),
+      false,
+    );
+    expect(result.sections).toHaveLength(1);
+    expect(result.sections[0].pages).toEqual([]);
+    expect(visibleNavConfig(config, new Set(['section:aaaaaa:view']), false).sections).toEqual([]);
+  });
+});

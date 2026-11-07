@@ -12,7 +12,7 @@
    * rail.
    */
   import { goto } from '$app/navigation';
-  import { ChevronsUpDown, LayoutList, Check, PanelLeft } from 'lucide-svelte';
+  import { ChevronsUpDown, LayoutList, Check, PanelLeft, House } from 'lucide-svelte';
   import { Button, Dropdown, Spinner, iconSizes, type DropdownItem } from '$lib/components/ui';
   import { visibleModules } from '$lib/nav/modules';
   import { navMode, navModuleData } from '$lib/state/ui/nav-mode.svelte';
@@ -30,21 +30,40 @@
   let { collapsed = false, onExpand, busy = false }: Props = $props();
 
   const FULL = '__full';
+  const PERSONAL = '__personal';
 
   const modules = $derived(visibleModules(navModuleData(), canViewPath));
 
   const active = $derived(navMode.isModule ? navMode.activeModule : null);
-  const ActiveIcon = $derived(active?.icon ?? LayoutList);
-  const label = $derived(active?.label ?? m.nav_allSections());
+  const ActiveIcon = $derived(
+    active?.icon ?? (navMode.mode === 'personal' || !navMode.canUseFull ? House : LayoutList),
+  );
+  const label = $derived(
+    active?.label ??
+      (navMode.mode === 'personal' || !navMode.canUseFull
+        ? m.nav_personalHome()
+        : m.nav_allSections()),
+  );
 
   const items = $derived<DropdownItem[]>([
+    { value: PERSONAL, label: m.nav_personalHome(), icon: House },
+    { value: 'home-div', label: '', divider: true },
     ...modules.map((mod) => ({ value: mod.id, label: mod.label, icon: mod.icon })),
-    { value: 'div', label: '', divider: true },
-    { value: FULL, label: m.nav_allSections(), icon: LayoutList },
+    ...(navMode.canUseFull
+      ? [
+          { value: 'div', label: '', divider: true },
+          { value: FULL, label: m.nav_allSections(), icon: LayoutList },
+        ]
+      : []),
   ]);
 
   function onSelect(value: string) {
-    if (value === FULL) {
+    if (value === PERSONAL) {
+      navMode.setMode('personal');
+      void goto('/account/home');
+      return;
+    }
+    if (value === FULL && navMode.canUseFull) {
       navMode.setMode('full');
       return;
     }
@@ -55,7 +74,11 @@
   }
 
   function isSelected(value: string): boolean {
-    return value === FULL ? !navMode.isModule : navMode.isModule && active?.id === value;
+    return value === PERSONAL
+      ? navMode.mode === 'personal'
+      : value === FULL
+        ? navMode.mode === 'full'
+        : navMode.isModule && active?.id === value;
   }
 </script>
 

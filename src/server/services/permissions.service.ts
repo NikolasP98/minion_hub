@@ -4,7 +4,7 @@ import { resolveCapabilities, type Capabilities } from './rbac.service';
 import { readNavConfig } from './nav-config.service';
 import { getCoreDb } from '$server/db/pg-client';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
-import { EMPTY_NAV_CONFIG, navPageKeys } from '$lib/nav/custom-sections';
+import { EMPTY_NAV_CONFIG, navPageKeys, sectionViewKey } from '$lib/nav/custom-sections';
 import type { LoadCtx } from './types';
 
 export interface PermissionsLoadResult {
@@ -122,7 +122,11 @@ export async function loadPermissionsForUser(
   if (ctx.user?.role === 'admin') {
     const nav = await loadNav(ctx);
     return {
-      permissions: [...PERMISSIONS, ...navPageKeys(nav).map((l) => `${l.key}:view`)],
+      permissions: [
+        ...PERMISSIONS,
+        ...nav.sections.map((s) => `${sectionViewKey(s)}:view`),
+        ...navPageKeys(nav).map((l) => `${l.key}:view`),
+      ],
       roles: ['admin'],
     };
   }
@@ -142,7 +146,12 @@ export async function loadPermissionsForUser(
   // Page rules (spec 037): an explicit page row wins, then the section row, then
   // the target's own registry decision (the same rule that guards its native path).
   const have = new Set(out);
-  for (const { key, sectionKey, target } of navPageKeys(await loadNav(ctx))) {
+  const nav = await loadNav(ctx);
+  for (const section of nav.sections) {
+    if (caps.explicitView(sectionViewKey(section)) !== false)
+      out.push(`${sectionViewKey(section)}:view`);
+  }
+  for (const { key, sectionKey, target } of navPageKeys(nav)) {
     const allowed =
       caps.explicitView(key) ??
       (sectionKey ? caps.explicitView(sectionKey) : undefined) ??

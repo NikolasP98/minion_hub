@@ -98,7 +98,7 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
   const actions = opts.actions ?? inComponent(tryUseActions);
 
   const scopeKey = () => JSON.stringify([opts.scope?.(), actions?.scopeVersion]);
-  let owner = scopeKey();
+  let owner = $state(scopeKey());
   let draft = $state<{
     value: V;
     write: () => Promise<void>;
@@ -128,9 +128,8 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
     timer = maxTimer = undefined;
   }
   function current(): V {
-    isCurrent(owner);
     const c = committed();
-    return base && equals(c, base.from) ? base.value : c;
+    return owner === scopeKey() && base && equals(c, base.from) ? base.value : c;
   }
 
   function commit(entry: NonNullable<typeof draft>): () => Promise<void> {
@@ -248,20 +247,23 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
 
   return {
     get value() {
-      isCurrent(owner);
+      // Reads run inside Svelte derived/template effects. Retiring a stale owner
+      // here would write reactive state and throw state_unsafe_mutation. Dispatch
+      // and completion paths retire it; readers immediately show the new owner.
+      if (owner !== scopeKey()) return committed();
       return draft ? draft.value : current();
     },
     set value(v: V) {
       set(v);
     },
     get pending() {
-      return inFlight || timer !== undefined;
+      return owner === scopeKey() && (inFlight || timer !== undefined);
     },
     get status() {
-      return status.status;
+      return owner === scopeKey() ? status.status : 'idle';
     },
     get message() {
-      return status.message;
+      return owner === scopeKey() ? status.message : undefined;
     },
     set,
     flush,
@@ -269,6 +271,9 @@ export function createAutosave<V>(opts: AutosaveOptions<V>): Autosave<V> {
       clearTimers();
       draft = null;
     },
-    retry: () => status.retry(),
+    retry: () => {
+      if (!isCurrent(owner)) return Promise.resolve();
+      return status.retry();
+    },
   };
 }

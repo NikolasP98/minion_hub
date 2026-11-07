@@ -28,9 +28,9 @@ describe('defaultNavMode', () => {
     expect(defaultNavMode(['viewer', 'staff'])).toBe('module');
   });
 
-  it('falls back to the full nav when roles are unknown', () => {
-    expect(defaultNavMode(undefined)).toBe('full');
-    expect(defaultNavMode([])).toBe('full');
+  it('does not grant the full nav when roles are unknown', () => {
+    expect(defaultNavMode(undefined)).toBe('module');
+    expect(defaultNavMode([])).toBe('module');
   });
 });
 
@@ -217,5 +217,35 @@ describe('navMode — mobile sheet is always module-scoped, for every role', () 
     const mods = visibleModules(navModuleData(), canViewPath);
     expect(navMode.activeModule?.id).toBe(mods[0]?.id);
     expect(navMode.activeModule?.id).toBeTruthy();
+  });
+});
+
+describe('full mode admission', () => {
+  it('does not accept a staff attempt to restore full navigation', () => {
+    mockPage.data = {
+      user: { id: 'staff-one', role: 'user' },
+      activeOrgId: 'a',
+      permissions: { roles: ['staff'], permissions: ['stock:view'] },
+    };
+    mockPage.url = new URL('http://localhost/stock');
+    navMode.setMode('full');
+    expect(navMode.canUseFull).toBe(false);
+    expect(navMode.mode).toBe('personal');
+  });
+  it('keeps personal mode scoped to the current actor and organization', () => {
+    mockPage.data = {
+      user: { id: 'owner-one', role: 'user' },
+      activeOrgId: 'a',
+      permissions: { roles: ['owner'], permissions: [] },
+    };
+    navMode.setMode('full');
+    expect(navMode.mode).toBe('full');
+    mockPage.data = {
+      user: { id: 'staff-two', role: 'user' },
+      activeOrgId: 'b',
+      permissions: { roles: ['staff'], permissions: [] },
+    };
+    expect(navMode.mode).toBe('module');
+    expect(navMode.canUseFull).toBe(false);
   });
 });

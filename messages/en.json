@@ -7323,5 +7323,18 @@
   "admin_plans_reason_not_in_plan": "Not in plan",
   "admin_plans_reason_rule_false": "Rule not met",
   "admin_plans_kind_business": "Business",
-  "admin_plans_kind_personal": "Personal"
+  "admin_plans_kind_personal": "Personal",
+  "nav_personalHome": "My home",
+  "nav_personalDescription": "Explore your sections and choose what appears in your sidebar. Changes are only for you.",
+  "nav_emptySection": "This section has no pages yet",
+  "nav_emptySectionDescription": "Your administrator can add pages to this section.",
+  "nav_noSections": "No sections available",
+  "nav_noSectionsDescription": "Ask your administrator for access to a section.",
+  "nav_showInSidebar": "Show in sidebar",
+  "nav_hideInSidebar": "Hide from sidebar",
+  "nav_moveUp": "Move up",
+  "nav_moveDown": "Move down",
+  "nav_openSection": "Open section",
+  "nav_backPersonalHome": "Back to my home",
+  "nav_noPersonalSections": "Choose your sidebar sections in My home."
 }

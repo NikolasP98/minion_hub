@@ -274,6 +274,7 @@ export const load: LayoutServerLoad = async ({
     // the subtree layouts use, which is what the nav was missing.
     schedulingEnabled: locals.moduleStates?.scheduling ?? true,
     stockEnabled: locals.moduleStates?.stock ?? true,
+    moduleStates: locals.moduleStates ?? {},
     workspaces,
     organizations: organizations.organizations,
     activeOrgId: organizations.activeOrgId,

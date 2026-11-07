@@ -1,4 +1,5 @@
 <script lang="ts">
+  import PersonalSidebar from '$lib/components/navigation/PersonalSidebar.svelte';
   import NavContextMenu from './NavContextMenu.svelte';
   import { createModuleNavigation } from '$lib/shell/module-navigation';
   const moduleNavigation = createModuleNavigation();
@@ -24,6 +25,7 @@
   import { goto } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
   import {
+    House,
     Settings,
     Menu,
     X,
@@ -76,8 +78,12 @@
   // subtree, so it has no top-layer conflict.
   const pickerModules = $derived(visibleModules(navModuleData(), canViewPath));
   const pickerActive = $derived(navMode.activeModule);
-  const PickerIcon = $derived(pickerActive?.icon ?? LayoutList);
-  const pickerLabel = $derived(pickerActive?.label ?? m.nav_allSections());
+  const PickerIcon = $derived(navMode.mode === 'personal' ? House : (pickerActive?.icon ?? House));
+  const pickerLabel = $derived(
+    navMode.mode === 'personal'
+      ? m.nav_personalHome()
+      : (pickerActive?.label ?? m.nav_personalHome()),
+  );
 
   let modulePickerOpen = $state(false);
   let modulePickerRoot = $state<HTMLDivElement | null>(null);
@@ -264,6 +270,17 @@
         </Button>
         {#if modulePickerOpen}
           <div use:floatingLayer class="module-picker-menu" role="menu">
+            <Button
+              variant="ghost"
+              size="sm"
+              class="module-picker-item"
+              onclick={() => {
+                modulePickerOpen = false;
+                closeMobileMenu();
+                navMode.setMode('personal');
+                void goto('/account/home');
+              }}><House size={iconSizes.sm} /><span>{m.nav_personalHome()}</span></Button
+            >
             {#each pickerModules as mod (mod.id)}
               {@const ModIcon = mod.icon}
               <Button
@@ -386,38 +403,33 @@
         class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
       >
         <div class="flex-1 min-w-0">
-          <!-- Mobile is ALWAYS module-scoped, regardless of navMode.isModule
-             (which only gates the desktop Sidebar's full-vs-module view).
-             `moduleItems` reads `navMode.activeModule` unconditionally — the
-             module the CURRENT ROUTE belongs to, falling back to the last
-             picked module, else the first visible one — so a full-nav role
-             (owner/admin/manager) sees the same one-module list a module-mode
-             role does; the header picker is the only way to see another
-             module's pages. Same item derivation Sidebar's module view uses
-             (`navMode.activeModule.items`), no forked list. -->
-          {#each moduleItems as item, i (item.id)}
-            {#if item.group && item.group !== moduleItems[i - 1]?.group}
-              <div
-                class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
-              >
-                {item.group}
-              </div>
-            {/if}
-            <NavContextMenu kind="item" href={item.href} label={item.label}>
-              <a
-                use:moduleNavigation.link
-                href={item.href}
-                aria-current={isActive(item) ? 'page' : undefined}
-                class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item)
-                  ? 'active'
-                  : ''}"
-                onclick={closeMobileMenu}
-              >
-                <NavIcon icon={item.icon} size={iconSizes.md} />
-                <span>{item.label}</span>
-              </a>
-            </NavContextMenu>
-          {/each}
+          {#if navMode.mode === 'personal'}
+            <PersonalSidebar />
+          {:else}
+            {#each moduleItems as item, i (item.id)}
+              {#if item.group && item.group !== moduleItems[i - 1]?.group}
+                <div
+                  class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+                >
+                  {item.group}
+                </div>
+              {/if}
+              <NavContextMenu kind="item" href={item.href} label={item.label}>
+                <a
+                  use:moduleNavigation.link
+                  href={item.href}
+                  aria-current={isActive(item) ? 'page' : undefined}
+                  class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item)
+                    ? 'active'
+                    : ''}"
+                  onclick={closeMobileMenu}
+                >
+                  <NavIcon icon={item.icon} size={iconSizes.md} />
+                  <span>{item.label}</span>
+                </a>
+              </NavContextMenu>
+            {/each}
+          {/if}
         </div>
       </nav>
     </NavContextMenu>
