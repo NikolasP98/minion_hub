@@ -155,6 +155,9 @@ try {
     .getByRole('link', { name: 'Back', exact: true })
     .click();
   await guard.getByRole('button', { name: 'Discard', exact: true }).click();
+  // TODO(handoff): Complete Back/history/mobile qualification after the owner
+  // requested merge before the blocked CI retry. See minion-meta proposal
+  // 2026-11-08-hub-settings-browser-qualification-followup.
   await expect(page).toHaveURL(`${base}${returnPath}`);
   await expect(page.locator('aside[aria-label="Primary"]')).toHaveClass(/is-collapsed/);
   await shot(page, 'back-restores-query-hash-and-collapse');
