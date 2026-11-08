@@ -79,6 +79,29 @@ describe('customModules / getModules', () => {
 });
 
 describe('built-in overrides', () => {
+  it('does not revive global Settings through old placements in built-in or custom sections', () => {
+    const config = staff({
+      builtinSections: {
+        pos: [
+          page('set001', 'preferences', '/settings/appearance'),
+          page('set002', 'pos-config', '/pos/settings'),
+        ],
+      },
+    });
+    config.sections[0].pages.push(page('set003', 'preferences', '/settings/appearance'));
+    expect(builtinInstances(config, 'pos').map((item) => item.href)).toEqual([
+      '/pos/pos-config~set002',
+    ]);
+    expect(pos(config).some((item) => item.href === '/pos/settings')).toBe(true);
+    expect(customModules(config)[0].items.some((item) => item.href.includes('preferences'))).toBe(
+      false,
+    );
+    expect(
+      getModules({ navConfig: config })
+        .find((module) => module.id === 'platform')
+        ?.items.some((item) => item.href.startsWith('/settings')),
+    ).toBe(false);
+  });
   it('moved main leaves the POS nav', () => {
     expect(pos(staff()).map((i) => i.href)).not.toContain('/pos/appointments');
     expect(pos(EMPTY_NAV_CONFIG).map((i) => i.href)).toContain('/pos/appointments');

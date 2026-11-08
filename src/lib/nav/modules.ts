@@ -616,13 +616,12 @@ export function getModules(data: ModuleNavData = {}): ModuleDef[] {
       id: 'platform',
       label: m.nav_platform(),
       icon: Wrench,
-      href: '/settings',
+      href: '/reliability',
       matcher: (p) =>
         p.startsWith('/reliability') ||
         p.startsWith('/marketplace') ||
         p.startsWith('/cloud') ||
-        p.startsWith('/killswitches') ||
-        p.startsWith('/settings'),
+        p.startsWith('/killswitches'),
       items: [
         {
           id: 'reliability',
@@ -651,13 +650,6 @@ export function getModules(data: ModuleNavData = {}): ModuleDef[] {
           label: m.nav_killSwitches(),
           icon: Power,
           matcher: own('/killswitches'),
-        },
-        {
-          id: 'settings',
-          href: '/settings',
-          label: m.nav_settings(),
-          icon: Settings,
-          matcher: own('/settings'),
         },
       ],
     },

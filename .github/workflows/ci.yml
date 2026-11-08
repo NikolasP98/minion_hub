@@ -824,6 +824,13 @@ jobs:
           E2E_BASE_URL: http://127.0.0.1:5199
         run: bun run audit:ui:sweep --ci
 
+      - name: Settings primary navigation, Back guard and mobile parity
+        timeout-minutes: 8
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
+          E2E_BASE_URL: http://127.0.0.1:5199
+        run: bun scripts/qa/settings-navigation-smoke.ts
+
       - name: Retain the conformance run artifacts, summary and failing screenshots
         if: always()
         uses: actions/upload-artifact@v4
@@ -834,6 +841,7 @@ jobs:
             test-results/ui-audit/summary.md
             test-results/ui-audit/summary.html
             test-results/ui-audit/failing/*.png
+            test-results/ui-audit/settings-navigation/**
           if-no-files-found: ignore
 
       - name: Stop the app

@@ -5,7 +5,7 @@
   import { canonicalPath } from '$lib/canonical-path';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { Settings, PanelLeftClose, ChevronDown, ChevronRight, Star } from 'lucide-svelte';
+  import { PanelLeftClose, ChevronDown, ChevronRight, Star } from 'lucide-svelte';
   import NavIcon from './NavIcon.svelte';
   import { Button, Tooltip, iconSizes } from '$lib/components/ui';
   import { navConfig } from '$lib/nav/nav-config.svelte';
@@ -16,6 +16,9 @@
   import SidebarUtilities from './SidebarUtilities.svelte';
   import OrgPicker from './OrgPicker.svelte';
   import ModuleSwitcher from './ModuleSwitcher.svelte';
+  import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
+  import SettingsLayerHeader from '$lib/components/settings/SettingsLayerHeader.svelte';
+  import { settingsLayer } from '$lib/nav/settings-layer.svelte';
   import PersonalSidebar from '$lib/components/navigation/PersonalSidebar.svelte';
   import { navMode } from '$lib/state/ui/nav-mode.svelte';
   import { pluginNavState } from '$lib/state/plugin-nav.svelte';
@@ -66,7 +69,7 @@
   // of every section. Default per role — see `navMode`.
   const moduleMode = $derived(navMode.isModule);
   const moduleItems = $derived(navMode.activeModule?.items ?? []);
-  const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
+  const isSettings = $derived(settingsLayer.isOpen);
   const topItems = $derived(utilityLinks(canViewPath));
 
   // The user's chosen landing page (right-click → Set as home). Falls back to
@@ -79,11 +82,12 @@
   // Two responsive tiers:
   //   <md  : sidebar hidden — the mobile hamburger (Topbar) takes over.
   //   md+  : honors the user's collapse preference (expanded 224px / mini 56px).
-  let collapsed = $state(false);
+  let preferredCollapsed = $state(false);
+  const collapsed = $derived(preferredCollapsed && !isSettings);
   let isMd = $state(true);
   onMount(() => {
     navMode.hydrate();
-    collapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
+    preferredCollapsed = localStorage.getItem('hub-sidebar-collapsed') === '1';
     const mq = window.matchMedia('(min-width: 48rem)');
     const sync = () => (isMd = mq.matches);
     sync();
@@ -93,8 +97,8 @@
     };
   });
   function toggle() {
-    collapsed = !collapsed;
-    localStorage.setItem('hub-sidebar-collapsed', collapsed ? '1' : '0');
+    preferredCollapsed = !preferredCollapsed;
+    localStorage.setItem('hub-sidebar-collapsed', preferredCollapsed ? '1' : '0');
   }
 
   // Labels hidden (so tooltips earn their keep) whenever not md+ expanded.
@@ -226,13 +230,17 @@
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <div class="flex items-center gap-1">
       <div class="min-w-0 flex-1">
-        <ModuleSwitcher
-          collapsed={collapsed || !isMd}
-          onExpand={toggle}
-          busy={busy && placement === 'icon-ring'}
-        />
+        {#if isSettings}
+          <SettingsLayerHeader busy={busy && placement === 'icon-ring'} />
+        {:else}
+          <ModuleSwitcher
+            collapsed={collapsed || !isMd}
+            onExpand={toggle}
+            busy={busy && placement === 'icon-ring'}
+          />
+        {/if}
       </div>
-      {#if !collapsed}
+      {#if !collapsed && !isSettings}
         <Tooltip
           label={m.nav_collapseSidebar()}
           id="nav-tip-collapse"
@@ -256,9 +264,11 @@
         </Tooltip>
       {/if}
     </div>
-    <div class={collapsed ? 'hidden' : 'hidden md:block'}>
-      <OrgPicker />
-    </div>
+    {#if !isSettings}
+      <div class={collapsed ? 'hidden' : 'hidden md:block'}>
+        <OrgPicker />
+      </div>
+    {/if}
   </div>
   {#if busy && placement === 'divider-bar'}
     <div class="divider-bar mx-2" aria-hidden="true">
@@ -270,7 +280,7 @@
 
   <!-- Top utility row: Reliability + Marketplace. Active item expands inline.
        Hidden in module mode — those surfaces are the Platform module there. -->
-  {#if topItems.length && !moduleMode}
+  {#if topItems.length && !moduleMode && !isSettings}
     <div class="top-row {collapsed ? 'is-collapsed' : ''}">
       {#each topItems as t (t.href)}
         {@const active = canonicalPath(page.url.pathname).startsWith(t.href)}
@@ -305,239 +315,223 @@
     <div class="h-px bg-[var(--hairline)] my-1.5 mx-2"></div>
   {/if}
 
-  <NavContextMenu kind="area">
-    <nav
-      data-part="navigation"
-      use:persistScroll={'main-sidebar'}
-      class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
-    >
-      {#if moduleMode}
-        <!-- Module mode: only the active module's pages (ERPNext module view).
-           Multi-area modules (Marketing = CRM + Socials) carry a group label. -->
-        {#each moduleItems as item, i (item.id)}
-          {@const active = isActive(item)}
-          {#if item.group && item.group !== moduleItems[i - 1]?.group}
-            <NavContextMenu kind="header" module={navMode.activeModule?.id}>
-              <div class="nav-group-head t-label {headCls}">{item.group}</div>
-            </NavContextMenu>
-          {/if}
-          <NavContextMenu kind="item" href={item.href} label={item.label}>
-            <Tooltip
-              label={item.label}
-              id={`nav-tip-mod-${item.id}`}
-              placement="right"
-              disabled={!showTooltips}
-              openDelay={150}
-              asChild
-            >
-              {#snippet children(trigger)}
-                <a
-                  use:moduleNavigation.link
-                  href={item.href}
-                  {...trigger}
-                  class="nav-row {rowJustify} {item.indent ? 'sub-item' : ''} {item.hint
-                    ? 'has-hint'
-                    : ''} {active ? 'nav-active accent' : ''}"
-                  aria-label={item.label}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <NavIcon icon={item.icon} size={iconSizes.md} class="nav-icon shrink-0" />
-                  <span class="nav-text {labelCls}">
-                    <span class="nav-label">{item.label}</span>
-                    {#if item.hint}<span class="nav-hint">{item.hint}</span>{/if}
-                  </span>
-                  {#if item.badge != null}
-                    <span class="nav-badge {labelCls}">{item.badge}</span>
-                  {/if}
-                  {#if currentHome === item.href}
-                    <Star size={iconSizes.xs} class="home-pin {labelCls}" />
-                  {/if}
-                </a>
-              {/snippet}
-            </Tooltip>
-          </NavContextMenu>
-        {/each}
-      {:else if navMode.mode === 'personal' || !navMode.canUseFull}
-        <PersonalSidebar {collapsed} />
-      {:else}
-        {#each orderedSections as section (section.id)}
-          {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
-
-          {#if hasVisibleSectionItems(section, canViewPath) || (String(section.id).startsWith('custom:') && canEditNav())}
-            <NavContextMenu kind="header" sectionId={String(section.id)}>
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-              <div
-                tabindex={canEditNav() && String(section.id).startsWith('custom:') ? 0 : undefined}
-                class="nav-group-head t-label {headCls} {reorderable ? 'grab' : ''} {drag?.type ===
-                  'section' && drag.sectionId === String(section.id)
-                  ? 'dragging'
-                  : ''}"
-                draggable={reorderable}
-                ondragstart={(e) => startSectionDrag(e, String(section.id))}
-                ondragover={(e) => onSectionDragOver(e, String(section.id))}
-                ondragend={endDrag}
-              >
-                {section.label}
-              </div>
-            </NavContextMenu>
-            {#each items as item (item.href)}
-              {@const active = isActive(item)}
-              <NavContextMenu kind="item" href={item.href} label={item.label}>
-                <Tooltip
-                  label={item.label}
-                  id={`nav-tip-${item.href}`}
-                  placement="right"
-                  disabled={!showTooltips}
-                  openDelay={150}
-                  asChild
-                >
-                  {#snippet children(trigger)}
-                    <a
-                      use:moduleNavigation.link
-                      href={item.href}
-                      {...trigger}
-                      class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type ===
-                        'item' && drag.href === item.href
-                        ? 'dragging'
-                        : ''} {active
-                        ? section.tone === 'brand'
-                          ? 'nav-active brand'
-                          : 'nav-active accent'
-                        : ''}"
-                      aria-label={item.label}
-                      aria-current={active ? 'page' : undefined}
-                      draggable={reorderable}
-                      ondragstart={(e) =>
-                        startItemDrag(
-                          e,
-                          section,
-                          item.href,
-                          items.map((i) => i.href),
-                        )}
-                      ondragover={(e) => onItemDragOver(e, String(section.id), item.href)}
-                      ondragend={endDrag}
-                    >
-                      {#snippet navIconEl()}
-                        <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
-                      {/snippet}
-                      {#if item.href === '/finances' && financeSync.active && showTooltips}
-                        <!-- Collapsed: progress rides the icon border (360°, rounded) instead
-                       of a separate badge that would widen the icon-only row. -->
-                        <span
-                          class="icon-ring"
-                          class:indeterminate={financeSync.total == null}
-                          style="--sync-pct:{financeSync.percent}"
-                        >
-                          {@render navIconEl()}
-                        </span>
-                      {:else}
-                        {@render navIconEl()}
-                      {/if}
-                      <span class="nav-label {labelCls}">{item.label}</span>
-                      {#if item.href === '/finances' && !showTooltips}
-                        <FinanceSyncBadge />
-                      {/if}
-                      {#if currentHome === item.href}
-                        <Star size={iconSizes.xs} class="home-pin {labelCls}" />
-                      {/if}
-                    </a>
-                  {/snippet}
-                </Tooltip>
-              </NavContextMenu>
-            {/each}
-
-            <!-- Collapsible subsections (Customer Support → Channels) -->
-            {#each section.subsections ?? [] as sub (sub.id)}
-              {@const subItems = sub.items.filter((it) => canViewPath(it.href))}
-              {#if subItems.length}
-                {@const open = !collapsedSubs[sub.id]}
-                {#if !collapsed}
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    type="button"
-                    class="nav-subhead {rowJustify} {headCls}"
-                    onclick={() => toggleSub(sub.id)}
-                    aria-expanded={open}
-                  >
-                    {#if open}
-                      <ChevronDown size={iconSizes.sm} class="shrink-0 opacity-60" />
-                    {:else}
-                      <ChevronRight size={iconSizes.sm} class="shrink-0 opacity-60" />
-                    {/if}
-                    <span class="t-label">{sub.label}</span>
-                  </Button>
-                {/if}
-                {#if open || collapsed}
-                  {#each subItems as item (item.href)}
-                    {@const active = isActive(item)}
-                    <NavContextMenu kind="item" href={item.href} label={item.label}>
-                      <Tooltip
-                        label={item.label}
-                        id={`nav-tip-${item.href}`}
-                        placement="right"
-                        disabled={!showTooltips}
-                        openDelay={150}
-                        asChild
-                      >
-                        {#snippet children(trigger)}
-                          <a
-                            use:moduleNavigation.link
-                            href={item.href}
-                            {...trigger}
-                            class="nav-row sub-item {rowJustify} {active
-                              ? 'nav-active accent'
-                              : ''}"
-                            aria-label={item.label}
-                            aria-current={active ? 'page' : undefined}
-                          >
-                            <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
-                            <span class="nav-label {labelCls}">{item.label}</span>
-                            {#if currentHome === item.href}
-                              <Star size={iconSizes.xs} class="home-pin {labelCls}" />
-                            {/if}
-                          </a>
-                        {/snippet}
-                      </Tooltip>
-                    </NavContextMenu>
-                  {/each}
-                {/if}
-              {/if}
-            {/each}
-
-            <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
-          {/if}
-        {/each}
-      {/if}
-    </nav>
-  </NavContextMenu>
-
-  <!-- Pinned footer: Settings + brand (the logo lives at the bottom now) -->
-  <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
-    <NavContextMenu kind="item" href={'/settings'} label={m.nav_settings()}>
-      <Tooltip
-        label={m.nav_settings()}
-        id="nav-tip-settings"
-        placement="right"
-        disabled={!showTooltips}
-        openDelay={150}
-        asChild
+  {#if isSettings}
+    <SettingsNav primary />
+  {:else}
+    <NavContextMenu kind="area">
+      <nav
+        data-part="navigation"
+        use:persistScroll={'main-sidebar'}
+        class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
       >
-        {#snippet children(trigger)}
-          <a
-            use:moduleNavigation.link
-            href="/settings"
-            {...trigger}
-            class="nav-row {rowJustify} {isSettings ? 'nav-active accent' : ''}"
-            aria-label={m.nav_settings()}
-          >
-            <Settings size={18} class="nav-icon shrink-0" />
-            <span class="nav-label {labelCls}">{m.nav_settings()}</span>
-          </a>
-        {/snippet}
-      </Tooltip>
+        {#if moduleMode}
+          <!-- Module mode: only the active module's pages (ERPNext module view).
+           Multi-area modules (Marketing = CRM + Socials) carry a group label. -->
+          {#each moduleItems as item, i (item.id)}
+            {@const active = isActive(item)}
+            {#if item.group && item.group !== moduleItems[i - 1]?.group}
+              <NavContextMenu kind="header" module={navMode.activeModule?.id}>
+                <div class="nav-group-head t-label {headCls}">{item.group}</div>
+              </NavContextMenu>
+            {/if}
+            <NavContextMenu kind="item" href={item.href} label={item.label}>
+              <Tooltip
+                label={item.label}
+                id={`nav-tip-mod-${item.id}`}
+                placement="right"
+                disabled={!showTooltips}
+                openDelay={150}
+                asChild
+              >
+                {#snippet children(trigger)}
+                  <a
+                    use:moduleNavigation.link
+                    href={item.href}
+                    {...trigger}
+                    class="nav-row {rowJustify} {item.indent ? 'sub-item' : ''} {item.hint
+                      ? 'has-hint'
+                      : ''} {active ? 'nav-active accent' : ''}"
+                    aria-label={item.label}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <NavIcon icon={item.icon} size={iconSizes.md} class="nav-icon shrink-0" />
+                    <span class="nav-text {labelCls}">
+                      <span class="nav-label">{item.label}</span>
+                      {#if item.hint}<span class="nav-hint">{item.hint}</span>{/if}
+                    </span>
+                    {#if item.badge != null}
+                      <span class="nav-badge {labelCls}">{item.badge}</span>
+                    {/if}
+                    {#if currentHome === item.href}
+                      <Star size={iconSizes.xs} class="home-pin {labelCls}" />
+                    {/if}
+                  </a>
+                {/snippet}
+              </Tooltip>
+            </NavContextMenu>
+          {/each}
+        {:else if navMode.mode === 'personal' || !navMode.canUseFull}
+          <PersonalSidebar {collapsed} />
+        {:else}
+          {#each orderedSections as section (section.id)}
+            {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
+
+            {#if hasVisibleSectionItems(section, canViewPath) || (String(section.id).startsWith('custom:') && canEditNav())}
+              <NavContextMenu kind="header" sectionId={String(section.id)}>
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                <div
+                  tabindex={canEditNav() && String(section.id).startsWith('custom:')
+                    ? 0
+                    : undefined}
+                  class="nav-group-head t-label {headCls} {reorderable
+                    ? 'grab'
+                    : ''} {drag?.type === 'section' && drag.sectionId === String(section.id)
+                    ? 'dragging'
+                    : ''}"
+                  draggable={reorderable}
+                  ondragstart={(e) => startSectionDrag(e, String(section.id))}
+                  ondragover={(e) => onSectionDragOver(e, String(section.id))}
+                  ondragend={endDrag}
+                >
+                  {section.label}
+                </div>
+              </NavContextMenu>
+              {#each items as item (item.href)}
+                {@const active = isActive(item)}
+                <NavContextMenu kind="item" href={item.href} label={item.label}>
+                  <Tooltip
+                    label={item.label}
+                    id={`nav-tip-${item.href}`}
+                    placement="right"
+                    disabled={!showTooltips}
+                    openDelay={150}
+                    asChild
+                  >
+                    {#snippet children(trigger)}
+                      <a
+                        use:moduleNavigation.link
+                        href={item.href}
+                        {...trigger}
+                        class="nav-row {rowJustify} {reorderable ? 'grab' : ''} {drag?.type ===
+                          'item' && drag.href === item.href
+                          ? 'dragging'
+                          : ''} {active
+                          ? section.tone === 'brand'
+                            ? 'nav-active brand'
+                            : 'nav-active accent'
+                          : ''}"
+                        aria-label={item.label}
+                        aria-current={active ? 'page' : undefined}
+                        draggable={reorderable}
+                        ondragstart={(e) =>
+                          startItemDrag(
+                            e,
+                            section,
+                            item.href,
+                            items.map((i) => i.href),
+                          )}
+                        ondragover={(e) => onItemDragOver(e, String(section.id), item.href)}
+                        ondragend={endDrag}
+                      >
+                        {#snippet navIconEl()}
+                          <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
+                        {/snippet}
+                        {#if item.href === '/finances' && financeSync.active && showTooltips}
+                          <!-- Collapsed: progress rides the icon border (360°, rounded) instead
+                       of a separate badge that would widen the icon-only row. -->
+                          <span
+                            class="icon-ring"
+                            class:indeterminate={financeSync.total == null}
+                            style="--sync-pct:{financeSync.percent}"
+                          >
+                            {@render navIconEl()}
+                          </span>
+                        {:else}
+                          {@render navIconEl()}
+                        {/if}
+                        <span class="nav-label {labelCls}">{item.label}</span>
+                        {#if item.href === '/finances' && !showTooltips}
+                          <FinanceSyncBadge />
+                        {/if}
+                        {#if currentHome === item.href}
+                          <Star size={iconSizes.xs} class="home-pin {labelCls}" />
+                        {/if}
+                      </a>
+                    {/snippet}
+                  </Tooltip>
+                </NavContextMenu>
+              {/each}
+
+              <!-- Collapsible subsections (Customer Support → Channels) -->
+              {#each section.subsections ?? [] as sub (sub.id)}
+                {@const subItems = sub.items.filter((it) => canViewPath(it.href))}
+                {#if subItems.length}
+                  {@const open = !collapsedSubs[sub.id]}
+                  {#if !collapsed}
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      type="button"
+                      class="nav-subhead {rowJustify} {headCls}"
+                      onclick={() => toggleSub(sub.id)}
+                      aria-expanded={open}
+                    >
+                      {#if open}
+                        <ChevronDown size={iconSizes.sm} class="shrink-0 opacity-60" />
+                      {:else}
+                        <ChevronRight size={iconSizes.sm} class="shrink-0 opacity-60" />
+                      {/if}
+                      <span class="t-label">{sub.label}</span>
+                    </Button>
+                  {/if}
+                  {#if open || collapsed}
+                    {#each subItems as item (item.href)}
+                      {@const active = isActive(item)}
+                      <NavContextMenu kind="item" href={item.href} label={item.label}>
+                        <Tooltip
+                          label={item.label}
+                          id={`nav-tip-${item.href}`}
+                          placement="right"
+                          disabled={!showTooltips}
+                          openDelay={150}
+                          asChild
+                        >
+                          {#snippet children(trigger)}
+                            <a
+                              use:moduleNavigation.link
+                              href={item.href}
+                              {...trigger}
+                              class="nav-row sub-item {rowJustify} {active
+                                ? 'nav-active accent'
+                                : ''}"
+                              aria-label={item.label}
+                              aria-current={active ? 'page' : undefined}
+                            >
+                              <NavIcon icon={item.icon} size={18} class="nav-icon shrink-0" />
+                              <span class="nav-label {labelCls}">{item.label}</span>
+                              {#if currentHome === item.href}
+                                <Star size={iconSizes.xs} class="home-pin {labelCls}" />
+                              {/if}
+                            </a>
+                          {/snippet}
+                        </Tooltip>
+                      </NavContextMenu>
+                    {/each}
+                  {/if}
+                {/if}
+              {/each}
+
+              <div class="h-px bg-[var(--hairline)] my-1.5 mx-1"></div>
+            {/if}
+          {/each}
+        {/if}
+      </nav>
     </NavContextMenu>
+  {/if}
+
+  <!-- Pinned footer: global utilities + brand (the logo lives at the bottom now) -->
+  <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
     <!-- Global utilities (status · bug · bell · ⌘K · env · profile) — was the
          top-right notch (DynamicIsland) until 2026-09-17. -->
     <SidebarUtilities {collapsed} />

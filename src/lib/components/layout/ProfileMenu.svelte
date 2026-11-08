@@ -6,7 +6,7 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe, GitBranch, User, Users } from 'lucide-svelte';
+  import { LogOut, Globe, GitBranch, User, Users, Settings } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { iconSizes, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
@@ -34,6 +34,7 @@
   const items = $derived<DropdownItem[]>([
     { value: 'header', label: displayName, href: '/account' },
     { value: 'account', label: m.nav_account(), icon: User, href: '/account' },
+    { value: 'settings', label: m.nav_settings(), icon: Settings, href: '/settings/appearance' },
     { value: 'language', label: m.settings_language(), icon: Globe, closeOnSelect: false },
     ...(showBuildChannel
       ? [

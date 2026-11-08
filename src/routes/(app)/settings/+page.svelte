@@ -52,7 +52,7 @@
   beforeNavigate(({ cancel, to }) => {
     if (isDirty.value) {
       cancel();
-      pendingNavigation = to ? () => goto(to.url.pathname + to.url.search) : null;
+      pendingNavigation = to ? () => goto(to.url.pathname + to.url.search + to.url.hash) : null;
       guardModalOpen = true;
     }
   });

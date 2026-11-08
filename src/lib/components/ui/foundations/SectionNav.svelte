@@ -38,6 +38,8 @@
     onSelect?: (id: string) => void;
     search?: { enabled: boolean; placeholder?: string };
     searchQuery?: string;
+    /** Primary shell navigation stays vertical at every viewport width. */
+    layout?: 'responsive' | 'primary';
     /** Persistent section context, such as the active POS shift. */
     footer?: Snippet;
     /**
@@ -57,6 +59,7 @@
     onSelect,
     search,
     searchQuery = $bindable(''),
+    layout = 'responsive',
     footer,
     collapse,
     class: cls = '',
@@ -93,6 +96,7 @@
 <aside
   data-component="section-nav"
   data-part="section-nav"
+  data-layout={layout}
   data-collapsed={collapsed ? 'true' : undefined}
   aria-label={ariaLabel}
   class={cls}
@@ -187,6 +191,16 @@
     flex-direction: column;
     border-right: 1px solid var(--color-border-subtle, var(--hairline));
     background: var(--color-surface-1, var(--elevation-1-bg));
+  }
+  [data-layout='primary'] {
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+    border: 0;
+  }
+  [data-layout='primary'] .nav-item {
+    min-height: var(--control-height-touch);
+    white-space: normal;
   }
   nav {
     display: flex;
@@ -323,13 +337,13 @@
   }
 
   @media (max-width: 1279.98px) {
-    [data-component='section-nav'] {
+    [data-component='section-nav'][data-layout='responsive'] {
       width: 100%;
       height: auto;
       border-right: 0;
       border-bottom: 1px solid var(--color-border-subtle, var(--hairline));
     }
-    nav {
+    [data-layout='responsive'] nav {
       flex-direction: row;
       gap: var(--space-4, 16px);
       padding: var(--space-2, 8px) var(--space-page-gutter, 24px);
@@ -337,31 +351,31 @@
       overflow-y: hidden;
       scrollbar-width: thin;
     }
-    .nav-search {
+    [data-layout='responsive'] .nav-search {
       padding: var(--space-2, 8px) var(--space-page-gutter, 24px) 0;
     }
-    .nav-group {
+    [data-layout='responsive'] .nav-group {
       flex: none;
       flex-direction: row;
       align-items: center;
       gap: var(--space-2, 8px);
     }
-    .group-items {
+    [data-layout='responsive'] .group-items {
       flex-direction: row;
     }
-    .group-label {
+    [data-layout='responsive'] .group-label {
       padding: 0;
       writing-mode: horizontal-tb;
     }
-    .nav-item {
+    [data-layout='responsive'] .nav-item {
       width: auto;
       min-height: var(--control-height-touch, 44px);
       padding-inline: var(--space-3, 12px);
     }
-    .nav-item.nested {
+    [data-layout='responsive'] .nav-item.nested {
       padding-left: var(--space-3, 12px);
     }
-    .nav-footer {
+    [data-layout='responsive'] .nav-footer {
       border-top: 0;
       border-bottom: 1px solid var(--color-border-subtle, var(--hairline));
     }
@@ -370,11 +384,11 @@
     display: none;
   }
   @media (max-width: 767.98px) {
-    [data-collapsed='true'] nav,
-    [data-collapsed='true'] .nav-search {
+    [data-layout='responsive'][data-collapsed='true'] nav,
+    [data-layout='responsive'][data-collapsed='true'] .nav-search {
       display: none;
     }
-    .nav-collapse {
+    [data-layout='responsive'] .nav-collapse {
       display: flex;
       min-height: var(--control-height-touch, 44px);
       align-items: center;
@@ -384,7 +398,7 @@
       text-decoration: none;
       font-size: var(--font-size-body, 14px);
     }
-    .nav-collapse .nav-current {
+    [data-layout='responsive'] .nav-collapse .nav-current {
       margin-left: auto;
       overflow: hidden;
       color: var(--color-text-primary, var(--color-foreground));
@@ -392,13 +406,13 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    nav {
+    [data-layout='responsive'] nav {
       padding-inline: var(--space-page-gutter, 16px);
     }
-    .nav-search {
+    [data-layout='responsive'] .nav-search {
       padding-inline: var(--space-page-gutter, 16px);
     }
-    .group-label {
+    [data-layout='responsive'] .group-label {
       position: absolute;
       width: 1px;
       height: 1px;

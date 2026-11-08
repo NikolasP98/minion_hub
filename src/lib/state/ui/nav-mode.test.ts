@@ -43,7 +43,7 @@ describe('resolveModuleForNav', () => {
     expect(resolveModuleForNav('/brains')?.id).toBe('agents');
     expect(resolveModuleForNav('/scheduling/calendar')?.id).toBe('scheduling');
     expect(resolveModuleForNav('/stock/items')?.id).toBe('stock');
-    expect(resolveModuleForNav('/settings')?.id).toBe('platform');
+    expect(resolveModuleForNav('/settings')).toBeNull();
     expect(resolveModuleForNav('/onboarding')).toBeNull();
   });
 
@@ -72,7 +72,6 @@ describe('resolveModuleForNav', () => {
       '/marketplace',
       '/cloud',
       '/killswitches',
-      '/settings',
     ];
     for (const path of paths) {
       expect(resolveModuleForNav(path), path).not.toBeNull();

@@ -111,3 +111,14 @@ describe('ProfileMenu DEV user switcher item', () => {
     expect(out).not.toContain('Switch user');
   });
 });
+
+describe('Settings entry', () => {
+  it.each([true, false])('offers personal Settings for admin=%s', (isAdmin) => {
+    const out = html([], isAdmin);
+    expect(out).toContain('href="/settings/appearance"');
+    const account = out.indexOf('href="/account"');
+    const settings = out.indexOf('href="/settings/appearance"');
+    expect(settings).toBeGreaterThan(account);
+    expect(out.indexOf('Language')).toBeGreaterThan(settings);
+  });
+});
