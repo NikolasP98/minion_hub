@@ -288,8 +288,14 @@ describe.runIf(Boolean(databaseUrl))('formula property PostgreSQL graph invarian
       ]);
       expect(definitionValueRace.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
       expect(definitionValueRace.filter((result) => result.status === 'rejected')).toHaveLength(1);
+      // Either race winner is valid. If the definition update wins, its version
+      // advances; test the dependency guard using that committed version.
+      const currentInput = (await listCustomProperties(ctx, tableId)).find(
+        (definition) => definition.id === input.id,
+      );
+      expect(currentInput).toBeDefined();
       await expect(
-        setCustomPropertyArchived(ctx, input.id, input.version, true),
+        setCustomPropertyArchived(ctx, input.id, currentInput!.version, true),
       ).rejects.toMatchObject({ status: 409, code: 'formula_dependency_in_use' });
       expect(b.rules.type).toBe('formula');
     } finally {
