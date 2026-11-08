@@ -41,7 +41,14 @@ const preview: Preview = {
     },
   },
   parameters: {
-    backgrounds: { disable: true },
+    // Docs pages paint their own light page; the canvas option keeps inline
+    // stories on the hub canvas so theme text tokens stay readable.
+    backgrounds: {
+      options: {
+        canvas: { name: 'Canvas', value: 'var(--color-canvas)' },
+        surface: { name: 'Surface', value: 'var(--color-surface-1)' },
+      },
+    },
     // Widths sit on the hub's own breakpoints (640 sm, 768 drawer/float floor,
     // 1024 lg, 1280 xl, 1536). Stories opt in with globals.viewport.value.
     viewport: {
@@ -69,6 +76,7 @@ const preview: Preview = {
   },
   initialGlobals: {
     accent: DEFAULT_ACCENT,
+    backgrounds: { value: 'canvas' },
   },
 };
 
