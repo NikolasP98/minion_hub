@@ -251,11 +251,14 @@ try {
   await expect(mobile.locator('[data-component="section-nav"]:visible')).toHaveCount(1);
   await vertical(mobileNav);
   await expect(sheet.getByRole('link', { name: 'Organizations', exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('link', { name: 'Plugins', exact: true })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Security', exact: true })).toHaveCount(0);
   assert(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await shot(mobile, 'staff-mobile-settings');
-  await mobileNav.getByRole('link', { name: 'Plugins', exact: true }).click();
-  await expect(mobile).toHaveURL(/\/settings\/plugins$/);
+  // Staff cannot manage plugin settings. Exercise the permitted native link
+  // and its navigation-completion close behavior without widening permissions.
+  await mobileNav.getByRole('link', { name: 'Appearance', exact: true }).click();
+  await expect(mobile).toHaveURL(/\/settings\/appearance$/);
   await expect(sheet).not.toBeVisible();
   await mobile.getByRole('button', { name: 'Toggle menu', exact: true }).click();
   await sheet.getByRole('link', { name: 'Back', exact: true }).click();
