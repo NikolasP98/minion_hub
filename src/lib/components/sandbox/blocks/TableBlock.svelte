@@ -44,7 +44,10 @@
 
   function cellText(row: Row, column: DataColumn<Row>): string {
     const value = row[column.key];
-    const format = formatOf(column.key, rows.columns.find((c) => c.name === column.key)?.type ?? '');
+    const format = formatOf(
+      column.key,
+      rows.columns.find((c) => c.name === column.key)?.type ?? '',
+    );
     if (value == null) return '—';
     if (format === 'date') return formatDate(String(value), { dateStyle: 'medium' });
     if (format === 'text') return String(value);

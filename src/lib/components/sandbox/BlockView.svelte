@@ -40,8 +40,7 @@
       body: JSON.stringify(query),
     });
     const body = (await res.json().catch(() => null)) as
-      | (Partial<QueryResult> & { error?: string })
-      | null;
+      (Partial<QueryResult> & { error?: string }) | null;
     if (!res.ok) throw new Error(body?.error ?? `query failed (${res.status})`);
     return { columns: body?.columns ?? [], rows: body?.rows ?? [] };
   }
