@@ -1,7 +1,10 @@
 import {
+  getAcceptedRun,
   registerSubmittedRun,
   observeRunTransport,
+  pendingRuns,
   submittedRun,
+  terminalRun,
   type BindingDescriptor,
 } from '$lib/assistant/accepted-runs';
 // Chat + voice-turn send/load helpers (split from gateway.svelte.ts).
@@ -10,10 +13,14 @@ import {
 // existing `$lib/services/gateway.svelte` import paths keep working.
 
 import { agentChat, ensureAgentChat, pushChatMessage } from '$lib/state/chat/chat.svelte';
+import { reconcilePendingRuns } from '$lib/assistant/dispatch';
 import * as m from '$lib/paraglide/messages';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { uuid } from '@minion-stack/shared';
-import { sendRequest, gwTrace, getClient } from '../gateway-rpc';
+import { sendRequest, gwTrace, getClient, requestReconnect } from '../gateway-rpc';
+
+/** Client-side request timeout: the gateway acks `chat.send` in ~100 ms, so 15 s of silence is a dead socket. */
+const isAckTimeout = (e: unknown) => (e as { code?: unknown } | null)?.code === 'TIMEOUT';
 
 export function loadChatHistory(
   agentId: string,
@@ -39,6 +46,30 @@ export function loadChatHistory(
       // so this splice reconciles in place without re-mounting unchanged rows.
       if (incoming.length === 0 && chat.messages.length > 0) return;
       chat.messages.splice(0, chat.messages.length, ...incoming);
+      // A reply whose live `final` was lost (socket died mid-turn) exists only
+      // here: claim it and run its UI blocks as the live path would have. Cheap
+      // on the common path (no pending runs); this loader is also what the
+      // reconnect bootstrap, the guard timeout and send failures call.
+      for (const r of reconcilePendingRuns(agentId, targetSessionKey, chat.messages)) {
+        gwTrace('chat.reconcile', {
+          runId: r.runId,
+          outcome: r.outcome,
+          sessionKey: targetSessionKey,
+        });
+        if (r.outcome === 'no_reply') continue; // still running, or the guard will call it
+        if (chat.runId === r.runId) chat.runId = null;
+        chat.sending = false; // a rejection that returned early may have left it up
+        chat.lastError = r.outcome === 'expired' ? m.floatingAssistant_replyLost() : null;
+      }
+      // The run the thread waits on was revoked before this reload (page
+      // context moved, another identity reconnected): nothing will ever clear
+      // the "reconnecting" line, so clear it here.
+      const waiting = chat.runId ? getAcceptedRun(chat.runId, targetSessionKey) : undefined;
+      if (waiting?.controller.signal.aborted) {
+        chat.runId = null;
+        chat.sending = false;
+        if (chat.lastError === m.floatingAssistant_connectionLost()) chat.lastError = null;
+      }
     })
     .catch(() => {})
     .finally(() => {
@@ -348,19 +379,33 @@ export function sendAssistantTurn(
   chat.liveTools = [];
   chat.liveActivity = null;
 
-  const current = () =>
+  // Same turn, same thread, same scope — but not necessarily the same socket:
+  // the stall timer must still fire after a forced reconnect replaced the client.
+  const stillMine = () =>
     agentChat[agentId] === chat &&
-    getClient() === client &&
     chat.runId === runId &&
     (!chat.sessionKey || chat.sessionKey === sessionKey) &&
     (opts.current?.() ?? true);
+  const current = () => stillMine() && getClient() === client;
 
   // See sendChatMsg's guard: same safety net, same reason to reload history.
+  // After a LOST ack (transport still 'unknown') this is also the one exit:
+  // reload once and, if the run is still pending, give up — socket or no
+  // socket, so a reconnect that lands later renders the reply but does not run
+  // its blocks, and the "reconnecting" line never waits for the 2 h TTL. An
+  // acked run is left alone: a long turn is legitimately still pending here.
   const guard = setTimeout(() => {
-    if (!current()) return;
+    if (!stillMine()) return;
     chat.sending = false;
     gwTrace('chat.guard_timeout', { runId, sessionKey });
-    void loadChatHistory(agentId, sessionKey, current);
+    void loadChatHistory(agentId, sessionKey, stillMine).then(() => {
+      if (!stillMine()) return;
+      const lost = pendingRuns(sessionKey).find((b) => b.runId === runId);
+      if (lost?.transport !== 'unknown') return;
+      terminalRun(runId, sessionKey, 'expired');
+      chat.runId = null;
+      chat.lastError = m.floatingAssistant_replyLost();
+    });
   }, 120_000);
 
   // Text first, envelope after: the gateway records the whole prompt and
@@ -374,13 +419,22 @@ export function sendAssistantTurn(
     .catch((e) => {
       if (binding) observeRunTransport(binding, 'unknown');
       if (!current()) return;
-      clearTimeout(guard);
       // Dispatch happened; an acknowledgement failure is an unknown outcome.
       // Retain the run identity for exact abort/reconciliation; never replay it.
       chat.stream = null;
       chat.streamMessage = null;
       chat.sending = false;
-      chat.lastError = String(e);
+      if (isAckTimeout(e)) {
+        // Not a failed turn: the socket stopped delivering. The run stays
+        // pending and the guard stays armed as the backstop; reconnect now
+        // (instead of waiting ~60 s for the gateway's heartbeat to notice) and
+        // the bootstrap history reload reconciles it.
+        chat.lastError = m.floatingAssistant_connectionLost();
+        requestReconnect();
+      } else {
+        clearTimeout(guard);
+        chat.lastError = String(e);
+      }
       void loadChatHistory(agentId, sessionKey, current);
     });
   return { status: 'submitted', runId };

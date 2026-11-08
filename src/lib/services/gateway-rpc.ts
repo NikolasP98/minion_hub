@@ -59,6 +59,16 @@ export function setChannelStatusSink(sink: ((status: object) => void) | null): v
   channelStatusSink = sink;
 }
 
+// Same pattern for reconnect: the facade owns `wsConnect`; chat-rpc only asks.
+let reconnectSink: (() => void) | null = null;
+export function setReconnectSink(sink: (() => void) | null): void {
+  reconnectSink = sink;
+}
+/** Tear down and re-open the socket now (a request timed out on a socket that looks open). */
+export function requestReconnect(): void {
+  reconnectSink?.();
+}
+
 /**
  * `gate` is what the role check keys on: the method itself, or `PLUGIN_RPC` for a
  * method a plugin chose (spec 045: every plugin RPC needs gateway admin).
