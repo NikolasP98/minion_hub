@@ -816,6 +816,13 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
         run: node node_modules/@playwright/test/cli.js install --with-deps chromium
 
+      - name: Settings primary navigation, Back guard and mobile parity
+        timeout-minutes: 8
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
+          E2E_BASE_URL: http://127.0.0.1:5199
+        run: bun scripts/qa/settings-navigation-smoke.ts
+
       - name: Page conformance sweep — bounded matrix + ledger compare
         # Budget per spec 014 FR-009; the matrix is sized by T012 against this cap.
         timeout-minutes: 15
@@ -823,13 +830,6 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
           E2E_BASE_URL: http://127.0.0.1:5199
         run: bun run audit:ui:sweep --ci
-
-      - name: Settings primary navigation, Back guard and mobile parity
-        timeout-minutes: 8
-        env:
-          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/qa-playwright-browsers
-          E2E_BASE_URL: http://127.0.0.1:5199
-        run: bun scripts/qa/settings-navigation-smoke.ts
 
       - name: Retain the conformance run artifacts, summary and failing screenshots
         if: always()

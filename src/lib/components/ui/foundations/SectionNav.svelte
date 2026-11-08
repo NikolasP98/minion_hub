@@ -78,7 +78,9 @@
   });
 
   const activeItem = $derived(groups.flatMap((g) => g.items).find((i) => i.id === activeId));
-  const collapsed = $derived(!!collapse && activeItem?.href !== collapse.href);
+  const collapsed = $derived(
+    layout === 'responsive' && !!collapse && activeItem?.href !== collapse.href,
+  );
 
   const normalizedQuery = $derived(searchQuery.trim().toLocaleLowerCase());
   const visibleGroups = $derived.by<SectionNavGroup[]>(() =>
