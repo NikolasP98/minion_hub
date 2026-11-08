@@ -25,6 +25,14 @@ const browser = await chromium.launch({ headless: true });
 const returnPath = '/en/account/home?settings-return=qa#selection';
 let lastPage: Page | undefined;
 const pageErrors: string[] = [];
+const repeatedLocaleNavigations: string[] = [];
+function watchLocaleNavigation(page: Page) {
+  page.on('framenavigated', (frame) => {
+    if (frame !== page.mainFrame()) return;
+    if (/^\/(?:en|es)\/(?:en|es)(?:\/|$)/.test(new URL(frame.url()).pathname))
+      repeatedLocaleNavigations.push(frame.url());
+  });
+}
 const navigationEvidence: {
   checkpoint: string;
   url: string;
@@ -43,6 +51,7 @@ async function login(context: BrowserContext, persona: string) {
   assert.equal(response.status(), 200, `Synthetic ${persona} login`);
 }
 async function shot(page: Page, name: string) {
+  assert.deepEqual(repeatedLocaleNavigations, [], 'No transient doubled-locale navigation');
   const document = await page.evaluate(() => performance.timeOrigin);
   const back = await page
     .locator('aside[aria-label="Primary"] a[aria-label="Back"]')
@@ -98,6 +107,7 @@ try {
   context.setDefaultTimeout(45_000);
   await login(context, 'platform-admin');
   const page = await context.newPage();
+  watchLocaleNavigation(page);
   page.on('pageerror', (error) => pageErrors.push(error.message));
   lastPage = page;
   await page.goto(`${base}${returnPath}`);
@@ -143,6 +153,9 @@ try {
     const config: { setField(path: string, value: unknown): void } = await import(modulePath);
     config.setField('settingsNavigationQaProbe', true);
   });
+  await expect(
+    page.locator('aside[aria-label="Primary"]').getByRole('link', { name: 'Back', exact: true }),
+  ).toHaveAttribute('href', returnPath);
   await page
     .locator('aside[aria-label="Primary"]')
     .getByRole('link', { name: 'Back', exact: true })
@@ -195,6 +208,7 @@ try {
   staff.setDefaultTimeout(45_000);
   await login(staff, 'staff');
   const mobile = await staff.newPage();
+  watchLocaleNavigation(mobile);
   mobile.on('pageerror', (error) => pageErrors.push(error.message));
   lastPage = mobile;
   await mobile.goto(`${base}/en/account/home`);
