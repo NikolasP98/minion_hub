@@ -131,8 +131,12 @@
   let idleReady = $state(false);
 
   onMount(() => {
-    // The first navigation event fired before this layout mounted; the router is ready one task later.
-    setTimeout(() => replaceWithCanonicalAddress());
+    // The first navigation event can precede this layout's mount. Capture the
+    // successful initial workspace once the router is ready, after canonicalization.
+    setTimeout(() => {
+      replaceWithCanonicalAddress();
+      settingsLayer.observe();
+    });
     void ensurePermissions();
     void hydratePluginNav();
     // Assistant UI tools (navigate / pages / guide / choice) live for the app shell's lifetime.
