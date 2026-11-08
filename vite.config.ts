@@ -101,6 +101,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: [
+      // This lazy dev-only import must be prebundled: discovering it during
+      // the first route load can reload the page and erase session-only state.
+      '@tanstack/svelte-query-devtools',
       '@zag-js/popover',
       '@zag-js/combobox',
       '@zag-js/slider',

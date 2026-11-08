@@ -20,6 +20,7 @@
     Table2,
   } from 'lucide-svelte';
   import { page } from '$app/state';
+  import { goto } from '$lib/navigation';
   import { isAdmin } from '$lib/state/features/user.svelte';
   import { canViewPath, hasFeature } from '$lib/access/can.svelte';
   import { AI_CONFIG_TAB_IDS, resolveSettingsTab, TABS } from '$lib/utils/config-schema';
@@ -33,9 +34,18 @@
   interface Props {
     dirtyTabIds?: Set<string>;
     onselect?: (id: string) => void;
+    primary?: boolean;
   }
 
-  let { dirtyTabIds = new Set<string>(), onselect }: Props = $props();
+  let { dirtyTabIds = new Set<string>(), onselect, primary = false }: Props = $props();
+
+  function selectGateway(id: string) {
+    if (onselect) return onselect(id);
+    void goto(
+      `/settings?s=${encodeURIComponent(id)}`,
+      pathname === '/settings' ? { replaceState: true, noScroll: true } : undefined,
+    );
+  }
 
   const ICON_MAP: Record<string, typeof Brain> = {
     Brain,
@@ -235,5 +245,6 @@
   {activeId}
   ariaLabel={m.settings_title()}
   search={{ enabled: true, placeholder: m.settings_nav_search() }}
-  onSelect={onselect}
+  layout={primary ? 'primary' : 'responsive'}
+  onSelect={selectGateway}
 />

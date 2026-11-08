@@ -15,6 +15,7 @@ import {
   type NavSection,
 } from './custom-sections';
 import { emptySectionHref } from './personal-navigation';
+import { isSettingsDestination } from './settings-layer';
 import { getAreaItems, type AreaId, type ModuleDef, type ModuleNavItem } from './modules';
 
 const own = (href: string) => (p: string) => p === href || p.startsWith(`${href}/`);
@@ -48,7 +49,9 @@ function usable(config: NavConfig): { section: NavSection; pages: NavPage[] }[] 
     .filter((s) => !s.hidden && !reserved.has(s.slug))
     .map((section) => ({
       section,
-      pages: section.pages.filter((p) => !p.hidden && targets.has(p.target)),
+      pages: section.pages.filter(
+        (p) => !p.hidden && targets.has(p.target) && !isSettingsDestination(p.target),
+      ),
     }));
 }
 
@@ -72,7 +75,7 @@ export function customSections(config: NavConfig): Section[] {
 /** Instances placed into a built-in module's nav. */
 export function builtinInstances(config: NavConfig, module: string): ModuleNavItem[] {
   return (config.builtinSections[module] ?? [])
-    .filter((p) => !p.hidden)
+    .filter((p) => !p.hidden && !isSettingsDestination(p.target))
     .map((page) => instanceItem(module, page));
 }
 

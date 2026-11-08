@@ -1,5 +1,6 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
+  import { settingsLayer } from '$lib/nav/settings-layer.svelte';
   import GlobalDropTarget from '$lib/components/layout/GlobalDropTarget.svelte';
   import { provideDropRegistry } from '$lib/shell/drop-context.svelte';
   import Topbar from '$lib/components/layout/Topbar.svelte';
@@ -45,7 +46,10 @@
   let cancelRestore = () => {};
   let navigationEpoch = 0;
   viewMemory.reconcile(preferenceOwner());
-  $effect.pre(() => viewMemory.reconcile(preferenceOwner()));
+  $effect.pre(() => {
+    viewMemory.reconcile(preferenceOwner());
+    settingsLayer.reconcile();
+  });
   $effect.pre(() => setInstanceMap((page.data as { navConfig?: NavConfig }).navConfig));
   beforeNavigate(() => {
     navigationEpoch += 1;
@@ -83,7 +87,9 @@
   // route loads. See meta proposal 2026-10-19-hub-module-state-keep-alive and
   // docs/verification/2026-10-20-app-backlog/README.md.
   afterNavigate(async (navigation) => {
-    if (replaceWithCanonicalAddress()) return;
+    const replaced = replaceWithCanonicalAddress();
+    settingsLayer.observe();
+    if (replaced) return;
     const epoch = ++navigationEpoch;
     const owner = preferenceOwner();
     const saved = viewMemory.read<{

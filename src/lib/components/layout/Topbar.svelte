@@ -1,5 +1,12 @@
 <script lang="ts">
   import PersonalSidebar from '$lib/components/navigation/PersonalSidebar.svelte';
+  import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
+  import SettingsLayerHeader from '$lib/components/settings/SettingsLayerHeader.svelte';
+  import { settingsLayer } from '$lib/nav/settings-layer.svelte';
+  import { afterNavigate } from '$lib/navigation';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { conn } from '$lib/state/gateway/connection.svelte';
+  import { loadingIndicator } from '$lib/state/ui/loading-indicator.svelte';
   import NavContextMenu from './NavContextMenu.svelte';
   import { createModuleNavigation } from '$lib/shell/module-navigation';
   const moduleNavigation = createModuleNavigation();
@@ -26,7 +33,6 @@
   import * as m from '$lib/paraglide/messages';
   import {
     House,
-    Settings,
     Menu,
     X,
     Search,
@@ -54,7 +60,12 @@
       : item.matcher(canonicalPath(page.url.pathname));
   }
   const topItems = $derived(utilityLinks(canViewPath));
-  const isSettings = $derived(canonicalPath(page.url.pathname).startsWith('/settings'));
+  const isSettings = $derived(settingsLayer.isOpen);
+  const actions = tryUseActions();
+  const settingsBusy = $derived(
+    Boolean(actions?.indicatorVisible || conn.connecting) &&
+      loadingIndicator.placement === 'icon-ring',
+  );
   const isWorkforce = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
 
   // Mobile is ALWAYS module-scoped, for every role — `navMode.isModule` only
@@ -111,6 +122,10 @@
     notificationsOpen = false;
     mobileMenuOpen = !mobileMenuOpen;
   }
+  afterNavigate(() => {
+    mobileMenuOpen = false;
+    modulePickerOpen = false;
+  });
   function closeMobileMenu() {
     mobileMenuOpen = false;
   }
@@ -254,185 +269,184 @@
   >
     {#snippet header()}
       <h2 id="mobile-nav-sheet-title" class="sr-only">{m.a11y4_sectionNavigation()}</h2>
-      <div class="module-picker" bind:this={modulePickerRoot}>
-        <Button
-          variant="ghost"
-          size="sm"
-          type="button"
-          class="module-picker-trigger"
-          aria-haspopup="menu"
-          aria-expanded={modulePickerOpen}
-          onclick={() => (modulePickerOpen = !modulePickerOpen)}
-        >
-          <PickerIcon size={iconSizes.md} class="shrink-0" />
-          <span class="truncate">{pickerLabel}</span>
-          <ChevronsUpDown size={iconSizes.sm} class="module-picker-chev shrink-0" />
-        </Button>
-        {#if modulePickerOpen}
-          <div use:floatingLayer class="module-picker-menu" role="menu">
-            <Button
-              variant="ghost"
-              size="sm"
-              class="module-picker-item"
-              onclick={() => {
-                modulePickerOpen = false;
-                closeMobileMenu();
-                navMode.setMode('personal');
-                void goto('/account/home');
-              }}><House size={iconSizes.sm} /><span>{m.nav_personalHome()}</span></Button
-            >
-            {#each pickerModules as mod (mod.id)}
-              {@const ModIcon = mod.icon}
+      {#if isSettings}
+        <SettingsLayerHeader busy={settingsBusy} />
+      {:else}
+        <div class="module-picker" bind:this={modulePickerRoot}>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            class="module-picker-trigger"
+            aria-haspopup="menu"
+            aria-expanded={modulePickerOpen}
+            onclick={() => (modulePickerOpen = !modulePickerOpen)}
+          >
+            <PickerIcon size={iconSizes.md} class="shrink-0" />
+            <span class="truncate">{pickerLabel}</span>
+            <ChevronsUpDown size={iconSizes.sm} class="module-picker-chev shrink-0" />
+          </Button>
+          {#if modulePickerOpen}
+            <div use:floatingLayer class="module-picker-menu" role="menu">
+              <Button
+                variant="ghost"
+                size="sm"
+                class="module-picker-item"
+                onclick={() => {
+                  modulePickerOpen = false;
+                  closeMobileMenu();
+                  navMode.setMode('personal');
+                  void goto('/account/home');
+                }}><House size={iconSizes.sm} /><span>{m.nav_personalHome()}</span></Button
+              >
+              {#each pickerModules as mod (mod.id)}
+                {@const ModIcon = mod.icon}
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  type="button"
+                  class="module-picker-item"
+                  role="menuitem"
+                  aria-current={pickerActive?.id === mod.id ? 'true' : undefined}
+                  onclick={() => selectModule(mod.id)}
+                >
+                  <NavIcon icon={ModIcon} size={iconSizes.sm} class="shrink-0" />
+                  <span class="truncate">{mod.label}</span>
+                  {#if pickerActive?.id === mod.id}
+                    <Check size={iconSizes.sm} class="module-picker-check shrink-0" />
+                  {/if}
+                </Button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
+    {/snippet}
+    {#snippet footer()}
+      {#if !isSettings}
+        <div class="mobile-menu-footer shrink-0 border-t border-[var(--hairline)] bg-bg2">
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            class="mobile-more-toggle"
+            aria-expanded={moreExpanded}
+            aria-controls="mobile-nav-more"
+            onclick={toggleMore}
+          >
+            <ChevronDown
+              size={iconSizes.sm}
+              class="mobile-more-chevron {moreExpanded ? 'open' : ''}"
+            />
+            <span>{m.nav_moreOptions()}</span>
+          </Button>
+          {#if moreExpanded}
+            <div id="mobile-nav-more" class="px-2 pb-2 flex flex-col gap-1">
+              {#each topItems as item (item.href)}
+                {@const Icon = item.icon}
+                {@const active = canonicalPath(page.url.pathname).startsWith(item.href)}
+                <a
+                  use:moduleNavigation.link
+                  href={item.href}
+                  class="mobile-nav-link {active ? 'active' : ''}"
+                  aria-current={active ? 'page' : undefined}
+                  onclick={closeMobileMenu}
+                >
+                  <Icon size={iconSizes.md} /><span>{item.label}</span>
+                </a>
+              {/each}
+
+              <!-- Notifications link -->
+              {#if canViewPath('/notifications')}
+                <a
+                  use:moduleNavigation.link
+                  href="/notifications"
+                  class="mobile-nav-link text-xs"
+                  onclick={closeMobileMenu}
+                >
+                  <Bell size={iconSizes.md} />
+                  <span>{m.misc_notifications()}</span>
+                  {#if notifications.hasPending}
+                    <span
+                      class="ml-auto text-[length:var(--font-size-telemetry)] font-bold px-1.5 py-0.5 rounded-full bg-destructive text-accent-foreground leading-none"
+                    >
+                      {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
+                    </span>
+                  {/if}
+                </a>
+              {/if}
+
+              <!-- User row -->
+              <a
+                use:moduleNavigation.link
+                href="/account"
+                class="mobile-nav-link text-xs mt-1"
+                onclick={closeMobileMenu}
+              >
+                <User size={iconSizes.md} />
+                <span class="truncate">{displayName || email}</span>
+              </a>
+
+              <!-- Logout -->
               <Button
                 variant="ghost"
                 size="xs"
                 type="button"
-                class="module-picker-item"
-                role="menuitem"
-                aria-current={pickerActive?.id === mod.id ? 'true' : undefined}
-                onclick={() => selectModule(mod.id)}
+                onclick={logout}
+                class="mobile-nav-link text-xs text-muted hover:text-destructive"
               >
-                <NavIcon icon={ModIcon} size={iconSizes.sm} class="shrink-0" />
-                <span class="truncate">{mod.label}</span>
-                {#if pickerActive?.id === mod.id}
-                  <Check size={iconSizes.sm} class="module-picker-check shrink-0" />
-                {/if}
+                <LogOut size={iconSizes.md} />
+                <span>{m.profile_logout()}</span>
               </Button>
-            {/each}
-          </div>
-        {/if}
-      </div>
-    {/snippet}
-    {#snippet footer()}
-      <div class="mobile-menu-footer shrink-0 border-t border-[var(--hairline)] bg-bg2">
-        <Button
-          variant="ghost"
-          size="sm"
-          type="button"
-          class="mobile-more-toggle"
-          aria-expanded={moreExpanded}
-          aria-controls="mobile-nav-more"
-          onclick={toggleMore}
-        >
-          <ChevronDown
-            size={iconSizes.sm}
-            class="mobile-more-chevron {moreExpanded ? 'open' : ''}"
-          />
-          <span>{m.nav_moreOptions()}</span>
-        </Button>
-        {#if moreExpanded}
-          <div id="mobile-nav-more" class="px-2 pb-2 flex flex-col gap-1">
-            {#each topItems as item (item.href)}
-              {@const Icon = item.icon}
-              {@const active = canonicalPath(page.url.pathname).startsWith(item.href)}
-              <a
-                use:moduleNavigation.link
-                href={item.href}
-                class="mobile-nav-link {active ? 'active' : ''}"
-                aria-current={active ? 'page' : undefined}
-                onclick={closeMobileMenu}
-              >
-                <Icon size={iconSizes.md} /><span>{item.label}</span>
-              </a>
-            {/each}
 
-            <!-- Settings -->
-            <a
-              use:moduleNavigation.link
-              href="/settings"
-              class="mobile-nav-link text-xs {isSettings ? 'active' : ''}"
-              onclick={closeMobileMenu}
-            >
-              <Settings size={iconSizes.md} />
-              <span>{m.nav_settings()}</span>
-            </a>
-
-            <!-- Notifications link -->
-            {#if canViewPath('/notifications')}
-              <a
-                use:moduleNavigation.link
-                href="/notifications"
-                class="mobile-nav-link text-xs"
-                onclick={closeMobileMenu}
-              >
-                <Bell size={iconSizes.md} />
-                <span>{m.misc_notifications()}</span>
-                {#if notifications.hasPending}
-                  <span
-                    class="ml-auto text-[length:var(--font-size-telemetry)] font-bold px-1.5 py-0.5 rounded-full bg-destructive text-accent-foreground leading-none"
-                  >
-                    {notifications.badgeCount > 99 ? '99+' : notifications.badgeCount}
-                  </span>
-                {/if}
-              </a>
-            {/if}
-
-            <!-- User row -->
-            <a
-              use:moduleNavigation.link
-              href="/account"
-              class="mobile-nav-link text-xs mt-1"
-              onclick={closeMobileMenu}
-            >
-              <User size={iconSizes.md} />
-              <span class="truncate">{displayName || email}</span>
-            </a>
-
-            <!-- Logout -->
-            <Button
-              variant="ghost"
-              size="xs"
-              type="button"
-              onclick={logout}
-              class="mobile-nav-link text-xs text-muted hover:text-destructive"
-            >
-              <LogOut size={iconSizes.md} />
-              <span>{m.profile_logout()}</span>
-            </Button>
-
-            {#if isWorkforce}
-              <div class="px-3 py-2"><CompanySwitcher /></div>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/snippet}
-    <NavContextMenu kind="area">
-      <nav
-        data-part="navigation"
-        class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
-      >
-        <div class="flex-1 min-w-0">
-          {#if navMode.mode === 'personal'}
-            <PersonalSidebar />
-          {:else}
-            {#each moduleItems as item, i (item.id)}
-              {#if item.group && item.group !== moduleItems[i - 1]?.group}
-                <div
-                  class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
-                >
-                  {item.group}
-                </div>
+              {#if isWorkforce}
+                <div class="px-3 py-2"><CompanySwitcher /></div>
               {/if}
-              <NavContextMenu kind="item" href={item.href} label={item.label}>
-                <a
-                  use:moduleNavigation.link
-                  href={item.href}
-                  aria-current={isActive(item) ? 'page' : undefined}
-                  class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item)
-                    ? 'active'
-                    : ''}"
-                  onclick={closeMobileMenu}
-                >
-                  <NavIcon icon={item.icon} size={iconSizes.md} />
-                  <span>{item.label}</span>
-                </a>
-              </NavContextMenu>
-            {/each}
+            </div>
           {/if}
         </div>
-      </nav>
-    </NavContextMenu>
+      {/if}
+    {/snippet}
+    {#if isSettings}
+      <SettingsNav primary />
+    {:else}
+      <NavContextMenu kind="area">
+        <nav
+          data-part="navigation"
+          class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
+        >
+          <div class="flex-1 min-w-0">
+            {#if navMode.mode === 'personal'}
+              <PersonalSidebar />
+            {:else}
+              {#each moduleItems as item, i (item.id)}
+                {#if item.group && item.group !== moduleItems[i - 1]?.group}
+                  <div
+                    class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+                  >
+                    {item.group}
+                  </div>
+                {/if}
+                <NavContextMenu kind="item" href={item.href} label={item.label}>
+                  <a
+                    use:moduleNavigation.link
+                    href={item.href}
+                    aria-current={isActive(item) ? 'page' : undefined}
+                    class="mobile-nav-link {item.indent ? 'sub-item' : ''} {isActive(item)
+                      ? 'active'
+                      : ''}"
+                    onclick={closeMobileMenu}
+                  >
+                    <NavIcon icon={item.icon} size={iconSizes.md} />
+                    <span>{item.label}</span>
+                  </a>
+                </NavContextMenu>
+              {/each}
+            {/if}
+          </div>
+        </nav>
+      </NavContextMenu>
+    {/if}
   </Sheet>
 </header>
 

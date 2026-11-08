@@ -19,6 +19,7 @@ describe('SectionNav collapse (index sidebar → parent route, spec 013)', () =>
     const r = render(SectionNav, { items, activeId: 'items', ariaLabel: 'Stock', collapse });
     const aside = r.container.querySelector('[data-component="section-nav"]')!;
     expect(aside.getAttribute('data-collapsed')).toBe('true');
+    expect(aside.getAttribute('data-layout')).toBe('responsive');
     const back = r.container.querySelector<HTMLAnchorElement>('a.nav-collapse')!;
     expect(back.getAttribute('href')).toBe('/stock');
     expect(back.textContent).toContain(m.nav_back_to_section({ section: 'Stock' }));
@@ -40,12 +41,25 @@ describe('SectionNav collapse (index sidebar → parent route, spec 013)', () =>
     expect(r.container.querySelector('a.nav-collapse')).toBeNull();
   });
 
+  it('keeps the complete primary navigation even when a responsive collapse target is supplied', () => {
+    const r = render(SectionNav, {
+      items,
+      activeId: 'items',
+      ariaLabel: 'Stock',
+      collapse,
+      layout: 'primary',
+    });
+    expect(r.container.querySelector('[data-collapsed]')).toBeNull();
+    expect(r.container.querySelector('a.nav-collapse')).toBeNull();
+    expect(r.container.querySelectorAll('nav a')).toHaveLength(3);
+  });
+
   it('hides the strip and shows the back row only under the 767.98px breakpoint', () => {
     // happy-dom has no layout engine; the breakpoint rule is asserted at the source.
     const css = readFileSync('src/lib/components/ui/foundations/SectionNav.svelte', 'utf8');
     const narrow = css.slice(css.indexOf('@media (max-width: 767.98px)'));
     expect(narrow).toMatch(
-      /\[data-collapsed='true'\] nav,\s*\[data-collapsed='true'\] \.nav-search \{\s*display: none;/,
+      /\[data-layout='responsive'\]\[data-collapsed='true'\] nav,\s*\[data-layout='responsive'\]\[data-collapsed='true'\] \.nav-search \{\s*display: none;/,
     );
     expect(narrow).toMatch(/\.nav-collapse \{\s*display: flex;/);
     expect(css).toMatch(/\.nav-collapse \{\s*display: none;\s*\}/);
