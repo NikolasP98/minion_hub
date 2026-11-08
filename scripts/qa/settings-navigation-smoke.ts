@@ -82,9 +82,10 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem('hub-sidebar-collapsed')), '1');
   await expect(page.locator('.switcher-wrap')).toHaveCount(0);
   await expect(page.locator('aside[aria-label="Primary"] .top-row')).toHaveCount(0);
-  await expect(
-    page.locator('[data-component="page-shell"] [data-component="section-nav"]'),
-  ).toHaveCount(0);
+  await expect(page.locator('[data-component="section-nav"]:visible')).toHaveCount(1);
+  await expect
+    .poll(async () => (await page.locator('aside[aria-label="Primary"]').boundingBox())?.width ?? 0)
+    .toBeGreaterThan(220);
   await vertical(primary(page));
   await shot(page, 'desktop-settings-layer');
 
@@ -142,6 +143,7 @@ try {
     page.locator('aside[aria-label="Primary"]').getByRole('link', { name: 'Back', exact: true }),
   ).toHaveAttribute('href', /\/account\/home$/);
   await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(page.locator('[data-component="section-nav"]:visible')).toHaveCount(1);
   await vertical(primary(page));
   await shot(page, 'intermediate-width-vertical');
   await context.close();
@@ -162,6 +164,7 @@ try {
   await mobile.getByRole('button', { name: 'Toggle menu', exact: true }).click();
   const sheet = mobile.getByRole('dialog');
   const mobileNav = sheet.locator('[data-layout="primary"]');
+  await expect(mobile.locator('[data-component="section-nav"]:visible')).toHaveCount(1);
   await vertical(mobileNav);
   await expect(sheet.getByRole('link', { name: 'Organizations', exact: true })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Security', exact: true })).toHaveCount(0);
