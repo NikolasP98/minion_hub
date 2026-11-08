@@ -320,12 +320,13 @@ describe('element writes are admin-only', () => {
     expect(response.status).toBe(200);
     const [update] = statements();
     expect(update.sql).toContain('update sandbox_elements set');
-    expect(update.sql).toContain('where org_id = $10 and id = $11::uuid');
+    expect(update.sql).toContain('where org_id = $11 and id = $12::uuid');
     // null for every omitted field => coalesce keeps the stored value; the
     // viewer id appears for the creator-only `published` guard, the library
     // write guard and the `mine` column (spec 014).
     expect(update.params).toEqual([
       'Renamed',
+      null,
       null,
       null,
       null,
@@ -358,6 +359,80 @@ describe('element writes are admin-only', () => {
     expect(response.status).toBe(400);
     const parsed = (await response.json()) as { error: string };
     expect(parsed.error).toMatch(/the limit is 65536/);
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it('stores a valid block spec as jsonb and 400s one that names an unknown column (spec 049)', async () => {
+    const spec = {
+      v: 1,
+      type: 'kpi',
+      source: {
+        dataset: 'pos.tickets',
+        metric: { fn: 'sum', col: 'total' },
+        period: { col: 'submitted_at', range: 'this_month' },
+      },
+      format: 'money',
+    };
+    mocks.execute.mockResolvedValue([
+      {
+        id: '11111111-1111-4111-8111-111111111111',
+        page: 'default',
+        title: 'Sales',
+        html: '',
+        css: '',
+        js: '',
+        spec: { ...spec, tone: 'accent' },
+        w: 1,
+        h: 1,
+        position: 0,
+        createdBy: 'profile-1',
+        updatedAt: '2026-11-08T00:00:00.000Z',
+      },
+    ]);
+    const ok = await elementsPost(post(ADMIN, { title: 'Sales', spec }, '/api/sandbox/elements'));
+    expect(ok.status).toBe(201);
+    const [insert] = statements();
+    expect(insert.sql).toContain('::jsonb');
+    const stored = insert.params.find((p) => typeof p === 'string' && p.includes('"type":"kpi"'));
+    expect(JSON.parse(stored as string)).toMatchObject({
+      type: 'kpi',
+      tone: 'accent',
+      format: 'money',
+    });
+    await expect(ok.json()).resolves.toMatchObject({ element: { spec: { type: 'kpi' } } });
+
+    mocks.execute.mockClear();
+    const bad = await elementsPost(
+      post(
+        ADMIN,
+        {
+          title: 'Bad',
+          spec: { ...spec, source: { ...spec.source, metric: { fn: 'sum', col: 'totl' } } },
+        },
+        '/api/sandbox/elements',
+      ),
+    );
+    expect(bad.status).toBe(400);
+    await expect(bad.json()).resolves.toEqual({
+      error: 'unknown column "totl" on pos.tickets',
+      field: 'spec.source.metric.col',
+    });
+    const typed = await elementsPost(
+      post(
+        ADMIN,
+        {
+          title: 'Bad',
+          spec: { ...spec, source: { ...spec.source, metric: { fn: 'sum', col: 'status' } } },
+        },
+        '/api/sandbox/elements',
+      ),
+    );
+    await expect(typed.json()).resolves.toMatchObject({ field: 'spec.source.metric.col' });
+    const shape = await elementsPost(
+      post(ADMIN, { title: 'Bad', spec: { ...spec, format: 'euros' } }, '/api/sandbox/elements'),
+    );
+    expect(shape.status).toBe(400);
+    await expect(shape.json()).resolves.toMatchObject({ field: 'spec.format' });
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 

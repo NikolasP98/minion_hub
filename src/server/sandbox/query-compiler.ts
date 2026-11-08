@@ -37,6 +37,9 @@ export type Op = (typeof OPS)[number];
 export const AGGREGATE_FNS = ['count', 'sum', 'avg', 'min', 'max'] as const;
 export type AggregateFn = (typeof AGGREGATE_FNS)[number];
 
+export const BUCKET_UNITS = ['day', 'week', 'month'] as const;
+export type BucketUnit = (typeof BUCKET_UNITS)[number];
+
 export interface QuerySpec {
   dataset: string;
   select?: string[];
@@ -45,6 +48,12 @@ export interface QuerySpec {
   limit?: number;
   groupBy?: string[];
   aggregate?: Array<{ fn: AggregateFn; col: string; as: string }>;
+  /**
+   * Time series (spec 049): `date_trunc(unit, col)` projected under the
+   * column's own name and grouped, so a block asks for "per day" instead of
+   * grouping up to 1,000 raw rows in the browser. Timestamp columns only.
+   */
+  bucket?: { col: string; unit: BucketUnit };
 }
 
 export interface OwnerScope {
@@ -184,7 +193,8 @@ export function compile(
       );
     }
   };
-  const grouped = Array.isArray(spec.groupBy) && spec.groupBy.length > 0;
+  const bucket = spec.bucket;
+  const grouped = (Array.isArray(spec.groupBy) && spec.groupBy.length > 0) || !!bucket;
   const aggregates = spec.aggregate ?? [];
   // Aggregates without groupBy = one totals row: plain columns and the default
   // order would be ungrouped references, which Postgres rejects (prod 500s, spec 023).
@@ -193,6 +203,32 @@ export function compile(
   const projection: SQL[] = [];
   const columns: CompiledColumn[] = [];
   const aliasTypes = new Map<string, ColumnType>();
+  const groupExprs: SQL[] = [];
+
+  if (bucket) {
+    const column = requireColumn(dataset, bucket.col, 'bucket');
+    if (column.type !== 'timestamp') {
+      throw new SandboxQueryError(
+        `bucket column ${JSON.stringify(column.name)} is not a timestamp`,
+        'bucket',
+      );
+    }
+    if (!BUCKET_UNITS.includes(bucket.unit)) {
+      throw new SandboxQueryError(
+        `unknown bucket unit ${JSON.stringify(String(bucket.unit))}`,
+        'bucket',
+      );
+    }
+    guardPii(column, 'bucket');
+    // The unit is enum-checked above AND bound as a parameter; nothing from
+    // the spec reaches the SQL text.
+    const expr = sql`date_trunc(${bucket.unit}, ${sql.raw(columnExpr(column))})`;
+    projection.push(sql`${expr} as ${sql.raw(`"${column.name}"`)}`);
+    columns.push({ name: column.name, type: 'timestamp' });
+    // Ordering by the bucket uses its output alias, like an aggregate alias.
+    aliasTypes.set(column.name, 'timestamp');
+    groupExprs.push(expr);
+  }
 
   if (grouped) {
     for (const name of spec.groupBy ?? []) {
@@ -200,6 +236,7 @@ export function compile(
       guardPii(column, 'groupBy');
       projection.push(sql`${sql.raw(columnExpr(column))} as ${sql.raw(`"${column.name}"`)}`);
       columns.push({ name: column.name, type: column.type, ...(column.pii ? { pii: true } : {}) });
+      groupExprs.push(sql.raw(columnExpr(column)));
     }
   } else if (!aggregated) {
     const names = spec.select?.length ? spec.select : dataset.defaultColumns;
@@ -256,9 +293,6 @@ export function compile(
   }
 
   if (grouped) {
-    const groupExprs = (spec.groupBy ?? []).map((name) =>
-      sql.raw(columnExpr(requireColumn(dataset, name, 'groupBy'))),
-    );
     query = sql`${query} group by ${sql.join(groupExprs, sql`, `)}`;
   }
 

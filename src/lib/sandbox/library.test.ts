@@ -32,6 +32,20 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+describe('componentCopy (spec 049)', () => {
+  test('copies a block spec and omits the key for custom code', () => {
+    expect(componentCopy(element)).not.toHaveProperty('spec');
+    const spec = {
+      v: 1 as const,
+      type: 'kpi' as const,
+      format: 'number' as const,
+      tone: 'accent' as const,
+      source: { dataset: 'crm.contacts', metric: { fn: 'count' as const, col: '*' } },
+    };
+    expect(componentCopy({ ...element, spec })).toMatchObject({ title: 'KPI', spec });
+  });
+});
+
 let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   fetchMock = vi.fn(async () => jsonResponse({ element: { ...element, id: 'new' } }));
