@@ -380,6 +380,35 @@ export async function seed(ctx: SeedContext): Promise<void> {
     where: { id: sandboxElementId },
   });
 
+  // Sandbox block kit (spec 049): one JSON-described block next to the custom
+  // element, so the native renderer, the `spec` column and the seed pairing
+  // are all exercised by the QA stack.
+  const sandboxBlockId = matrixUuid('tenancy.sandbox.kpi');
+  const sandboxBlockSpec = {
+    v: 1,
+    type: 'kpi',
+    source: {
+      dataset: 'pos.tickets',
+      metric: { fn: 'count', col: '*' },
+      period: { col: 'submitted_at', range: 'last_30d' },
+    },
+    format: 'number',
+    compare: true,
+  };
+  await sql`
+    insert into sandbox_elements (id, org_id, page, title, spec, w, h, position, created_by)
+    values (
+      ${sandboxBlockId}, ${ORG_BUSINESS}, 'default', 'Tickets (30 days)',
+      ${sql.json(sandboxBlockSpec)}, 1, 1, 1, ${userId('tenancy.user.owner')}
+    )
+    on conflict (id) do update set title = excluded.title, spec = excluded.spec,
+      w = excluded.w, h = excluded.h, position = excluded.position, updated_at = now()
+  `;
+  register('tenancy.sandbox.kpi', {
+    table: 'sandbox_elements',
+    where: { id: sandboxBlockId },
+  });
+
   // Custom nav (spec 037): a "Staff" section with a Sell link and the moved
   // Appointments main. Fixed ids keep the seed deterministic.
   const navConfig = {

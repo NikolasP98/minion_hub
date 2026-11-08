@@ -237,6 +237,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: 'one sandbox_elements row on the business org default page, so /sandbox renders something before the assistant has built anything',
   },
   {
+    id: 'tenancy.sandbox.kpi',
+    domain: 'tenancy',
+    why: 'one JSON-described block (spec 049) beside the custom element, so the native block renderer and the spec column are exercised',
+  },
+  {
     id: 'tenancy.nav.staff-section',
     domain: 'tenancy',
     why: 'a custom "Staff" section with a Sell link and the moved Appointments main (fixed ids), the fixture for instance routing',

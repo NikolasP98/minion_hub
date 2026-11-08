@@ -5,6 +5,7 @@
  * rows, so a drag/resize becomes the minimal set of PATCHes.
  */
 import type { GridLayout } from '$lib/components/dashboard/editable-grid';
+import type { BlockSpec } from './blocks/schema';
 
 export interface ElementLike {
   id: string;
@@ -13,6 +14,8 @@ export interface ElementLike {
   h: number;
   position: number;
   js: string;
+  /** Present on block elements (spec 049); the description reads it exactly. */
+  spec?: BlockSpec | null;
 }
 
 export interface ElementDescription {
@@ -23,18 +26,29 @@ export interface ElementDescription {
   position: number;
   /** Dataset ids the element JS queries (`dataset: '…'`). */
   datasets: string[];
-  /** ECharts series type if the JS declares one (`type: 'bar'`). */
+  /** Block kind (+ chart preset) for a block; ECharts series type inferred for custom JS. */
   chart: string | null;
 }
 
-// TODO(handoff): regex inference over the element JS — an element that builds
-// its spec dynamically reports "no query". A declared `meta` field on the
-// element record is the upgrade; see meta proposals/2026-10-16-hub-sandbox-pages-followups.md.
+// TODO(handoff): regex inference over CUSTOM element JS only — a custom element
+// that builds its spec dynamically reports "no query". Blocks (spec 049) are
+// described from their stored spec; see meta proposals/2026-10-16-hub-sandbox-pages-followups.md.
 const DATASET_RE = /dataset\s*:\s*['"`]([\w.]+)['"`]/g;
 const CHART_RE =
   /type\s*:\s*['"`](bar|line|pie|scatter|heatmap|radar|gauge|funnel|treemap|sunburst|sankey|boxplot|candlestick)['"`]/;
 
 export function describeElement(e: ElementLike): ElementDescription {
+  if (e.spec) {
+    return {
+      id: e.id,
+      title: e.title,
+      w: e.w,
+      h: e.h,
+      position: e.position,
+      datasets: [e.spec.source.dataset],
+      chart: e.spec.type === 'chart' ? `${e.spec.type}:${e.spec.preset}` : e.spec.type,
+    };
+  }
   const js = String(e.js ?? '');
   const datasets = [...new Set([...js.matchAll(DATASET_RE)].map((m) => m[1]))];
   return {

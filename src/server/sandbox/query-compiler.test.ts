@@ -450,3 +450,42 @@ describe('compile — PII side channels are closed when the caller is masked (se
     });
   });
 });
+
+describe('compile — bucket (spec 049 time series)', () => {
+  it('truncates a timestamp column under its own name, groups by it and orders by the alias', () => {
+    const out = render({
+      dataset: 'pos.tickets',
+      bucket: { col: 'submitted_at', unit: 'day' },
+      aggregate: [{ fn: 'sum', col: 'total', as: 'revenue' }],
+      orderBy: [{ col: 'submitted_at', dir: 'asc' }],
+      where: [{ col: 'submitted_at', op: 'gte', value: '2026-10-01T00:00:00.000Z' }],
+    });
+    expect(out.sql).toBe(
+      'select date_trunc($1, t.submitted_at) as "submitted_at", sum(t.total) as "revenue" ' +
+        'from pos_tickets t where t.org_id = $2 and t.submitted_at >= $3 ' +
+        'group by date_trunc($4, t.submitted_at) order by "submitted_at" asc limit $5',
+    );
+    expect(out.params).toEqual(['day', 'org-1', '2026-10-01T00:00:00.000Z', 'day', DEFAULT_LIMIT]);
+    expect(out.columns).toEqual([
+      { name: 'submitted_at', type: 'timestamp' },
+      { name: 'revenue', type: 'number' },
+    ]);
+  });
+
+  it('rejects a bucket on a non-timestamp column and an unknown unit as 400s on `bucket`', () => {
+    expect(() =>
+      render({ dataset: 'pos.tickets', bucket: { col: 'total', unit: 'day' } }),
+    ).toThrowError(SandboxQueryError);
+    try {
+      render({ dataset: 'pos.tickets', bucket: { col: 'total', unit: 'day' } });
+    } catch (err) {
+      expect((err as SandboxQueryError).field).toBe('bucket');
+    }
+    expect(() =>
+      render({
+        dataset: 'pos.tickets',
+        bucket: { col: 'submitted_at', unit: 'hour' as unknown as 'day' },
+      }),
+    ).toThrow(/unknown bucket unit/);
+  });
+});

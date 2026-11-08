@@ -207,6 +207,20 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     expect(element.created_by).toBe(userId('tenancy.user.owner'));
   });
 
+  it('tenancy.sandbox.kpi is a kpi block with an empty custom body on the same page', async () => {
+    const [block] = await sql<
+      { org_id: string; page: string; html: string; type: string | null; dataset: string | null }[]
+    >`
+      select org_id, page, html, spec->>'type' as type, spec->'source'->>'dataset' as dataset
+      from sandbox_elements where id = ${matrixUuid('tenancy.sandbox.kpi')}
+    `;
+    expect(block.org_id).toBe(ORG_BUSINESS);
+    expect(block.page).toBe('default');
+    expect(block.html).toBe('');
+    expect(block.type).toBe('kpi');
+    expect(block.dataset).toBe('pos.tickets');
+  });
+
   it('tenancy.nav.staff-section holds a Sell link and the moved Appointments main', async () => {
     const [row] = await sql<
       {

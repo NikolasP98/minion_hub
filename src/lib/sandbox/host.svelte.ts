@@ -8,6 +8,7 @@ import type { InvocationCapability } from '$lib/assistant/accepted-runs';
  * performs the query with the user's session (so RBAC is the user's).
  */
 import type { LayoutUpdate } from './canvas';
+import type { BlockSpec } from './blocks/schema';
 
 export interface SandboxElementRecord {
   id: string;
@@ -16,6 +17,8 @@ export interface SandboxElementRecord {
   html: string;
   css: string;
   js: string;
+  /** Block kit (spec 049): a JSON block renders natively; null = custom iframe code. */
+  spec: BlockSpec | null;
   w: number;
   h: number;
   position: number;
@@ -26,7 +29,7 @@ export interface SandboxElementRecord {
 }
 
 export type SandboxElementInput = Partial<
-  Pick<SandboxElementRecord, 'id' | 'title' | 'html' | 'css' | 'js' | 'w' | 'h' | 'page'>
+  Pick<SandboxElementRecord, 'id' | 'title' | 'html' | 'css' | 'js' | 'spec' | 'w' | 'h' | 'page'>
 > &
   Pick<SandboxElementRecord, 'title'>;
 

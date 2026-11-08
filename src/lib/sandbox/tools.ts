@@ -15,6 +15,16 @@ import type { InvocationCapability } from '$lib/assistant/accepted-runs';
 import { registerTool, type ModelContextTool } from '$lib/assistant/model-context';
 import { fetchJson } from '$lib/api/fetch-json';
 import { describeElement, type ElementLike } from './canvas';
+import {
+  BLOCK_KINDS,
+  BUCKETS,
+  CHART_PRESETS,
+  FORMATS,
+  RANGES,
+  TONES,
+  blockToolSchemas,
+  type BlockKind,
+} from './blocks/schema';
 
 /** The sandbox page listens for this and re-renders the element's iframe. */
 export const SANDBOX_CHANGED_EVENT = 'minion:sandbox-changed';
@@ -120,6 +130,160 @@ const ELEMENT_FIELDS = {
   h: { type: 'number', description: 'Height in grid rows, 1-4.' },
 } as const;
 
+/**
+ * Block kit (spec 049): one tool per block kind, schema generated from the
+ * grammar the server validates with. The descriptions are operative — they
+ * are the model's only manual for choosing a kind.
+ */
+const BLOCK_DESCRIPTIONS: Record<BlockKind, string> = {
+  kpi:
+    'Add or replace a KPI tile: ONE number from a dataset (count/sum/avg/min/max of a column), ' +
+    'rendered with the hub’s own typography and theme. Options: `source.period` for a time ' +
+    'window (today, last_7d, last_30d, this_month, last_month, this_year…), `compare: true` ' +
+    'for the change versus the previous period, `trend` (day|week|month) for a sparkline, ' +
+    '`target` for a progress bar toward a goal, `format` (number|compact|money|percent) and ' +
+    '`tone`. Prefer this over a custom element for any single metric. Width 1, height 1 is ' +
+    'the default tile.',
+  chart:
+    'Add or replace a chart from a preset: bar, horizontal-bar, stacked-bar, line, area, pie, ' +
+    'donut. `source.measures` are the series (one per aggregate); set EXACTLY ONE of ' +
+    '`source.dimension` (a category column: one bar/slice per value) or `source.time` ' +
+    '(a timestamp column + bucket day|week|month: a time series). `format` drives the axis ' +
+    'and tooltip (money shows the currency symbol). Colours, legend, axes, resize and the ' +
+    'accessible data table are automatic. Prefer this over a custom element for any standard ' +
+    'chart; time series look best at w=4, categories at w=2.',
+  table:
+    'Add or replace a table of rows from a dataset using the hub’s own DataTable (sortable ' +
+    'headers, resizable columns). `source.select` picks columns in order (dataset defaults ' +
+    'when omitted), `source.orderBy` and `source.limit` (≤200) shape the rows, `formats` maps ' +
+    'a column to number|compact|money|percent|date|text when the inferred type is wrong. ' +
+    'Prefer this over a custom element for any row list. Width 2–4, height 2.',
+  list:
+    'Add or replace a ranked list: one metric per distinct value of `source.dimension` ' +
+    '(top products, sales by staff, contacts by source), shown as labelled bars with the ' +
+    'formatted value, largest first, `source.limit` rows (≤20, default 8). Prefer this over ' +
+    'a bar chart when the user wants to READ the values. Width 1–2, height 2.',
+};
+
+const BLOCK_EXAMPLES: Record<BlockKind, Record<string, unknown>> = {
+  kpi: {
+    title: 'Sales this month',
+    source: {
+      dataset: 'pos.tickets',
+      metric: { fn: 'sum', col: 'total' },
+      period: { col: 'submitted_at', range: 'this_month' },
+      filters: [{ col: 'status', op: 'eq', value: 'submitted' }],
+    },
+    format: 'money',
+    compare: true,
+    trend: 'day',
+  },
+  chart: {
+    title: 'Revenue per week',
+    w: 4,
+    preset: 'area',
+    source: {
+      dataset: 'pos.tickets',
+      time: { col: 'submitted_at', bucket: 'week' },
+      measures: [{ fn: 'sum', col: 'total', label: 'Revenue' }],
+      period: { col: 'submitted_at', range: 'last_90d' },
+    },
+    format: 'money',
+  },
+  table: {
+    title: 'Latest contacts',
+    w: 2,
+    h: 2,
+    source: {
+      dataset: 'crm.contacts',
+      select: ['display_name', 'source', 'created_at'],
+      orderBy: [{ col: 'created_at', dir: 'desc' }],
+      limit: 20,
+    },
+  },
+  list: {
+    title: 'Top products',
+    w: 2,
+    h: 2,
+    source: {
+      dataset: 'pos.ticket_lines',
+      dimension: 'product_name',
+      metric: { fn: 'sum', col: 'total' },
+      period: { col: 'submitted_at', range: 'last_30d' },
+    },
+    format: 'money',
+  },
+};
+
+function blockTools(
+  refresh: (
+    id: string,
+    capability?: InvocationCapability,
+    signal?: AbortSignal,
+    lease?: EffectLease,
+  ) => Promise<Record<string, unknown>>,
+): ModelContextTool[] {
+  const catalog: ModelContextTool = {
+    name: 'sandbox.blocks',
+    description:
+      'The block kit catalogue: the four block kinds (kpi, chart, table, list), every preset ' +
+      'value (chart presets, formats, tones, periods, buckets) and one complete example input ' +
+      'per kind. Blocks are built from the hub’s own components, so they always match the rest ' +
+      'of the app — use a sandbox.block_* tool for anything a kind covers and ' +
+      'sandbox.upsert_element only for a visual none of them can express.',
+    inputSchema: { type: 'object', properties: {} },
+    execute: () => ({
+      kinds: BLOCK_KINDS,
+      presets: {
+        chart: CHART_PRESETS,
+        format: FORMATS,
+        tone: TONES,
+        period: RANGES,
+        bucket: BUCKETS,
+      },
+      examples: BLOCK_EXAMPLES,
+    }),
+    annotations: { readOnlyHint: true },
+  };
+  const writers = blockToolSchemas().map<ModelContextTool>((tool) => ({
+    name: `sandbox.block_${tool.kind}`,
+    description: BLOCK_DESCRIPTIONS[tool.kind],
+    inputSchema: tool.inputSchema,
+    execute: async (input, ctx) => {
+      let parsed: ReturnType<typeof tool.parse>;
+      try {
+        parsed = tool.parse(input);
+      } catch (err) {
+        const issue = (err as { issues?: Array<{ path: unknown[]; message: string }> }).issues?.[0];
+        return {
+          error: issue
+            ? `invalid ${issue.path.join('.') || 'input'}: ${issue.message}`
+            : String(err),
+        };
+      }
+      const { id, title, w, h, spec } = parsed;
+      const saved = await fetchJson<unknown>(
+        id ? `/api/sandbox/elements/${encodeURIComponent(id)}` : '/api/sandbox/elements',
+        {
+          method: id ? 'PATCH' : 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            spec,
+            ...(typeof w === 'number' ? { w } : {}),
+            ...(typeof h === 'number' ? { h } : {}),
+          }),
+          signal: ctx.signal,
+        },
+      );
+      const savedId = elementId(saved, id ?? '');
+      return { id: savedId, ...(await refresh(savedId, ctx.capability, ctx.signal, ctx)) };
+    },
+    annotations: { readOnlyHint: false },
+  }));
+  return [catalog, ...writers];
+}
+
 function sandboxTools(
   acknowledge?: (
     capability?: InvocationCapability,
@@ -142,6 +306,7 @@ function sandboxTools(
     return {};
   };
   return [
+    ...blockTools(refresh),
     {
       name: 'sandbox.datasets',
       description:
@@ -196,7 +361,9 @@ function sandboxTools(
     {
       name: 'sandbox.upsert_element',
       description:
-        'Create a sandbox element, or replace one by passing its `id`. It renders immediately. ' +
+        'Create a CUSTOM code element, or replace one by passing its `id`. Use it only when no ' +
+        'sandbox.block_* kind (kpi, chart, table, list) can express the visual — blocks are built ' +
+        'from the hub’s own components and need no code. It renders immediately. ' +
         'One visual per element. Rules that make the difference between a working element and a ' +
         'blank box: query inside minion.ready(() => …) and await minion.query(spec); do the ' +
         'calculations (margins, ratios, totals, grouping) in the element JS, not in the query; ' +

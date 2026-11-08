@@ -8,6 +8,7 @@
   import { VENDOR } from '$lib/sandbox/vendor';
   import type { SandboxElementRecord, SandboxHost } from '$lib/sandbox/host.svelte';
   import * as m from '$lib/paraglide/messages';
+  import BlockView from './BlockView.svelte';
 
   interface Props {
     element: SandboxElementRecord;
@@ -97,14 +98,24 @@
     </Button>
   </header>
   <div class="element-box" bind:this={box}>
-    <iframe
-      bind:this={frame}
-      {srcdoc}
-      title={element.title}
-      sandbox="allow-scripts"
-      referrerpolicy="no-referrer"
-      loading="lazy"
-    ></iframe>
+    {#if element.spec}
+      <!-- A block is data rendered with the hub's own components (spec 049);
+           only custom code goes through the sandboxed iframe below. -->
+      <BlockView
+        spec={element.spec}
+        title={element.title}
+        version={host.versionOf(element.id) + Date.parse(element.updatedAt)}
+      />
+    {:else}
+      <iframe
+        bind:this={frame}
+        {srcdoc}
+        title={element.title}
+        sandbox="allow-scripts"
+        referrerpolicy="no-referrer"
+        loading="lazy"
+      ></iframe>
+    {/if}
   </div>
 </section>
 

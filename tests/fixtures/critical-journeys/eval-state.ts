@@ -13,6 +13,7 @@ export function initialSandboxElements(id: 'empty' | 'one-element'): SandboxElem
           html: '<p>Fixture</p>',
           css: '',
           js: '',
+          spec: null,
           published: false,
           mine: true,
           createdBy: 'fixture-user',

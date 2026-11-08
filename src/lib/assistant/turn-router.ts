@@ -167,6 +167,14 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
       'covers the same datasets and intent, update it by id (sandbox.upsert_element with `id`); ' +
       'never add a duplicate. Place and size with sandbox.arrange (4 columns: KPI w=1, chart ' +
       'w=2, time series w=4; keep related visuals adjacent). Tier 1, build one element — ' +
+      'BLOCKS FIRST (spec 049): a KPI, chart, table or ranked list is a sandbox.block_kpi / ' +
+      'sandbox.block_chart / sandbox.block_table / sandbox.block_list call with a dataset, ' +
+      'a metric or measures, an optional period preset (today, last_7d, last_30d, this_month, ' +
+      'last_month, this_year…) and presets for format (number|compact|money|percent), chart ' +
+      'preset (bar|horizontal-bar|stacked-bar|line|area|pie|donut) and tone. Blocks render with ' +
+      'the hub’s own components, need no code and no preview, and a bad column comes back as a ' +
+      '400 naming the field — fix the input, never guess. sandbox.blocks lists every preset and ' +
+      'one example per kind. Only when no block kind fits, write a CUSTOM element — ' +
       'Sandbox element authoring. One visual per element, written as vanilla HTML/CSS/JS — no ' +
       'imports, no framework, no external URLs and no fetch (the frame has no network). Inside ' +
       'the frame you get `minion`: `minion.ready(fn)` runs fn once the runtime is up; `await ' +
@@ -175,15 +183,15 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
       'CSS values; `await minion.echarts` resolves ECharts (default); `await minion.d3` a slim ' +
       'd3 (bespoke marks, trees, force graphs); `await minion.echartsGl` echarts with 3D series ' +
       '(bar3D, scatter3D, surface) registered; `minion.size` is the element box in ' +
-      'px and re-fires on resize. Order of work: sandbox.datasets, then sandbox.preview the spec ' +
-      'you intend to use, then sandbox.upsert_element. Put the calculations (margin, ratios, ' +
+      'px and re-fires on resize. Order of work: sandbox.datasets, then a sandbox.block_* call; ' +
+      'for a custom element, sandbox.preview the spec first, then sandbox.upsert_element. Put the calculations (margin, ratios, ' +
       'totals, grouping) in the element JS, not in the query. For a chart: `const echarts = ' +
       'await minion.echarts`, then colour the series from `minion.theme`. Size with `w`/`h` in ' +
       'grid units 1-4. Catch errors and render the message inside the element so the user reads ' +
       'it instead of a blank box. To change an existing visual, call sandbox.upsert_element with ' +
       'its `id` (sandbox.list_elements gives you the ids). Reads (sandbox.datasets, sandbox.preview, ' +
-      'sandbox.list_elements) come back to you in a follow-up turn; a successful write ends the turn, ' +
-      'so put every sandbox.upsert_element and sandbox.arrange for the request in ONE reply.',
+      'sandbox.list_elements, sandbox.blocks) come back to you in a follow-up turn; a successful write ends the turn, ' +
+      'so put every sandbox.block_*, sandbox.upsert_element and sandbox.arrange for the request in ONE reply.',
   },
 ];
 

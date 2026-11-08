@@ -15,6 +15,7 @@ import {
   resolveOwnerScope,
   shouldMaskSensitive,
 } from '$server/services/rbac.service';
+import type { BlockSpec } from '$lib/sandbox/blocks/schema';
 import { DATASETS, datasetCatalogEntry, findDataset, type Dataset } from './datasets';
 import { compile, SandboxQueryError, type QuerySpec } from './query-compiler';
 
@@ -118,6 +119,8 @@ export interface SandboxElement {
   html: string;
   css: string;
   js: string;
+  /** Block kit (spec 049): set for a JSON-described block, null for custom code. */
+  spec: BlockSpec | null;
   w: number;
   h: number;
   position: number;
@@ -138,6 +141,8 @@ export interface SandboxElementInput {
   html?: string;
   css?: string;
   js?: string;
+  /** Already validated by `validateBlockSpec` (routes); stored as jsonb. */
+  spec?: BlockSpec;
   w?: number;
   h?: number;
   position?: number;
@@ -149,7 +154,20 @@ const libraryWritable = (ctx: CoreCtx) =>
   sql`(page <> ${LIBRARY_PAGE} or created_by::text = ${ctx.profileId ?? ''})`;
 
 const elementColumns = (ctx: CoreCtx) =>
-  sql`id::text, page, title, html, css, js, w, h, position, created_by::text as "createdBy", updated_at as "updatedAt", published, (created_by::text = ${ctx.profileId ?? ''}) as mine`;
+  sql`id::text, page, title, html, css, js, spec, w, h, position, created_by::text as "createdBy", updated_at as "updatedAt", published, (created_by::text = ${ctx.profileId ?? ''}) as mine`;
+
+/** jsonb comes back parsed from pg; a text driver would hand us the string. */
+function specOf(value: unknown): BlockSpec | null {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as BlockSpec;
+    } catch {
+      return null;
+    }
+  }
+  return value as BlockSpec;
+}
 
 function rowToElement(row: Record<string, unknown>): SandboxElement {
   return {
@@ -159,6 +177,7 @@ function rowToElement(row: Record<string, unknown>): SandboxElement {
     html: String(row.html ?? ''),
     css: String(row.css ?? ''),
     js: String(row.js ?? ''),
+    spec: specOf(row.spec),
     w: Number(row.w),
     h: Number(row.h),
     position: Number(row.position),
@@ -170,10 +189,11 @@ function rowToElement(row: Record<string, unknown>): SandboxElement {
 }
 
 function assertSize(input: SandboxElementInput): void {
-  const bytes = (['html', 'css', 'js'] as const).reduce(
-    (total, key) => total + Buffer.byteLength(input[key] ?? '', 'utf8'),
-    0,
-  );
+  const bytes =
+    (['html', 'css', 'js'] as const).reduce(
+      (total, key) => total + Buffer.byteLength(input[key] ?? '', 'utf8'),
+      0,
+    ) + (input.spec ? Buffer.byteLength(JSON.stringify(input.spec), 'utf8') : 0);
   if (bytes > ELEMENT_MAX_BYTES) {
     throw new SandboxQueryError(
       `element code is ${bytes} bytes; the limit is ${ELEMENT_MAX_BYTES}`,
@@ -223,6 +243,7 @@ export async function upsertElement(
   assertSize(input);
   const id = input.id === undefined ? null : requireUuid(input.id, 'id');
   const page = input.page ?? 'default';
+  const specJson = input.spec ? JSON.stringify(input.spec) : null;
   const result = await withOrgCore(ctx, async (tx: CoreTx) => {
     if (id) {
       return rows(
@@ -232,6 +253,7 @@ export async function upsertElement(
             html = coalesce(${input.html ?? null}, html),
             css = coalesce(${input.css ?? null}, css),
             js = coalesce(${input.js ?? null}, js),
+            spec = coalesce(${specJson}::jsonb, spec),
             w = coalesce(${input.w ?? null}, w),
             h = coalesce(${input.h ?? null}, h),
             position = coalesce(${input.position ?? null}, position),
@@ -248,10 +270,10 @@ export async function upsertElement(
     if (!input.title) throw new SandboxQueryError('title is required', 'title');
     return rows(
       await tx.execute(sql`
-        insert into sandbox_elements (org_id, page, title, html, css, js, w, h, position, created_by)
+        insert into sandbox_elements (org_id, page, title, html, css, js, spec, w, h, position, created_by)
         values (
           ${ctx.tenantId}, ${page}, ${input.title},
-          ${input.html ?? ''}, ${input.css ?? ''}, ${input.js ?? ''},
+          ${input.html ?? ''}, ${input.css ?? ''}, ${input.js ?? ''}, ${specJson}::jsonb,
           ${input.w ?? 2}, ${input.h ?? 2},
           coalesce(
             ${input.position ?? null},
