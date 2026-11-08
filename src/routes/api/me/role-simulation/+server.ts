@@ -1,3 +1,4 @@
+import { requireAuth } from '$server/auth/authorize';
 import { json, error, type RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import {
@@ -10,7 +11,7 @@ const base = z.object({ generation: z.uuid(), returnTo: z.string().max(4096) }).
 const start = base.extend({ roleKey: z.string().min(1).max(256) }).strict();
 const headers = { 'Cache-Control': 'private, no-store' };
 export const GET: RequestHandler = async ({ locals }) => {
-  if (!locals.user) throw error(401);
+  requireAuth(locals);
   return json(await loadRoleSimulationState(locals), { headers });
 };
 async function transition(event: Parameters<RequestHandler>[0], entering: boolean) {
