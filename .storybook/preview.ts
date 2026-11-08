@@ -1,27 +1,53 @@
-import type { Preview } from '@storybook/sveltekit';
+import type { Decorator, Preview } from '@storybook/sveltekit';
+import { DecoratorHelpers } from '@storybook/addon-themes';
 import '../src/app.css';
 import './preview.css';
 import { applyTheme } from '../src/lib/themes/runtime';
 import { ACCENT_OPTIONS, PRESETS } from '../src/lib/themes/presets';
 
-// Same <html> attributes + inline vars the app sets at runtime: new-york (dark), blue accent.
-applyTheme(PRESETS[0], ACCENT_OPTIONS[0].value);
+const { initializeThemeState, pluckThemeFromContext } = DecoratorHelpers;
+
+const DEFAULT_THEME = PRESETS[0].id;
+const DEFAULT_ACCENT = ACCENT_OPTIONS[0].id;
+
+// addon-themes owns the "theme" toolbar; the decorator applies the hub's own
+// runtime (data-minion-theme + inline accent vars) so stories match the app.
+initializeThemeState(
+  PRESETS.map((p) => p.id),
+  DEFAULT_THEME,
+);
+
+const withHubTheme: Decorator = (storyFn, context) => {
+  const themeId = pluckThemeFromContext(context) || DEFAULT_THEME;
+  const accentId = (context.globals.accent as string) || DEFAULT_ACCENT;
+  const preset = PRESETS.find((p) => p.id === themeId) ?? PRESETS[0];
+  const accent = ACCENT_OPTIONS.find((a) => a.id === accentId) ?? ACCENT_OPTIONS[0];
+  applyTheme(preset, accent.value);
+  document.body.style.background = 'var(--color-canvas)';
+  return storyFn();
+};
 
 const preview: Preview = {
-  parameters: {
-    backgrounds: {
-      options: {
-        canvas: { name: 'Canvas', value: 'var(--color-canvas)' },
-        surface: { name: 'Surface', value: 'var(--color-surface-1)' },
+  decorators: [withHubTheme],
+  globalTypes: {
+    accent: {
+      description: 'Hub accent colour',
+      toolbar: {
+        title: 'Accent',
+        icon: 'paintbrush',
+        items: ACCENT_OPTIONS.map((a) => ({ value: a.id, title: a.label })),
+        dynamicTitle: true,
       },
     },
+  },
+  parameters: {
+    backgrounds: { disable: true },
     controls: {
       matchers: {
         color: /(background|color)$/i,
         date: /Date$/i,
       },
     },
-
     a11y: {
       // 'todo' - show a11y violations in the test UI only
       // 'error' - fail CI on a11y violations
@@ -30,7 +56,7 @@ const preview: Preview = {
     },
   },
   initialGlobals: {
-    backgrounds: { value: 'canvas' },
+    accent: DEFAULT_ACCENT,
   },
 };
 
