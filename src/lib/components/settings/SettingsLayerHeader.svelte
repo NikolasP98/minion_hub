@@ -7,7 +7,13 @@
 </script>
 
 <div class="settings-layer-header">
-  <Button variant="ghost" aria-label={m.common_back()} href={settingsLayer.returnHref()}>
+  <!-- The layer owns this complete localized URL, including its fallback. -->
+  <Button
+    variant="ghost"
+    aria-label={m.common_back()}
+    href={settingsLayer.returnHref()}
+    data-no-translate
+  >
     <span class="back-icon" class:busy aria-hidden="true">
       <ArrowLeft size={iconSizes.md} class="back-arrow" />
       <Spinner size="md" class="busy-ring" />
