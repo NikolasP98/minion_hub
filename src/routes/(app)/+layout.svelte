@@ -52,6 +52,9 @@
   });
   $effect.pre(() => setInstanceMap((page.data as { navConfig?: NavConfig }).navConfig));
   beforeNavigate(() => {
+    // Capture the current successful URL even on the first leave after a hard
+    // load, and after shallow query/hash updates that do not fire afterNavigate.
+    settingsLayer.observe();
     navigationEpoch += 1;
     cancelRestore();
     viewMemory.capture();

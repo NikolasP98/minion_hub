@@ -63,7 +63,11 @@ async function shot(page: Page, name: string) {
   checks.push(name);
   await writeFile(
     `${out}/checks.json`,
-    JSON.stringify({ checks, navigationEvidence, transport: 'seeded loopback QA' }, null, 2),
+    JSON.stringify(
+      { checks, navigationEvidence, repeatedLocaleNavigations, transport: 'seeded loopback QA' },
+      null,
+      2,
+    ),
   );
 }
 function primary(page: Page) {
@@ -248,6 +252,7 @@ try {
           document: await lastPage.evaluate(() => performance.timeOrigin).catch(() => null),
           error: String(error),
           pageErrors,
+          repeatedLocaleNavigations,
         },
         null,
         2,
