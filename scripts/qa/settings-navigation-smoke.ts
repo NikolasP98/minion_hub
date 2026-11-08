@@ -25,6 +25,15 @@ const browser = await chromium.launch({ headless: true });
 const returnPath = '/en/account/home?settings-return=qa#selection';
 let lastPage: Page | undefined;
 const pageErrors: string[] = [];
+const ownerEvidence: { checkpoint: string; state: unknown }[] = [];
+async function recordOwner(page: Page, checkpoint: string) {
+  const state = await page.evaluate(async (expectedHref) => {
+    const path = '/scripts/qa/settings-navigation-probe.ts';
+    const probe: { readSettingsNavigation(href: string): unknown } = await import(path);
+    return probe.readSettingsNavigation(expectedHref);
+  }, returnPath);
+  ownerEvidence.push({ checkpoint, state });
+}
 const repeatedLocaleNavigations: string[] = [];
 function watchLocaleNavigation(page: Page) {
   page.on('framenavigated', (frame) => {
@@ -51,6 +60,7 @@ async function login(context: BrowserContext, persona: string) {
   assert.equal(response.status(), 200, `Synthetic ${persona} login`);
 }
 async function shot(page: Page, name: string) {
+  await recordOwner(page, name);
   assert.deepEqual(repeatedLocaleNavigations, [], 'No transient doubled-locale navigation');
   const document = await page.evaluate(() => performance.timeOrigin);
   const back = await page
@@ -64,7 +74,13 @@ async function shot(page: Page, name: string) {
   await writeFile(
     `${out}/checks.json`,
     JSON.stringify(
-      { checks, navigationEvidence, repeatedLocaleNavigations, transport: 'seeded loopback QA' },
+      {
+        checks,
+        navigationEvidence,
+        ownerEvidence,
+        repeatedLocaleNavigations,
+        transport: 'seeded loopback QA',
+      },
       null,
       2,
     ),
@@ -125,6 +141,7 @@ try {
     page.getByRole('button', { name: 'Open Tanstack query devtools', exact: true }),
   ).toBeVisible();
   flowDocument = await page.evaluate(() => performance.timeOrigin);
+  await recordOwner(page, 'home-before-settings');
   await avatarSettings(page);
   await expect(page.locator('aside[aria-label="Primary"]')).not.toHaveClass(/is-collapsed/);
   assert.equal(await page.evaluate(() => localStorage.getItem('hub-sidebar-collapsed')), '1');
@@ -252,6 +269,7 @@ try {
           document: await lastPage.evaluate(() => performance.timeOrigin).catch(() => null),
           error: String(error),
           pageErrors,
+          ownerEvidence,
           repeatedLocaleNavigations,
         },
         null,
