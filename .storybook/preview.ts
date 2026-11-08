@@ -42,6 +42,18 @@ const preview: Preview = {
   },
   parameters: {
     backgrounds: { disable: true },
+    // Widths sit on the hub's own breakpoints (640 sm, 768 drawer/float floor,
+    // 1024 lg, 1280 xl, 1536). Stories opt in with globals.viewport.value.
+    viewport: {
+      options: {
+        phone: { name: 'Phone 390', styles: { width: '390px', height: '844px' }, type: 'mobile' },
+        phoneWide: { name: 'Phone wide 639', styles: { width: '639px', height: '960px' }, type: 'mobile' },
+        tablet: { name: 'Tablet 768', styles: { width: '768px', height: '1024px' }, type: 'tablet' },
+        laptop: { name: 'Laptop 1024', styles: { width: '1024px', height: '768px' }, type: 'desktop' },
+        desktop: { name: 'Desktop 1280', styles: { width: '1280px', height: '800px' }, type: 'desktop' },
+        wide: { name: 'Wide 1536', styles: { width: '1536px', height: '900px' }, type: 'desktop' },
+      },
+    },
     controls: {
       matchers: {
         color: /(background|color)$/i,

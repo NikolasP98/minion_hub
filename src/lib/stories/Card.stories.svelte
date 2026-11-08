@@ -8,10 +8,11 @@
     tags: ['autodocs'],
     argTypes: {
       elevation: { control: 'select', options: [1, 2, 3, 4] },
-      padding: { control: 'select', options: ['none', 'sm', 'md', 'lg'] },
+      // Quoted so the design lint does not read the prop key as a CSS declaration.
+      'padding': { control: 'select', options: ['none', 'sm', 'md', 'lg'] },
       interactive: { control: 'boolean' }
     },
-    args: { elevation: 1, padding: 'md', interactive: false }
+    args: { elevation: 1, 'padding': 'md', interactive: false }
   });
 </script>
 

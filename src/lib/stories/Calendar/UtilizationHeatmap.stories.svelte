@@ -45,3 +45,14 @@
     ),
   }}
 />
+
+<!-- Responsive: the 180px name column is fixed, the strip takes the rest (cells shrink to 4px). -->
+<Story
+  name="Many resources · Phone"
+  args={{
+    utilization: Array.from({ length: 12 }, (_, i) =>
+      row(`r${i}`, `Resource ${i + 1}`, i % 3 ? 'var(--color-warning-border)' : null, DAYS.map((_, d) => ((i * 7 + d * 13) % 9) * 60)),
+    ),
+  }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>

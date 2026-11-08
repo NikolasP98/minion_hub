@@ -69,8 +69,21 @@ export default defineConfig({
       storybookTest({
         configDir: path.join(dirname, '.storybook')
       })],
+      // Build-time defines from vite.config.ts that components read at module load.
+      define: {
+        __APP_VERSION__: JSON.stringify('storybook')
+      },
       test: {
         name: 'storybook',
+        // The Storybook dev server gets $lib/$server from the SvelteKit plugin; this
+        // project only runs the plain Svelte plugin, so alias them here too.
+        alias: {
+          $lib: path.resolve('src/lib'),
+          $server: path.resolve('src/server'),
+          '$app/environment': path.resolve('.storybook/app-environment.ts'),
+          '$env/dynamic/public': path.resolve('.storybook/env-shim.ts'),
+          '$env/static/public': path.resolve('.storybook/env-shim.ts')
+        },
         browser: {
           enabled: true,
           headless: true,

@@ -1,5 +1,6 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import { iconSizes } from '$lib/components/ui';
   import { fn } from 'storybook/test';
   import { Star } from 'lucide-svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
@@ -61,7 +62,7 @@
 </Story>
 
 <Story name="With leading icon">
-  {#snippet template(args)}<TagChip {...args}><Star size={12} /></TagChip>{/snippet}
+  {#snippet template(args)}<TagChip {...args}><Star size={iconSizes.xs} /></TagChip>{/snippet}
 </Story>
 
 <Story name="Long name (truncates in a narrow host)" args={{ name: 'Pacientes con tratamiento combinado de larga duración y seguimiento trimestral', onremove: fn() }}>

@@ -85,3 +85,16 @@
     <div style="height: 32rem; display: flex; flex-direction: column"><ActivityLogTable {...args} /></div>
   {/snippet}
 </Story>
+
+<!-- Responsive: the category tabs scroll horizontally; cells truncate. -->
+<Story name="WithCategoryTabs · Phone" args={{ categories: ['all', ...CATEGORIES] }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}
+    <div style="height: 32rem; display: flex; flex-direction: column"><ActivityLogTable {...args} /></div>
+  {/snippet}
+</Story>
+
+<Story name="WithTimeline · Tablet" args={{ showTimeline: true, categories: ['all', ...CATEGORIES] }} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+  {#snippet template(args)}
+    <div style="height: 40rem; display: flex; flex-direction: column"><ActivityLogTable {...args} /></div>
+  {/snippet}
+</Story>

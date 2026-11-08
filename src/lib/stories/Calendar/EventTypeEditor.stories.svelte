@@ -62,3 +62,7 @@
 <Story name="Editing" args={{ eventType, tagIds: ['t-vip'] }} />
 <Story name="From preset" args={{ preset: { title: 'Consultation', length: 30, productId: 'p-cons', resourceIds: ['r-ana'] } }} />
 <Story name="No kinds, no tags" args={{ kinds: [], tags: [], eventType: { ...eventType, kindId: null, useCustomSchedule: false, scheduleRules: [] } }} />
+
+<!-- Responsive: the field grid is one column below md and two columns from 768px. -->
+<Story name="Editing · Phone" args={{ eventType, tagIds: ['t-vip'] }} globals={{ viewport: { value: 'phone', isRotated: false } }} />
+<Story name="Editing · Tablet" args={{ eventType, tagIds: ['t-vip'] }} globals={{ viewport: { value: 'tablet', isRotated: false } }} />

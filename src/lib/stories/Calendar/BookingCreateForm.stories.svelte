@@ -37,3 +37,7 @@
 <Story name="No kinds or tags" args={{ kinds: [], tags: [] }} />
 <Story name="No services configured" args={{ eventTypes: [] }} />
 <Story name="Viewer (cannot create)" parameters={{ sveltekit_experimental: { state: { page: { url: new URL('http://localhost/scheduling/bookings/new'), data: { permissions: { permissions: [] } } } } } }} />
+
+<!-- Responsive: the top section is one column below 768px and two columns from 768px. -->
+<Story name="Blank · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }} />
+<Story name="Blank · Tablet" globals={{ viewport: { value: 'tablet', isRotated: false } }} />

@@ -1,5 +1,6 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import { iconSizes } from '$lib/components/ui';
   import { IconButton } from '@minion-stack/ui';
   import { Plus } from 'lucide-svelte';
 
@@ -19,7 +20,7 @@
 
 <Story name="Default">
   {#snippet template(args)}
-    <IconButton {...args}>{#snippet icon()}<Plus size={16} />{/snippet}</IconButton>
+    <IconButton {...args}>{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton>
   {/snippet}
 </Story>
 
@@ -27,7 +28,7 @@
   {#snippet template()}
     <div class="flex gap-2">
       {#each ['primary', 'secondary', 'ghost', 'danger'] as v (v)}
-        <IconButton label={v} variant={v}>{#snippet icon()}<Plus size={16} />{/snippet}</IconButton>
+        <IconButton label={v} variant={v}>{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton>
       {/each}
     </div>
   {/snippet}
@@ -35,12 +36,12 @@
 
 <Story name="Loading" args={{ loading: true }}>
   {#snippet template(args)}
-    <IconButton {...args}>{#snippet icon()}<Plus size={16} />{/snippet}</IconButton>
+    <IconButton {...args}>{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton>
   {/snippet}
 </Story>
 
 <Story name="Disabled" args={{ disabled: true }}>
   {#snippet template(args)}
-    <IconButton {...args}>{#snippet icon()}<Plus size={16} />{/snippet}</IconButton>
+    <IconButton {...args}>{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton>
   {/snippet}
 </Story>

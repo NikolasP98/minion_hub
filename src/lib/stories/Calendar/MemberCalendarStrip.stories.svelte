@@ -41,3 +41,10 @@
   name="Busy day"
   args={{ bookings: [...bookings, ...[8, 9, 10, 11, 12, 13, 14, 15].map((h) => b(`d${h}`, '11', h, 50, `Slot ${h}:00`))] }}
 />
+
+<!-- Responsive: seven equal columns share the width; labels truncate on a phone. -->
+<Story
+  name="Busy day · Phone"
+  args={{ bookings: [...bookings, ...[8, 9, 10, 11, 12, 13, 14, 15].map((h) => b(`d${h}`, '11', h, 50, `Slot ${h}:00`))] }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>

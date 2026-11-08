@@ -61,3 +61,8 @@
 <Story name="Stale id (ignored)" args={{ value: ['t0', 'missing'] }}>
   {#snippet template(args)}<div class="w-80"><TagsField {...args} /></div>{/snippet}
 </Story>
+
+<!-- Responsive: chips wrap to the host width. -->
+<Story name="Twenty selected (wraps) · Phone" args={{ allTags: tags(20), value: ids(20) }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}<div class="w-full border border-border"><TagsField {...args} /></div>{/snippet}
+</Story>

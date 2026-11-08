@@ -87,3 +87,6 @@
     ),
   }}
 />
+
+<!-- Responsive: the columns share the viewport width; cards truncate on a phone. -->
+<Story name="By status · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }} />

@@ -70,3 +70,12 @@
 <Story name="Opener unknown" parameters={pageData({ openShift: open(1), openerName: null })}>
   {#snippet template()}<div class="w-72"><ShiftBanner /></div>{/snippet}
 </Story>
+
+<!-- Responsive: the wide box only renders at ≥xl (1280px); phone and tablet show the compact rail. -->
+<Story name="Open shift · Phone" parameters={pageData({ openShift: open(3) })} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template()}<div class="w-full"><ShiftBanner /></div>{/snippet}
+</Story>
+
+<Story name="Open shift · Tablet" parameters={pageData({ openShift: open(3) })} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+  {#snippet template()}<div class="w-full"><ShiftBanner /></div>{/snippet}
+</Story>

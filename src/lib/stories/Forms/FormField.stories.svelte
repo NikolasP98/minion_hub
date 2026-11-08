@@ -134,7 +134,7 @@
 
 <Story name="Form (every kind)">
   {#snippet template()}
-    <form class="w-80 flex flex-col gap-4">
+    <div role="form" class="w-80 flex flex-col gap-4">
       <FormField label="Full name" required>
         {#snippet children(c)}<Input id={c.id} required={c.required} />{/snippet}
       </FormField>
@@ -151,6 +151,30 @@
         {#snippet children(c)}<Checkbox id={c.id} label="Signed" />{/snippet}
       </FormField>
       <FormField label="Reminders"><Toggle label="WhatsApp" /></FormField>
-    </form>
+    </div>
+  {/snippet}
+</Story>
+
+<!-- Responsive: fields fill the form width. -->
+<Story name="Form (every kind) · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template()}
+    <div role="form" class="w-full flex flex-col gap-4">
+      <FormField label="Full name" required>
+        {#snippet children(c)}<Input id={c.id} required={c.required} />{/snippet}
+      </FormField>
+      <FormField label="Document type" required>
+        {#snippet children(c)}<Select id={c.id} required={c.required} {options} value="dni" />{/snippet}
+      </FormField>
+      <FormField label="Email" error="Enter a valid email.">
+        {#snippet children(c)}<Input id={c.id} type="email" value="not-an-email" />{/snippet}
+      </FormField>
+      <FormField label="Notes" helper="Optional">
+        {#snippet children(c)}<Textarea id={c.id} rows={2} />{/snippet}
+      </FormField>
+      <FormField label="Consent">
+        {#snippet children(c)}<Checkbox id={c.id} label="Signed" />{/snippet}
+      </FormField>
+      <FormField label="Reminders"><Toggle label="WhatsApp" /></FormField>
+    </div>
   {/snippet}
 </Story>

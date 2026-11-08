@@ -112,3 +112,16 @@
     <div style="height: 28rem"><BoardView {...args} {card} /></div>
   {/snippet}
 </Story>
+
+<!-- Responsive: the board scrolls horizontally inside its host instead of widening the page. -->
+<Story name="Populated · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}
+    <div style="height: 28rem"><BoardView {...args} {card} /></div>
+  {/snippet}
+</Story>
+
+<Story name="ManyCards · Tablet" args={{ rows: Array.from({ length: 120 }, (_, i) => ({ ...rows[i % rows.length], id: `m${i}` })) }} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+  {#snippet template(args)}
+    <div style="height: 28rem"><BoardView {...args} {card} /></div>
+  {/snippet}
+</Story>

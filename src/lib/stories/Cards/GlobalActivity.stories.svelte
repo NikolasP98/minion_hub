@@ -88,3 +88,33 @@
 >
   {#snippet template(args)}<GlobalActivity {...args} />{/snippet}
 </Story>
+
+<!-- Responsive: the top progress bar only exists below 48rem, so these are the states where it is visible. -->
+<Story
+  name="Background jobs · Phone"
+  args={{
+    actions: runtime({
+      jobs: [
+        record(1, 'table.export', 'running', { progress: { completed: 40, total: 100 } }),
+        record(2, 'finance.sync', 'running'),
+      ],
+    }),
+  }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
+  {#snippet template(args)}<GlobalActivity {...args} />{/snippet}
+</Story>
+
+<Story
+  name="Jobs and attention · Phone"
+  args={{
+    actions: runtime({
+      indicatorVisible: true,
+      jobs: [record(1, 'table.export', 'running', { progress: { completed: 9, total: 12 } })],
+      attention: [record(3, 'finance.emit', 'failed')],
+    }),
+  }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
+  {#snippet template(args)}<GlobalActivity {...args} />{/snippet}
+</Story>

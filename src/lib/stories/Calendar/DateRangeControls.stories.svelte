@@ -31,3 +31,7 @@
 <Story name="Data bounds (clamped)" args={{ dataMin: '2026-06-01', dataMax: '2026-11-05', from: '2026-06-01', to: '2026-11-05' }} />
 <Story name="Only two visible presets" args={{ defaultVisible: ['7d', '30d'], storageKey: 'sb-date-range-two' }} />
 <Story name="Days only (no coarser periods)" args={{ periods: ['day'] }} />
+
+<!-- Responsive: presets wrap and every control grows to the 44px touch size below 768px. -->
+<Story name="Last 30 days (preset match) · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }} />
+<Story name="With time-of-day ranges · Phone" args={{ withTime: true, period: 'hour', periods: ['hour', 'day', 'week', 'month', 'year'], from: '2026-11-07T00:00', to: '2026-11-07T23:59' }} globals={{ viewport: { value: 'phone', isRotated: false } }} />

@@ -64,3 +64,20 @@
     </DataView>
   {/snippet}
 </Story>
+
+<!-- Responsive: the switcher shares the header row with the title. -->
+<Story name="AllViews · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}
+    <DataView {...args}>
+      {#snippet children({ switcher, view })}
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-medium">Bookings</h2>
+          {@render switcher()}
+        </div>
+        <div class="rounded border border-border p-6 text-sm text-muted-foreground">
+          Active view: <strong>{view}</strong>
+        </div>
+      {/snippet}
+    </DataView>
+  {/snippet}
+</Story>

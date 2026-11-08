@@ -31,7 +31,7 @@
   {/snippet}
 </Story>
 
-<Story name="Collapsed" args={{ activeCount: 2 }} globals={{ viewport: { value: 'mobile1' } }}>
+<Story name="Collapsed" args={{ activeCount: 2 }} globals={{ viewport: { value: 'phone' } }}>
   {#snippet template(args)}
     <p class="text-xs text-muted-foreground mb-2">Below 768px the controls collapse into one Filters button.</p>
     <CollapsibleFilters {...args} children={controls} />

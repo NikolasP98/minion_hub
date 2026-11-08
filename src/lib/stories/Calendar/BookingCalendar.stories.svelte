@@ -211,3 +211,10 @@
 />
 
 <Story name="Tall hours (120 px/h, 06–23)" args={{ pxPerHour: 120, startHour: 6, endHour: 23 }} />
+
+<!-- Responsive: toolbar controls grow to touch size below 768px; day columns squeeze and truncate. -->
+<Story name="Week populated · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }} />
+
+<Story name="Week populated · Tablet" globals={{ viewport: { value: 'tablet', isRotated: false } }} />
+
+<Story name="Day view · Phone" args={{ view: 'day' }} globals={{ viewport: { value: 'phone', isRotated: false } }} />

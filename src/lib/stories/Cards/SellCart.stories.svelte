@@ -94,3 +94,8 @@
 >
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
+
+<!-- Responsive: the cart fills its host; names truncate, totals stay on one line. -->
+<Story name="Many lines · Phone" args={{ lines: lines(15) }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}<div class="w-full"><SellCart {...args} /></div>{/snippet}
+</Story>

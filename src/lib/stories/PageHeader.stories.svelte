@@ -1,5 +1,6 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import { iconSizes } from '$lib/components/ui';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
   import { Button, IconButton } from '@minion-stack/ui';
   import { ArrowLeft, Ellipsis } from 'lucide-svelte';
@@ -31,12 +32,12 @@
   {#snippet template(args)}
     <PageHeader {...args}>
       {#snippet leading()}
-        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={16} />{/snippet}</IconButton>
+        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton>
       {/snippet}
       {#snippet primaryActions()}<Button variant="primary">New sale</Button>{/snippet}
       {#snippet secondaryActions()}<Button variant="secondary">Export</Button>{/snippet}
       {#snippet overflowActions()}
-        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={16} />{/snippet}</IconButton>
+        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton>
       {/snippet}
     </PageHeader>
   {/snippet}
@@ -45,5 +46,36 @@
 <Story name="Title only" args={{ subtitle: undefined }}>
   {#snippet template(args)}
     <PageHeader {...args} />
+  {/snippet}
+</Story>
+
+<!-- Responsive: actions wrap under the title below 768px; medium (768) and wide (1280) keep them inline. -->
+<Story name="Full · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}
+    <PageHeader {...args}>
+      {#snippet leading()}
+        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton>
+      {/snippet}
+      {#snippet primaryActions()}<Button variant="primary">New sale</Button>{/snippet}
+      {#snippet secondaryActions()}<Button variant="secondary">Export</Button>{/snippet}
+      {#snippet overflowActions()}
+        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton>
+      {/snippet}
+    </PageHeader>
+  {/snippet}
+</Story>
+
+<Story name="Full · Tablet" globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+  {#snippet template(args)}
+    <PageHeader {...args}>
+      {#snippet leading()}
+        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton>
+      {/snippet}
+      {#snippet primaryActions()}<Button variant="primary">New sale</Button>{/snippet}
+      {#snippet secondaryActions()}<Button variant="secondary">Export</Button>{/snippet}
+      {#snippet overflowActions()}
+        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton>
+      {/snippet}
+    </PageHeader>
   {/snippet}
 </Story>

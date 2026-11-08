@@ -286,3 +286,16 @@
     <DataTable {...args} />
   {/snippet}
 </Story>
+
+<!-- Responsive: the wrapper owns an overflow-x scroller; columns do not shrink below their widths. -->
+<Story name="ManyRows · Phone" args={{ data: manyRows, ariaLabel: '200 rows, virtualized' }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}
+    <DataTable {...args} />
+  {/snippet}
+</Story>
+
+<Story name="ManyRows · Tablet" args={{ data: manyRows, ariaLabel: '200 rows, virtualized' }} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+  {#snippet template(args)}
+    <DataTable {...args} />
+  {/snippet}
+</Story>

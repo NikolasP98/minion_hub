@@ -242,3 +242,8 @@
 <Story name="Tall" args={{ height: '480px', options: { ...axis, series: [{ type: 'line', data: sales }] } }}>
   {#snippet template(args)}<Chart {...args} />{/snippet}
 </Story>
+
+<!-- Responsive: ECharts resizes with its host; the accessible table alternative scrolls horizontally. -->
+<Story name="Line · Phone" args={{ options: { ...axis, series: [{ type: 'line', data: sales }] } }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}<Chart {...args} />{/snippet}
+</Story>

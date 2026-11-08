@@ -59,3 +59,12 @@
     </EditableGrid>
   {/snippet}
 </Story>
+
+<!-- Responsive: below a 620px container the grid is one column and every card is full width. -->
+<Story name="Default · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
+  {#snippet template(args)}<EditableGrid {...args} {cell} />{/snippet}
+</Story>
+
+<Story name="Many items, 6 columns · Tablet" args={{ id: 'story-grid-many-tablet', items: many, cols: 6 }} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+  {#snippet template(args)}<EditableGrid {...args} {cell} />{/snippet}
+</Story>
