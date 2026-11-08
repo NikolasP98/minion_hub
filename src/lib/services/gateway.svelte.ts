@@ -118,6 +118,7 @@ import {
   getClient,
   setClient,
   setChannelStatusSink,
+  setReconnectSink,
   sendRequest,
   sendInstall,
   refreshChannelStatus,
@@ -709,6 +710,17 @@ function publishAuthenticatedSession(
   void resolveServerId(host, current);
   return owner;
 }
+
+// A `chat.send` ack that never came means the socket is dead, not the turn:
+// chat-rpc asks for a reconnect through the leaf module instead of waiting
+// ~60 s for the gateway's ping heartbeat to terminate the socket.
+// Inside the eager window so a token fetch or connect that fails while the
+// network is still down keeps retrying on the flat cadence instead of ending
+// in a red toast with no retry.
+setReconnectSink(() => {
+  armEagerReconnect();
+  void wsConnect();
+});
 
 export async function wsConnect() {
   const generation = lifecycleFence.begin();
@@ -1452,7 +1464,12 @@ function onChatEvent(payload: ChatEvent) {
             timestamp: Date.now(),
           };
     const binding = claimRunFinal(payload.runId, sk);
-    if (binding) associateRunMessage(finalMsg, binding);
+    if (binding) {
+      associateRunMessage(finalMsg, binding);
+      // A pending run that outlived a dead socket just completed live: drop
+      // the "reconnecting" status line its lost ack left behind.
+      chat.lastError = null;
+    }
     chat.runId = null;
     finishStreamMessage(agentId, finalMsg, (committed) => {
       if (binding) associateRunMessage(committed, binding);
