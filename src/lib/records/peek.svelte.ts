@@ -47,7 +47,7 @@ export function currentPeekAuthorityKey(): string | null {
   );
 }
 
-export function isCurrentPeek(peek: PeekState | null | undefined): peek is PeekState {
+export function isCurrentPeek(peek: PeekState | null | undefined): boolean {
   const key = currentPeekAuthorityKey();
   return Boolean(peek && key && peek.authorityKey === key);
 }

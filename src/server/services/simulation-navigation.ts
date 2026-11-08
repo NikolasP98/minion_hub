@@ -58,7 +58,7 @@ export function safeSimulationReturn(value: unknown): string | null {
 export interface SimulationNavigationContext {
   nav: NavConfig;
   capabilities: Capabilities;
-  platformRole?: string;
+  platformRole?: 'admin' | 'user';
   availability?: RouteGuardContext;
 }
 const targetDecisions = new WeakMap<Capabilities, Map<string, boolean>>();

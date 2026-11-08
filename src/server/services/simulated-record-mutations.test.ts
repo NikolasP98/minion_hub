@@ -212,9 +212,21 @@ beforeEach(async () => {
     [tag, org],
   );
 });
-async function rows(table: string) {
-  return (await client.query(`select * from ${table}`)).rows;
+interface FixtureRowMap {
+  naming_series_counters: { n: number };
+  doc_audit_log: { actor_id: string | null; ref_id: string };
+  crm_contacts: { id: string; display_name: string | null };
+  support_issues: { subject: string };
+  crm_activities: { contact_id: string };
+  crm_contact_tags: { contact_id: string };
+  doc_comments: { ref_id: string };
+  memberships: { cycle_no: number };
+  membership_cycles: Record<string, unknown>;
 }
+async function rows<T extends keyof FixtureRowMap>(table: T) {
+  return (await client.query<FixtureRowMap[T]>(`select * from ${table}`)).rows;
+}
+
 async function inScope<T>(fn: () => T, options: Parameters<typeof scope>[0] = {}) {
   return runWithEffectiveAuthority(scope(options), fn);
 }
@@ -269,8 +281,12 @@ describe('simulated domain mutations execute under selected action and own-recor
       ),
     ).rejects.toMatchObject({ status: 403 });
     expect(
-      (await client.query('select custom_fields from crm_contacts where id=$1', [foreign])).rows[0]
-        .custom_fields,
+      (
+        await client.query<{ custom_fields: Record<string, unknown> }>(
+          'select custom_fields from crm_contacts where id=$1',
+          [foreign],
+        )
+      ).rows[0].custom_fields,
     ).toEqual({});
   });
   it('a rejected audit rolls back an owned real sales mutation', async () => {
@@ -280,7 +296,11 @@ describe('simulated domain mutations execute under selected action and own-recor
     try {
       await expect(inScope(() => setOrderStatus(ctx, own, 'confirmed', actor))).rejects.toThrow();
       expect(
-        (await client.query('select status from sales_orders where id=$1', [own])).rows[0].status,
+        (
+          await client.query<{ status: string }>('select status from sales_orders where id=$1', [
+            own,
+          ])
+        ).rows[0].status,
       ).toBe('draft');
     } finally {
       await client.exec(
@@ -307,8 +327,12 @@ describe('simulated domain mutations execute under selected action and own-recor
       [actorId, own],
     ]);
     expect(
-      (await client.query('select description from support_issues where id=$1', [foreign])).rows[0]
-        .description,
+      (
+        await client.query<{ description: string | null }>(
+          'select description from support_issues where id=$1',
+          [foreign],
+        )
+      ).rows[0].description,
     ).toBeNull();
   });
   it('unowned same-org records do not become unrestricted and missing actor context fails closed', async () => {
@@ -349,7 +373,7 @@ describe('simulated domain mutations execute under selected action and own-recor
   it.each(['crm', 'sales', 'support'])(
     'missing %s edit is denied even when ownerScoped is false',
     async (module) => {
-      const mutation =
+      const mutation: () => Promise<unknown> =
         module === 'crm'
           ? () => updateContact(ctx, own, { displayName: 'No' })
           : module === 'sales'
@@ -382,7 +406,7 @@ describe('simulated domain mutations execute under selected action and own-recor
       expect((await updateContact(ctx, own, { displayName: 'Actual own edit' }))?.displayName).toBe(
         'Actual own edit',
       );
-      await expect(addNote(ctx, foreign, 'Forbidden', actor)).rejects.toMatchObject({
+      await expect(addNote(ctx, foreign, 'Forbidden', actorId)).rejects.toMatchObject({
         status: 404,
       });
       await expect(updateContact(ctx, own, { ownerId: other })).rejects.toMatchObject({
@@ -440,9 +464,10 @@ describe('simulated domain mutations execute under selected action and own-recor
     });
     expect(
       (
-        await client.query('select deleted_at,custom_fields from crm_contacts where id=$1', [
-          foreign,
-        ])
+        await client.query<{ deleted_at: string | null; custom_fields: Record<string, unknown> }>(
+          'select deleted_at,custom_fields from crm_contacts where id=$1',
+          [foreign],
+        )
       ).rows[0],
     ).toMatchObject({ deleted_at: null, custom_fields: {} });
   });
@@ -475,11 +500,19 @@ describe('simulated domain mutations execute under selected action and own-recor
       inScope(() => updateContact(ctx, own, { displayName: 'Must roll back', dob: '1990-01-01' })),
     ).rejects.toMatchObject({ status: 404 });
     expect(
-      (await client.query('select display_name from crm_contacts where id=$1', [own])).rows[0]
-        .display_name,
+      (
+        await client.query<{ display_name: string | null }>(
+          'select display_name from crm_contacts where id=$1',
+          [own],
+        )
+      ).rows[0].display_name,
     ).toBe('Original');
     expect(
-      (await client.query('select dob from parties where id=$1', [ownParty])).rows[0].dob,
+      (
+        await client.query<{ dob: string | null }>('select dob from parties where id=$1', [
+          ownParty,
+        ])
+      ).rows[0].dob,
     ).toBeNull();
   });
   it('canonical bulk tag operation reports foreign target pending while committing owned target only', async () => {
@@ -512,7 +545,11 @@ describe('simulated domain mutations execute under selected action and own-recor
       expect(await reassign(ctx, 'crm_contact', own, actorId, ctxActor)).toBe('ok');
     });
     expect(
-      (await client.query('select phone9 from parties where id=$1', [foreignParty])).rows[0].phone9,
+      (
+        await client.query<{ phone9: string | null }>('select phone9 from parties where id=$1', [
+          foreignParty,
+        ])
+      ).rows[0].phone9,
     ).toBe('900000002');
   });
   it('registration factories refuse existing foreign facets without swallowing denial, and assign new owned facet', async () => {
@@ -538,8 +575,12 @@ describe('simulated domain mutations execute under selected action and own-recor
         }),
       );
       expect(
-        (await client.query('select owner_id from crm_contacts where id=$1', [created?.id])).rows[0]
-          .owner_id,
+        (
+          await client.query<{ owner_id: string | null }>(
+            'select owner_id from crm_contacts where id=$1',
+            [created?.id],
+          )
+        ).rows[0].owner_id,
       ).toBe(actorId);
     });
   });

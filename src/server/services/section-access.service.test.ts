@@ -390,7 +390,7 @@ describe('contextual/legacy policy shared persistence', () => {
     expect(receipt.revisions['crm.cleanup']).toBe(await revision('crm.cleanup'));
     expect(
       (
-        await client.query(
+        await client.query<{ module: string }>(
           `select module from permission_rules where role_key='viewer' order by module`,
         )
       ).rows.map((r) => r.module),

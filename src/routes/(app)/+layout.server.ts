@@ -8,7 +8,7 @@ import { requiresOnboarding } from '$lib/onboarding/gate';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
 import { ensureActivePersonalAgent } from '$server/services/personal-agent-provisioner';
 import { getTenant } from '$server/services/tenant.service';
-import { loadHostsForUser } from '$server/services/hosts.service';
+import { loadHostsForUser, type HostsLoadResult } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
@@ -99,7 +99,7 @@ export const load: LayoutServerLoad = async ({
         if (!isHttpError(cause) || cause.status !== 503) throw cause;
         return { ...(locals.roleSimulation ?? inactiveSimulation()), eligible: false, roles: [] };
       });
-  const emptyHosts = {
+  const emptyHosts: HostsLoadResult = {
     servers: [],
     authoritative: true,
     orgAssignedHostId: null,
@@ -112,7 +112,7 @@ export const load: LayoutServerLoad = async ({
     return {
       user,
       roleSimulation,
-      permissions: { permissions: [], roles: [roleSimulation.roleKey ?? ''] },
+      permissions: { permissions: [] as string[], roles: [roleSimulation.roleKey ?? ''] },
       schedulingEnabled: false,
       stockEnabled: false,
       moduleStates: {},
@@ -122,7 +122,7 @@ export const load: LayoutServerLoad = async ({
       activeOrgKind: 'business' as const,
       personalAgent: { agent: null },
       hosts: emptyHosts,
-      preferences: { preferences: {} },
+      preferences: { preferences: {} as Record<string, unknown> },
       brainAgentIds: [],
       tableConfig: {} as TableConfig,
       navConfig: EMPTY_NAV_CONFIG,

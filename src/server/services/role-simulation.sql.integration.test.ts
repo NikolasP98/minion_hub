@@ -3,6 +3,7 @@ import type { RequestEvent } from '@sveltejs/kit';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import postgres from 'postgres';
 import { createClient } from '@supabase/supabase-js';
+import { configureCache, createBackend } from '@minion-stack/cache';
 import { assertLoopback } from '../../../scripts/qa/seed/db';
 import { ORG_BUSINESS, ORG_PERSONAL } from '../../../scripts/qa/seed/tenancy';
 import { INITIAL_SIMULATION_GENERATION } from '$lib/role-simulation';
@@ -20,13 +21,17 @@ import {
   transitionRoleSimulation,
 } from './role-simulation.service';
 
+type VerifiedLocals = App.Locals & {
+  authSessionId: string;
+  user: NonNullable<App.Locals['user']> & { supabaseId: string };
+};
 const enabled =
   process.env.REQUIRE_ROLE_SIMULATION_POSTGRES === '1' ||
   process.env.REQUIRE_QA_NATIVE_POSTGRES === '1';
 describe.skipIf(!enabled)('role simulation native session admission', () => {
   let pg: ReturnType<typeof postgres>;
-  let owner: App.Locals;
-  let viewer: App.Locals;
+  let owner: VerifiedLocals;
+  let viewer: VerifiedLocals;
   let ownerToken = '';
   const sessions: string[] = [];
   const generations: string[] = [];
@@ -40,6 +45,11 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
       route: { id: '/(app)/crm/customers' },
     }) as unknown as RequestEvent;
   beforeAll(async () => {
+    // The global test setup uses noop; this lane must exercise a genuinely warm cache.
+    configureCache({
+      namespace: `role-simulation-native-${crypto.randomUUID()}`,
+      backend: createBackend({ backend: 'memory' }),
+    });
     const db = assertLoopback(process.env.HUB_TEST_DB_URL, 'HUB_TEST_DB_URL');
     expect(process.env.SUPABASE_DB_URL).toBe(db);
     const api = assertLoopback(process.env.PUBLIC_SUPABASE_URL, 'PUBLIC_SUPABASE_URL');
@@ -59,7 +69,7 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
       const claims = verified.data!.claims;
       const sessionId = String(claims.session_id);
       sessions.push(sessionId);
-      const locals: App.Locals = {
+      const locals: VerifiedLocals = {
         user: {
           id: data.user.id,
           supabaseId: data.user.id,
@@ -81,6 +91,7 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     await pg`insert into org_roles(org_id,key,name,rank,source_role_key,created_by) values(${ORG_PERSONAL},${foreignRole},'Foreign only',10,'viewer',${owner.user!.supabaseId})`;
   }, 30_000);
   afterAll(async () => {
+    configureCache({ namespace: 'test', backend: createBackend({ backend: 'noop' }) });
     if (!pg) return;
     await pg`delete from doc_audit_log where ref_type in ('role_simulation','simulation_native') and ref_id::text in ${pg([...generations, ...auditRefs].length ? [...generations, ...auditRefs] : ['none'])}`;
     if (sessions.length) await pg`delete from auth.sessions where id::text in ${pg(sessions)}`;

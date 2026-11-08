@@ -45,7 +45,7 @@
       shape={compact ? 'icon' : undefined}
       aria-label={m.sectionAccess_open({ name: label || selectedTarget })}
       onclick={(event) => {
-        trigger = event.currentTarget;
+        trigger = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
         open = true;
       }}
     >
