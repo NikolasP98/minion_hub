@@ -534,6 +534,16 @@
   <div class="shrink-0 px-2 py-2 border-t border-[var(--hairline)] flex flex-col gap-0.5">
     <!-- Global utilities (status · bug · bell · ⌘K · env · profile) — was the
          top-right notch (DynamicIsland) until 2026-09-17. -->
+    {#if import.meta.env.DEV}
+      <!-- Dev-only TanStack devtools launcher, INLINE (`relative`): as a fixed
+           bottom-left button it sat on top of the avatar and swallowed its
+           clicks (the smoke's "Profile menu" timeout, 2026-11-08). Never in prod. -->
+      {#await import('@tanstack/svelte-query-devtools') then { SvelteQueryDevtools }}
+        <div class="flex {rowJustify} px-2">
+          <SvelteQueryDevtools buttonPosition="relative" />
+        </div>
+      {/await}
+    {/if}
     <SidebarUtilities {collapsed} />
     <!-- Collapsed rail: no brand — the avatar is the bottom-most item (owner ask 2026-09-18). -->
     {#if !collapsed && isMd}
