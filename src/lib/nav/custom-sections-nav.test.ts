@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getNavSections } from '$lib/components/layout/sections';
 import { EMPTY_NAV_CONFIG, type NavConfig, type NavPage } from './custom-sections';
 import { builtinInstances, customModules, customSections } from './custom-sections-nav';
-import { getAreaItems, getModules, resolveModuleForNav } from './modules';
+import { getAreaItems, getModules, visibleModules, resolveModuleForNav } from './modules';
 
 const page = (id: string, slug: string, target: string, over: Partial<NavPage> = {}): NavPage => ({
   id,
@@ -49,7 +49,7 @@ describe('customSections', () => {
     const c = staff();
     c.sections[0].pages[0].hidden = true;
     c.sections[0].pages[1].target = '/nope/nothing';
-    expect(customSections(c)).toEqual([]);
+    expect(customSections(c)[0].items).toEqual([]);
     expect(customSections(staff({ sections: [{ ...staff().sections[0], hidden: true }] }))).toEqual(
       [],
     );
@@ -112,5 +112,35 @@ describe('getNavSections', () => {
       shape(getNavSections('business', [], {})),
     );
     expect(shape(getModules({ navConfig: EMPTY_NAV_CONFIG }))).toEqual(shape(getModules()));
+  });
+});
+
+describe('empty section discovery', () => {
+  it('keeps an empty permitted section in the picker with a safe empty-state destination', () => {
+    const config = staff({
+      sections: [{ id: 'empty1', slug: 'empty', label: 'Empty', pages: [] }],
+    });
+    const modules = visibleModules({ navConfig: config }, () => true);
+    expect(modules.find((m) => m.id === 'custom:empty1')?.href).toBe(
+      '/account/home?section=custom%3Aempty1',
+    );
+    expect(customSections(config)[0].items).toEqual([]);
+  });
+  it('does not reveal a section whose existing pages are all denied', () => {
+    expect(visibleModules({ navConfig: staff() }, () => false)).toEqual([]);
+  });
+  it('keeps a built-in section emptied by org customization when its native pages are permitted', () => {
+    const config = {
+      ...EMPTY_NAV_CONFIG,
+      builtin: Object.fromEntries(
+        getAreaItems('stock').map((i) => [i.href, { hidden: true as const }]),
+      ),
+    };
+    expect(
+      visibleModules({ navConfig: config }, (h) => h.startsWith('/stock')).find(
+        (m) => m.id === 'stock',
+      )?.href,
+    ).toBe('/account/home?section=stock');
+    expect(visibleModules({ navConfig: config }, () => false)).toEqual([]);
   });
 });

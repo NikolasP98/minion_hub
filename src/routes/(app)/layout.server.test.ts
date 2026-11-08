@@ -146,6 +146,7 @@ describe('(app)/+layout.server load', () => {
       // same default the subtree layouts use.
       schedulingEnabled: true,
       stockEnabled: true,
+      moduleStates: {},
       workspaces: [{ companyId: 'c1', role: 'admin', name: 'Acme' }],
       personalAgent: {
         agent: { id: 'pa-1', userId: 'u-1', agentId: 'personal-u-1', provisioningStatus: 'active' },

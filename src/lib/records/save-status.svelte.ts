@@ -70,7 +70,7 @@ export function createSaveStatus(): SaveStatus {
   } catch {
     actions = undefined;
   }
-  let statusScope = actions?.scopeVersion;
+  let statusScope = $state(actions?.scopeVersion);
   let status = $state<SaveState>('idle');
   let message = $state<string>();
   let recovery: (() => Promise<void>) | undefined;

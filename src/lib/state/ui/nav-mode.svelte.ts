@@ -5,8 +5,11 @@
  * Default is role-derived — owner/admin/manager keep the platform-wide view,
  * everyone else lands scoped to one module so the sidebar isn't a wall of
  * every tab. An explicit pick wins over the role default and is remembered
- * per browser (localStorage, same as the collapse preference).
+ * per actor and organization in browser storage.
  */
+import { preferenceOwner, preferenceKey } from './scoped-preference.svelte';
+import { canonicalPath } from '$lib/canonical-path';
+import { canUseFullNavigation } from '$lib/nav/personal-navigation';
 import { page } from '$app/state';
 import { resolveModuleForNav, visibleModules, type ModuleNavData } from '$lib/nav/modules';
 import { canViewPath } from '$lib/access/can.svelte';
@@ -15,16 +18,46 @@ import { isChannelPlugin } from '$lib/components/layout/sections';
 import { posPendingWork } from '$lib/nav/pos-pending';
 import { navConfig } from '$lib/nav/nav-config.svelte';
 
-export type NavMode = 'full' | 'module';
+export type NavMode = 'full' | 'module' | 'personal';
 
-const MODE_KEY = 'hub-nav-mode';
-const MODULE_KEY = 'hub-nav-module';
-
-/** Org roles that see the full sidebar by default. */
-const FULL_NAV_ROLES = new Set(['owner', 'admin', 'manager']);
-
-let modeOverride = $state<NavMode | null>(null);
-let pickedModuleId = $state<string | null>(null);
+type Selection = { mode: NavMode | null; module: string | null };
+let selected = $state.raw<Selection & { owner: string | null }>({
+  owner: null,
+  mode: null,
+  module: null,
+});
+function readSelection(): Selection {
+  const owner = preferenceOwner();
+  if (owner === selected.owner) return selected;
+  try {
+    const key = preferenceKey('navigation', owner);
+    const raw = key && typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+    const value: unknown = raw ? JSON.parse(raw) : null;
+    if (value && typeof value === 'object') {
+      const candidate = value as Record<string, unknown>;
+      return {
+        mode:
+          candidate.mode === 'full' || candidate.mode === 'module' || candidate.mode === 'personal'
+            ? candidate.mode
+            : null,
+        module: typeof candidate.module === 'string' ? candidate.module : null,
+      };
+    }
+  } catch {
+    /* unavailable storage: use the role default */
+  }
+  return { mode: null, module: null };
+}
+function writeSelection(value: Selection) {
+  const owner = preferenceOwner();
+  selected = { ...value, owner };
+  try {
+    const key = preferenceKey('navigation', owner);
+    if (key) localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* session-only when storage is unavailable */
+  }
+}
 
 export function navModuleData(): ModuleNavData {
   const data = page.data as {
@@ -58,12 +91,10 @@ function navData(): ModuleNavData & { roles?: string[]; platformRole?: string } 
 
 /**
  * Role-derived default, used until the user picks a mode explicitly. Unknown
- * roles fall back to the full nav — never hide surfaces on a guess.
+ * roles use module mode; the full development navigation needs an explicit role.
  */
 export function defaultNavMode(roles: string[] | undefined, platformRole?: string): NavMode {
-  if (platformRole === 'admin') return 'full';
-  if (!roles || roles.length === 0) return 'full';
-  return roles.some((r) => FULL_NAV_ROLES.has(r)) ? 'full' : 'module';
+  return canUseFullNavigation(roles, platformRole) ? 'full' : 'module';
 }
 
 function roleDefault(): NavMode {
@@ -72,8 +103,19 @@ function roleDefault(): NavMode {
 }
 
 export const navMode = {
+  get canUseFull(): boolean {
+    const { roles, platformRole } = navData();
+    return canUseFullNavigation(roles, platformRole);
+  },
   get mode(): NavMode {
-    return modeOverride ?? roleDefault();
+    if (
+      canonicalPath(page.url.pathname) === '/account/home' &&
+      !page.url.searchParams.has('section') &&
+      readSelection().mode !== 'full'
+    )
+      return 'personal';
+    const requested = readSelection().mode ?? roleDefault();
+    return requested === 'full' && !this.canUseFull ? 'personal' : requested;
   },
   get isModule(): boolean {
     return this.mode === 'module' && this.activeModule !== null;
@@ -87,35 +129,25 @@ export const navMode = {
   get activeModule() {
     const data = navData();
     const mods = visibleModules(data, canViewPath);
+    const section =
+      canonicalPath(page.url.pathname) === '/account/home'
+        ? page.url.searchParams.get('section')
+        : null;
+    const selected = section ? mods.find((mod) => mod.id === section) : undefined;
+    if (selected) return selected;
     const fromPath = resolveModuleForNav(page.url.pathname, data);
     const onPath = fromPath ? mods.find((mod) => mod.id === fromPath.id) : undefined;
-    return onPath ?? mods.find((mod) => mod.id === pickedModuleId) ?? mods[0] ?? null;
+    return onPath ?? mods.find((mod) => mod.id === readSelection().module) ?? mods[0] ?? null;
   },
   setMode(next: NavMode) {
-    modeOverride = next;
-    try {
-      localStorage.setItem(MODE_KEY, next);
-    } catch {
-      /* private mode / storage disabled — session-only is fine */
-    }
+    writeSelection({
+      ...readSelection(),
+      mode: next === 'full' && !this.canUseFull ? 'personal' : next,
+    });
   },
   pickModule(id: string) {
-    pickedModuleId = id;
-    try {
-      localStorage.setItem(MODULE_KEY, id);
-    } catch {
-      /* ignore */
-    }
-    this.setMode('module');
+    writeSelection({ mode: 'module', module: id });
   },
-  /** Read the stored preference. Call once from onMount (browser-only). */
-  hydrate() {
-    try {
-      const stored = localStorage.getItem(MODE_KEY);
-      if (stored === 'full' || stored === 'module') modeOverride = stored;
-      pickedModuleId = localStorage.getItem(MODULE_KEY);
-    } catch {
-      /* ignore */
-    }
-  },
+  /** Scoped preferences load lazily. Legacy browser-global mode keys are not imported. */
+  hydrate() {},
 };

@@ -79,6 +79,17 @@ export const SECTION_ORDER: SectionId[] = ['organization', 'agents'];
 const startsWith = (prefix: string) => (p: string) => p.startsWith(prefix);
 
 export const ROUTES: RouteMeta[] = [
+  {
+    path: '/account/home',
+    title: () => m.nav_personalHome(),
+    icon: Home,
+    matcher: (p) => p === '/account/home',
+    section: 'organization',
+    inNav: false,
+    inPalette: true,
+    keywords: 'personal home sections navigation inicio secciones',
+    paletteIcon: 'home',
+  },
   // ── Organization ─────────────────────────────────────────────────────────
   {
     path: '/home',

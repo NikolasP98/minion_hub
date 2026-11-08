@@ -1,3 +1,4 @@
+import { isPersonalNavigation } from '$lib/nav/personal-navigation';
 import { DAILY_CARDS } from '$lib/inbox/daily-cards';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
@@ -129,12 +130,22 @@ function isValidTableOpenIn(v: unknown): boolean {
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const user = requireAuth(locals);
   const { section } = params;
-  if (!section || !VALID_SECTIONS.has(section)) {
+  const personal = section?.startsWith('personalNavigation:');
+  if (!section || (!VALID_SECTIONS.has(section) && !personal)) {
     throw error(400, `Invalid preference section: ${section}`);
   }
   // Preferences are keyed by profile_id (Supabase auth uuid) in Postgres.
   if (!user.supabaseId) throw error(409, 'No Supabase identity for this user');
   const body = await request.json();
+  if (personal) {
+    if (!isPersonalNavigation(body.value))
+      throw error(400, 'Invalid personal navigation preference');
+    if (
+      body.value.organizationId !== locals.orgId ||
+      section !== `personalNavigation:${locals.orgId}`
+    )
+      throw error(409, 'Organization changed; reload preferences');
+  }
 
   // The landing page is consumed by the "/" redirect in hooks.server.ts, so a
   // poisoned value is an open-redirect vector. Constrain it to a safe

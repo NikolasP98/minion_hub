@@ -161,3 +161,25 @@ describe('PUT /api/me/preferences/thinkingStyle', () => {
     expect(upsertUserPreference).not.toHaveBeenCalled();
   });
 });
+
+describe('personal navigation organization ownership', () => {
+  const v = { version: 1, organizationId: 'org-a', hidden: ['pos'], order: ['stock'] };
+  it('uses separate preference rows across A → B → A without changing the profile owner', async () => {
+    await put('personalNavigation:org-a', v);
+    await put('personalNavigation:org-b', { ...v, organizationId: 'org-b' }, 'org-b');
+    expect(upsertUserPreference.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+      ['u1', 'personalNavigation:org-a'],
+      ['u1', 'personalNavigation:org-b'],
+    ]);
+  });
+  it('rejects stale organization, mismatched key, malformed and future values before writing', async () => {
+    await expect(put('personalNavigation:org-a', v, 'org-b')).rejects.toMatchObject({
+      status: 409,
+    });
+    await expect(put('personalNavigation:org-b', v)).rejects.toMatchObject({ status: 409 });
+    await expect(put('personalNavigation:org-a', { ...v, version: 2 })).rejects.toMatchObject({
+      status: 400,
+    });
+    expect(upsertUserPreference).not.toHaveBeenCalled();
+  });
+});
