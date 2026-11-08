@@ -155,7 +155,7 @@
     "i18n:compile": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
     "vendor:d3": "bun build src/lib/sandbox/vendor/d3-slim.ts --format=iife --minify --outfile static/vendor/d3-slim.min.js",
     "dev": "NODE_OPTIONS=--disable-warning=DEP0205 vite dev",
-    "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && vite build && bun run test:client-build-boundary && bun run test:client-build-boundary-canary",
+    "build": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && NODE_OPTIONS=--max-old-space-size=6144 vite build && bun run test:client-build-boundary && bun run test:client-build-boundary-canary",
     "vercel-build": "([ -f .env ] || cp .env.example .env) && bun scripts/db-migrate.ts && bun run build",
     "db:migrate": "bun scripts/db-migrate.ts",
     "db:status": "bun scripts/db-status.ts",
