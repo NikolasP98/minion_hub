@@ -28,9 +28,19 @@ const pageErrors: string[] = [];
 const ownerEvidence: { checkpoint: string; state: unknown }[] = [];
 async function recordOwner(page: Page, checkpoint: string) {
   const state = await page.evaluate(async (expectedHref) => {
-    const path = '/scripts/qa/settings-navigation-probe.ts';
-    const probe: { readSettingsNavigation(href: string): unknown } = await import(path);
-    return probe.readSettingsNavigation(expectedHref);
+    const path = '/src/lib/nav/settings-navigation.qa.ts';
+    try {
+      const probe: { readSettingsNavigation(href: string): unknown } = await import(path);
+      return probe.readSettingsNavigation(expectedHref);
+    } catch (error) {
+      const response = await fetch(path);
+      return {
+        diagnosticError: String(error),
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        body: (await response.text()).slice(0, 1200),
+      };
+    }
   }, returnPath);
   ownerEvidence.push({ checkpoint, state });
 }
