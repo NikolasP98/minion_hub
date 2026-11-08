@@ -61,6 +61,9 @@ function primary(page: Page) {
   return page.locator('aside[aria-label="Primary"] [data-layout="primary"]');
 }
 async function avatarSettings(page: Page) {
+  // Production has no query inspector. Its development-only floating logo
+  // overlaps the avatar in the QA Vite server; keep real app clicks unobstructed.
+  await page.addStyleTag({ content: '.tsqd-parent-container { display: none !important; }' });
   await page.getByRole('button', { name: 'Profile menu', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/appearance$/);
