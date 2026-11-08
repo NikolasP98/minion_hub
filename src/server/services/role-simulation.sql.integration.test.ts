@@ -5,6 +5,7 @@ import postgres from 'postgres';
 import { createClient } from '@supabase/supabase-js';
 import { configureCache, createBackend } from '@minion-stack/cache';
 import { assertLoopback } from '../../../scripts/qa/seed/db';
+import { personaEmail, QA_PASSWORD } from '../../../scripts/qa/seed/ids';
 import { ORG_BUSINESS, ORG_PERSONAL } from '../../../scripts/qa/seed/tenancy';
 import { INITIAL_SIMULATION_GENERATION } from '$lib/role-simulation';
 import {
@@ -59,8 +60,10 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     });
     async function login(persona: 'OWNER' | 'VIEWER') {
       const { data, error } = await client.auth.signInWithPassword({
-        email: process.env[`QA_${persona}_EMAIL`]!,
-        password: process.env[`QA_${persona}_PASSWORD`]!,
+        email:
+          process.env[`QA_${persona}_EMAIL`] ??
+          personaEmail(`tenancy.user.${persona.toLowerCase()}`),
+        password: process.env[`QA_${persona}_PASSWORD`] ?? QA_PASSWORD,
       });
       if (error || !data.session || !data.user)
         throw error ?? new Error('QA login did not create a session');

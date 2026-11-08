@@ -46,7 +46,9 @@ vi.mock('$server/services/ssrf-guard', () => ({
   assertSafeUrl: async () => {},
   SsrfBlockedError: class extends Error {},
 }));
-vi.mock('$server/services/rbac.service', () => ({
+vi.mock('$server/services/rbac.service', async (original) => ({
+  apiReadCapability: (await original<typeof import('$server/services/rbac.service')>())
+    .apiReadCapability,
   apiWriteCapability: () => null,
   hasOrgCapability: async () => true,
 }));

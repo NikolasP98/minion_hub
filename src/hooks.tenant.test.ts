@@ -63,7 +63,9 @@ vi.mock('$server/services/ssrf-guard', () => ({
   assertSafeUrl: async () => {},
   SsrfBlockedError: class extends Error {},
 }));
-vi.mock('$server/services/rbac.service', () => ({
+vi.mock('$server/services/rbac.service', async (original) => ({
+  apiReadCapability: (await original<typeof import('$server/services/rbac.service')>())
+    .apiReadCapability,
   apiWriteCapability: mocks.writeCap,
   hasOrgCapability: mocks.hasCap,
   resolveCapabilities: async () => ({ explicitView: mocks.explicit }),
@@ -458,6 +460,10 @@ describe('plan operation cache and central capability boundaries', () => {
   );
   it('installs no-store before a localized route throws and preserves the original error', async () => {
     mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
+    mocks.hasCap.mockImplementation(
+      async (_locals: unknown, module: string, action: string) =>
+        module === 'pos' && action === 'view',
+    );
     const input = event(`/es/api/pos/plans/operations/${operationId}`, 'GET');
     const failure = { status: 404, body: { message: 'Not found' } };
     await expect(
@@ -468,6 +474,7 @@ describe('plan operation cache and central capability boundaries', () => {
         },
       }),
     ).rejects.toBe(failure);
+    expect(mocks.hasCap).toHaveBeenCalledWith(expect.anything(), 'pos', 'view');
     expect(input.setHeaders).toHaveBeenCalledExactlyOnceWith({
       'cache-control': 'private, no-store',
     });
