@@ -218,14 +218,8 @@
     {/await}
   {/if}
 
-  {#if import.meta.env.DEV}
-    {#await import('@tanstack/svelte-query-devtools') then { SvelteQueryDevtools }}
-      <!-- bottom-left, not the (default) bottom-right: FloatingAssistant's docked pill
-           lives in that corner and the two floating buttons visually collide there in
-           dev/QA (devtools paints over the pill; pointer events still correctly reach
-           the pill — a paint/layer-order issue, not a stacking-context one). Dev-only,
-           never shipped to prod. -->
-      <SvelteQueryDevtools buttonPosition="bottom-left" />
-    {/await}
-  {/if}
+  <!-- The dev-only TanStack devtools launcher is mounted inline in the Sidebar
+       footer (Sidebar.svelte): every fixed corner is taken — bottom-left by the
+       avatar (Profile menu), bottom-right by the assistant pill — and a fixed
+       launcher there intercepts their clicks (qa-stack smoke, 2026-11-08). -->
 </QueryClientProvider>
