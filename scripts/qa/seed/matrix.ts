@@ -51,6 +51,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: 'Canonical system role catalog is required for rank and role admission on the schema-only QA snapshot',
   })),
   {
+    id: 'tenancy.user.simulation-owner-two-orgs',
+    domain: 'tenancy',
+    why: 'Independent owner session proves organization switching retires simulation without inheriting foreign roles',
+  },
+  {
     id: 'tenancy.user.access-manager',
     domain: 'tenancy',
     why: 'Contextual users:manage without settings:manage, independently of simulation eligibility',

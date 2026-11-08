@@ -6,7 +6,12 @@ import { createClient } from '@supabase/supabase-js';
 import { configureCache, createBackend } from '@minion-stack/cache';
 import { assertLoopback } from '../../../scripts/qa/seed/db';
 import { personaEmail, QA_PASSWORD } from '../../../scripts/qa/seed/ids';
-import { ORG_BUSINESS, ORG_PERSONAL } from '../../../scripts/qa/seed/tenancy';
+import {
+  ORG_BUSINESS,
+  ORG_PERSONAL,
+  SIMULATION_OWNER_TWO_ORGS,
+  userId,
+} from '../../../scripts/qa/seed/tenancy';
 import { INITIAL_SIMULATION_GENERATION } from '$lib/role-simulation';
 import {
   runWithEffectiveAuthority,
@@ -33,6 +38,7 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
   let pg: ReturnType<typeof postgres>;
   let owner: VerifiedLocals;
   let viewer: VerifiedLocals;
+  let twoOrgOwner: VerifiedLocals;
   let ownerToken = '';
   const sessions: string[] = [];
   const generations: string[] = [];
@@ -58,11 +64,15 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     const client = createClient(api, process.env.PUBLIC_SUPABASE_ANON_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    async function login(persona: 'OWNER' | 'VIEWER') {
+    async function login(persona: 'OWNER' | 'VIEWER' | 'SIMULATION_OWNER_TWO_ORGS') {
       const { data, error } = await client.auth.signInWithPassword({
         email:
           process.env[`QA_${persona}_EMAIL`] ??
-          personaEmail(`tenancy.user.${persona.toLowerCase()}`),
+          personaEmail(
+            persona === 'SIMULATION_OWNER_TWO_ORGS'
+              ? SIMULATION_OWNER_TWO_ORGS
+              : `tenancy.user.${persona.toLowerCase()}`,
+          ),
         password: process.env[`QA_${persona}_PASSWORD`] ?? QA_PASSWORD,
       });
       if (error || !data.session || !data.user)
@@ -91,6 +101,7 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     owner = actualOwner.locals;
     ownerToken = actualOwner.token;
     viewer = (await login('VIEWER')).locals;
+    twoOrgOwner = (await login('SIMULATION_OWNER_TWO_ORGS')).locals;
     await pg`insert into org_roles(org_id,key,name,rank,source_role_key,created_by) values(${ORG_PERSONAL},${foreignRole},'Foreign only',10,'viewer',${owner.user!.supabaseId})`;
   }, 30_000);
   afterAll(async () => {
@@ -126,6 +137,80 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
         roleKey: 'staff',
       }),
     ).rejects.toMatchObject({ status: 403 });
+  });
+  it('clears simulation on a legitimate organization switch without changing membership', async () => {
+    const profileId = twoOrgOwner.user.supabaseId;
+    expect(profileId).toBe(userId(SIMULATION_OWNER_TWO_ORGS));
+    expect(profileId).not.toBe(owner.user.supabaseId);
+    const membershipsBefore =
+      await pg`select organization_id,role from organization_members where profile_id=${profileId}::uuid order by organization_id`;
+    const rolesBefore =
+      await pg`select org_id,role_key from member_roles where profile_id=${profileId}::uuid order by org_id,role_key`;
+    expect(rolesBefore).toEqual(
+      [ORG_BUSINESS, ORG_PERSONAL].sort().map((org_id) => ({ org_id, role_key: 'owner' })),
+    );
+    try {
+      const baseline = await loadRoleSimulationState(twoOrgOwner);
+      expect(baseline.active).toBe(false);
+      expect(baseline.eligible).toBe(true);
+      expect(baseline.roles.some((role) => role.key === 'custom-qa-access')).toBe(true);
+      const started = await transitionRoleSimulation(twoOrgOwner, {
+        generation: baseline.generation,
+        returnTo: '/en/crm/customers',
+        roleKey: 'viewer',
+      });
+      generations.push(started.generation);
+      const business = event(twoOrgOwner);
+      const selected = await admitRoleSimulation(business);
+      expect(selected).toMatchObject({ roleKey: 'viewer', orgId: ORG_BUSINESS, profileId });
+      expect(business.locals.roleSimulation?.active).toBe(true);
+      const personalLocals: VerifiedLocals = {
+        ...twoOrgOwner,
+        orgId: ORG_PERSONAL,
+        orgKind: 'personal',
+        tenantCtx: { db: {} as never, tenantId: ORG_PERSONAL },
+      };
+      const personal = event(personalLocals);
+      expect(await admitRoleSimulation(personal)).toBeUndefined();
+      const off = await loadRoleSimulationState(personal.locals);
+      generations.push(off.generation);
+      expect(off).toMatchObject({
+        active: false,
+        roleKey: null,
+        orgId: ORG_PERSONAL,
+        eligible: true,
+      });
+      expect(off.generation).not.toBe(started.generation);
+      expect(personal.locals.roleSimulation?.generation).toBe(off.generation);
+      expect(personal.locals.actualUser?.supabaseId).toBe(profileId);
+      expect(personal.locals.authSessionId).toBe(twoOrgOwner.authSessionId);
+      expect(personal.locals.requestCapabilities).toMatchObject({ orgId: ORG_PERSONAL, profileId });
+      const caps = await runWithRequestCapabilities(personal.locals.requestCapabilities, () =>
+        resolveCapabilities(ORG_PERSONAL, profileId),
+      );
+      expect(caps.roles).toContain('owner');
+      expect(caps.roles).not.toContain('viewer');
+      expect(off.roles.some((role) => role.key === 'custom-qa-access')).toBe(false);
+      await expect(
+        transitionRoleSimulation(personalLocals, {
+          generation: off.generation,
+          returnTo: '/en/account/home',
+          roleKey: 'custom-qa-access',
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect((await loadRoleSimulationState(personal.locals)).generation).toBe(off.generation);
+      expect(
+        await pg`select organization_id,role from organization_members where profile_id=${profileId}::uuid order by organization_id`,
+      ).toEqual(membershipsBefore);
+      expect(
+        await pg`select org_id,role_key from member_roles where profile_id=${profileId}::uuid order by org_id,role_key`,
+      ).toEqual(rolesBefore);
+    } finally {
+      const mode = await pg<
+        { generation: string }[]
+      >`select generation::text from app_role_simulations where session_id=${twoOrgOwner.authSessionId}::uuid and profile_id=${profileId}::uuid`;
+      if (mode[0]) generations.push(mode[0].generation);
+    }
   });
   it('keeps mode rows inaccessible to browser database roles', async () => {
     await expect(

@@ -219,6 +219,44 @@ const USERS: UserSpec[] = [
   },
 ];
 
+export const SIMULATION_OWNER_TWO_ORGS = 'tenancy.user.simulation-owner-two-orgs';
+
+/** Narrow additive seed for browser/native org-switch proof; touches only this persona. */
+export async function seedSimulationOwnerTwoOrgs(
+  ctx: Pick<SeedContext, 'sql' | 'admin' | 'register' | 'now'>,
+): Promise<void> {
+  const { sql, admin, register, now } = ctx;
+  const email = personaEmail(SIMULATION_OWNER_TWO_ORGS);
+  const profileId = await findOrCreateGoTrueUser(
+    admin,
+    userId(SIMULATION_OWNER_TWO_ORGS),
+    email,
+    QA_PASSWORD,
+    {
+      full_name: SIMULATION_OWNER_TWO_ORGS,
+    },
+  );
+  await sql.begin(async (tx) => {
+    await tx`insert into profiles(id,email,display_name,role,account_type,onboarded_at)
+      values(${profileId},${email},${SIMULATION_OWNER_TWO_ORGS},'user','person',${now})
+      on conflict(id) do update set email=excluded.email,display_name=excluded.display_name,
+        role=excluded.role,account_type=excluded.account_type,onboarded_at=excluded.onboarded_at`;
+    for (const orgId of [ORG_BUSINESS, ORG_PERSONAL]) {
+      await tx`insert into organization_members(organization_id,profile_id,role)
+        values(${orgId},${profileId},'owner')
+        on conflict(organization_id,profile_id) do update set role=excluded.role`;
+      await tx`insert into member_roles(org_id,profile_id,role_key) values(${orgId},${profileId},'owner')
+        on conflict(org_id,profile_id,role_key) do nothing`;
+    }
+  });
+  await ensureSeededPersonalAgent(ctx, {
+    profileId,
+    agentId: matrixTextId(SIMULATION_OWNER_TWO_ORGS, 'personal-agent'),
+    displayName: `${SIMULATION_OWNER_TWO_ORGS} agent`,
+  });
+  register(SIMULATION_OWNER_TWO_ORGS, { table: 'profiles', where: { id: profileId } });
+}
+
 export async function seed(ctx: SeedContext): Promise<void> {
   const { sql, admin, register, now } = ctx;
   // The schema snapshot intentionally has no data. Canonical system catalog is
@@ -340,6 +378,8 @@ export async function seed(ctx: SeedContext): Promise<void> {
       });
     }
   }
+  await seedSimulationOwnerTwoOrgs(ctx);
+
   register('tenancy.user.pending-agent', {
     table: 'personal_agents',
     where: { profile_id: userId('tenancy.user.pending-agent'), provisioning_status: 'pending' },

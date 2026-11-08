@@ -633,9 +633,10 @@ export const NATIVE_POSTGRES_MANIFEST = {
   'qa-native': [
     {
       file: 'src/server/services/role-simulation.sql.integration.test.ts',
-      minimumAssertions: 8,
+      minimumAssertions: 9,
       requiredBehaviors: [
         'role simulation native session admission rejects foreign roles and non-admin actors without changing membership',
+        'role simulation native session admission clears simulation on a legitimate organization switch without changing membership',
         'role simulation native session admission keeps mode rows inaccessible to browser database roles',
         'role simulation native session admission ignores warmed real-role rows after a policy commit without cache invalidation',
         'role simulation native session admission serializes concurrent first Starts, replaces roles and atomically records actual identity',
