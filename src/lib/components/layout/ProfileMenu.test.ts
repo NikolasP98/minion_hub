@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'svelte/server';
+import { inactiveSimulation, type RoleSimulationState } from '$lib/role-simulation';
 
 type Channel = { channel: 'dev' | 'prd'; serverId: string; healthy: boolean | null };
 
 const data: {
   hosts: { servers: []; channels: Channel[] };
   env?: { backend?: 'dev' | 'prd'; local?: boolean };
+  roleSimulation?: RoleSimulationState;
 } = {
   hosts: { servers: [], channels: [] as Channel[] },
 };
@@ -54,6 +56,7 @@ beforeEach(() => {
   data.hosts.channels = [];
   admin = true;
   data.env = undefined;
+  data.roleSimulation = undefined;
 });
 
 describe('ProfileMenu build-channel row', () => {
@@ -106,6 +109,7 @@ describe('ProfileMenu DEV user switcher item', () => {
 
   it('hides "Switch user…" when env is unset (deployed environments)', () => {
     data.env = undefined;
+    data.roleSimulation = undefined;
     const out = html([]);
 
     expect(out).not.toContain('Switch user');
@@ -120,5 +124,37 @@ describe('Settings entry', () => {
     const settings = out.indexOf('href="/settings/appearance"');
     expect(settings).toBeGreaterThan(account);
     expect(out.indexOf('Language')).toBeGreaterThan(settings);
+  });
+});
+
+describe('organization simulation menu item', () => {
+  it('offers one entry rather than expanding the role catalog in the avatar menu', () => {
+    data.roleSimulation = {
+      ...inactiveSimulation(),
+      eligible: true,
+      roles: [{ key: 'custom-secret', name: 'Custom catalog role', selectable: true }],
+    };
+    const out = html([]);
+    expect(out.match(/Simulate a role…/g)).toHaveLength(1);
+    expect(out).not.toContain('Custom catalog role');
+    expect(out).not.toContain('Finish simulation');
+  });
+  it('keeps Finish visible when effective role has no management permissions', () => {
+    data.roleSimulation = {
+      ...inactiveSimulation(),
+      active: true,
+      invalid: true,
+      eligible: false,
+      roleKey: 'custom-restricted',
+      roleName: 'Restricted role',
+    };
+    const out = html([], false);
+    expect(out).toContain('Finish simulation');
+    expect(out).toContain('Restricted role');
+    expect(out).toContain('simulation-finish');
+    expect(out).not.toContain('Simulate a role…');
+  });
+  it('does not offer simulation merely because the platform store calls someone admin', () => {
+    expect(html([], true)).not.toContain('Simulate a role');
   });
 });

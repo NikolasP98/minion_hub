@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { createWorkforceClient, type WorkforceClient } from '@minion-stack/workforce-client';
 import * as workforceTransport from '@minion-stack/workforce-client';
 import { env } from '$env/dynamic/private';
@@ -121,6 +122,7 @@ export function trustedWorkforceMutationHeaders(): Record<string, string> {
 }
 
 export function workforceServerClient(event: RequestEvent): WorkforceClient {
+  rejectSimulatedDelegation();
   try {
     const token = event.locals.workforceIdentity?.token;
     if (!token) throw new Error('workforceIdentity not populated by hooks');
@@ -146,6 +148,7 @@ export async function workforceRawFetch<T = unknown>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  rejectSimulatedDelegation();
   try {
     const token = event.locals.workforceIdentity?.token;
     if (!token) throw new Error('workforceIdentity not populated by hooks');
@@ -185,6 +188,7 @@ export async function workforceClientForOrg(
   orgId: string,
   actor?: { id?: string | null; name?: string | null; email?: string | null },
 ): Promise<WorkforceClient> {
+  rejectSimulatedDelegation();
   try {
     // Same board-key fallback chain the hooks use (hooks.server workforceIdentityHandle):
     // prod is configured with the compat HUB_PAPERCLIP_BOARD_KEY name, so checking

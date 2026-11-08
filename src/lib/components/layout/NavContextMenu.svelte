@@ -19,6 +19,8 @@
     Trash2,
     Undo2,
     Star,
+    Ellipsis,
+    ShieldCheck,
   } from 'lucide-svelte';
   import ContextMenu, { type ContextMenuItem } from '$lib/components/ui/ContextMenu.svelte';
   import Picker from '$lib/components/ui/Picker.svelte';
@@ -28,6 +30,9 @@
   import { invalidate } from '$lib/navigation';
   import { canonicalPath } from '$lib/canonical-path';
   import { longpress } from '$lib/actions/longpress';
+  import SectionAccessDialog from '$lib/components/navigation/SectionAccessDialog.svelte';
+  import { pageAccessTarget, sectionAccessTargets } from '$lib/nav/section-access-context';
+  import { iconSizes } from '$lib/components/ui/icon-sizes';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import * as m from '$lib/paraglide/messages';
   import { getModules } from '$lib/nav/modules';
@@ -35,6 +40,7 @@
   import {
     NavSaveError,
     canEditNav,
+    canEditAccess,
     navClipboard,
     newIssues,
     saveNavConfig,
@@ -72,13 +78,26 @@
     sectionId?: string;
     /** header: a built-in module's id (module-mode group head). */
     module?: string;
+    /** Individual hrefs keep a mixed built-in heading scoped to its actual modules. */
+    targetHrefs?: string[];
+    compact?: boolean;
+    /** Utility-pill strips keep their existing geometry; context/keyboard actions still work. */
+    showMore?: boolean;
     children: Snippet;
   }
-  let { kind, href = '', label = '', sectionId, module, children }: Props = $props();
+  let {
+    kind,
+    href = '',
+    label = '',
+    sectionId,
+    module,
+    targetHrefs,
+    compact = false,
+    showMore = true,
+    children,
+  }: Props = $props();
 
   const customId = $derived(sectionId?.startsWith('custom:') ? sectionId.slice(7) : null);
-  /** A built-in full-mode header has no menu of its own: the area menu serves it. */
-  const inert = $derived(kind === 'header' && !customId && !module);
 
   const targets = aliasableTargets();
   const targetSet = new Set(targets.map((t) => t.pattern));
@@ -95,6 +114,15 @@
   const customSection = $derived<NavSection | null>(
     customId ? (config.sections.find((s) => s.id === customId) ?? null) : null,
   );
+  const accessChoices = $derived(
+    kind === 'header' ? sectionAccessTargets(sectionId ?? module ?? '', config, targetHrefs) : [],
+  );
+  const accessPage = $derived(kind === 'item' ? pageAccessTarget(href, config) : null);
+  const inert = $derived(
+    kind === 'header' && !customId && !module && !(canEditAccess() && accessChoices.length),
+  );
+  let accessOpen = $state(false);
+  let accessTarget = $state('');
   const currentHome = $derived(
     ((page.data as { preferences?: { preferences?: Record<string, unknown> } })?.preferences
       ?.preferences?.landingPage as string | undefined) ?? '/home',
@@ -165,6 +193,8 @@
         selection: 'checkbox',
         checked: currentHome === href,
       });
+      if (canEditAccess() && accessPage)
+        out.push({ id: 'access', label: m.sectionAccess_pageTitle(), icon: ShieldCheck });
       if (!canEditNav()) return out;
       const target = instance?.target ?? builtinTarget;
       if (!target) return out;
@@ -185,8 +215,9 @@
         });
       else if (instance)
         out.push({ id: 'delete', label: m.nav_menu_delete(), icon: Trash2, danger: true });
-      // TODO(handoff): "Access…" (users:manage) is omitted until S5 ships PageAccessDialog — add `access` here.
     } else if (kind === 'header') {
+      if (canEditAccess() && accessChoices.length)
+        out.push({ id: 'access', label: m.sectionAccess_title(), icon: ShieldCheck });
       if (!canEditNav()) return out;
       const paste = {
         id: 'paste',
@@ -203,7 +234,6 @@
           label: toggled(customSection.hidden),
           icon: customSection.hidden ? Eye : EyeOff,
         });
-        // TODO(handoff): section "Access…" (users:manage) arrives with S5.
         out.push({
           id: 'delete-section',
           label: m.nav_menu_delete_section(),
@@ -247,7 +277,7 @@
       return;
     e.preventDefault();
     e.stopPropagation();
-    returnTo = el.closest<HTMLElement>('a,[tabindex]') ?? el;
+    returnTo = el.closest<HTMLElement>('button,a,[tabindex]') ?? el;
     if (e instanceof MouseEvent) at = { x: e.clientX, y: e.clientY };
     else {
       const r = el.getBoundingClientRect();
@@ -257,6 +287,28 @@
   const onkeydown = (e: KeyboardEvent) => {
     if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) open(e);
   };
+  /** Nested item/header presses belong to the nearest host, never the area host. */
+  function contextLongpress(node: HTMLElement) {
+    let ownsPress = false;
+    const claim = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      ownsPress = Boolean(
+        target &&
+        target.closest('.nav-context-host') === node &&
+        !target.closest('dialog,input,textarea,[contenteditable="true"],[role="menu"]'),
+      );
+    };
+    node.addEventListener('pointerdown', claim);
+    const hold = longpress(node, (point) => {
+      if (ownsPress) openAt(point);
+    });
+    return {
+      destroy() {
+        node.removeEventListener('pointerdown', claim);
+        hold.destroy();
+      },
+    };
+  }
   function openAt(p: { x: number; y: number }) {
     if (!items.length) return;
     returnTo = null;
@@ -264,7 +316,19 @@
   }
   function close() {
     at = null;
-    returnTo?.focus({ preventScroll: true });
+    if (returnTo?.isConnected) returnTo.focus({ preventScroll: true });
+    else {
+      const fallback = document.querySelector<HTMLElement>('[data-page-header] h1');
+      fallback?.setAttribute('tabindex', '-1');
+      fallback?.focus({ preventScroll: true });
+    }
+  }
+  function openMore(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    returnTo = event.currentTarget as HTMLElement;
+    const rect = returnTo.getBoundingClientRect();
+    at = { x: rect.left, y: rect.bottom };
   }
 
   // ── dialogs ───────────────────────────────────────────────────────────────
@@ -326,6 +390,11 @@
     const id = item.id;
     const clip = navClipboard.item;
     const pageId = instance?.page.id;
+    if (id === 'access') {
+      accessTarget = accessPage ?? accessChoices[0]?.target ?? '';
+      accessOpen = Boolean(accessTarget);
+      return;
+    }
     if (id === 'home') return void setAsHome();
     if (id === 'copy') {
       const target = instance?.target ?? builtinTarget;
@@ -492,14 +561,45 @@
 {#if inert}
   {@render children()}
 {:else}
-  <!-- display:contents: the host adds no box, so nav layout (flex gaps, hit areas) is unchanged. -->
+  <!-- Native navigation and menu buttons are siblings, including keyboard activation. -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="nav-context-host" oncontextmenu={open} {onkeydown} use:longpress={openAt}>
+  <div
+    class="nav-context-host"
+    class:area={kind === 'area' || !showMore}
+    class:compact
+    class:header={kind === 'header'}
+    oncontextmenu={open}
+    {onkeydown}
+    use:contextLongpress
+  >
     {@render children()}
+    {#if showMore && kind !== 'area' && items.length && (!compact || kind === 'header')}
+      <Button
+        type="button"
+        variant="ghost"
+        size="xs"
+        shape="icon"
+        aria-haspopup="menu"
+        aria-expanded={Boolean(at)}
+        aria-label={m.sectionAccess_more({
+          name: label || customSection?.label || module || sectionId || m.nav_menu_label(),
+        })}
+        onclick={openMore}><Ellipsis size={iconSizes.sm} /></Button
+      >
+    {/if}
   </div>
 {/if}
 {#if at && items.length}
   <ContextMenu {...at} {items} label={m.nav_menu_label()} onclose={close} {onselect} />
+{/if}
+
+{#if accessOpen}
+  <SectionAccessDialog
+    bind:open={accessOpen}
+    target={accessTarget}
+    choices={accessChoices}
+    onclose={close}
+  />
 {/if}
 
 {#if dlg && (dlg.t === 'rename' || dlg.t === 'new-section')}
@@ -626,7 +726,44 @@
 
 <style>
   .nav-context-host {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    width: 100%;
+  }
+  .nav-context-host.area {
     display: contents;
+  }
+  .nav-context-host :global(a),
+  .nav-context-host :global(.nav-group-head) {
+    flex: 1;
+    min-width: 0;
+  }
+  .nav-context-host > :global(button) {
+    flex: none;
+    min-height: var(--control-height-lg);
+    min-width: var(--control-height-lg);
+  }
+  .nav-context-host.header > :global(button) {
+    min-height: var(--control-height-touch);
+    min-width: var(--control-height-touch);
+  }
+  .nav-context-host.compact:not(.header) {
+    display: contents;
+  }
+  .nav-context-host.compact.header {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .nav-context-host.compact.header :global(a) {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+  @media (pointer: coarse) {
+    .nav-context-host > :global(button) {
+      min-height: var(--control-height-touch);
+      min-width: var(--control-height-touch);
+    }
   }
   .nav-form {
     display: flex;

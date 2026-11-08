@@ -1,3 +1,4 @@
+import { assertSimulatedRecordAccess } from '$server/auth/simulated-record-scope';
 import { and, eq, isNull, ne, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmContactGuardians, crmContacts } from '$server/db/pg-crm-schema';
@@ -76,6 +77,8 @@ export async function addGuardian(ctx: CoreCtx, wardContactId: string, guardianC
   if (wardContactId === guardianContactId)
     throw new GuardianEligibilityError('A contact cannot be their own guardian');
   return withOrgCore(ctx, async (tx) => {
+    for (const id of [wardContactId, guardianContactId].sort())
+      await assertSimulatedRecordAccess(tx, ctx, 'crm', id, 'edit');
     const rows = await tx.execute<{ ward_id: string; guardian_id: string }>(sql`
       select w.id as ward_id, g.id as guardian_id
       from crm_contacts w
@@ -102,8 +105,10 @@ export async function removeGuardian(
   wardContactId: string,
   guardianContactId: string,
 ) {
-  await withOrgCore(ctx, (tx) =>
-    tx
+  await withOrgCore(ctx, async (tx) => {
+    for (const id of [wardContactId, guardianContactId].sort())
+      await assertSimulatedRecordAccess(tx, ctx, 'crm', id, 'edit');
+    await tx
       .delete(crmContactGuardians)
       .where(
         and(
@@ -111,6 +116,6 @@ export async function removeGuardian(
           eq(crmContactGuardians.wardContactId, wardContactId),
           eq(crmContactGuardians.guardianContactId, guardianContactId),
         ),
-      ),
-  );
+      );
+  });
 }

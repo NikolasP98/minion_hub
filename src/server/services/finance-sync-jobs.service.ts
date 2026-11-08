@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
@@ -50,6 +51,7 @@ export function getJobById(ctx: CoreCtx, jobId: string): Promise<FinSyncJob | nu
 }
 
 export async function enqueueJob(ctx: CoreCtx, provider: string): Promise<FinSyncJob> {
+  rejectSimulatedDelegation();
   const active = await getActiveJob(ctx, provider);
   if (active) return active;
   try {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, untrack, type ComponentProps } from 'svelte';
+  import { inactiveSimulation } from '$lib/role-simulation';
   import { Button } from '$lib/components/ui';
   import type {
     NotificationHealthSeed,
@@ -111,6 +112,7 @@
         role: 'user',
       },
       permissions: { permissions: [], roles: [] },
+      roleSimulation: inactiveSimulation(),
       workspaces: [],
       organizations: [
         {

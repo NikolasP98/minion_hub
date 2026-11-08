@@ -1,3 +1,5 @@
+import { runWithEffectiveAuthority } from '$server/auth/effective-authority';
+import { buildCapabilities } from '$server/services/rbac.service';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { withOrgCore, withOrgCoreTransaction, type CoreTx } from './with-org-core';
 import { createAmbientOrgTx } from './ambient-org-tx';
@@ -45,7 +47,7 @@ describe('withOrgCoreTransaction', () => {
     scope.tenantId = 'changed';
     scope.profileId = 'other';
     await running;
-    expect(queries[1]?.params).toEqual(['original', 'actor']);
+    expect(queries[1]?.params).toEqual(['original', 'actor', '', '', '']);
   });
 
   it('captures and restores role, tenant, profile and timeout on the same transaction', async () => {
@@ -66,8 +68,65 @@ describe('withOrgCoreTransaction', () => {
       }),
     ).resolves.toBe(7);
     expect(queries).toHaveLength(3);
-    expect(queries[1]?.params).toEqual(['next-org', '']);
-    expect(queries[2]?.params).toEqual(['none', 'previous-org', 'previous-profile', '3min']);
+    expect(queries[1]?.params).toEqual(['next-org', '', '', '', '']);
+    expect(queries[2]?.params).toEqual([
+      'none',
+      'previous-org',
+      'previous-profile',
+      '3min',
+      '',
+      '',
+      '',
+    ]);
+  });
+
+  it('sets simulation metadata for the matching actor and restores captured outer metadata', async () => {
+    const queries: { sql: string; params: unknown[] }[] = [];
+    const tx = {
+      execute: async (query: SQL) => {
+        queries.push(new PgDialect().sqlToQuery(query));
+        return [
+          {
+            role: 'none',
+            org: 'outer',
+            profile: 'other',
+            timeout: '0',
+            simulationRole: 'outer-role',
+            simulationGeneration: 'outer-generation',
+            simulationActor: 'outer-actor',
+          },
+        ];
+      },
+    } as unknown as CoreTx;
+    await runWithEffectiveAuthority(
+      {
+        orgId: 'org',
+        profileId: 'actor',
+        roleKey: 'viewer',
+        generation: 'generation',
+        rank: 20,
+        invalid: false,
+        capabilities: buildCapabilities(['viewer'], []),
+      },
+      () =>
+        withOrgCoreTransaction({ tenantId: 'org', profileId: 'actor' }, tx, async () => undefined),
+    );
+    expect(queries[1]?.params).toEqual([
+      'org',
+      'actor',
+      'viewer',
+      'generation',
+      JSON.stringify({ id: 'actor', name: null }),
+    ]);
+    expect(queries[2]?.params).toEqual([
+      'none',
+      'outer',
+      'other',
+      '0',
+      'outer-role',
+      'outer-generation',
+      'outer-actor',
+    ]);
   });
 
   it('restores after an application error and preserves original SQL failure', async () => {
@@ -204,7 +263,7 @@ describe('withOrgCore joined to an ambient transaction', () => {
     // never a private BEGIN: the RLS pool has a single connection and this
     // request is holding it.
     expect(queries).toHaveLength(3);
-    expect(queries[1]?.params).toEqual(['org-b', '']);
+    expect(queries[1]?.params).toEqual(['org-b', '', '', '', '']);
     expect(executed).toHaveLength(0);
   });
 
@@ -216,7 +275,7 @@ describe('withOrgCore joined to an ambient transaction', () => {
 
     await owner.run(() => withOrgCore(scope, async () => 'ok'));
 
-    expect(queries[1]?.params).toEqual(['org-a', 'actor-2']);
+    expect(queries[1]?.params).toEqual(['org-a', 'actor-2', '', '', '']);
     expect(executed).toHaveLength(0);
   });
 

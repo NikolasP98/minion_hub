@@ -180,6 +180,7 @@ async function createDb() {
       created_at timestamptz not null default now()
     );
     create table doc_audit_log (
+      simulation_role_key text, simulation_generation uuid,
       id uuid primary key default gen_random_uuid(),
       org_id text not null, ref_type text not null, ref_id uuid not null,
       actor_id uuid, actor_name text, op text not null default 'update',

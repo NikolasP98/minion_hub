@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { createHash, randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import { and, desc, eq, sql } from 'drizzle-orm';
@@ -359,6 +360,7 @@ export async function addDocument(
   principal: AccessPrincipal,
   actor: Actor,
 ): Promise<BrainDocument> {
+  rejectSimulatedDelegation();
   await requireAccess(ctx, brainId, 'write', principal);
   const id = randomUUID();
   const brain = await loadBrain(ctx, brainId);
@@ -466,6 +468,7 @@ export async function reingestDocument(
   docId: string,
   principal: AccessPrincipal,
 ): Promise<void> {
+  rejectSimulatedDelegation();
   await requireAccess(ctx, brainId, 'write', principal);
   const [before] = await withOrgCore(ctx, (tx) =>
     tx

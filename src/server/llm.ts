@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { createOpenAI } from '@ai-sdk/openai';
 import { wrapLanguageModel, type LanguageModelMiddleware } from 'ai';
 import { env } from '$env/dynamic/private';
@@ -65,6 +66,7 @@ function openrouter() {
  */
 const usageMiddleware: LanguageModelMiddleware = {
   async wrapGenerate({ doGenerate, model }) {
+    rejectSimulatedDelegation();
     // Spec 043 backstop: refuse before the provider is called (no-op unless enforced).
     if (isEnforced()) await assertAiCallAllowed('llm');
     const startedAt = Date.now();
@@ -87,6 +89,7 @@ const usageMiddleware: LanguageModelMiddleware = {
   },
 
   async wrapStream({ doStream, model }) {
+    rejectSimulatedDelegation();
     if (isEnforced()) await assertAiCallAllowed('llm');
     const startedAt = Date.now();
     const { stream, ...rest } = await doStream();
@@ -127,6 +130,7 @@ export function getOpenRouterModel(
   modelId: string,
   bounded?: { mode: 'pulse-digest-v1'; fetch: typeof fetch },
 ) {
+  rejectSimulatedDelegation();
   if (bounded) {
     if (!env.OPENROUTER_API_KEY) throw new Error('digest_transport_unconfigured');
     // The digest owns one bounded terminal-envelope transport; metering stays shared.

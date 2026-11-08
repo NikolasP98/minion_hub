@@ -6,11 +6,25 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe, GitBranch, User, Users, Settings } from 'lucide-svelte';
+  import { LogOut, Globe, GitBranch, User, Users, Settings, Eye } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { iconSizes, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
   import DevUserSwitcher from './DevUserSwitcher.svelte';
+  import RoleSimulationDialog, {
+    simulationErrorMessage,
+  } from '$lib/components/users/RoleSimulationDialog.svelte';
+  import { inactiveSimulation, type RoleSimulationState } from '$lib/role-simulation';
+  import { transitionRoleSimulation } from '$lib/services/role-simulation-client';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+
+  const actions = tryUseActions();
+  const simulation = $derived(
+    (page.data as { roleSimulation?: RoleSimulationState }).roleSimulation ?? inactiveSimulation(),
+  );
+  let simulationOpen = $state(false);
+  let simulationBusy = $state(false);
 
   const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
   const email = $derived(userState.user?.email ?? '');
@@ -18,12 +32,13 @@
   const role = $derived(userState.role ?? '');
   const channels = $derived(hostsState.channels);
   const activeChannel = $derived(hostsState.activeChannel ?? channels[0]?.channel ?? null);
-  const showBuildChannel = $derived(isAdmin.value && channels.length > 0);
+  const showBuildChannel = $derived(!simulation.active && isAdmin.value && channels.length > 0);
   // DEV-only: /api/dev/* 404s outside a loopback Supabase backend (spec
   // 2026-09-16-hub-minion-run-dev-switcher §2.3), so this item — and the
   // switcher it opens — never render against a hosted/deployed backend.
   const showDevSwitcher = $derived(
-    (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
+    !simulation.active &&
+      (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
   );
 
   let devSwitcherOpen = $state(false);
@@ -35,6 +50,16 @@
     { value: 'header', label: displayName, href: '/account' },
     { value: 'account', label: m.nav_account(), icon: User, href: '/account' },
     { value: 'settings', label: m.nav_settings(), icon: Settings, href: '/settings/appearance' },
+    ...(simulation.eligible || simulation.active
+      ? [
+          {
+            value: 'simulation',
+            label: simulation.active ? m.roleSimulation_finish() : m.roleSimulation_open(),
+            icon: Eye,
+            disabled: simulationBusy,
+          },
+        ]
+      : []),
     { value: 'language', label: m.settings_language(), icon: Globe, closeOnSelect: false },
     ...(showBuildChannel
       ? [
@@ -58,7 +83,27 @@
     else if (value === 'build-channel') switchBuildChannel();
     else if (value === 'switch-user') devSwitcherOpen = true;
     else if (value === 'logout') logout();
+    else if (value === 'simulation') {
+      if (simulation.active) void finishSimulation();
+      else simulationOpen = true;
+    }
     // 'header' / 'account' navigate via their href.
+  }
+
+  async function finishSimulation() {
+    if (simulationBusy) return;
+    simulationBusy = true;
+    try {
+      await transitionRoleSimulation({
+        state: simulation,
+        returnTo: page.url.pathname + page.url.search + page.url.hash,
+        actions,
+      });
+    } catch (failure) {
+      toastError(simulationErrorMessage(failure));
+    } finally {
+      simulationBusy = false;
+    }
   }
 
   function switchBuildChannel() {
@@ -75,9 +120,18 @@
   {#snippet trigger()}
     <span
       class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"
-      aria-label="Profile menu"
+      aria-label={simulation.active
+        ? m.roleSimulation_profile({ role: simulation.roleName ?? simulation.roleKey ?? '' })
+        : m.roleSimulation_profileDefault()}
     >
-      <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
+      <span class="sr-only"
+        >{simulation.active
+          ? m.roleSimulation_profile({ role: simulation.roleName ?? simulation.roleKey ?? '' })
+          : m.roleSimulation_profileDefault()}</span
+      >
+      <span aria-hidden="true"
+        ><UserAvatar name={displayName} {email} src={avatarUrl} size={28} /></span
+      >
     </span>
   {/snippet}
 
@@ -96,6 +150,16 @@
             {role}
           </span>
         {/if}
+      </span>
+    {:else if it.value === 'simulation' && simulation.active}
+      <span class="simulation-finish">
+        <Eye size={iconSizes.sm} aria-hidden="true" />
+        <span class="min-w-0 flex-1">
+          <span class="block t-label">{m.roleSimulation_finish()}</span>
+          <span class="block t-caption simulation-role"
+            >{simulation.roleName ?? simulation.roleKey}</span
+          >
+        </span>
       </span>
     {:else if it.value === 'language' || it.value === 'build-channel'}
       {@const Icon = it.icon}
@@ -120,3 +184,25 @@
 {#if showDevSwitcher}
   <DevUserSwitcher bind:open={devSwitcherOpen} currentUserId={userState.user?.id ?? null} />
 {/if}
+
+{#if simulation.eligible && !simulation.active}
+  <RoleSimulationDialog bind:open={simulationOpen} state={simulation} />
+{/if}
+
+<style>
+  .simulation-finish {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-2);
+    border: 1px solid var(--color-warning-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-warning-surface);
+    color: var(--color-warning-fg);
+  }
+  .simulation-role {
+    overflow-wrap: anywhere;
+  }
+</style>

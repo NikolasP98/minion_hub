@@ -23,7 +23,7 @@ CREATE TABLE stk_items (id uuid PRIMARY KEY,org_id text NOT NULL);
 CREATE TABLE stk_entries (id uuid PRIMARY KEY,org_id text NOT NULL);
 CREATE TABLE fin_invoices (id uuid PRIMARY KEY,org_id text NOT NULL);
 CREATE TABLE pos_tickets (id uuid PRIMARY KEY,org_id text NOT NULL);
-CREATE TABLE doc_audit_log (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),org_id text NOT NULL,ref_type text NOT NULL,ref_id uuid NOT NULL,
+CREATE TABLE doc_audit_log (simulation_role_key text, simulation_generation uuid, id uuid PRIMARY KEY DEFAULT gen_random_uuid(),org_id text NOT NULL,ref_type text NOT NULL,ref_id uuid NOT NULL,
  actor_id uuid,actor_name text,op text NOT NULL,changes jsonb NOT NULL DEFAULT '[]',occurred_at timestamptz NOT NULL DEFAULT now());
 `;
 export const ORG = '10000000-0000-4000-8000-000000000001';

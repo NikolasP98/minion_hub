@@ -1,3 +1,4 @@
+import { currentEffectiveAuthority } from '$server/auth/effective-authority';
 import { getPgClient } from '$server/db/pg-pool';
 import type postgres from 'postgres';
 import {
@@ -120,6 +121,12 @@ async function freshMemberAuthority(
     throw new ReliabilityReadAuthorityError(403, 'authority_projection_invalid');
   }
   const assigned = [...new Set(rows.flatMap((row) => (row.role_key ? [row.role_key] : [])))];
+  const effective = currentEffectiveAuthority(input.orgId, input.profileId);
+  if (effective) {
+    if (!effective.capabilities.can('reliability', 'view'))
+      throw new ReliabilityReadAuthorityError(403, 'capability_required');
+    return { globalAdmin: false };
+  }
   const globalAdmin = rows[0]?.profile_role === 'admin';
   if (globalAdmin) return { globalAdmin: true };
   const roles = resolveMemberRoleKeys(assigned, rows[0]?.legacy_role ?? null);

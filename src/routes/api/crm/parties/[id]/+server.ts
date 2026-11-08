@@ -1,9 +1,11 @@
+import { partyReadScope } from '$server/auth/party-read-scope';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
   contactIdForParty,
-  getParty,
+  getPartyForRead,
+  type PartySearchRow,
   setPartyDniVerified,
   setPartyDob,
   setPartyDocument,
@@ -27,7 +29,8 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401, 'Authentication required');
   if (!UUID_RE.test(params.id ?? '')) throw error(400, 'Invalid party id');
-  const p = await getParty(ctx, params.id!);
+  const scope = await partyReadScope(locals);
+  const p = await getPartyForRead(ctx, params.id!, scope);
   if (!p) throw error(404, 'Party not found');
   const canViewCrm = await hasOrgCapability(locals, 'crm', 'view');
   const crmOwnerId = canViewCrm ? await ownerFilter(locals, 'crm') : undefined;
@@ -38,7 +41,7 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 /** The picker-row shape — never the raw row (`metadata` holds registry verdicts). */
-function pickerRow(p: Party) {
+function pickerRow(p: PartySearchRow & Pick<Party, 'updatedAt'>) {
   return {
     id: p.id,
     name: p.name,

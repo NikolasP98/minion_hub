@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 /**
  * Background-job runtime (hub-global).
  *
@@ -106,6 +107,7 @@ export type EnqueueJobInput = {
 };
 
 export async function enqueueJob(input: EnqueueJobInput): Promise<string> {
+  rejectSimulatedDelegation();
   return insertJob(getCoreDb(), input);
 }
 
@@ -120,6 +122,7 @@ async function insertJob(
   tx: Pick<JobTransaction, 'insert'>,
   input: EnqueueJobInput,
 ): Promise<string> {
+  rejectSimulatedDelegation();
   const id = crypto.randomUUID();
   const now = Date.now();
   await tx.insert(bgJobs).values({

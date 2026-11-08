@@ -17,6 +17,8 @@
  */
 import { getContext, setContext } from 'svelte';
 import { page } from '$app/state';
+import { peekAuthorityKey } from './peek-authority';
+import { INITIAL_SIMULATION_GENERATION, type RoleSimulationState } from '$lib/role-simulation';
 import { goto, preloadData, pushState } from '$lib/navigation';
 import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
 import { localizePath } from '$lib/canonical-path';
@@ -32,6 +34,22 @@ export interface PeekState {
   href: string;
   mode: PeekMode;
   data: Record<string, unknown>;
+  /** Absent legacy/history keys are never rendered; restoration refetches. */
+  authorityKey?: string;
+}
+
+/** A document nonce also retires raw history after a policy edit with unchanged role/generation. */
+export function currentPeekAuthorityKey(): string | null {
+  const simulation = (page.data as { roleSimulation?: RoleSimulationState }).roleSimulation;
+  return peekAuthorityKey(
+    preferenceOwner(),
+    simulation?.generation ?? INITIAL_SIMULATION_GENERATION,
+  );
+}
+
+export function isCurrentPeek(peek: PeekState | null | undefined): peek is PeekState {
+  const key = currentPeekAuthorityKey();
+  return Boolean(peek && key && peek.authorityKey === key);
 }
 
 export const isOpenMode = (v: unknown): v is OpenMode =>
@@ -87,8 +105,9 @@ export async function openRecord(
 ): Promise<void> {
   const request = ++openRequest;
   const owner = preferenceOwner();
+  const authorityKey = currentPeekAuthorityKey();
   const source = page.url.href;
-  if (mode === 'page' || !resolvePeekPage(href)) {
+  if (mode === 'page' || !authorityKey || !resolvePeekPage(href)) {
     if (options.fallbackToPage !== false) await goto(href);
     return;
   }
@@ -96,15 +115,30 @@ export async function openRecord(
   try {
     result = await preloadData(localizePath(href));
   } catch (error) {
+    if (
+      request !== openRequest ||
+      preferenceOwner() !== owner ||
+      page.url.href !== source ||
+      currentPeekAuthorityKey() !== authorityKey
+    )
+      return;
     if (options.fallbackToPage !== false) throw error;
     return;
   }
-  if (request !== openRequest || preferenceOwner() !== owner || page.url.href !== source) return;
+  if (
+    request !== openRequest ||
+    preferenceOwner() !== owner ||
+    page.url.href !== source ||
+    currentPeekAuthorityKey() !== authorityKey
+  )
+    return;
   if (result.type !== 'loaded' || result.status !== 200) {
     if (options.fallbackToPage !== false) await goto(href);
     return;
   }
-  pushState('', { peek: { href, mode, data: result.data as Record<string, unknown> } });
+  pushState('', {
+    peek: { href, mode, data: result.data as Record<string, unknown>, authorityKey },
+  });
 }
 
 /** True for clicks the browser should keep (new tab / window / download). */

@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { and, eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { SignJWT, importJWK, exportJWK, generateKeyPair, type JWK } from 'jose';
@@ -165,6 +166,7 @@ export async function issueGatewayJwt(
   userId: string,
   opts: { audience?: string; entitlements?: { plan: string; features: string[] } } = {},
 ): Promise<{ token: string; expiresAt: number }> {
+  rejectSimulatedDelegation();
   // 1. Role from canonical Postgres. Do not route authentication through
   // PostgREST: a REST-gateway restart previously turned this valid profile
   // into a misleading "User not found" 500 while direct Postgres was healthy.

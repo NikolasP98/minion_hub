@@ -1,3 +1,13 @@
+import { maskPii } from '$lib/pii';
+import { error } from '@sveltejs/kit';
+import {
+  simulatedMutationPredicate,
+  simulatedRegistrationOwner,
+  assertSimulatedRegistrationPartyAccess,
+  assertSimulatedPartyAccess,
+  assertSimulatedRecordAccess,
+  requireUnscopedSimulationMutation,
+} from '$server/auth/simulated-record-scope';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { invalidateTags, tags } from '@minion-stack/cache';
 import {
@@ -61,79 +71,87 @@ export class PartyIdentityConflict extends Error {}
  * party. Run inside one withOrgCore txn so the read+write can't race a sibling.
  */
 export async function ensureParty(ctx: CoreCtx, input: EnsurePartyInput): Promise<Party> {
+  simulatedRegistrationOwner(ctx);
+  return withOrgCore(ctx, (tx) => ensurePartyInTransaction(ctx, tx, input));
+}
+async function ensurePartyInTransaction(
+  ctx: CoreCtx,
+  tx: CoreTx,
+  input: EnsurePartyInput,
+): Promise<Party> {
+  simulatedRegistrationOwner(ctx);
   const p9 = phone9(input.phone);
   const doc = input.docNumber?.trim() || null;
-  return withOrgCore(ctx, async (tx) => {
-    // Strong key first (document), then phone. A party with neither key is still
-    // creatable (e.g. name-only walk-in) but won't dedup — acceptable.
-    let existing: Party | undefined;
-    if (doc) {
-      [existing] = await tx
-        .select()
-        .from(parties)
-        .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.docNumber, doc)))
-        .limit(1);
-    }
-    if (!existing && p9 && input.dedupByPhone !== false) {
-      [existing] = await tx
-        .select()
-        .from(parties)
-        .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.phone9, p9)))
-        .limit(1);
-    }
+  // Strong key first (document), then phone. A party with neither key is still
+  // creatable (e.g. name-only walk-in) but won't dedup — acceptable.
+  let existing: Party | undefined;
+  if (doc) {
+    [existing] = await tx
+      .select()
+      .from(parties)
+      .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.docNumber, doc)))
+      .limit(1);
+  }
+  if (!existing && p9 && input.dedupByPhone !== false) {
+    [existing] = await tx
+      .select()
+      .from(parties)
+      .where(and(eq(parties.orgId, ctx.tenantId), eq(parties.phone9, p9)))
+      .limit(1);
+  }
 
-    if (existing) {
-      if (
-        doc &&
-        existing.docType &&
-        input.docType &&
-        existing.docType.toUpperCase() !== input.docType.toUpperCase()
-      ) {
-        throw new PartyIdentityConflict('document number already belongs to another document type');
-      }
-      // Backfill any field we now know but didn't before. COALESCE keeps the
-      // existing value when the incoming one is null.
-      const [updated] = await tx
-        .update(parties)
-        .set({
-          name: sql`coalesce(${parties.name}, ${input.name ?? null})`,
-          email: sql`coalesce(${parties.email}, ${input.email ?? null})`,
-          phone9: sql`coalesce(${parties.phone9}, ${p9})`,
-          docType: sql`coalesce(${parties.docType}, ${input.docType ?? null})`,
-          docNumber: sql`coalesce(${parties.docNumber}, ${doc})`,
-          dob: sql`coalesce(${parties.dob}, ${input.dob ?? null}::date)`,
-          metadata: input.sex
-            ? input.sexSource === 'registry'
-              ? sql`jsonb_set(coalesce(${parties.metadata}, '{}'::jsonb), '{dni_registry}', coalesce(${parties.metadata}->'dni_registry', '{}'::jsonb) || jsonb_build_object('sex', coalesce(nullif(${parties.metadata}->'dni_registry'->>'sex', ''), ${input.sex})), true)`
-              : sql`jsonb_set(coalesce(${parties.metadata}, '{}'::jsonb), '{profile}', coalesce(${parties.metadata}->'profile', '{}'::jsonb) || jsonb_build_object('sex', coalesce(nullif(${parties.metadata}->'profile'->>'sex', ''), ${input.sex})), true)`
-            : parties.metadata,
-          updatedAt: sql`now()`,
-        })
-        .where(and(eq(parties.id, existing.id), eq(parties.orgId, ctx.tenantId)))
-        .returning();
-      return updated;
+  if (existing) {
+    await assertSimulatedRegistrationPartyAccess(tx, ctx, existing.id);
+    if (
+      doc &&
+      existing.docType &&
+      input.docType &&
+      existing.docType.toUpperCase() !== input.docType.toUpperCase()
+    ) {
+      throw new PartyIdentityConflict('document number already belongs to another document type');
     }
-
-    const [created] = await tx
-      .insert(parties)
-      .values({
-        orgId: ctx.tenantId,
-        type: input.type ?? 'person',
-        name: input.name ?? null,
-        phone9: p9,
-        email: input.email ?? null,
-        docType: input.docType ?? null,
-        docNumber: doc,
-        dob: input.dob ?? null,
+    // Backfill any field we now know but didn't before. COALESCE keeps the
+    // existing value when the incoming one is null.
+    const [updated] = await tx
+      .update(parties)
+      .set({
+        name: sql`coalesce(${parties.name}, ${input.name ?? null})`,
+        email: sql`coalesce(${parties.email}, ${input.email ?? null})`,
+        phone9: sql`coalesce(${parties.phone9}, ${p9})`,
+        docType: sql`coalesce(${parties.docType}, ${input.docType ?? null})`,
+        docNumber: sql`coalesce(${parties.docNumber}, ${doc})`,
+        dob: sql`coalesce(${parties.dob}, ${input.dob ?? null}::date)`,
         metadata: input.sex
           ? input.sexSource === 'registry'
-            ? { dni_registry: { sex: input.sex } }
-            : { profile: { sex: input.sex } }
-          : {},
+            ? sql`jsonb_set(coalesce(${parties.metadata}, '{}'::jsonb), '{dni_registry}', coalesce(${parties.metadata}->'dni_registry', '{}'::jsonb) || jsonb_build_object('sex', coalesce(nullif(${parties.metadata}->'dni_registry'->>'sex', ''), ${input.sex})), true)`
+            : sql`jsonb_set(coalesce(${parties.metadata}, '{}'::jsonb), '{profile}', coalesce(${parties.metadata}->'profile', '{}'::jsonb) || jsonb_build_object('sex', coalesce(nullif(${parties.metadata}->'profile'->>'sex', ''), ${input.sex})), true)`
+          : parties.metadata,
+        updatedAt: sql`now()`,
       })
+      .where(and(eq(parties.id, existing.id), eq(parties.orgId, ctx.tenantId)))
       .returning();
-    return created;
-  });
+    return updated;
+  }
+
+  const [created] = await tx
+    .insert(parties)
+    .values({
+      orgId: ctx.tenantId,
+      type: input.type ?? 'person',
+      name: input.name ?? null,
+      phone9: p9,
+      email: input.email ?? null,
+      docType: input.docType ?? null,
+      docNumber: doc,
+      dob: input.dob ?? null,
+      metadata: input.sex
+        ? input.sexSource === 'registry'
+          ? { dni_registry: { sex: input.sex } }
+          : { profile: { sex: input.sex } }
+        : {},
+    })
+    .returning();
+  return created;
 }
 
 /** Existing CRM facet for a party, if one has already been created. */
@@ -166,6 +184,7 @@ export async function ensureContactFacetForParty(
   partyId: string,
   data: { displayName: string | null; customFields: Record<string, unknown> },
 ): Promise<string> {
+  const ownerId = simulatedRegistrationOwner(ctx);
   return withOrgCore(ctx, async (tx) => {
     const [locked] = await tx
       .select({ id: parties.id })
@@ -174,7 +193,7 @@ export async function ensureContactFacetForParty(
       .for('update');
     if (!locked) throw new Error('party not found');
     const [existing] = await tx
-      .select({ id: crmContacts.id })
+      .select({ id: crmContacts.id, ownerId: crmContacts.ownerId })
       .from(crmContacts)
       .where(
         and(
@@ -184,10 +203,13 @@ export async function ensureContactFacetForParty(
         ),
       )
       .limit(1);
-    if (existing) return existing.id;
+    if (existing) {
+      if (ownerId && existing.ownerId !== ownerId) throw error(404, 'Contact not found');
+      return existing.id;
+    }
     const [created] = await tx
       .insert(crmContacts)
-      .values({ orgId: ctx.tenantId, partyId, source: 'manual', ...data })
+      .values({ orgId: ctx.tenantId, partyId, source: 'manual', ...data, ownerId })
       .returning({ id: crmContacts.id });
     await recordAuditInTx(tx, ctx, {
       refType: 'crm_contact',
@@ -234,6 +256,7 @@ const FIN_DOC = cleanDoc('fc.doc_number');
  * path. Re-run safe (only fills nulls / re-points changed links).
  */
 export async function reconcileParties(ctx: CoreCtx): Promise<void> {
+  requireUnscopedSimulationMutation(ctx, 'crm', 'edit');
   await withOrgCore(ctx, async (tx) => {
     const org = sql`current_setting('app.current_org_id', true)`;
 
@@ -383,6 +406,59 @@ export type PartySearchRow = {
   dniVerified: boolean;
 };
 
+/** Read projection only; registration and supplier internals retain their own authority. */
+export interface PartyReadScope {
+  ownerId?: string;
+  maskSensitive?: boolean;
+  /** A real customer/supplier consumer may read parties without a live CRM facet. */
+  allowUnlinked?: boolean;
+}
+function partyReadPredicate(ctx: CoreCtx, scope: PartyReadScope) {
+  if (!scope.ownerId) return undefined;
+  const owned = sql`exists(select 1 from crm_contacts contact where contact.org_id=${ctx.tenantId}
+    and contact.party_id=${parties.id} and contact.deleted_at is null and contact.owner_id=${scope.ownerId}::uuid)`;
+  return scope.allowUnlinked
+    ? sql`(${owned} or not exists(select 1 from crm_contacts contact where contact.org_id=${ctx.tenantId}
+        and contact.party_id=${parties.id} and contact.deleted_at is null))`
+    : owned;
+}
+function projectPartyFields<T extends PartySearchRow>(row: T, scope: PartyReadScope): T {
+  return scope.maskSensitive
+    ? {
+        ...row,
+        phone9: row.phone9 == null ? null : maskPii(row.phone9),
+        email: row.email == null ? null : maskPii(row.email),
+        docNumber: row.docNumber == null ? null : maskPii(row.docNumber),
+      }
+    : row;
+}
+/** Picker API projection: registry metadata and hidden foreign facets never enter its result. */
+export async function getPartyForRead(
+  ctx: CoreCtx,
+  id: string,
+  scope: PartyReadScope = {},
+): Promise<(PartySearchRow & Pick<Party, 'updatedAt'>) | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({
+        id: parties.id,
+        name: parties.name,
+        type: parties.type,
+        email: parties.email,
+        docNumber: parties.docNumber,
+        phone9: parties.phone9,
+        dniVerified: parties.dniVerified,
+        updatedAt: parties.updatedAt,
+      })
+      .from(parties)
+      .where(
+        and(eq(parties.id, id), eq(parties.orgId, ctx.tenantId), partyReadPredicate(ctx, scope)),
+      )
+      .limit(1);
+    return row ? projectPartyFields(row, scope) : null;
+  });
+}
+
 /**
  * Typeahead search across the party spine (name / email / doc / phone), org-scoped.
  * `doc` matches DNI and RUC numbers alike (a typed 11-digit RUC finds the company).
@@ -410,13 +486,15 @@ export async function searchParties(
      *  Stock entries pick suppliers/customers by RUC, so the picker sees only
      *  RUC holders there. */
     doc?: 'dni' | 'ruc';
-  } = {},
+  } & PartyReadScope = {},
 ): Promise<PartySearchRow[]> {
   const term = q.trim();
   const limit = Math.min(opts.limit ?? 20, 50);
   const baseConds = [eq(parties.orgId, ctx.tenantId)];
   if (opts.types?.length) baseConds.push(inArray(parties.type, opts.types));
-  if (opts.doc)
+  const owner = partyReadPredicate(ctx, opts);
+  if (owner) baseConds.push(owner);
+  if (opts.doc && !opts.maskSensitive)
     baseConds.push(
       opts.doc === 'ruc'
         ? sql`${parties.docNumber} ~ '^[0-9]{11}$'`
@@ -424,14 +502,20 @@ export async function searchParties(
     );
   if (term) {
     const cond = tokenizedIlike(
-      [parties.name, parties.email, parties.docNumber, parties.phone9],
+      opts.maskSensitive
+        ? [parties.name]
+        : [parties.name, parties.email, parties.docNumber, parties.phone9],
       term,
     );
     if (cond) baseConds.push(cond);
   }
   const orderBy =
     opts.verified === 'first'
-      ? [desc(parties.dniVerified), sql`${parties.docNumber} is null`, asc(parties.name)]
+      ? [
+          desc(parties.dniVerified),
+          ...(!opts.maskSensitive ? [sql`${parties.docNumber} is null`] : []),
+          asc(parties.name),
+        ]
       : [asc(parties.name)];
   const select = (tx: CoreTx, conds: (typeof baseConds)[number][]) =>
     tx
@@ -452,8 +536,9 @@ export async function searchParties(
     const verifiedFilter = opts.verifiedOnly || opts.verified === 'only';
     const conds = verifiedFilter ? [...baseConds, eq(parties.dniVerified, true)] : baseConds;
     const rows = await select(tx, conds);
-    if (opts.verified === 'only' && rows.length === 0) return select(tx, baseConds);
-    return rows;
+    const visible =
+      opts.verified === 'only' && rows.length === 0 ? await select(tx, baseConds) : rows;
+    return visible.map((row) => projectPartyFields(row, opts));
   });
 }
 
@@ -464,6 +549,8 @@ export async function linkContactParty(
   partyId: string,
 ): Promise<void> {
   await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
+    await assertSimulatedPartyAccess(tx, ctx, partyId);
     await tx
       .update(crmContacts)
       .set({ partyId, updatedAt: sql`now()` })
@@ -478,9 +565,21 @@ export async function ensurePartyForContact(
   contactId: string,
   input: EnsurePartyInput,
 ): Promise<Party> {
-  const party = await ensureParty(ctx, input);
-  await linkContactParty(ctx, contactId, party.id);
-  return party;
+  return withOrgCore(ctx, async (tx) => {
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
+    const party = await ensurePartyInTransaction(ctx, tx, input);
+    await tx
+      .update(crmContacts)
+      .set({ partyId: party.id, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(crmContacts.id, contactId),
+          eq(crmContacts.orgId, ctx.tenantId),
+          simulatedMutationPredicate(ctx, 'crm', 'edit', crmContacts.ownerId),
+        ),
+      );
+    return party;
+  });
 }
 
 /**
@@ -504,6 +603,7 @@ export async function setPartyPhone(
   const p9 = phone9(rawPhone);
   if (!p9) return null;
   const stored = await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedPartyAccess(tx, ctx, partyId);
     const rows = await tx
       .update(parties)
       .set({ phone9: p9, updatedAt: new Date() })
@@ -565,6 +665,7 @@ export async function setPartyDocument(
   const docType = digits.length === 8 ? 'DNI' : digits.length === 11 ? 'RUC' : null;
   if (!docType) return { ok: false, reason: 'invalid' };
   const result = await withOrgCore(ctx, async (tx): Promise<SetPartyDocumentResult> => {
+    await assertSimulatedPartyAccess(tx, ctx, partyId);
     const [holder] = await tx
       .select({ id: parties.id })
       .from(parties)
@@ -613,13 +714,14 @@ export async function setPartyDob(
   const d = new Date(`${dob}T00:00:00Z`);
   if (Number.isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== dob) return 'invalid';
   if (d.getTime() > Date.now()) return 'invalid';
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
+  const rows = await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedPartyAccess(tx, ctx, partyId);
+    return tx
       .update(parties)
       .set({ dob, updatedAt: new Date() })
       .where(and(eq(parties.id, partyId), eq(parties.orgId, ctx.tenantId)))
-      .returning({ id: parties.id }),
-  );
+      .returning({ id: parties.id });
+  });
   if (!rows.length) return 'not_found';
   await invalidateTags([...tags.tenantDomain(ctx.tenantId, 'crm')]);
   return 'ok';
@@ -639,6 +741,7 @@ export async function setPartyDniVerified(
   verified: boolean,
 ): Promise<boolean> {
   const updated = await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedPartyAccess(tx, ctx, partyId);
     const rows = await tx
       .update(parties)
       .set({
@@ -687,6 +790,7 @@ export async function validatePendingDnis(
   not_found: number;
   error: number;
 }> {
+  requireUnscopedSimulationMutation(ctx, 'crm', 'edit');
   const claimed = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       update parties set
@@ -776,6 +880,7 @@ export async function applyRegistryEnrichment(
   };
   const registryJson = JSON.stringify(registry);
   await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedPartyAccess(tx, ctx, partyId);
     await tx.execute(sql`
       update parties set
         name = coalesce(${name}, name),
@@ -811,10 +916,13 @@ export async function applyRucRegistry(
     address: string | null;
     active: boolean;
   },
+  registration = false,
 ): Promise<void> {
   const registryJson = JSON.stringify({ ...company, captured_at: new Date().toISOString() });
   const name = company.legalName.trim() || null;
   await withOrgCore(ctx, async (tx) => {
+    if (registration) await assertSimulatedRegistrationPartyAccess(tx, ctx, partyId);
+    else await assertSimulatedPartyAccess(tx, ctx, partyId);
     await tx.execute(sql`
       update parties set
         dni_verified = true,
@@ -841,6 +949,7 @@ export async function reenrichVerifiedDnis(
   apiKey: string,
   limit = 25,
 ): Promise<{ scanned: number; enriched: number; gone: number; error: number }> {
+  requireUnscopedSimulationMutation(ctx, 'crm', 'edit');
   const rows = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
       select id, doc_number from parties

@@ -15,8 +15,9 @@ import { adminOnlyPageHidden } from '$lib/services/gateway/platform-admin-method
 import { hasFeature } from './premium';
 
 interface ClientAccessData {
+  roleSimulation?: { active: boolean; invalid: boolean };
   user?: { role?: 'user' | 'admin' } | null;
-  permissions?: { permissions?: string[] } | null;
+  permissions?: { permissions?: string[]; pageRules?: Record<string, boolean> } | null;
   activeOrgKind?: OrgKind | null;
   moduleStates?: ModuleStates;
 }
@@ -85,6 +86,8 @@ export function adminOnlyUrlHidden(pathname: string): boolean {
  * check, not the enforcement boundary.
  */
 export function canViewPath(path: string): boolean {
+  if (accessData().roleSimulation?.invalid)
+    return canonicalPath(path.split(/[?#]/, 1)[0]) === '/account/home';
   // Spec 045: pages that only a gateway admin's pass can serve are not offered to anyone else.
   if (adminOnlyUrlHidden(path)) return false;
   const kind = accessData().activeOrgKind;
@@ -112,5 +115,7 @@ export function canViewPath(path: string): boolean {
       !isModuleAvailable(match.moduleId, { kind, moduleStates: accessData().moduleStates ?? {} }))
   )
     return false;
+  const nativeRule = accessData().permissions?.pageRules?.[canonical];
+  if (nativeRule !== undefined) return nativeRule;
   return canAccessRoute(path, routeAccessContext());
 }

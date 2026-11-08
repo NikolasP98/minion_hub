@@ -9,7 +9,7 @@
   import NavIcon from './NavIcon.svelte';
   import { Button, Tooltip, iconSizes } from '$lib/components/ui';
   import { navConfig } from '$lib/nav/nav-config.svelte';
-  import { canEditNav } from '$lib/nav/nav-edit.svelte';
+  import { canEditNav, canEditAccess } from '$lib/nav/nav-edit.svelte';
   import NavContextMenu from './NavContextMenu.svelte';
   import { getNavSections, type Section, type SectionItem } from './sections';
   import { readNavOrder, bySavedOrder, type NavOrder } from './nav-order';
@@ -56,7 +56,7 @@
       pluginNavState.enabledByPluginId,
       cfg,
     );
-    if (!canEditNav()) return base;
+    if (!canEditNav() && !canEditAccess()) return base;
     // Admins see a section they just created (no pages yet) so they can fill it.
     const have = new Set(base.map((s) => String(s.id)));
     const empty = cfg.sections
@@ -285,7 +285,13 @@
       {#each topItems as t (t.href)}
         {@const active = canonicalPath(page.url.pathname).startsWith(t.href)}
         {@const showLabel = !collapsed && isMd && active}
-        <NavContextMenu kind="item" href={t.href} label={t.label}>
+        <NavContextMenu
+          compact={collapsed}
+          showMore={false}
+          kind="item"
+          href={t.href}
+          label={t.label}
+        >
           <Tooltip
             label={t.label}
             id={`nav-tip-top-${t.href}`}
@@ -325,16 +331,35 @@
         class="sidebar-nav flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 py-1 flex flex-col gap-0.5"
       >
         {#if moduleMode}
+          {#if !moduleItems.some((item) => item.group)}
+            <NavContextMenu
+              compact={collapsed}
+              kind="header"
+              module={navMode.activeModule?.id}
+              label={navMode.activeModule?.label}
+              targetHrefs={moduleItems.map((item) => item.href)}
+            >
+              <div class="nav-group-head t-label {headCls}">{navMode.activeModule?.label}</div>
+            </NavContextMenu>
+          {/if}
           <!-- Module mode: only the active module's pages (ERPNext module view).
            Multi-area modules (Marketing = CRM + Socials) carry a group label. -->
           {#each moduleItems as item, i (item.id)}
             {@const active = isActive(item)}
             {#if item.group && item.group !== moduleItems[i - 1]?.group}
-              <NavContextMenu kind="header" module={navMode.activeModule?.id}>
+              <NavContextMenu
+                compact={collapsed}
+                kind="header"
+                module={navMode.activeModule?.id}
+                label={item.group}
+                targetHrefs={moduleItems
+                  .filter((row) => row.group === item.group)
+                  .map((row) => row.href)}
+              >
                 <div class="nav-group-head t-label {headCls}">{item.group}</div>
               </NavContextMenu>
             {/if}
-            <NavContextMenu kind="item" href={item.href} label={item.label}>
+            <NavContextMenu compact={collapsed} kind="item" href={item.href} label={item.label}>
               <Tooltip
                 label={item.label}
                 id={`nav-tip-mod-${item.id}`}
@@ -376,14 +401,18 @@
           {#each orderedSections as section (section.id)}
             {@const items = orderedItems(section).filter((it) => canViewPath(it.href))}
 
-            {#if hasVisibleSectionItems(section, canViewPath) || (String(section.id).startsWith('custom:') && canEditNav())}
-              <NavContextMenu kind="header" sectionId={String(section.id)}>
+            {#if hasVisibleSectionItems(section, canViewPath) || (String(section.id).startsWith('custom:') && (canEditNav() || canEditAccess()))}
+              <NavContextMenu
+                compact={collapsed}
+                kind="header"
+                sectionId={String(section.id)}
+                label={section.label}
+                targetHrefs={items.map((item) => item.href)}
+              >
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                 <div
-                  tabindex={canEditNav() && String(section.id).startsWith('custom:')
-                    ? 0
-                    : undefined}
+                  tabindex={0}
                   class="nav-group-head t-label {headCls} {reorderable
                     ? 'grab'
                     : ''} {drag?.type === 'section' && drag.sectionId === String(section.id)
@@ -399,7 +428,7 @@
               </NavContextMenu>
               {#each items as item (item.href)}
                 {@const active = isActive(item)}
-                <NavContextMenu kind="item" href={item.href} label={item.label}>
+                <NavContextMenu compact={collapsed} kind="item" href={item.href} label={item.label}>
                   <Tooltip
                     label={item.label}
                     id={`nav-tip-${item.href}`}
@@ -488,7 +517,12 @@
                   {#if open || collapsed}
                     {#each subItems as item (item.href)}
                       {@const active = isActive(item)}
-                      <NavContextMenu kind="item" href={item.href} label={item.label}>
+                      <NavContextMenu
+                        compact={collapsed}
+                        kind="item"
+                        href={item.href}
+                        label={item.label}
+                      >
                         <Tooltip
                           label={item.label}
                           id={`nav-tip-${item.href}`}

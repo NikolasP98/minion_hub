@@ -44,10 +44,21 @@ export async function resolveSupabaseUser(
     ? await supabase.auth.getClaims(accessToken)
     : await supabase.auth.getClaims();
   const claims = claimsData?.claims as
-    | { sub?: string; email?: string | null; user_metadata?: Record<string, unknown> | null }
+    | {
+        sub?: string;
+        session_id?: string;
+        email?: string | null;
+        user_metadata?: Record<string, unknown> | null;
+      }
     | undefined;
   if (error || !claims?.sub) return null;
   const userId = claims.sub;
+  if (
+    typeof claims.session_id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(claims.session_id)
+  ) {
+    event.locals.authSessionId = claims.session_id;
+  }
 
   // The profile and membership gates use the canonical database connection,
   // not PostgREST. Auth's access-token verification remains Supabase-native;

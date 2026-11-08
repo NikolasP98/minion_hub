@@ -1,5 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json, error, isHttpError } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { createOrderFromBooking } from '$server/services/sales.service';
@@ -14,6 +14,7 @@ export const POST: RequestHandler = async ({ locals, params }) => {
     const order = await createOrderFromBooking(ctx, params.id!);
     return json(order, { status: 201 });
   } catch (e) {
+    if (isHttpError(e)) throw e;
     throw error(400, e instanceof Error ? e.message : 'could not create order');
   }
 };

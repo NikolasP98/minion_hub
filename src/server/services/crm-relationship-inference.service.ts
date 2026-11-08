@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { sql } from 'drizzle-orm';
 import { generateText } from 'ai';
 import { z } from 'zod';
@@ -17,7 +18,12 @@ import {
 import { setAiRelationship } from './crm-relationship.service';
 import type { AccessPrincipal } from './brains.service';
 import { searchBrainHybrid, type BrainHybridSearchHit } from './brain-hybrid-retrieval.service';
-import { ELIGIBLE_WHERE, chunkConversation, keysValuesList, type ConvoKey } from './crm-conversation-vectors.service';
+import {
+  ELIGIBLE_WHERE,
+  chunkConversation,
+  keysValuesList,
+  type ConvoKey,
+} from './crm-conversation-vectors.service';
 
 /**
  * CRM Relationship Graph v2 (spec 2026-07-23) WP2 — the inference kernel — +
@@ -77,7 +83,10 @@ const MAX_OUTPUT_TOKENS = 256;
  *  crm-similarity.service.ts's uuidArray — same interpolation shape). */
 function uuidArray(values: string[]) {
   if (values.length === 0) return sql`array[]::uuid[]`;
-  return sql`array[${sql.join(values.map((v) => sql`${v}::uuid`), sql`, `)}]::uuid[]`;
+  return sql`array[${sql.join(
+    values.map((v) => sql`${v}::uuid`),
+    sql`, `,
+  )}]::uuid[]`;
 }
 
 /**
@@ -191,7 +200,10 @@ export function buildRelationshipPrompt(
   const categoryList = RELATIONSHIP_CATEGORIES.join('|');
   const corroborationBlock =
     corroboration.length > 0
-      ? corroboration.map((h) => `[ref: ${h.chunkId}] ${h.text}`).join('\n\n').slice(0, CORROBORATION_CHAR_BUDGET)
+      ? corroboration
+          .map((h) => `[ref: ${h.chunkId}] ${h.text}`)
+          .join('\n\n')
+          .slice(0, CORROBORATION_CHAR_BUDGET)
       : '(none)';
   return `You infer the REAL personal relationship between a business's contact "${contactName}" and the business owner, from WhatsApp/Instagram/Telegram conversation evidence (Peruvian, mostly Spanish). Examples: mom, dad, sister, friend, friend from work, acquaintance from tennis, service provider, etc. This is NOT a customer-lifecycle stage — it is who this person actually IS to the owner.
 
@@ -310,8 +322,12 @@ export function formatHeadTailEvidence(
     const chunkable = groupRows.map((r) => ({ direction: r.direction, content: r.content }));
     const hasGap = total > headCount + tailCount;
     if (hasGap) {
-      const head = chunkConversation(chunkable.slice(0, headCount), Number.MAX_SAFE_INTEGER).join('\n');
-      const tail = chunkConversation(chunkable.slice(headCount), Number.MAX_SAFE_INTEGER).join('\n');
+      const head = chunkConversation(chunkable.slice(0, headCount), Number.MAX_SAFE_INTEGER).join(
+        '\n',
+      );
+      const tail = chunkConversation(chunkable.slice(headCount), Number.MAX_SAFE_INTEGER).join(
+        '\n',
+      );
       const block = [head, '[...]', tail].filter(Boolean).join('\n');
       if (block) blocks.push(block);
     } else {
@@ -369,7 +385,9 @@ async function loadCorroboration(
   if (!masterBrainId || !name) return { hits: [], collision: false };
 
   const normalized = normalizeAlias(name);
-  const matchCount = await withOrgCore(ctx, (tx) => countAliasMatches(tx, ctx.tenantId, normalized));
+  const matchCount = await withOrgCore(ctx, (tx) =>
+    countAliasMatches(tx, ctx.tenantId, normalized),
+  );
   if (hasAliasCollision(matchCount)) return { hits: [], collision: true };
 
   let searchHits: BrainHybridSearchHit[];
@@ -465,7 +483,11 @@ interface RelationshipCandidate {
   inputSig: string;
 }
 
-async function selectDirtyCandidates(tx: CoreTx, orgId: string, now: Date): Promise<RelationshipCandidate[]> {
+async function selectDirtyCandidates(
+  tx: CoreTx,
+  orgId: string,
+  now: Date,
+): Promise<RelationshipCandidate[]> {
   const rows = (await tx.execute(sql`
     with agg as (
       select c.id as contact_id,
@@ -502,7 +524,13 @@ async function selectDirtyCandidates(tx: CoreTx, orgId: string, now: Date): Prom
     // text) — Number(), not Date.parse().
     if (row.claim_until && Number(row.claim_until) > now.getTime()) continue;
     const relationship = parseRelationshipValue(row.relationship);
-    if (!isRelationshipDirty(relationship, row.input_sig, { inferenceVersion: RELATIONSHIP_INFERENCE_VERSION, cooldownMs: UNKNOWN_COOLDOWN_MS, now })) {
+    if (
+      !isRelationshipDirty(relationship, row.input_sig, {
+        inferenceVersion: RELATIONSHIP_INFERENCE_VERSION,
+        cooldownMs: UNKNOWN_COOLDOWN_MS,
+        now,
+      })
+    ) {
       continue;
     }
     out.push({ contactId: row.contact_id, relationship, inputSig: row.input_sig });
@@ -515,7 +543,11 @@ interface ContactProfile {
   whatsAppExternalIds: Set<string>;
 }
 
-async function loadContactProfile(tx: CoreTx, orgId: string, contactId: string): Promise<ContactProfile> {
+async function loadContactProfile(
+  tx: CoreTx,
+  orgId: string,
+  contactId: string,
+): Promise<ContactProfile> {
   const [contactRow] = (await tx.execute(
     sql`select display_name from crm_contacts where org_id = ${orgId} and id = ${contactId}::uuid limit 1`,
   )) as unknown as Array<{ display_name: string | null }>;
@@ -544,7 +576,9 @@ async function mapWithConcurrency<T, R>(
   limit: number,
   fn: (item: T) => Promise<R>,
 ): Promise<Array<{ ok: true; value: R } | { ok: false; error: unknown }>> {
-  const results: Array<{ ok: true; value: R } | { ok: false; error: unknown }> = new Array(items.length);
+  const results: Array<{ ok: true; value: R } | { ok: false; error: unknown }> = new Array(
+    items.length,
+  );
   let next = 0;
   async function worker() {
     for (;;) {
@@ -619,9 +653,20 @@ async function processContact(
     // Deadline recheck (spec F4) — right before the model call, not just at
     // tick entry. No write at all (never marks the contact 'unknown'), so a
     // future tick with budget to spare retries it normally.
-    return { contactId: candidate.contactId, applied: false, category: 'unknown', collision, deadlineSkipped: true };
+    return {
+      contactId: candidate.contactId,
+      applied: false,
+      category: 'unknown',
+      collision,
+      deadlineSkipped: true,
+    };
   } else {
-    clamped = await classifyRelationship(profile.displayName ?? 'este contacto', ownEvidence, corroboration, deadline);
+    clamped = await classifyRelationship(
+      profile.displayName ?? 'este contacto',
+      ownEvidence,
+      corroboration,
+      deadline,
+    );
   }
 
   const evidenceRefs = clamped.evidenceChunkIds.length
@@ -661,8 +706,10 @@ export async function relationshipInferenceTick(
   ctx: CoreCtx,
   opts: { remainingBudget: number; deadline: number },
 ): Promise<RelationshipTickOutcome> {
+  rejectSimulatedDelegation();
   if (opts.remainingBudget <= 0 || Date.now() >= opts.deadline) return { ...ZERO_OUTCOME };
-  if ((await getOrgKind(ctx.tenantId)) !== 'personal') return { ...ZERO_OUTCOME, skipped: 'not_personal' };
+  if ((await getOrgKind(ctx.tenantId)) !== 'personal')
+    return { ...ZERO_OUTCOME, skipped: 'not_personal' };
   if (!env.OPENROUTER_API_KEY) return { ...ZERO_OUTCOME };
 
   const now = new Date();
@@ -676,7 +723,10 @@ export async function relationshipInferenceTick(
   // Deadline recheck before claim acquisition (spec F4) — candidate selection
   // + master-brain lookup above can itself eat into the budget.
   if (Date.now() >= opts.deadline) return { ...ZERO_OUTCOME };
-  const claim = await claimContacts(ctx, candidates.map((c) => c.contactId));
+  const claim = await claimContacts(
+    ctx,
+    candidates.map((c) => c.contactId),
+  );
   const claimed = candidates.filter((c) => claim.ids.includes(c.contactId));
   if (claimed.length === 0) return { ...ZERO_OUTCOME };
 
@@ -705,6 +755,10 @@ export async function relationshipInferenceTick(
     }
   });
 
-  await releaseClaims(ctx, claimed.map((c) => c.contactId), claim.token);
+  await releaseClaims(
+    ctx,
+    claimed.map((c) => c.contactId),
+    claim.token,
+  );
   return totals;
 }

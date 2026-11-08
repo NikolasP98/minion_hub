@@ -28,6 +28,19 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
   let libsql: LibsqlClient;
   let registered: ReadonlyMap<string, RowRef>;
 
+  it('role-simulation fixtures keep access management separate from settings and preserve CRM limits', async () => {
+    const rows = await sql<
+      { module: string; can_manage: boolean; if_owner: boolean; field_level: number }[]
+    >`
+      select module,can_manage,if_owner,field_level from permission_rules where org_id=${ORG_BUSINESS}::uuid and role_key='custom-qa-access'`;
+    expect(rows.find((r) => r.module === 'users')?.can_manage).toBe(true);
+    expect(rows.find((r) => r.module === 'settings')).toBeUndefined();
+    expect(rows.find((r) => r.module === 'crm')).toMatchObject({ if_owner: true, field_level: 0 });
+    const foreign =
+      await sql`select key from org_roles where org_id<>${ORG_BUSINESS} and key in ('custom-qa-access','custom-qa-empty')`;
+    expect(foreign).toHaveLength(0);
+  });
+
   beforeAll(async () => {
     process.env.SUPABASE_DB_URL ??= dbUrl;
     process.env.PUBLIC_SUPABASE_URL ??= 'http://127.0.0.1:54421';

@@ -45,6 +45,31 @@ export interface MatrixEntry {
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  ...['owner', 'admin', 'manager', 'staff', 'viewer'].map((key) => ({
+    id: `tenancy.system-role.${key}`,
+    domain: 'tenancy' as const,
+    why: 'Canonical system role catalog is required for rank and role admission on the schema-only QA snapshot',
+  })),
+  {
+    id: 'tenancy.user.access-manager',
+    domain: 'tenancy',
+    why: 'Contextual users:manage without settings:manage, independently of simulation eligibility',
+  },
+  {
+    id: 'tenancy.simulation.access-role',
+    domain: 'tenancy',
+    why: 'Org-local role with access management and own-record/field-limited CRM',
+  },
+  {
+    id: 'tenancy.simulation.empty-role',
+    domain: 'tenancy',
+    why: 'Org-local role with no module pages and avatar-only simulation exit',
+  },
+  {
+    id: 'tenancy.simulation.crm-limits',
+    domain: 'tenancy',
+    why: 'Live simulation preserves actual record identity and masks sensitive fields',
+  },
   ...['zero-budget', 'unknown', 'duplicate', 'revoked', 'stale-cursor'].map((scenario) => ({
     id: `pulse.digest.${scenario}`,
     domain: 'pulse' as const,

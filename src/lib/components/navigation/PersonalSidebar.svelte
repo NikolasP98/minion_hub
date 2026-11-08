@@ -5,32 +5,43 @@
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
   import { iconSizes, Tooltip } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
+  import NavContextMenu from '$lib/components/layout/NavContextMenu.svelte';
   let { collapsed = false } = $props<{ collapsed?: boolean }>();
   const sections = $derived(personalSidebar());
 </script>
 
 {#each sections as section (section.id)}
-  <Tooltip label={section.label} placement="right" disabled={!collapsed} asChild>
-    {#snippet children(trigger)}
-      <a {...trigger} href={section.href} class="personal-section" aria-label={section.label}>
-        <NavIcon icon={section.icon} size={iconSizes.md} />
-        {#if !collapsed}<span class="t-label">{section.label}</span>{/if}
-      </a>
-    {/snippet}
-  </Tooltip>
+  <NavContextMenu
+    kind="header"
+    sectionId={section.id}
+    label={section.label}
+    targetHrefs={section.items.map((item) => item.href)}
+    compact={collapsed}
+  >
+    <Tooltip label={section.label} placement="right" disabled={!collapsed} asChild>
+      {#snippet children(trigger)}
+        <a {...trigger} href={section.href} class="personal-section" aria-label={section.label}>
+          <NavIcon icon={section.icon} size={iconSizes.md} />
+          {#if !collapsed}<span class="t-label">{section.label}</span>{/if}
+        </a>
+      {/snippet}
+    </Tooltip>
+  </NavContextMenu>
   {#if !collapsed}
     {#each section.items as item (item.id)}
       {@const active = item.activeWhen
         ? item.activeWhen(page.url)
         : item.matcher(canonicalPath(page.url.pathname))}
-      <a
-        href={item.href}
-        class="personal-page t-body"
-        class:active
-        aria-current={active ? 'page' : undefined}
-      >
-        <NavIcon icon={item.icon} size={iconSizes.sm} /><span>{item.label}</span>
-      </a>
+      <NavContextMenu kind="item" href={item.href} label={item.label}>
+        <a
+          href={item.href}
+          class="personal-page t-body"
+          class:active
+          aria-current={active ? 'page' : undefined}
+        >
+          <NavIcon icon={item.icon} size={iconSizes.sm} /><span>{item.label}</span>
+        </a>
+      </NavContextMenu>
     {/each}
   {/if}
 {:else}

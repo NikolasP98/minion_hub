@@ -1,3 +1,4 @@
+import { inactiveSimulation } from '$lib/role-simulation';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 const telemetry = vi.hoisted(() => ({ capture: vi.fn() }));
 vi.mock('$app/environment', () => ({ building: false, dev: false, browser: false }));
@@ -140,6 +141,7 @@ describe('(app)/+layout.server load', () => {
     const out = await load(ev);
     expect(out).toEqual({
       user,
+      roleSimulation: inactiveSimulation(),
       permissions: { permissions: ['perm.a', 'perm.b'] },
       // The sidebar renders on every page, so module states ride this bundle
       // rather than each module's own subtree layout; absent = enabled, the

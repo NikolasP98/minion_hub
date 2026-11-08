@@ -19,6 +19,10 @@
   } from '$lib/nav/personal-navigation.svelte';
   import { orderPersonalSections, type PersonalNavigation } from '$lib/nav/personal-navigation';
   import * as m from '$lib/paraglide/messages';
+  import NavContextMenu from '$lib/components/layout/NavContextMenu.svelte';
+  import SectionAccessButton from './SectionAccessButton.svelte';
+  import { sectionAccessTargets } from '$lib/nav/section-access-context';
+  import { navConfig } from '$lib/nav/nav-config.svelte';
 
   const token = Symbol('personal-navigation-editor');
   const saveStatus = createSaveStatus();
@@ -64,6 +68,19 @@
     if (personalEditor.current?.token === token) personalEditor.current = null;
   });
   const sections = $derived(orderPersonalSections(personalCatalog(), currentLayout));
+  const simulation = $derived(
+    (page.data as { roleSimulation?: { active: boolean; invalid: boolean } }).roleSimulation,
+  );
+  const emptyTitle = $derived(
+    simulation?.active
+      ? simulation.invalid
+        ? m.sectionAccess_roleInvalid()
+        : m.sectionAccess_roleNoPages()
+      : m.nav_noSections(),
+  );
+  const emptyDescription = $derived(
+    simulation?.active ? m.sectionAccess_roleNoPagesHint() : m.nav_noSectionsDescription(),
+  );
   const selectedId = $derived(page.url.searchParams.get('section'));
   const selected = $derived(selectedId ? sections.find((s) => s.id === selectedId) : undefined);
   function toggle(id: string) {
@@ -93,7 +110,18 @@
     titleId="personal-home-title"
     title={selected?.label ?? m.nav_personalHome()}
     subtitle={selectedId ? undefined : m.nav_personalDescription()}
-  />
+  >
+    {#snippet secondaryActions()}
+      {#if selected}<SectionAccessButton
+          choices={sectionAccessTargets(
+            selected.id,
+            navConfig(),
+            selected.items.map((item) => item.href),
+          )}
+          label={selected.label}
+        />{/if}
+    {/snippet}
+  </PageHeader>
   <PageBody>
     <div class="personal-home">
       {#if selectedId}
@@ -110,10 +138,7 @@
               description={m.nav_emptySectionDescription()}
               icon={LayoutGrid}
             />{/if}
-        {:else}<EmptyState
-            title={m.nav_noSections()}
-            description={m.nav_noSectionsDescription()}
-          />{/if}
+        {:else}<EmptyState title={emptyTitle} description={emptyDescription} />{/if}
       {:else}
         <SaveIndicator
           status={layout.status}
@@ -123,16 +148,23 @@
         />
         {#each sections as section, index (section.id)}
           <section class="section-card" aria-label={section.label}>
-            <div class="section-title">
-              <NavIcon icon={section.icon} size={iconSizes.lg} />
-              <h2 class="t-title">{section.label}</h2>
-            </div>
+            <NavContextMenu
+              kind="header"
+              sectionId={section.id}
+              label={section.label}
+              targetHrefs={section.items.map((item) => item.href)}
+            >
+              <div class="section-title">
+                <NavIcon icon={section.icon} size={iconSizes.lg} />
+                <h2 class="t-title">{section.label}</h2>
+              </div>
+            </NavContextMenu>
             <div class="section-pages">
               {#each section.items as item (item.id)}<a href={item.href} class="page-link t-body"
                   >{item.label}</a
                 >{:else}<p class="t-caption">{m.nav_emptySection()}</p>{/each}
             </div>
-            <div class="section-actions">
+            <div class="section-actions" role="group" aria-label={m.sectionAccess_personal()}>
               <Button href={section.href} variant="outline" size="sm">{m.nav_openSection()}</Button>
               <Button
                 variant="ghost"
@@ -159,10 +191,7 @@
               >
             </div>
           </section>
-        {:else}<EmptyState
-            title={m.nav_noSections()}
-            description={m.nav_noSectionsDescription()}
-          />{/each}
+        {:else}<EmptyState title={emptyTitle} description={emptyDescription} />{/each}
       {/if}
     </div>
   </PageBody>

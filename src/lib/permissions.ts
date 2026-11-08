@@ -293,3 +293,20 @@ export function isDenied(v: unknown): v is DatasetDenied {
   const o = v as Record<string, unknown>;
   return typeof o.denied === 'string' && o.verb === 'view' && Object.keys(o).length === 2;
 }
+
+/** Canonical business-module domain shared by RBAC analytics and authority narrowing. */
+export const RBAC_BUSINESS_MODULES = [
+  'crm',
+  'finance',
+  'sales',
+  'scheduling',
+  'support',
+  'projects',
+  'memberships',
+  'comms',
+  'brains',
+  'stock',
+  'ads',
+  'pos',
+  'pulse',
+] as const;
