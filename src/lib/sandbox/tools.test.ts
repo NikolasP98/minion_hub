@@ -5,6 +5,11 @@ import { executeTool, getTools } from '$lib/assistant/model-context';
 
 const TOOL_NAMES = [
   'sandbox.arrange',
+  'sandbox.block_chart',
+  'sandbox.block_kpi',
+  'sandbox.block_list',
+  'sandbox.block_table',
+  'sandbox.blocks',
   'sandbox.datasets',
   'sandbox.list_elements',
   'sandbox.preview',
@@ -40,7 +45,7 @@ function names() {
 }
 
 describe('registerSandboxTools', () => {
-  test('registers the five page-scoped tools and the abort signal removes them', () => {
+  test('registers the page-scoped tools and the abort signal removes them', () => {
     registerSandboxTools({ signal: controller.signal });
     expect(names()).toEqual(TOOL_NAMES);
     controller.abort();
@@ -182,6 +187,89 @@ describe('element write tools', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/sandbox/elements/el-9');
     expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
     expect(seen).toEqual(['el-9']);
+  });
+});
+
+describe('block tools (spec 049)', () => {
+  test('block_kpi validates, POSTs {title, w, spec} with v/type added and announces the change', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ element: { id: 'el-k' } }));
+    const seen: string[] = [];
+    const onChange = (e: Event) => seen.push((e as CustomEvent).detail.id);
+    window.addEventListener(SANDBOX_CHANGED_EVENT, onChange);
+    registerSandboxTools({ signal: controller.signal });
+    const out = JSON.parse(
+      await executeTool('sandbox.block_kpi', {
+        title: 'Sales',
+        w: 1,
+        source: {
+          dataset: 'pos.tickets',
+          metric: { fn: 'sum', col: 'total' },
+          period: { col: 'submitted_at', range: 'this_month' },
+        },
+        format: 'money',
+        compare: true,
+      }),
+    );
+    window.removeEventListener(SANDBOX_CHANGED_EVENT, onChange);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/sandbox/elements');
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body);
+    expect(body).toMatchObject({ title: 'Sales', w: 1 });
+    expect(body.spec).toMatchObject({
+      v: 1,
+      type: 'kpi',
+      format: 'money',
+      tone: 'accent',
+      compare: true,
+    });
+    expect(body).not.toHaveProperty('html');
+    expect(out.id).toBe('el-k');
+    expect(seen).toEqual(['el-k']);
+  });
+
+  test('an invalid block input is refused with the field path and nothing is written', async () => {
+    registerSandboxTools({ signal: controller.signal });
+    const out = JSON.parse(
+      await executeTool('sandbox.block_chart', {
+        title: 'Bad',
+        preset: 'radar',
+        source: {
+          dataset: 'pos.tickets',
+          dimension: 'status',
+          measures: [{ fn: 'count', col: '*' }],
+        },
+      }),
+    );
+    expect(out.error).toMatch(/^invalid preset/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const patch = JSON.parse(
+      await executeTool('sandbox.block_list', {
+        id: 'el-3',
+        title: 'Top',
+        source: {
+          dataset: 'pos.ticket_lines',
+          dimension: 'product_name',
+          metric: { fn: 'sum', col: 'total' },
+        },
+      }),
+    );
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/sandbox/elements/el-3');
+    expect(fetchMock.mock.calls[0][1].method).toBe('PATCH');
+    expect(patch.id).toBe('el-3');
+  });
+
+  test('the catalogue lists kinds, presets and one example per kind; schemas enumerate presets', async () => {
+    registerSandboxTools({ signal: controller.signal });
+    const out = JSON.parse(await executeTool('sandbox.blocks', {}));
+    expect(out.kinds).toEqual(['kpi', 'chart', 'table', 'list']);
+    expect(out.presets.chart).toContain('donut');
+    expect(out.presets.period).toContain('last_30d');
+    expect(Object.keys(out.examples)).toEqual(['kpi', 'chart', 'table', 'list']);
+    const chart = getTools().find((t) => t.name === 'sandbox.block_chart')!;
+    expect(chart.inputSchema.required).toEqual(expect.arrayContaining(['title', 'source']));
+    expect(JSON.stringify(chart.inputSchema)).toContain('"horizontal-bar"');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { listElements, upsertElement } from '$server/sandbox/sandbox.service';
+import { validateBlockSpec } from '$server/sandbox/blocks';
 import { parseSandboxBody, sandboxErrorResponse } from '../_errors';
 
 /**
@@ -19,6 +20,8 @@ const postSchema = z.object({
   html: z.string().optional(),
   css: z.string().optional(),
   js: z.string().optional(),
+  /** Block kit (spec 049): validated against the grammar + registry below. */
+  spec: z.unknown().optional(),
   w: z.number().int().min(1).max(4).optional(),
   h: z.number().int().min(1).max(4).optional(),
 });
@@ -36,8 +39,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   try {
-    const body = await parseSandboxBody(request, postSchema);
-    return json({ element: await upsertElement(ctx, body) }, { status: 201 });
+    const { spec, ...body } = await parseSandboxBody(request, postSchema);
+    const element = await upsertElement(ctx, {
+      ...body,
+      ...(spec !== undefined ? { spec: validateBlockSpec(spec) } : {}),
+    });
+    return json({ element }, { status: 201 });
   } catch (failure) {
     return sandboxErrorResponse(failure);
   }

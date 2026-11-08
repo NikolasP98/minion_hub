@@ -35,6 +35,15 @@
     return () => window.removeEventListener(LIBRARY_CHANGED_EVENT, onChanged);
   });
 
+  const KIND_LABEL = {
+    kpi: m.sandbox_block_kind_kpi,
+    chart: m.sandbox_block_kind_chart,
+    table: m.sandbox_block_kind_table,
+    list: m.sandbox_block_kind_list,
+  } as const;
+  const kindOf = (c: LibraryComponent) =>
+    c.spec ? KIND_LABEL[c.spec.type]() : m.sandbox_block_kind_custom();
+
   function dragStart(e: DragEvent, c: LibraryComponent) {
     if (!e.dataTransfer) return;
     e.dataTransfer.setData(DRAG_MIME, JSON.stringify(componentCopy(c)));
@@ -59,7 +68,9 @@
           <div class="lib-meta">
             <span class="lib-title">{c.title}</span>
             <span class="lib-sub">
-              {c.w}×{c.h} · {c.published ? m.sandbox_library_published() : m.sandbox_library_mine()}
+              {kindOf(c)} · {c.w}×{c.h} · {c.published
+                ? m.sandbox_library_published()
+                : m.sandbox_library_mine()}
             </span>
           </div>
           <div class="lib-actions">

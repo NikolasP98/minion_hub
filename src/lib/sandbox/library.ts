@@ -14,13 +14,26 @@ export const LIBRARY_CHANGED_EVENT = 'minion:sandbox-library-changed';
 export const DRAG_MIME = 'application/x-minion-component';
 
 export type LibraryComponent = SandboxElementRecord;
-export type ComponentCopy = Pick<SandboxElementRecord, 'title' | 'html' | 'css' | 'js' | 'w' | 'h'>;
+export type ComponentCopy = Pick<
+  SandboxElementRecord,
+  'title' | 'html' | 'css' | 'js' | 'w' | 'h'
+> & { spec?: SandboxElementRecord['spec'] };
 
 const ELEMENTS_URL = '/api/sandbox/elements';
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
 export function componentCopy(e: ComponentCopy): ComponentCopy {
-  return { title: e.title, html: e.html, css: e.css, js: e.js, w: e.w, h: e.h };
+  return {
+    title: e.title,
+    html: e.html,
+    css: e.css,
+    js: e.js,
+    w: e.w,
+    h: e.h,
+    // A block copies as a block (spec 049); omitted (not null) for custom code so
+    // the API's `spec` stays untouched.
+    ...(e.spec ? { spec: e.spec } : {}),
+  };
 }
 
 function announce() {

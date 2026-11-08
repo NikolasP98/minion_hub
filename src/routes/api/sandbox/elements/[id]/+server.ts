@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { removeElement, upsertElement } from '$server/sandbox/sandbox.service';
+import { validateBlockSpec } from '$server/sandbox/blocks';
 import { parseSandboxBody, sandboxErrorResponse } from '../../_errors';
 
 const patchSchema = z.object({
@@ -11,6 +12,7 @@ const patchSchema = z.object({
   html: z.string().optional(),
   css: z.string().optional(),
   js: z.string().optional(),
+  spec: z.unknown().optional(),
   w: z.number().int().min(1).max(4).optional(),
   h: z.number().int().min(1).max(4).optional(),
   position: z.number().int().min(0).max(10_000).optional(),
@@ -22,8 +24,13 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
   await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   try {
-    const body = await parseSandboxBody(request, patchSchema);
-    return json({ element: await upsertElement(ctx, { ...body, id: params.id }) });
+    const { spec, ...body } = await parseSandboxBody(request, patchSchema);
+    const element = await upsertElement(ctx, {
+      ...body,
+      ...(spec !== undefined ? { spec: validateBlockSpec(spec) } : {}),
+      id: params.id,
+    });
+    return json({ element });
   } catch (failure) {
     return sandboxErrorResponse(failure);
   }
