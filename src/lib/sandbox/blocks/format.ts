@@ -1,9 +1,16 @@
 /**
- * Value display presets (spec 049 I2). Money always goes through the ONE hub
- * money formatter (governance: every amount carries its currency symbol).
+ * Value display presets (spec 049 I2) on top of the hub's ONE formatter
+ * module (`$lib/utils/format`): money always carries its currency symbol,
+ * numbers and percents use the app locale, dates go through `formatDate`.
  * `percent` expects a ratio (0.12 → 12 %).
  */
-import { appLocale, formatMoney, formatMoneyShort } from '$lib/utils/format';
+import {
+  formatDate,
+  formatMoney,
+  formatMoneyShort,
+  formatNumber,
+  formatPercent,
+} from '$lib/utils/format';
 import type { Format } from './schema';
 
 export const DEFAULT_CURRENCY = 'PEN';
@@ -20,22 +27,16 @@ export function formatValue(
 ): string {
   const n = toNumber(value);
   if (n === null) return '—';
-  const locale = appLocale();
   switch (format) {
     case 'money':
       return formatMoney(n, currency);
     case 'compact':
-      return new Intl.NumberFormat(locale, {
-        notation: 'compact',
-        maximumFractionDigits: 1,
-      }).format(n);
+      return formatNumber(n, { compact: true });
     case 'percent':
-      return new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(
-        n,
-      );
+      return formatPercent(n);
     case 'number':
     default:
-      return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(n);
+      return formatNumber(n);
   }
 }
 
@@ -44,11 +45,8 @@ export function formatAxis(value: unknown, format: Format = 'number', currency =
   const n = toNumber(value);
   if (n === null) return '';
   if (format === 'money') return formatMoneyShort(n, currency);
-  if (format === 'percent') return formatValue(n, 'percent');
-  return new Intl.NumberFormat(appLocale(), {
-    notation: 'compact',
-    maximumFractionDigits: 1,
-  }).format(n);
+  if (format === 'percent') return formatPercent(n);
+  return formatNumber(n, { compact: true });
 }
 
 /** Relative change as a signed percent string; `null` when the base is 0 or unknown. */
@@ -56,20 +54,15 @@ export function formatDelta(current: unknown, previous: unknown): string | null 
   const now = toNumber(current);
   const before = toNumber(previous);
   if (now === null || before === null || before === 0) return null;
-  const ratio = (now - before) / Math.abs(before);
-  return new Intl.NumberFormat(appLocale(), {
-    style: 'percent',
-    maximumFractionDigits: 1,
-    signDisplay: 'exceptZero',
-  }).format(ratio);
+  return formatPercent((now - before) / Math.abs(before), { signed: true });
 }
 
 /** Bucket label for a time axis: day/week → "8 nov", month → "nov 2026". */
 export function bucketLabel(value: unknown, unit: 'day' | 'week' | 'month'): string {
   const d = value instanceof Date ? value : new Date(String(value));
   if (Number.isNaN(d.getTime())) return String(value ?? '');
-  return new Intl.DateTimeFormat(
-    appLocale(),
+  return formatDate(
+    d,
     unit === 'month' ? { month: 'short', year: 'numeric' } : { day: 'numeric', month: 'short' },
-  ).format(d);
+  );
 }
