@@ -25,6 +25,13 @@ const browser = await chromium.launch({ headless: true });
 const returnPath = '/en/account/home?settings-return=qa#selection';
 let lastPage: Page | undefined;
 const pageErrors: string[] = [];
+const navigationEvidence: {
+  checkpoint: string;
+  url: string;
+  document: number;
+  back: string | null;
+}[] = [];
+let flowDocument: number | undefined;
 
 async function login(context: BrowserContext, persona: string) {
   const response = await context.request.post(`${base}/api/auth/password-login`, {
@@ -36,11 +43,19 @@ async function login(context: BrowserContext, persona: string) {
   assert.equal(response.status(), 200, `Synthetic ${persona} login`);
 }
 async function shot(page: Page, name: string) {
+  const document = await page.evaluate(() => performance.timeOrigin);
+  const back = await page
+    .locator('aside[aria-label="Primary"] a[aria-label="Back"]')
+    .getAttribute('href')
+    .catch(() => null);
+  navigationEvidence.push({ checkpoint: name, url: page.url(), document, back });
+  if (flowDocument !== undefined)
+    assert.equal(document, flowDocument, 'No full reload during the session-only return flow');
   await page.screenshot({ path: `${out}/${name}.png`, animations: 'disabled' });
   checks.push(name);
   await writeFile(
     `${out}/checks.json`,
-    JSON.stringify({ checks, transport: 'seeded loopback QA' }, null, 2),
+    JSON.stringify({ checks, navigationEvidence, transport: 'seeded loopback QA' }, null, 2),
   );
 }
 function primary(page: Page) {
@@ -88,6 +103,12 @@ try {
   await page.evaluate(() => localStorage.setItem('hub-sidebar-collapsed', '1'));
   await page.reload();
   await expect(page.locator('aside[aria-label="Primary"]')).toHaveClass(/is-collapsed/);
+  // The dev-only inspector is lazy loaded; wait until its optimizer work has
+  // settled before qualifying session-only state across client navigation.
+  await expect(
+    page.getByRole('button', { name: 'Open Tanstack query devtools', exact: true }),
+  ).toBeVisible();
+  flowDocument = await page.evaluate(() => performance.timeOrigin);
   await avatarSettings(page);
   await expect(page.locator('aside[aria-label="Primary"]')).not.toHaveClass(/is-collapsed/);
   assert.equal(await page.evaluate(() => localStorage.getItem('hub-sidebar-collapsed')), '1');
@@ -147,6 +168,7 @@ try {
   await expect(primary(page)).toHaveCount(0);
   await shot(page, 'browser-history-restores-layer');
 
+  flowDocument = undefined;
   await page.goto(`${base}/en/settings/appearance`);
   await expect(primary(page)).toBeVisible();
   await page.reload();
@@ -199,7 +221,18 @@ try {
       .catch(() => {});
     await writeFile(
       `${out}/failure.json`,
-      JSON.stringify({ url: lastPage.url(), checks, error: String(error), pageErrors }, null, 2),
+      JSON.stringify(
+        {
+          url: lastPage.url(),
+          checks,
+          navigationEvidence,
+          document: await lastPage.evaluate(() => performance.timeOrigin).catch(() => null),
+          error: String(error),
+          pageErrors,
+        },
+        null,
+        2,
+      ),
     );
   }
   throw error;
