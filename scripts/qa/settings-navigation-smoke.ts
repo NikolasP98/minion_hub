@@ -2,11 +2,20 @@
 /** Exercise the real shell against disposable seeded QA, including browser layout. */
 import assert from 'node:assert/strict';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { chromium, expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
+import {
+  chromium,
+  expect as browserExpect,
+  type BrowserContext,
+  type Locator,
+  type Page,
+} from '@playwright/test';
 import { parseEnvFile } from './snapshot-env';
 import { personaEmail, QA_PASSWORD } from './seed/ids';
 
 const base = process.env.E2E_BASE_URL ?? 'http://127.0.0.1:5199';
+// The first client-only page loads a cold Vite graph. Action timeouts do not
+// configure Playwright's independent expect timeout (which defaults to 5s).
+const expect = browserExpect.configure({ timeout: 60_000 });
 assert(['localhost', '127.0.0.1'].includes(new URL(base).hostname), 'Loopback synthetic QA only');
 const qa = parseEnvFile(await readFile('.env.qa.local', 'utf8'));
 const out = 'test-results/ui-audit/settings-navigation';
@@ -15,6 +24,7 @@ const checks: string[] = [];
 const browser = await chromium.launch({ headless: true });
 const returnPath = '/en/account/home?settings-return=qa#selection';
 let lastPage: Page | undefined;
+const pageErrors: string[] = [];
 
 async function login(context: BrowserContext, persona: string) {
   const response = await context.request.post(`${base}/api/auth/password-login`, {
@@ -71,6 +81,7 @@ try {
   context.setDefaultTimeout(45_000);
   await login(context, 'platform-admin');
   const page = await context.newPage();
+  page.on('pageerror', (error) => pageErrors.push(error.message));
   lastPage = page;
   await page.goto(`${base}${returnPath}`);
   await expect(page.locator('.section-card').first()).toBeVisible();
@@ -157,6 +168,7 @@ try {
   staff.setDefaultTimeout(45_000);
   await login(staff, 'staff');
   const mobile = await staff.newPage();
+  mobile.on('pageerror', (error) => pageErrors.push(error.message));
   lastPage = mobile;
   await mobile.goto(`${base}/en/account/home`);
   await expect(mobile.locator('.section-card').first()).toBeVisible();
@@ -187,7 +199,7 @@ try {
       .catch(() => {});
     await writeFile(
       `${out}/failure.json`,
-      JSON.stringify({ url: lastPage.url(), checks, error: String(error) }, null, 2),
+      JSON.stringify({ url: lastPage.url(), checks, error: String(error), pageErrors }, null, 2),
     );
   }
   throw error;
