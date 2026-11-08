@@ -46,8 +46,7 @@ async function shot(page: Page, name: string) {
   const document = await page.evaluate(() => performance.timeOrigin);
   const back = await page
     .locator('aside[aria-label="Primary"] a[aria-label="Back"]')
-    .getAttribute('href')
-    .catch(() => null);
+    .evaluateAll((nodes) => nodes[0]?.getAttribute('href') ?? null);
   navigationEvidence.push({ checkpoint: name, url: page.url(), document, back });
   if (flowDocument !== undefined)
     assert.equal(document, flowDocument, 'No full reload during the session-only return flow');
