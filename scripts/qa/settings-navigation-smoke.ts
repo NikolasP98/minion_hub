@@ -112,15 +112,17 @@ try {
     .locator('aside[aria-label="Primary"]')
     .getByRole('link', { name: 'Back', exact: true })
     .click();
-  await expect(page.getByText('You have unsaved changes', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  const guardHeading = page.getByRole('heading', { name: 'You have unsaved changes', exact: true });
+  const guard = guardHeading.locator('..');
+  await expect(guardHeading).toBeVisible();
+  await guard.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?s=security$/);
   await shot(page, 'dirty-back-cancelled');
   await page
     .locator('aside[aria-label="Primary"]')
     .getByRole('link', { name: 'Back', exact: true })
     .click();
-  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await guard.getByRole('button', { name: 'Discard', exact: true }).click();
   await expect(page).toHaveURL(`${base}${returnPath}`);
   await expect(page.locator('aside[aria-label="Primary"]')).toHaveClass(/is-collapsed/);
   await shot(page, 'back-restores-query-hash-and-collapse');
