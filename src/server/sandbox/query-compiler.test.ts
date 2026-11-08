@@ -465,13 +465,7 @@ describe('compile — bucket (spec 049 time series)', () => {
         'from pos_tickets t where t.org_id = $2 and t.submitted_at >= $3 ' +
         'group by date_trunc($4, t.submitted_at) order by "submitted_at" asc limit $5',
     );
-    expect(out.params).toEqual([
-      'day',
-      'org-1',
-      '2026-10-01T00:00:00.000Z',
-      'day',
-      DEFAULT_LIMIT,
-    ]);
+    expect(out.params).toEqual(['day', 'org-1', '2026-10-01T00:00:00.000Z', 'day', DEFAULT_LIMIT]);
     expect(out.columns).toEqual([
       { name: 'submitted_at', type: 'timestamp' },
       { name: 'revenue', type: 'number' },

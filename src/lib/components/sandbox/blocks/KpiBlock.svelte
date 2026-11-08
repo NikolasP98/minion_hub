@@ -39,7 +39,7 @@
 </script>
 
 <div class="kpi">
-  <span class="kpi-value t-display" style:color={color}>
+  <span class="kpi-value t-display" style:color>
     {text}{#if spec.unit}<span class="kpi-unit t-caption">{spec.unit}</span>{/if}
   </span>
   {#if delta}
