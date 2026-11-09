@@ -7,6 +7,7 @@
   import {
     configState,
     loadConfig,
+    ensureConfigLoaded,
     isDirty,
     dirtyPaths,
     groups,
@@ -130,9 +131,7 @@
 
   // Load config when entering any non-hosts gateway tab while connected
   $effect(() => {
-    if (isConfigTab && conn.connected && !configState.loaded && !configState.loading) {
-      loadConfig();
-    }
+    if (isConfigTab && conn.connected) ensureConfigLoaded();
     if (!conn.connected && configState.loading) {
       configState.loading = false;
     }
