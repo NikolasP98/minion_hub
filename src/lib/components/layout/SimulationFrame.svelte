@@ -67,9 +67,26 @@
     padding: 0;
     background: transparent;
     z-index: var(--layer-debug);
-    border: var(--space-0-5) solid var(--color-warning-fg);
+    border: calc(var(--space-0-5) / 2) solid
+      color-mix(in srgb, var(--color-warning-fg) 45%, transparent);
+    animation: simulation-breathe calc(var(--duration-slow) * 8) var(--ease-standard) infinite;
     pointer-events: none;
     box-sizing: border-box;
+  }
+  @keyframes simulation-breathe {
+    0%,
+    100% {
+      opacity: 0.65;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .simulation-frame {
+      animation: none;
+      opacity: 1;
+    }
   }
   .simulation-frame::backdrop {
     pointer-events: none;

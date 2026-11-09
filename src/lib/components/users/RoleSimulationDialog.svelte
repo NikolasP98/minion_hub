@@ -51,7 +51,7 @@
     if (session !== previousSession) {
       previousSession = session;
       query = '';
-      selected = '';
+      selected = simulation.active ? (simulation.roleKey ?? '') : '';
       error = null;
       uncertain = false;
     }
@@ -61,7 +61,15 @@
   });
 
   async function apply() {
-    if (busy || !selection || uncertain || !simulation.eligible || simulation.active) return;
+    if (
+      busy ||
+      !selection ||
+      uncertain ||
+      !simulation.eligible ||
+      simulation.invalid ||
+      (simulation.active && selection.key === simulation.roleKey)
+    )
+      return;
     const captured = simulation;
     busy = true;
     error = null;
@@ -91,7 +99,7 @@
 <Sheet
   class={AUTHORITY_DIALOG_CLASS}
   bind:open
-  title={m.roleSimulation_title()}
+  title={simulation.active ? m.roleSimulation_change() : m.roleSimulation_title()}
   description={simulation.orgName ?? undefined}
   guardDismiss={false}
   dismissible={!busy && !uncertain}
@@ -156,7 +164,10 @@
             size="touch"
             variant="primary"
             loading={busy}
-            disabled={!selection || !simulation.eligible || simulation.active}
+            disabled={!selection ||
+              !simulation.eligible ||
+              simulation.invalid ||
+              (simulation.active && selected === simulation.roleKey)}
             onclick={apply}
           >
             {m.roleSimulation_apply()}

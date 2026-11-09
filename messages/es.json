@@ -7417,5 +7417,9 @@
   "sectionAccess_cannotPrepare": "Todavía no se puede cambiar el acceso. Actualiza esta vista y vuelve a intentarlo.",
   "roleSimulation_refreshRequired": "Actualiza para continuar.",
   "dev_switcher_description": "Cambia la cuenta de prueba con la que has iniciado sesión.",
-  "env_badge_qa_tools": "Herramientas de QA local"
+  "env_badge_qa_tools": "Herramientas de QA local",
+  "roleSimulation_change": "Cambiar rol simulado",
+  "roleSimulation_as": "Simulando como",
+  "roleSimulation_changeAria": "Cambiar rol simulado: {role}",
+  "pos_sell_activity_button": "Actividad"
 }

@@ -201,7 +201,7 @@ function project(
     orgId: row.org_id ?? orgId,
     orgName: s?.name || null,
     roles:
-      s?.eligible && !active
+      s?.eligible && !invalid
         ? s.catalog.map((r) => ({
             key: r.key,
             name: r.name,
@@ -410,21 +410,27 @@ export async function transitionRoleSimulation(
     if (!row) throw error(409, 'Simulation already finished');
     if (row.generation !== input.generation)
       throw new SimulationGenerationConflict(row.generation!);
-    if (input.roleKey && row.role_key)
-      throw error(409, 'Finish the current simulation before choosing another role');
     if (!input.roleKey && !row.role_key) throw error(409, 'Simulation already finished');
+    if (input.roleKey && row.role_key && row.org_id !== orgId)
+      throw error(409, 'Organization changed. Reload before choosing another role');
     const activeOrg = input.roleKey ? orgId! : row.org_id!;
     const s = input.roleKey ? await snapshot(tx, activeOrg, identity.profileId) : undefined;
     if (input.roleKey) {
+      // Replacement never exits selected authority. An expired/revoked mode
+      // must be explicitly finished before any new simulation can begin.
+      if (row.role_key && project(row, activeOrg, s).invalid)
+        throw error(403, 'Finish the unavailable simulation before choosing another role');
       const target = s!.catalog.find((r) => r.key === input.roleKey);
       if (!target || !selectable(s!, target))
         throw error(403, 'This role exceeds your authority or is unavailable');
     }
     const generation = randomUUID();
-    const returnTo = input.roleKey ? safeSimulationReturn(input.returnTo) : row.return_to;
+    const returnTo =
+      input.roleKey && !row.role_key ? safeSimulationReturn(input.returnTo) : row.return_to;
     await tx`update public.app_role_simulations set role_key=${input.roleKey ?? null},generation=${generation}::uuid,
       org_id=${activeOrg}::uuid,return_to=${input.roleKey ? returnTo : null},
-      started_at=case when ${Boolean(input.roleKey)} then now() else null end,expires_at=case when ${Boolean(input.roleKey)} then now()+interval '2 hours' else null end,updated_at=now()
+      started_at=case when ${!input.roleKey} then null when role_key is null then now() else started_at end,
+      expires_at=case when ${!input.roleKey} then null when role_key is null then now()+interval '2 hours' else expires_at end,updated_at=now()
       where session_id=${identity.sessionId}::uuid and profile_id=${identity.profileId}::uuid`;
     await auditTransition(tx, {
       profileId: identity.profileId,

@@ -6,7 +6,16 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe, GitBranch, User, Settings, Eye } from 'lucide-svelte';
+  import {
+    LogOut,
+    Globe,
+    GitBranch,
+    User,
+    Settings,
+    Eye,
+    ChevronRight,
+    Undo2,
+  } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { iconSizes, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
@@ -40,16 +49,35 @@
     { value: 'header', label: displayName, href: '/account' },
     { value: 'account', label: m.nav_account(), icon: User, href: '/account' },
     { value: 'settings', label: m.nav_settings(), icon: Settings, href: '/settings/appearance' },
-    ...(simulation.eligible || simulation.active
+    ...(simulation.active
       ? [
+          { value: 'simulation-start-divider', label: '', divider: true },
+          {
+            value: 'simulation-edit',
+            label: m.roleSimulation_change(),
+            ariaLabel: m.roleSimulation_changeAria({
+              role: simulation.roleName ?? simulation.roleKey ?? '',
+            }),
+            disabled: simulationBusy || !simulation.eligible || simulation.invalid,
+          },
           {
             value: 'simulation',
-            label: simulation.active ? m.roleSimulation_finish() : m.roleSimulation_open(),
-            icon: Eye,
+            label: m.roleSimulation_finish(),
+            icon: Undo2,
             disabled: simulationBusy,
           },
+          { value: 'simulation-end-divider', label: '', divider: true },
         ]
-      : []),
+      : simulation.eligible
+        ? [
+            {
+              value: 'simulation',
+              label: m.roleSimulation_open(),
+              icon: Eye,
+              disabled: simulationBusy,
+            },
+          ]
+        : []),
     { value: 'language', label: m.settings_language(), icon: Globe, closeOnSelect: false },
     ...(showBuildChannel
       ? [
@@ -69,7 +97,9 @@
     if (value === 'language') locale.toggle();
     else if (value === 'build-channel') switchBuildChannel();
     else if (value === 'logout') logout();
-    else if (value === 'simulation') {
+    else if (value === 'simulation-edit') {
+      if (!simulationBusy && simulation.eligible && !simulation.invalid) simulationOpen = true;
+    } else if (value === 'simulation') {
       if (simulation.active) void finishSimulation();
       else simulationOpen = true;
     }
@@ -105,7 +135,7 @@
 <Dropdown {items} {onSelect} {placement} class="w-56 {placement === 'bottom' ? 'right-0' : ''}">
   {#snippet trigger()}
     <span
-      class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"
+      class="account-trigger flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"
       aria-label={simulation.active
         ? m.roleSimulation_profile({ role: simulation.roleName ?? simulation.roleKey ?? '' })
         : m.roleSimulation_profileDefault()}
@@ -137,15 +167,21 @@
           </span>
         {/if}
       </span>
-    {:else if it.value === 'simulation' && simulation.active}
-      <span class="simulation-finish">
-        <Eye size={iconSizes.sm} aria-hidden="true" />
+    {:else if it.value === 'simulation-edit'}
+      <span class="simulation-current">
+        <span class="simulation-dot" aria-hidden="true"></span>
         <span class="min-w-0 flex-1">
-          <span class="block t-label">{m.roleSimulation_finish()}</span>
-          <span class="block t-caption simulation-role"
+          <span class="block t-caption simulation-caption">{m.roleSimulation_as()}</span>
+          <span class="block t-body font-medium simulation-role"
             >{simulation.roleName ?? simulation.roleKey}</span
           >
         </span>
+        <ChevronRight size={iconSizes.sm} class="simulation-chevron" aria-hidden="true" />
+      </span>
+    {:else if it.value === 'simulation' && simulation.active}
+      <span class="simulation-finish">
+        <Undo2 size={iconSizes.sm} aria-hidden="true" />
+        <span>{m.roleSimulation_finish()}</span>
       </span>
     {:else if it.value === 'language' || it.value === 'build-channel'}
       {@const Icon = it.icon}
@@ -167,24 +203,50 @@
   {/snippet}
 </Dropdown>
 
-{#if simulation.eligible && !simulation.active}
+{#if simulation.eligible && !simulation.invalid}
   <RoleSimulationDialog bind:open={simulationOpen} state={simulation} />
 {/if}
 
 <style>
+  .account-trigger {
+    min-width: var(--control-height-md);
+    min-height: var(--control-height-md);
+  }
+  @media (pointer: coarse) {
+    .account-trigger {
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+    }
+  }
+  .simulation-current {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    min-height: var(--control-height-touch);
+  }
+  .simulation-dot {
+    width: var(--space-1);
+    height: var(--space-1);
+    flex: none;
+    border-radius: var(--radius-full);
+    background: var(--color-warning-fg);
+  }
+  .simulation-caption,
+  .simulation-current :global(.simulation-chevron) {
+    color: var(--color-text-tertiary);
+  }
+  .simulation-role {
+    overflow-wrap: anywhere;
+    color: var(--color-text-primary);
+  }
   .simulation-finish {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     width: 100%;
     min-width: 0;
-    padding: var(--space-2);
-    border: 1px solid var(--color-warning-border);
-    border-radius: var(--radius-sm);
-    background: var(--color-warning-surface);
     color: var(--color-warning-fg);
-  }
-  .simulation-role {
-    overflow-wrap: anywhere;
   }
 </style>

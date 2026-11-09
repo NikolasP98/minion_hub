@@ -73,11 +73,49 @@ describe('avatar simulation interaction', () => {
     await fireEvent.click(screen.getByRole('button', { name: /Account menu · Simulating Viewer/ }));
     const finish = await screen.findByRole('menuitem', { name: /Finish simulation/ });
     expect(finish.querySelector('.simulation-finish')).toBeTruthy();
+    expect(
+      screen.getByRole('menuitem', { name: /Change simulated role/ }).hasAttribute('data-disabled'),
+    ).toBe(true);
     await fireEvent.pointerDown(finish, { pointerType: 'mouse' });
     await fireEvent.pointerUp(finish, { pointerType: 'mouse' });
     await fireEvent.click(finish);
     await waitFor(() => expect(harness.transition).toHaveBeenCalledTimes(1));
     expect(harness.transition.mock.calls[0][0]).not.toHaveProperty('roleKey');
     expect(screen.queryByRole('dialog', { name: 'Simulate a role' })).toBeNull();
+  });
+
+  it('opens the role-first row with the current role selected without finishing simulation', async () => {
+    harness.data.roleSimulation = {
+      ...inactiveSimulation(),
+      active: true,
+      eligible: true,
+      orgId: 'org-a',
+      roleKey: 'viewer',
+      roleName: 'Viewer',
+      roles: [
+        { key: 'viewer', name: 'Viewer', selectable: true },
+        { key: 'staff', name: 'Staff', selectable: true },
+      ],
+    };
+    render(ProfileMenu);
+    await fireEvent.click(screen.getByRole('button', { name: /Account menu · Simulating Viewer/ }));
+    const finish = await screen.findByRole('menuitem', { name: /Finish simulation/ });
+    const edit = screen.getByRole('menuitem', { name: /Change simulated role/ });
+    expect(edit.parentElement).toBe(finish.parentElement);
+    expect(edit.closest('button')?.parentElement?.closest('button')).toBeNull();
+    await fireEvent.pointerDown(edit, { pointerType: 'mouse' });
+    await fireEvent.pointerUp(edit, { pointerType: 'mouse' });
+    await fireEvent.click(edit);
+    expect(await screen.findByRole('dialog', { name: /Change simulated role/ })).toBeTruthy();
+    expect((screen.getByRole('radio', { name: 'Viewer' }) as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByRole('button', { name: 'Apply role' }).hasAttribute('disabled')).toBe(true);
+    expect(harness.transition).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('radio', { name: 'Staff' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Apply role' }));
+    await waitFor(() => expect(harness.transition).toHaveBeenCalledTimes(1));
+    expect(harness.transition.mock.calls[0][0]).toMatchObject({
+      state: { active: true, roleKey: 'viewer' },
+      roleKey: 'staff',
+    });
   });
 });

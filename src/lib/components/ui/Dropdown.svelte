@@ -22,6 +22,8 @@
     closeOnSelect?: boolean;
     /** Render as an <a> linking here instead of a select-only button. */
     href?: string;
+    /** Accessible action name when a custom row primarily displays state. */
+    ariaLabel?: string;
   }
 </script>
 
@@ -108,6 +110,7 @@
         <svelte:element
           this={it.href ? 'a' : 'button'}
           href={it.href}
+          aria-label={it.ariaLabel}
           {...api.getItemProps({
             value: it.value,
             disabled: it.disabled,

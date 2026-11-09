@@ -88,4 +88,15 @@ describe('single-screen role tray', () => {
     expect(screen.queryByRole('button', { name: 'Apply role' })).toBeNull();
     expect(calls.transition).toHaveBeenCalledTimes(1);
   });
+
+  it('cancels editing while retaining the current simulated role', async () => {
+    const active = { ...state(), active: true, roleKey: 'staff', roleName: 'Staff' };
+    render(RoleSimulationDialog, { open: true, state: active });
+    expect(await screen.findByRole('dialog', { name: 'Change simulated role' })).toBeTruthy();
+    expect((screen.getByRole('radio', { name: 'Staff' }) as HTMLInputElement).checked).toBe(true);
+    await fireEvent.click(screen.getByRole('radio', { name: 'Finance operator' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(calls.transition).not.toHaveBeenCalled();
+    expect(active.roleKey).toBe('staff');
+  });
 });

@@ -7417,5 +7417,9 @@
   "sectionAccess_cannotPrepare": "Access cannot be changed yet. Refresh this view and try again.",
   "roleSimulation_refreshRequired": "Refresh to continue.",
   "dev_switcher_description": "Changes your signed-in test account.",
-  "env_badge_qa_tools": "Local QA tools"
+  "env_badge_qa_tools": "Local QA tools",
+  "roleSimulation_change": "Change simulated role",
+  "roleSimulation_as": "Simulating as",
+  "roleSimulation_changeAria": "Change simulated role: {role}",
+  "pos_sell_activity_button": "Activity"
 }

@@ -38,12 +38,14 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
   let pg: ReturnType<typeof postgres>;
   let owner: VerifiedLocals;
   let viewer: VerifiedLocals;
+  let admin: VerifiedLocals;
   let twoOrgOwner: VerifiedLocals;
   let ownerToken = '';
   const sessions: string[] = [];
   const generations: string[] = [];
   const auditRefs: string[] = [];
   const foreignRole = `custom-native-foreign-${crypto.randomUUID().slice(0, 8)}`;
+  const aboveOwnerRole = `custom-native-ceiling-${crypto.randomUUID().slice(0, 8)}`;
   const event = (locals = owner) =>
     ({
       locals: { ...locals, user: { ...locals.user! } },
@@ -64,7 +66,7 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     const client = createClient(api, process.env.PUBLIC_SUPABASE_ANON_KEY!, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    async function login(persona: 'OWNER' | 'VIEWER' | 'SIMULATION_OWNER_TWO_ORGS') {
+    async function login(persona: 'OWNER' | 'ADMIN' | 'VIEWER' | 'SIMULATION_OWNER_TWO_ORGS') {
       const { data, error } = await client.auth.signInWithPassword({
         email:
           process.env[`QA_${persona}_EMAIL`] ??
@@ -101,8 +103,12 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     owner = actualOwner.locals;
     ownerToken = actualOwner.token;
     viewer = (await login('VIEWER')).locals;
+    admin = (await login('ADMIN')).locals;
     twoOrgOwner = (await login('SIMULATION_OWNER_TWO_ORGS')).locals;
     await pg`insert into org_roles(org_id,key,name,rank,source_role_key,created_by) values(${ORG_PERSONAL},${foreignRole},'Foreign only',10,'viewer',${owner.user!.supabaseId})`;
+    await pg`insert into org_roles(org_id,key,name,rank,source_role_key,created_by)
+      select ${ORG_BUSINESS},${aboveOwnerRole},'Above actual authority',rank+1,'viewer',${owner.user.supabaseId}::uuid
+      from permission_roles where key='owner'`;
   }, 30_000);
   afterAll(async () => {
     configureCache({ namespace: 'test', backend: createBackend({ backend: 'noop' }) });
@@ -110,6 +116,7 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     await pg`delete from doc_audit_log where ref_type in ('role_simulation','simulation_native') and ref_id::text in ${pg([...generations, ...auditRefs].length ? [...generations, ...auditRefs] : ['none'])}`;
     if (sessions.length) await pg`delete from auth.sessions where id::text in ${pg(sessions)}`;
     await pg`delete from org_roles where org_id=${ORG_PERSONAL} and key=${foreignRole}`;
+    await pg`delete from org_roles where org_id=${ORG_BUSINESS} and key=${aboveOwnerRole}`;
     await pg.end();
   });
   it('rejects foreign roles and non-admin actors without changing membership', async () => {
@@ -137,6 +144,30 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
         roleKey: 'staff',
       }),
     ).rejects.toMatchObject({ status: 403 });
+    const adminMembership =
+      await pg`select org_id,role_key from member_roles where profile_id=${admin.user.supabaseId}::uuid order by org_id,role_key`;
+    const adminState = await loadRoleSimulationState(admin);
+    const started = await transitionRoleSimulation(admin, {
+      generation: adminState.generation,
+      returnTo: '/en/crm/customers',
+      roleKey: 'viewer',
+    });
+    generations.push(started.generation);
+    const selectedAdmin = event(admin);
+    expect((await admitRoleSimulation(selectedAdmin))?.roleKey).toBe('viewer');
+    const selectedCatalog = await loadRoleSimulationState(selectedAdmin.locals);
+    expect(selectedCatalog.roles.find((role) => role.key === 'owner')?.selectable).toBe(false);
+    await expect(
+      transitionRoleSimulation(selectedAdmin.locals, {
+        generation: started.generation,
+        returnTo: '/en/account/home',
+        roleKey: 'owner',
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect((await loadRoleSimulationState(admin)).generation).toBe(started.generation);
+    expect(
+      await pg`select org_id,role_key from member_roles where profile_id=${admin.user.supabaseId}::uuid order by org_id,role_key`,
+    ).toEqual(adminMembership);
   });
   it('clears simulation on a legitimate organization switch without changing membership', async () => {
     const profileId = twoOrgOwner.user.supabaseId;
@@ -243,6 +274,11 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     }
   });
   it('serializes concurrent first Starts, replaces roles and atomically records actual identity', async () => {
+    const profileBefore = await pg`select * from profiles where id=${owner.user.supabaseId}::uuid`;
+    const membershipsBefore =
+      await pg`select organization_id,role from organization_members where profile_id=${owner.user.supabaseId}::uuid order by organization_id`;
+    const assignmentsBefore =
+      await pg`select org_id,role_key from member_roles where profile_id=${owner.user.supabaseId}::uuid order by org_id,role_key`;
     const results = await Promise.allSettled(
       ['viewer', 'staff'].map((roleKey) =>
         transitionRoleSimulation(owner, {
@@ -308,6 +344,87 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
       simulation_role_key: scope!.roleKey,
       simulation_generation: receipt.generation,
     });
+    const active = await loadRoleSimulationState(ev.locals);
+    expect(active).toMatchObject({ active: true, invalid: false, eligible: true });
+    // The selected viewer/staff cannot manage roles, but the actual Owner's
+    // catalog remains available solely for this authenticated session control.
+    expect(active.roles.find((role) => role.key === 'owner')?.selectable).toBe(true);
+    expect(active.roles.some((role) => role.key === foreignRole)).toBe(false);
+    expect(active.roles.find((role) => role.key === aboveOwnerRole)?.selectable).toBe(false);
+    const modeBefore =
+      await pg`select * from app_role_simulations where session_id=${owner.authSessionId}::uuid`;
+    const auditCountBefore =
+      await pg`select count(*)::int as n from doc_audit_log where ref_type='role_simulation' and actor_id=${owner.user.supabaseId}::uuid`;
+    for (const invalidRole of [foreignRole, aboveOwnerRole]) {
+      await expect(
+        transitionRoleSimulation(ev.locals, {
+          generation: active.generation,
+          returnTo: '/en/account/home',
+          roleKey: invalidRole,
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+    }
+    await expect(
+      transitionRoleSimulation(ev.locals, {
+        generation: INITIAL_SIMULATION_GENERATION,
+        returnTo: '/en/account/home',
+        roleKey: 'manager',
+      }),
+    ).rejects.toMatchObject({ generation: receipt.generation });
+    expect(
+      await pg`select * from app_role_simulations where session_id=${owner.authSessionId}::uuid`,
+    ).toEqual(modeBefore);
+    expect(
+      await pg`select count(*)::int as n from doc_audit_log where ref_type='role_simulation' and actor_id=${owner.user.supabaseId}::uuid`,
+    ).toEqual(auditCountBefore);
+    const nextRole = scope!.roleKey === 'viewer' ? 'staff' : 'viewer';
+    const replacement = await transitionRoleSimulation(ev.locals, {
+      generation: active.generation,
+      returnTo: '/en/account/home',
+      roleKey: nextRole,
+    });
+    generations.push(replacement.generation);
+    expect(replacement.generation).not.toBe(receipt.generation);
+    const modeAfter =
+      await pg`select * from app_role_simulations where session_id=${owner.authSessionId}::uuid`;
+    expect(modeAfter[0]).toMatchObject({
+      role_key: nextRole,
+      return_to: '/en/crm/customers',
+      started_at: modeBefore[0]!.started_at,
+      expires_at: modeBefore[0]!.expires_at,
+    });
+    const replaced = await admitRoleSimulation(event());
+    expect(replaced).toMatchObject({
+      roleKey: nextRole,
+      generation: replacement.generation,
+      profileId: owner.user.supabaseId,
+      invalid: false,
+    });
+    expect(
+      (
+        await runWithEffectiveAuthority(replaced, () =>
+          resolveCapabilities(ORG_BUSINESS, owner.user.supabaseId),
+        )
+      ).roles,
+    ).toEqual([nextRole]);
+    const replacementAudits =
+      await pg`select actor_id::text,simulation_role_key,simulation_generation::text,changes from doc_audit_log where ref_type='role_simulation' and ref_id=${replacement.generation}::uuid`;
+    expect(replacementAudits).toHaveLength(1);
+    expect(replacementAudits[0]).toMatchObject({
+      actor_id: owner.user.supabaseId,
+      simulation_role_key: nextRole,
+      simulation_generation: replacement.generation,
+      changes: [{ field: 'role', old: scope!.roleKey, new: nextRole }],
+    });
+    expect(await pg`select * from profiles where id=${owner.user.supabaseId}::uuid`).toEqual(
+      profileBefore,
+    );
+    expect(
+      await pg`select organization_id,role from organization_members where profile_id=${owner.user.supabaseId}::uuid order by organization_id`,
+    ).toEqual(membershipsBefore);
+    expect(
+      await pg`select org_id,role_key from member_roles where profile_id=${owner.user.supabaseId}::uuid order by org_id,role_key`,
+    ).toEqual(assignmentsBefore);
   });
   it('reads the committed generation after waiting behind an in-progress transition lock', async () => {
     const blocker = postgres(process.env.HUB_TEST_DB_URL!, { max: 1, prepare: false });
@@ -345,6 +462,15 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     expect(scope?.invalid).toBe(true);
     expect(scope?.capabilities.visibleModules()).toEqual([]);
     const state = await loadRoleSimulationState(owner);
+    expect(state.roles).toEqual([]);
+    await expect(
+      transitionRoleSimulation(owner, {
+        generation: state.generation,
+        returnTo: '/en/account/home',
+        roleKey: 'viewer',
+      }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect((await loadRoleSimulationState(owner)).generation).toBe(state.generation);
     const receipt = await transitionRoleSimulation(owner, {
       generation: state.generation,
       returnTo: '/en/account/home',
@@ -371,6 +497,14 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
       const scope = await admitRoleSimulation(event());
       expect(scope?.invalid).toBe(true);
       expect(scope?.capabilities.can('crm', 'edit')).toBe(false);
+      await expect(
+        transitionRoleSimulation(owner, {
+          generation: start.generation,
+          returnTo: '/en/account/home',
+          roleKey: 'viewer',
+        }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect((await loadRoleSimulationState(owner)).generation).toBe(start.generation);
       const finish = await transitionRoleSimulation(owner, {
         generation: start.generation,
         returnTo: '/en/account/home',
@@ -399,5 +533,12 @@ describe.skipIf(!enabled)('role simulation native session admission', () => {
     ).toHaveLength(0);
     await expect(admitRoleSimulation(event())).rejects.toMatchObject({ status: 401 });
     await expect(loadRoleSimulationState(owner)).rejects.toMatchObject({ status: 401 });
+    await expect(
+      transitionRoleSimulation(owner, {
+        generation: started.generation,
+        returnTo: '/en/account/home',
+        roleKey: 'staff',
+      }),
+    ).rejects.toMatchObject({ status: 401 });
   });
 });
