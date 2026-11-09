@@ -13,6 +13,7 @@
   import * as m from '$lib/paraglide/messages';
   import { PageHeader, Badge, Button, EmptyState, Popover, iconSizes } from '$lib/components/ui';
   import PeekLink from '$lib/records/PeekLink.svelte';
+  import CompactSearch from '$lib/components/ui/CompactSearch.svelte';
   import {
     catalogGroupLabel,
     catalogGroupSpec,
@@ -228,7 +229,7 @@
 
   // ── Catalog ──
   let search = $state('');
-  let searchEl: HTMLInputElement | undefined = $state();
+  let searchEl: HTMLInputElement | null = $state(null);
 
   // Recovery-critical cart storage reports its own visible error; a view
   // preference can safely remain in memory when browser storage is off.
@@ -1174,121 +1175,123 @@
           <DataView views={['gallery', 'table']} value={viewPref.value} onchange={viewPref.set}>
             {#snippet children({ switcher, view })}
               <div class="catalog-head">
-                <div class="search-row">
-                  <input
-                    class="search-inp"
-                    data-assist="pos_sale.item"
-                    placeholder={m.pos_sell_search_placeholder()}
-                    bind:value={search}
-                    bind:this={searchEl}
-                  />
-
-                  <Popover placement="bottom">
-                    {#snippet trigger()}
-                      <span class="hbtn" title={m.pos_sell_activity_title()}>
-                        <History size={iconSizes.sm} />
-                        <span class="hbtn-label">{m.pos_sell_activity_title()}</span>
-                      </span>
-                    {/snippet}
-                    <div class="hpanel">
-                      <h2 class="section-h">{m.pos_sell_activity_title()}</h2>
-                      {#if todayActivity.length === 0}
-                        <EmptyState title={m.pos_sell_activity_empty()} compact />
-                      {:else}
-                        <div class="activity-list">
-                          {#each todayActivity as a (`${a.kind}:${a.kind === 'ticket' ? a.ticket.id : a.shift.id}`)}
-                            <div class="activity-row">
-                              <span class="atime">{fmtTime(a.at)}</span>
-                              {#if a.kind === 'ticket'}
-                                <Badge variant="semantic" value="info" size="sm"
-                                  >{m.pos_sell_activity_kind_sale()}</Badge
-                                >
-                                <PeekLink
-                                  class="amain"
-                                  href={`/pos/tickets/${a.ticket.id}`}
-                                  mode="modal"
-                                >
-                                  {a.ticket.humanId ?? '—'} · {a.ticket.customerName ??
-                                    m.pos_pay_walk_in()}
-                                </PeekLink>
-                                <span class="aamount">{formatMoney(a.ticket.total)}</span>
-                                {#each a.ticket.payments as p (p.method)}
-                                  <span class="apay">
-                                    <PeekLink
-                                      href={`/pos/tickets/${a.ticket.id}`}
-                                      mode="modal"
-                                      title={m.pos_tender_change()}>{p.method}</PeekLink
-                                    >
-                                  </span>
-                                {/each}
-                                {#if a.ticket.status === 'void'}
-                                  <Badge variant="semantic" value="error" size="sm"
-                                    >{m.pos_voided()}</Badge
-                                  >
-                                {:else if a.ticket.stockEntryId}
-                                  <a
-                                    href={`/stock/entries/${a.ticket.stockEntryId}`}
-                                    title={m.pos_sell_view_entry()}
-                                    class="stock-chip ok">✓</a
-                                  >
-                                {:else if a.ticket.stockWarning}
-                                  <span
-                                    class="stock-chip warn"
-                                    title={(a.ticket.stockWarning as { message: string }).message}
-                                    >⚠</span
-                                  >
-                                {/if}
-                                {#if a.ticket.status !== 'void' && canAct('pos', 'manage')}
-                                  <Button
-                                    variant="outline"
-                                    size="xs"
-                                    type="button"
-                                    class="void-btn"
-                                    onclick={() => voidTicketRow(a.ticket.id)}
-                                    >{m.pos_void()}</Button
-                                  >
-                                {/if}
-                              {:else}
-                                <Badge variant="neutral" size="sm"
-                                  >{m.pos_sell_activity_kind_shift()}</Badge
-                                >
-                                <span class="amain"
-                                  >{a.kind === 'shift-opened'
-                                    ? m.pos_sell_activity_shift_opened()
-                                    : m.pos_sell_activity_shift_closed()}{#if a.shift.openedByName}
-                                    · {a.shift.openedByName}{/if}</span
-                                >
-                                <span class="aamount">—</span>
-                              {/if}
-                            </div>
-                          {/each}
-                        </div>
-                      {/if}
-                      <a class="activity-more" href="/pos/history"
-                        >{m.pos_sell_activity_view_all()}</a
-                      >
-                    </div>
-                  </Popover>
-                </div>
-                <div class="chips-row">
-                  <div class="dt-view-tools">
-                    <FilterAddMenu
-                      columns={filterColumnsMeta}
-                      onPick={pickFilter}
-                      onAdvanced={openAdvanced}
-                      active={anyColumnFilter}
+                <div class="catalog-toolbar">
+                  <div class="search-field">
+                    <CompactSearch
+                      fullWidth
+                      type="search"
+                      data-assist="pos_sale.item"
+                      placeholder={m.pos_sell_search_placeholder()}
+                      bind:value={search}
+                      bind:inputRef={searchEl}
                     />
-                    <GroupByPicker
-                      options={groupByOptions}
-                      value={groupAxis === 'none' ? '' : groupAxis}
-                      noneLabel={m.catalog_group_none()}
-                      onChange={(v) => groupPref.set((v || 'none') as GroupAxis)}
-                    />
-                    {#if view === 'gallery'}
-                      <CardFieldsMenu fields={cardFieldItems} pref={cardFields} />
-                    {/if}
                   </div>
-                  {@render switcher()}
+                  <div class="catalog-actions">
+                    <Popover placement="bottom" label={m.pos_sell_activity_button()}>
+                      {#snippet trigger()}
+                        <span class="hbtn t-caption">
+                          <History size={iconSizes.sm} />
+                          <span class="hbtn-label">{m.pos_sell_activity_button()}</span>
+                        </span>
+                      {/snippet}
+                      <div class="hpanel">
+                        <h2 class="section-h">{m.pos_sell_activity_title()}</h2>
+                        {#if todayActivity.length === 0}
+                          <EmptyState title={m.pos_sell_activity_empty()} compact />
+                        {:else}
+                          <div class="activity-list">
+                            {#each todayActivity as a (`${a.kind}:${a.kind === 'ticket' ? a.ticket.id : a.shift.id}`)}
+                              <div class="activity-row">
+                                <span class="atime">{fmtTime(a.at)}</span>
+                                {#if a.kind === 'ticket'}
+                                  <Badge variant="semantic" value="info" size="sm"
+                                    >{m.pos_sell_activity_kind_sale()}</Badge
+                                  >
+                                  <PeekLink
+                                    class="amain"
+                                    href={`/pos/tickets/${a.ticket.id}`}
+                                    mode="modal"
+                                  >
+                                    {a.ticket.humanId ?? '—'} · {a.ticket.customerName ??
+                                      m.pos_pay_walk_in()}
+                                  </PeekLink>
+                                  <span class="aamount">{formatMoney(a.ticket.total)}</span>
+                                  {#each a.ticket.payments as p (p.method)}
+                                    <span class="apay">
+                                      <PeekLink
+                                        href={`/pos/tickets/${a.ticket.id}`}
+                                        mode="modal"
+                                        title={m.pos_tender_change()}>{p.method}</PeekLink
+                                      >
+                                    </span>
+                                  {/each}
+                                  {#if a.ticket.status === 'void'}
+                                    <Badge variant="semantic" value="error" size="sm"
+                                      >{m.pos_voided()}</Badge
+                                    >
+                                  {:else if a.ticket.stockEntryId}
+                                    <a
+                                      href={`/stock/entries/${a.ticket.stockEntryId}`}
+                                      title={m.pos_sell_view_entry()}
+                                      class="stock-chip ok">✓</a
+                                    >
+                                  {:else if a.ticket.stockWarning}
+                                    <span
+                                      class="stock-chip warn"
+                                      title={(a.ticket.stockWarning as { message: string }).message}
+                                      >⚠</span
+                                    >
+                                  {/if}
+                                  {#if a.ticket.status !== 'void' && canAct('pos', 'manage')}
+                                    <Button
+                                      variant="outline"
+                                      size="xs"
+                                      type="button"
+                                      class="void-btn"
+                                      onclick={() => voidTicketRow(a.ticket.id)}
+                                      >{m.pos_void()}</Button
+                                    >
+                                  {/if}
+                                {:else}
+                                  <Badge variant="neutral" size="sm"
+                                    >{m.pos_sell_activity_kind_shift()}</Badge
+                                  >
+                                  <span class="amain"
+                                    >{a.kind === 'shift-opened'
+                                      ? m.pos_sell_activity_shift_opened()
+                                      : m.pos_sell_activity_shift_closed()}{#if a.shift.openedByName}
+                                      · {a.shift.openedByName}{/if}</span
+                                  >
+                                  <span class="aamount">—</span>
+                                {/if}
+                              </div>
+                            {/each}
+                          </div>
+                        {/if}
+                        <a class="activity-more" href="/pos/history"
+                          >{m.pos_sell_activity_view_all()}</a
+                        >
+                      </div>
+                    </Popover>
+                    <div class="dt-view-tools">
+                      <FilterAddMenu
+                        columns={filterColumnsMeta}
+                        onPick={pickFilter}
+                        onAdvanced={openAdvanced}
+                        active={anyColumnFilter}
+                      />
+                      <GroupByPicker
+                        options={groupByOptions}
+                        value={groupAxis === 'none' ? '' : groupAxis}
+                        noneLabel={m.catalog_group_none()}
+                        onChange={(v) => groupPref.set((v || 'none') as GroupAxis)}
+                      />
+                      {#if view === 'gallery'}
+                        <CardFieldsMenu fields={cardFieldItems} pref={cardFields} />
+                      {/if}
+                    </div>
+                    {@render switcher()}
+                  </div>
                 </div>
                 {#if chipBarShown}
                   <div class="dt-chips">
@@ -1617,43 +1620,51 @@
     min-height: 0;
     overflow-y: auto;
   }
-  .chips-row {
+  .catalog-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+  .search-field {
+    width: min(100%, calc(var(--space-6) * 10));
+  }
+  .catalog-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
-    gap: var(--space-2, 8px);
-  }
-  .search-row {
-    display: flex;
-    align-items: stretch;
-    gap: var(--space-2, 8px);
-  }
-  .search-row .search-inp {
-    flex: 1;
+    gap: var(--space-2);
     min-width: 0;
+    margin-inline-start: auto;
   }
-  /* Today's activity button — the unified popover trigger. */
+  .catalog-head .dt-chips {
+    justify-content: flex-end;
+  }
   .hbtn {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-2, 8px);
+    gap: var(--space-2);
     height: var(--control-height-sm);
-    padding: 0 var(--space-3);
+    padding: 0 var(--space-2);
     border-radius: var(--radius-md);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-muted-foreground);
-    font-size: var(--font-size-body, 14px);
+    background: transparent;
+    border: 1px solid var(--color-border-default);
+    color: var(--color-text-secondary);
     white-space: nowrap;
   }
   .hbtn:hover {
-    border-color: var(--color-accent);
-    color: var(--color-foreground);
+    background: var(--color-surface-2);
+    color: var(--color-text-primary);
   }
-  @media (max-width: 640px) {
-    .hbtn-label {
-      display: none;
+  @media (max-width: 767.98px), (pointer: coarse) {
+    .hbtn {
+      min-height: var(--control-height-touch);
+    }
+    .catalog-actions :global(button) {
+      min-width: var(--control-height-touch);
+      justify-content: center;
     }
   }
   .hpanel {
@@ -1664,15 +1675,6 @@
     max-height: min(60vh, 30rem);
     overflow-y: auto;
     padding: var(--space-2, 8px);
-  }
-  .search-inp {
-    height: var(--control-height-sm);
-    padding: 0 var(--space-3, 12px);
-    font-size: var(--font-size-body, 14px);
-    border-radius: var(--radius-md);
-    background: var(--color-bg3);
-    border: 1px solid var(--hairline);
-    color: var(--color-foreground);
   }
   /* Group header inside the gallery — a quiet label, not a card. */
   .grp-head {
