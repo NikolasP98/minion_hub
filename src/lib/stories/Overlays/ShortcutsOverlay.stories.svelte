@@ -12,7 +12,17 @@
     tags: ['autodocs'],
     parameters: {
       docs: { story: { inline: false, height: '520px' } },
-      sveltekit_experimental: { state: { page: { data: { user: { id: 'u-1', role: 'admin' }, permissions: { permissions: [], roles: ['owner'] }, activeOrgKind: 'business' } } } },
+      sveltekit_experimental: {
+        state: {
+          page: {
+            data: {
+              user: { id: 'u-1', role: 'admin' },
+              permissions: { permissions: [], roles: ['owner'] },
+              activeOrgKind: 'business',
+            },
+          },
+        },
+      },
     },
   });
 
@@ -37,13 +47,19 @@
 
 <Story name="Trigger (idle)">
   {#snippet template()}
-    <p class="text-sm text-muted-foreground">Press <kbd class="px-1 rounded bg-bg3 border border-border font-mono">?</kbd> to open.</p>
+    <p class="text-sm text-muted-foreground">
+      Press <kbd class="px-1 rounded bg-bg3 border border-border font-mono">?</kbd> to open.
+    </p>
     <ShortcutsOverlay />
   {/snippet}
 </Story>
 
 <!-- Responsive: the max-w-lg card becomes full width and caps at 80dvh on a phone. -->
-<Story name="Open (press ?) · Phone" play={pressQuestionMark} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Open (press ?) · Phone"
+  play={pressQuestionMark}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template()}
     <CommandPalette />
     <GNav />

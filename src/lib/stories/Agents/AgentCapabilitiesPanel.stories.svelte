@@ -27,8 +27,20 @@
 
   // Child panels load via the gateway on mount (fails here); seed both stores afterwards.
   const seed = (t, s) => async () => {
-    Object.assign(agentToolsState, { tools: t, groups: {}, profile: 'full', loading: false, error: null });
-    Object.assign(agentSkillsState, { skills: s, agentFilter: null, loading: false, saving: false, error: null });
+    Object.assign(agentToolsState, {
+      tools: t,
+      groups: {},
+      profile: 'full',
+      loading: false,
+      error: null,
+    });
+    Object.assign(agentSkillsState, {
+      skills: s,
+      agentFilter: null,
+      loading: false,
+      saving: false,
+      error: null,
+    });
   };
   const skillsTab = async (ctx) => {
     await seed(tools, skills)();
@@ -39,19 +51,31 @@
     title: 'Agents/AgentCapabilitiesPanel',
     component: AgentCapabilitiesPanel,
     tags: ['autodocs'],
-    parameters: { sveltekit_experimental: { state: { page: { url: new URL('http://localhost/agents'), data: { user: { role: 'admin' } } } } } },
+    parameters: {
+      sveltekit_experimental: {
+        state: {
+          page: { url: new URL('http://localhost/agents'), data: { user: { role: 'admin' } } },
+        },
+      },
+    },
     args: { agentId: 'panik' },
   });
 </script>
 
 <Story name="Tools tab" play={seed(tools, skills)}>
-  {#snippet template(args)}<div class="w-[32rem] h-96"><AgentCapabilitiesPanel {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-[32rem] h-96">
+      <AgentCapabilitiesPanel {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Skills tab" play={skillsTab}>
-  {#snippet template(args)}<div class="w-[32rem] h-96"><AgentCapabilitiesPanel {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-[32rem] h-96">
+      <AgentCapabilitiesPanel {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Empty no counts" play={seed([], [])}>
-  {#snippet template(args)}<div class="w-[32rem] h-96"><AgentCapabilitiesPanel {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-[32rem] h-96">
+      <AgentCapabilitiesPanel {...args} />
+    </div>{/snippet}
 </Story>

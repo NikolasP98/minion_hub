@@ -8,7 +8,10 @@
   const accent = ACCENT_OPTIONS[0].value;
   const bins = Array.from({ length: 144 }, (_, i) => {
     const t = i / 143;
-    return Math.max(0, Math.round(Math.sin(t * Math.PI * 4 + 1) * 7 + Math.sin(t * Math.PI * 9) * 3 + 4));
+    return Math.max(
+      0,
+      Math.round(Math.sin(t * Math.PI * 4 + 1) * 7 + Math.sin(t * Math.PI * 9) * 3 + 4),
+    );
   });
 
   const { Story } = defineMeta({

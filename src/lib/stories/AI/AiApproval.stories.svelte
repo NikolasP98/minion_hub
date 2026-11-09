@@ -29,7 +29,11 @@
 <Story
   name="Many options"
   args={{
-    options: Array.from({ length: 8 }, (_, i) => ({ id: `o${i}`, label: `Option ${i + 1}: ${['merge', 'skip', 'rename', 'archive'][i % 4]} the duplicate`, detail: i % 2 ? `${i * 3} rows` : undefined })),
+    options: Array.from({ length: 8 }, (_, i) => ({
+      id: `o${i}`,
+      label: `Option ${i + 1}: ${['merge', 'skip', 'rename', 'archive'][i % 4]} the duplicate`,
+      detail: i % 2 ? `${i * 3} rows` : undefined,
+    })),
   }}
 />
 
@@ -46,5 +50,7 @@
 </Story>
 
 <Story name="Narrow host">
-  {#snippet template(args)}<div class="w-64"><AiApproval {...args} question={longQuestion} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64">
+      <AiApproval {...args} question={longQuestion} />
+    </div>{/snippet}
 </Story>

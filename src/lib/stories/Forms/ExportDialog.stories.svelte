@@ -26,14 +26,20 @@
 </Story>
 
 <Story name="Closed" args={{ open: false }}>
-  {#snippet template(args)}<p class="text-muted-foreground t-caption">Dialog is closed (toggle the `open` control).</p><ExportDialog {...args} />{/snippet}
+  {#snippet template(args)}<p class="text-muted-foreground t-caption">
+      Dialog is closed (toggle the `open` control).
+    </p>
+    <ExportDialog {...args} />{/snippet}
 </Story>
 
 <Story name="CSV only" args={{ formats: ['csv'] }}>
   {#snippet template(args)}<ExportDialog {...args} />{/snippet}
 </Story>
 
-<Story name="No defaults selected" args={{ columns: columns.map((c) => ({ ...c, default: false })) }}>
+<Story
+  name="No defaults selected"
+  args={{ columns: columns.map((c) => ({ ...c, default: false })) }}
+>
   {#snippet template(args)}<ExportDialog {...args} />{/snippet}
 </Story>
 
@@ -45,6 +51,15 @@
   {#snippet template(args)}<ExportDialog {...args} />{/snippet}
 </Story>
 
-<Story name="Thirty columns" args={{ columns: Array.from({ length: 30 }, (_, i) => ({ key: `c${i}`, label: i % 5 === 0 ? `Column ${i + 1} with a rather long header label` : `Column ${i + 1}`, default: i % 2 === 0 })) }}>
+<Story
+  name="Thirty columns"
+  args={{
+    columns: Array.from({ length: 30 }, (_, i) => ({
+      key: `c${i}`,
+      label: i % 5 === 0 ? `Column ${i + 1} with a rather long header label` : `Column ${i + 1}`,
+      default: i % 2 === 0,
+    })),
+  }}
+>
   {#snippet template(args)}<ExportDialog {...args} />{/snippet}
 </Story>

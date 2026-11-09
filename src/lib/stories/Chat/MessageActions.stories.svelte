@@ -21,7 +21,10 @@
     title: 'Chat/MessageActions',
     component: MessageActions,
     tags: ['autodocs'],
-    argTypes: { side: { control: 'select', options: ['start', 'end'] }, reveal: { control: 'boolean' } },
+    argTypes: {
+      side: { control: 'select', options: ['start', 'end'] },
+      reveal: { control: 'boolean' },
+    },
     args: { actions, reveal: false, side: 'start' },
   });
 </script>
@@ -41,7 +44,17 @@
   {/snippet}
 </Story>
 
-<Story name="Reveal on hover end side user" args={{ reveal: true, side: 'end', actions: [{ icon: Pencil, label: 'Edit', onclick: fn() }, { icon: Copy, label: 'Copy', onclick: fn(), confirm: true }] }}>
+<Story
+  name="Reveal on hover end side user"
+  args={{
+    reveal: true,
+    side: 'end',
+    actions: [
+      { icon: Pencil, label: 'Edit', onclick: fn() },
+      { icon: Copy, label: 'Copy', onclick: fn(), confirm: true },
+    ],
+  }}
+>
   {#snippet template(args)}
     <div class="ai-message flex w-64 flex-col items-end gap-1 rounded-lg p-2">
       <div class="rounded-lg bg-accent px-3 py-2 t-body text-on-accent">Hover this message.</div>

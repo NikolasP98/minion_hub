@@ -24,9 +24,16 @@
 </script>
 
 <Story name="No session selected">
-  {#snippet template(args)}<div class="w-[36rem] h-96 flex flex-col"><SessionViewer {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-[36rem] h-96 flex flex-col">
+      <SessionViewer {...args} />
+    </div>{/snippet}
 </Story>
 
-<Story name="Selected fetch fails" args={{ serverId: 'srv-1', sessionKey: 'agent:panik:whatsapp:dm:+51999888777', session }}>
-  {#snippet template(args)}<div class="w-[36rem] h-96 flex flex-col"><SessionViewer {...args} /></div>{/snippet}
+<Story
+  name="Selected fetch fails"
+  args={{ serverId: 'srv-1', sessionKey: 'agent:panik:whatsapp:dm:+51999888777', session }}
+>
+  {#snippet template(args)}<div class="w-[36rem] h-96 flex flex-col">
+      <SessionViewer {...args} />
+    </div>{/snippet}
 </Story>

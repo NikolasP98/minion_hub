@@ -10,9 +10,9 @@
       value: { control: { type: 'range', min: 0, max: 100 } },
       size: { control: 'select', options: ['xs', 'sm', 'md'] },
       label: { control: 'text' },
-      detail: { control: 'text' }
+      detail: { control: 'text' },
     },
-    args: { value: 60, max: 100, label: 'Syncing', detail: '60%', size: 'md' }
+    args: { value: 60, max: 100, label: 'Syncing', detail: '60%', size: 'md' },
   });
 </script>
 

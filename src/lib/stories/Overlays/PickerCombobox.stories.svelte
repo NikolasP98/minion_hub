@@ -64,7 +64,11 @@
   {/snippet}
 </Story>
 
-<Story name="Empty items" args={{ id: 'sb-picker-combobox-empty', items: [], emptyLabel: 'No one matches' }} play={openPicker}>
+<Story
+  name="Empty items"
+  args={{ id: 'sb-picker-combobox-empty', items: [], emptyLabel: 'No one matches' }}
+  play={openPicker}
+>
   {#snippet template(args)}
     <div class="max-w-sm"><PickerCombobox {...args} /></div>
   {/snippet}

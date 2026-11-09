@@ -26,7 +26,12 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Input id={c.id} disabled={c.disabled} required={c.required} placeholder="Lucía Fernández" />{/snippet}
+        {#snippet children(c)}<Input
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+            placeholder="Lucía Fernández"
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -36,17 +41,30 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Input id={c.id} disabled={c.disabled} required={c.required} />{/snippet}
+        {#snippet children(c)}<Input
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
 </Story>
 
-<Story name="Error" args={{ error: 'Name is required.', helper: 'As printed on the identity document.' }}>
+<Story
+  name="Error"
+  args={{ error: 'Name is required.', helper: 'As printed on the identity document.' }}
+>
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Input id={c.id} error={c.invalid ? ' ' : undefined} disabled={c.disabled} required={c.required} value="" />{/snippet}
+        {#snippet children(c)}<Input
+            id={c.id}
+            error={c.invalid ? ' ' : undefined}
+            disabled={c.disabled}
+            required={c.required}
+            value=""
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -56,7 +74,11 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Input id={c.id} disabled={c.disabled} required={c.required} />{/snippet}
+        {#snippet children(c)}<Input
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -66,7 +88,12 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Input id={c.id} disabled={c.disabled} required={c.required} value="Lucía Fernández" />{/snippet}
+        {#snippet children(c)}<Input
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+            value="Lucía Fernández"
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -76,7 +103,13 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Textarea id={c.id} disabled={c.disabled} required={c.required} rows={3} placeholder="Allergies, preferences…" />{/snippet}
+        {#snippet children(c)}<Textarea
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+            rows={3}
+            placeholder="Allergies, preferences…"
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -86,7 +119,13 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Select id={c.id} disabled={c.disabled} required={c.required} {options} value="dni" />{/snippet}
+        {#snippet children(c)}<Select
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+            {options}
+            value="dni"
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -96,7 +135,13 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Select id={c.id} disabled={c.disabled} required={c.required} {options} placeholder="Choose…" />{/snippet}
+        {#snippet children(c)}<Select
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+            {options}
+            placeholder="Choose…"
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -106,7 +151,12 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Checkbox id={c.id} disabled={c.disabled} required={c.required} label="Patient signed the informed consent" />{/snippet}
+        {#snippet children(c)}<Checkbox
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+            label="Patient signed the informed consent"
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -116,17 +166,34 @@
   {#snippet template(args)}
     <div class="w-80">
       <FormField {...args}>
-        {#snippet children(c)}<Toggle disabled={c.disabled} label="Send WhatsApp reminders" pressed />{/snippet}
+        {#snippet children(c)}<Toggle
+            disabled={c.disabled}
+            label="Send WhatsApp reminders"
+            pressed
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
 </Story>
 
-<Story name="Long label and helper" args={{ label: 'Número de documento de identidad del titular de la cuenta (obligatorio para facturación electrónica)', helper: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.', required: true }}>
+<Story
+  name="Long label and helper"
+  args={{
+    label:
+      'Número de documento de identidad del titular de la cuenta (obligatorio para facturación electrónica)',
+    helper:
+      'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+    required: true,
+  }}
+>
   {#snippet template(args)}
     <div class="w-64">
       <FormField {...args}>
-        {#snippet children(c)}<Input id={c.id} disabled={c.disabled} required={c.required} />{/snippet}
+        {#snippet children(c)}<Input
+            id={c.id}
+            disabled={c.disabled}
+            required={c.required}
+          />{/snippet}
       </FormField>
     </div>
   {/snippet}
@@ -139,7 +206,12 @@
         {#snippet children(c)}<Input id={c.id} required={c.required} />{/snippet}
       </FormField>
       <FormField label="Document type" required>
-        {#snippet children(c)}<Select id={c.id} required={c.required} {options} value="dni" />{/snippet}
+        {#snippet children(c)}<Select
+            id={c.id}
+            required={c.required}
+            {options}
+            value="dni"
+          />{/snippet}
       </FormField>
       <FormField label="Email" error="Enter a valid email.">
         {#snippet children(c)}<Input id={c.id} type="email" value="not-an-email" />{/snippet}
@@ -156,14 +228,22 @@
 </Story>
 
 <!-- Responsive: fields fill the form width. -->
-<Story name="Form (every kind) · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Form (every kind) · Phone"
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template()}
     <div role="form" class="w-full flex flex-col gap-4">
       <FormField label="Full name" required>
         {#snippet children(c)}<Input id={c.id} required={c.required} />{/snippet}
       </FormField>
       <FormField label="Document type" required>
-        {#snippet children(c)}<Select id={c.id} required={c.required} {options} value="dni" />{/snippet}
+        {#snippet children(c)}<Select
+            id={c.id}
+            required={c.required}
+            {options}
+            value="dni"
+          />{/snippet}
       </FormField>
       <FormField label="Email" error="Enter a valid email.">
         {#snippet children(c)}<Input id={c.id} type="email" value="not-an-email" />{/snippet}

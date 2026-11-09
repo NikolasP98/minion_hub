@@ -40,37 +40,76 @@
 
 <Story name="Selected (interactive)">
   {#snippet template(args)}
-    <MultiSelectFilter {...args} {selected} onToggle={toggle} onClear={() => (selected = new Set())} />
+    <MultiSelectFilter
+      {...args}
+      {selected}
+      onToggle={toggle}
+      onClear={() => (selected = new Set())}
+    />
   {/snippet}
 </Story>
 
 <Story name="Open" play={open}>
   {#snippet template(args)}
-    <MultiSelectFilter {...args} {selected} onToggle={toggle} onClear={() => (selected = new Set())} />
+    <MultiSelectFilter
+      {...args}
+      {selected}
+      onToggle={toggle}
+      onClear={() => (selected = new Set())}
+    />
   {/snippet}
 </Story>
 
 <Story name="No colours or counts" args={{ options: plain }}>
   {#snippet template(args)}
-    <MultiSelectFilter {...args} selected={new Set(['draft'])} onToggle={() => {}} onClear={() => {}} />
+    <MultiSelectFilter
+      {...args}
+      selected={new Set(['draft'])}
+      onToggle={() => {}}
+      onClear={() => {}}
+    />
   {/snippet}
 </Story>
 
 <Story name="Everything selected (many pills)">
   {#snippet template(args)}
-    <MultiSelectFilter {...args} selected={new Set(options.map((o) => o.value))} onToggle={() => {}} onClear={() => {}} />
+    <MultiSelectFilter
+      {...args}
+      selected={new Set(options.map((o) => o.value))}
+      onToggle={() => {}}
+      onClear={() => {}}
+    />
   {/snippet}
 </Story>
 
-<Story name="Long labels" args={{ label: 'Payment method', options: [{ value: 'a', label: 'Bank transfer (BCP, interbank, same day)' }, { value: 'b', label: 'Card via POS terminal with 3 instalments' }] }}>
+<Story
+  name="Long labels"
+  args={{
+    label: 'Payment method',
+    options: [
+      { value: 'a', label: 'Bank transfer (BCP, interbank, same day)' },
+      { value: 'b', label: 'Card via POS terminal with 3 instalments' },
+    ],
+  }}
+>
   {#snippet template(args)}
-    <MultiSelectFilter {...args} selected={new Set(['a', 'b'])} onToggle={() => {}} onClear={() => {}} />
+    <MultiSelectFilter
+      {...args}
+      selected={new Set(['a', 'b'])}
+      onToggle={() => {}}
+      onClear={() => {}}
+    />
   {/snippet}
 </Story>
 
 <!-- Responsive: options grow to the 44px touch height below 768px. -->
 <Story name="Open · Phone" play={open} globals={{ viewport: { value: 'phone', isRotated: false } }}>
   {#snippet template(args)}
-    <MultiSelectFilter {...args} {selected} onToggle={toggle} onClear={() => (selected = new Set())} />
+    <MultiSelectFilter
+      {...args}
+      {selected}
+      onToggle={toggle}
+      onClear={() => (selected = new Set())}
+    />
   {/snippet}
 </Story>

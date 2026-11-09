@@ -36,7 +36,9 @@
 <Story name="Open">
   {#snippet template(args)}
     <Modal {...args}>
-      <p class="text-sm text-foreground">Update the contact details and save. Changes apply immediately.</p>
+      <p class="text-sm text-foreground">
+        Update the contact details and save. Changes apply immediately.
+      </p>
     </Modal>
   {/snippet}
 </Story>
@@ -132,8 +134,8 @@
       <div class="space-y-3 text-sm text-muted-foreground">
         {#each Array.from({ length: 24 }, (_, i) => i + 1) as n (n)}
           <p>
-            Clause {n}. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
-            incididunt ut labore et dolore magna aliqua.
+            Clause {n}. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+            tempor incididunt ut labore et dolore magna aliqua.
           </p>
         {/each}
       </div>
@@ -151,7 +153,11 @@
 </Story>
 
 <!-- Responsive: every size is clamped to the viewport minus the page gutter, so lg/xl collapse to full width on a phone. -->
-<Story name="Large · Phone" args={{ size: 'lg', title: 'Import products' }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Large · Phone"
+  args={{ size: 'lg', title: 'Import products' }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}
     <Modal {...args}>
       <div class="grid grid-cols-2 gap-4 text-sm">
@@ -163,7 +169,11 @@
   {/snippet}
 </Story>
 
-<Story name="Extra large · Tablet" args={{ size: 'xl', title: 'Quarterly report preview' }} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+<Story
+  name="Extra large · Tablet"
+  args={{ size: 'xl', title: 'Quarterly report preview' }}
+  globals={{ viewport: { value: 'tablet', isRotated: false } }}
+>
   {#snippet template(args)}
     <Modal {...args}>
       <p class="text-sm text-muted-foreground">Wide content area for tables and charts.</p>

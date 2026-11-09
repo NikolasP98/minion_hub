@@ -4,12 +4,27 @@
   import { dreamState } from '$lib/state/features/dream-data.svelte';
 
   const data = {
-    state: { lastConsolidatedAt: Date.now() - 30 * 3_600_000, lastSessionScanAt: Date.now() - 6 * 60_000 },
+    state: {
+      lastConsolidatedAt: Date.now() - 30 * 3_600_000,
+      lastSessionScanAt: Date.now() - 6 * 60_000,
+    },
     pendingNotes: 4,
     history: [
-      { timestamp: '2026-11-07 03:12', content: 'Consolidated 9 daily notes. Learned: the owner prefers WhatsApp confirmations before 9 am; Tuesday is the busiest booking day; two suppliers now invoice in USD.' },
-      { timestamp: '2026-10-31 03:10', content: 'Consolidated 7 daily notes. Archived the October price list; the new one applies from 1 Nov.' },
-      { timestamp: '2026-10-24 03:09', content: 'Consolidated 8 daily notes.\nNo new long-term facts; three reminders were marked obsolete.' },
+      {
+        timestamp: '2026-11-07 03:12',
+        content:
+          'Consolidated 9 daily notes. Learned: the owner prefers WhatsApp confirmations before 9 am; Tuesday is the busiest booking day; two suppliers now invoice in USD.',
+      },
+      {
+        timestamp: '2026-10-31 03:10',
+        content:
+          'Consolidated 7 daily notes. Archived the October price list; the new one applies from 1 Nov.',
+      },
+      {
+        timestamp: '2026-10-24 03:09',
+        content:
+          'Consolidated 8 daily notes.\nNo new long-term facts; three reminders were marked obsolete.',
+      },
     ],
   };
 
@@ -30,7 +45,17 @@
   {#snippet template(args)}<div class="w-[36rem]"><DreamActivity {...args} /></div>{/snippet}
 </Story>
 
-<Story name="No history yet" play={seed({ data: { ...data, history: [], pendingNotes: 0, state: { lastConsolidatedAt: null, lastSessionScanAt: null } } })}>
+<Story
+  name="No history yet"
+  play={seed({
+    data: {
+      ...data,
+      history: [],
+      pendingNotes: 0,
+      state: { lastConsolidatedAt: null, lastSessionScanAt: null },
+    },
+  })}
+>
   {#snippet template(args)}<div class="w-[36rem]"><DreamActivity {...args} /></div>{/snippet}
 </Story>
 

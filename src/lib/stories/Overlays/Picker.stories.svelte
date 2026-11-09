@@ -6,7 +6,9 @@
 
   const rows = Array.from({ length: 18 }, (_, i) => ({
     id: `p-${i + 1}`,
-    name: ['Keratin treatment', 'Haircut', 'Beard trim', 'Hair colour', 'Manicure', 'Pedicure'][i % 6] + (i >= 6 ? ` ${Math.floor(i / 6) + 1}` : ''),
+    name:
+      ['Keratin treatment', 'Haircut', 'Beard trim', 'Hair colour', 'Manicure', 'Pedicure'][i % 6] +
+      (i >= 6 ? ` ${Math.floor(i / 6) + 1}` : ''),
     sku: `SKU-${String(1000 + i)}`,
     price: ((i + 1) * 17.5).toFixed(2),
     category: ['Hair', 'Hair', 'Beard', 'Hair', 'Nails', 'Nails'][i % 6],
@@ -53,7 +55,17 @@
     <Input label="Name" value={ctx.query} oninput={() => ctx.setDirty(true)} />
     <div class="flex gap-2 justify-end">
       <Button variant="ghost" size="sm" onclick={ctx.oncancel}>Cancel</Button>
-      <Button size="sm" onclick={() => ctx.oncreated({ id: `new-${Date.now()}`, name: ctx.query || 'New service', sku: 'SKU-NEW', price: '0.00', category: 'Hair' })}>Create</Button>
+      <Button
+        size="sm"
+        onclick={() =>
+          ctx.oncreated({
+            id: `new-${Date.now()}`,
+            name: ctx.query || 'New service',
+            sku: 'SKU-NEW',
+            price: '0.00',
+            category: 'Hair',
+          })}>Create</Button
+      >
     </div>
   </div>
 {/snippet}
@@ -64,13 +76,19 @@
   {/snippet}
 </Story>
 
-<Story name="Multiple with picked rows" args={{ selectionMode: 'multiple', subtitle: 'Picked rows are blocked (no onUnpick)' }}>
+<Story
+  name="Multiple with picked rows"
+  args={{ selectionMode: 'multiple', subtitle: 'Picked rows are blocked (no onUnpick)' }}
+>
   {#snippet template(args)}
     <Picker {...args} pickedIds={new Set(['p-1', 'p-3'])} />
   {/snippet}
 </Story>
 
-<Story name="Multiple with remove toggles (onUnpick)" args={{ selectionMode: 'multiple', subtitle: 'Picked rows can be removed from here' }}>
+<Story
+  name="Multiple with remove toggles (onUnpick)"
+  args={{ selectionMode: 'multiple', subtitle: 'Picked rows can be removed from here' }}
+>
   {#snippet template(args)}
     <Picker
       {...args}
@@ -87,19 +105,34 @@
   {/snippet}
 </Story>
 
-<Story name="Loading (async never resolves)" args={{ rows: undefined, loadRows: () => new Promise(() => {}) }}>
+<Story
+  name="Loading (async never resolves)"
+  args={{ rows: undefined, loadRows: () => new Promise(() => {}) }}
+>
   {#snippet template(args)}
     <Picker {...args} />
   {/snippet}
 </Story>
 
-<Story name="Load error" args={{ rows: undefined, loadRows: () => Promise.reject(new Error('Network down')) }}>
+<Story
+  name="Load error"
+  args={{ rows: undefined, loadRows: () => Promise.reject(new Error('Network down')) }}
+>
   {#snippet template(args)}
     <Picker {...args} />
   {/snippet}
 </Story>
 
-<Story name="Async source with server total" args={{ rows: undefined, loadRows: async (q) => ({ rows: rows.filter((r) => r.name.toLowerCase().includes(q.toLowerCase())).slice(0, 5), total: 1240 }) }}>
+<Story
+  name="Async source with server total"
+  args={{
+    rows: undefined,
+    loadRows: async (q) => ({
+      rows: rows.filter((r) => r.name.toLowerCase().includes(q.toLowerCase())).slice(0, 5),
+      total: 1240,
+    }),
+  }}
+>
   {#snippet template(args)}
     <Picker {...args} />
   {/snippet}
@@ -122,14 +155,23 @@
     <Picker
       {...args}
       isRowDisabled={(r) => r.category === 'Nails'}
-      rowDisabledReason={(r) => (r.category === 'Nails' ? 'Nail services need a different room' : undefined)}
+      rowDisabledReason={(r) =>
+        r.category === 'Nails' ? 'Nail services need a different room' : undefined}
     />
   {/snippet}
 </Story>
 
 <Story name="With create tab">
   {#snippet template(args)}
-    <Picker {...args} create={{ label: 'New service', tabLabel: 'Create', description: 'Quick-add from the search text.', form: createForm }} />
+    <Picker
+      {...args}
+      create={{
+        label: 'New service',
+        tabLabel: 'Create',
+        description: 'Quick-add from the search text.',
+        form: createForm,
+      }}
+    />
   {/snippet}
 </Story>
 

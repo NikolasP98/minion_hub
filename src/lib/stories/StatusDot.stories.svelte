@@ -10,9 +10,9 @@
       status: { control: 'select', options: [undefined, 'running', 'thinking', 'idle', 'aborted'] },
       state: { control: 'select', options: [undefined, 'active', 'attention', 'disabled'] },
       size: { control: 'select', options: ['sm', 'md', 'lg'] },
-      expanded: { control: 'boolean' }
+      expanded: { control: 'boolean' },
     },
-    args: { status: 'running', size: 'md' }
+    args: { status: 'running', size: 'md' },
   });
 </script>
 
@@ -25,18 +25,27 @@
 <Story name="All dots">
   {#snippet template()}
     <div class="flex items-center gap-4">
-      {#each ['running', 'thinking', 'idle', 'aborted'] as s (s)}<StatusDot status={s} size="lg" />{/each}
+      {#each ['running', 'thinking', 'idle', 'aborted'] as s (s)}<StatusDot
+          status={s}
+          size="lg"
+        />{/each}
     </div>
   {/snippet}
 </Story>
 
-<Story name="Labeled chip" args={{ status: undefined, state: 'active', label: 'Online', expanded: true }}>
+<Story
+  name="Labeled chip"
+  args={{ status: undefined, state: 'active', label: 'Online', expanded: true }}
+>
   {#snippet template(args)}
     <StatusDot {...args} />
   {/snippet}
 </Story>
 
-<Story name="Chip reveals on hover" args={{ status: undefined, state: 'attention', label: 'Needs review', expanded: false }}>
+<Story
+  name="Chip reveals on hover"
+  args={{ status: undefined, state: 'attention', label: 'Needs review', expanded: false }}
+>
   {#snippet template(args)}
     <StatusDot {...args} />
   {/snippet}

@@ -9,7 +9,9 @@
     { companyId: 'c-2', role: 'member', name: 'Norte Barber EIRL' },
     { companyId: 'c-3', role: 'member', name: 'A workspace with a rather long display name' },
   ];
-  const data = (ws) => ({ sveltekit_experimental: { state: { page: { data: { workspaces: ws } } } } });
+  const data = (ws) => ({
+    sveltekit_experimental: { state: { page: { data: { workspaces: ws } } } },
+  });
 
   const { Story } = defineMeta({
     title: 'Navigation/CompanySwitcher',

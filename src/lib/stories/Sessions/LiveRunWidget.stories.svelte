@@ -37,7 +37,9 @@
     component: LiveRunWidget,
     tags: ['autodocs'],
     parameters: {
-      sveltekit_experimental: { state: { page: { url: new URL('http://localhost/sessions'), data: {} } } },
+      sveltekit_experimental: {
+        state: { page: { url: new URL('http://localhost/sessions'), data: {} } },
+      },
       docs: { story: { inline: false, height: '200px' } },
     },
   });
@@ -62,6 +64,10 @@
   {#snippet template()}<LiveRunWidget />{/snippet}
 </Story>
 
-<Story name="Many runs · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }} play={seed(many)}>
+<Story
+  name="Many runs · Phone"
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+  play={seed(many)}
+>
   {#snippet template()}<LiveRunWidget />{/snippet}
 </Story>

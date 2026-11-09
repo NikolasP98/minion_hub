@@ -6,12 +6,12 @@
   const items = [
     { value: 'day', label: 'Day' },
     { value: 'week', label: 'Week' },
-    { value: 'month', label: 'Month', disabled: true, title: 'Upgrade to unlock' }
+    { value: 'month', label: 'Month', disabled: true, title: 'Upgrade to unlock' },
   ];
   const views = [
     { value: 'list', label: 'List', icon: List },
     { value: 'grid', label: 'Grid', icon: LayoutGrid },
-    { value: 'calendar', label: 'Calendar', icon: Calendar }
+    { value: 'calendar', label: 'Calendar', icon: Calendar },
   ];
 
   const { Story } = defineMeta({
@@ -21,9 +21,9 @@
     argTypes: {
       size: { control: 'select', options: ['sm', 'md'] },
       value: { control: 'select', options: items.map((i) => i.value) },
-      iconOnly: { control: 'boolean' }
+      iconOnly: { control: 'boolean' },
     },
-    args: { items, value: 'day', size: 'sm', iconOnly: false, 'aria-label': 'Range' }
+    args: { items, value: 'day', size: 'sm', iconOnly: false, 'aria-label': 'Range' },
   });
 </script>
 
@@ -39,7 +39,10 @@
   {/snippet}
 </Story>
 
-<Story name="Icon only" args={{ items: views, value: 'list', iconOnly: true, 'aria-label': 'View' }}>
+<Story
+  name="Icon only"
+  args={{ items: views, value: 'list', iconOnly: true, 'aria-label': 'View' }}
+>
   {#snippet template(args)}
     <SegmentedControl {...args} />
   {/snippet}

@@ -7,7 +7,12 @@
     title: 'Tags/TagDot',
     component: TagDot,
     tags: ['autodocs'],
-    argTypes: { origin: { control: 'select', options: [undefined, 'own', 'contact', 'product', 'ingredient'] } },
+    argTypes: {
+      origin: {
+        control: 'select',
+        options: [undefined, 'own', 'contact', 'product', 'ingredient'],
+      },
+    },
     args: { name: 'VIP', color: CRM_TAG_COLORS[0] },
   });
 </script>
@@ -28,7 +33,11 @@
 <Story name="Origins (shapes)">
   {#snippet template(args)}
     <div class="flex items-center gap-2 p-2 bg-surface-1">
-      {#each ['own', 'contact', 'product', 'ingredient'] as origin (origin)}<TagDot {...args} name={origin} {origin} />{/each}
+      {#each ['own', 'contact', 'product', 'ingredient'] as origin (origin)}<TagDot
+          {...args}
+          name={origin}
+          {origin}
+        />{/each}
     </div>
   {/snippet}
 </Story>
@@ -36,11 +45,21 @@
 <Story name="Twenty in a dense row">
   {#snippet template(args)}
     <div class="w-24 flex items-center gap-0.5 flex-wrap p-1 bg-surface-1">
-      {#each Array.from({ length: 20 }, (_, i) => i) as i (i)}<TagDot {...args} name={`tag ${i + 1}`} color={CRM_TAG_COLORS[i % CRM_TAG_COLORS.length]} />{/each}
+      {#each Array.from({ length: 20 }, (_, i) => i) as i (i)}<TagDot
+          {...args}
+          name={`tag ${i + 1}`}
+          color={CRM_TAG_COLORS[i % CRM_TAG_COLORS.length]}
+        />{/each}
     </div>
   {/snippet}
 </Story>
 
-<Story name="Long name (title)" args={{ name: 'Pacientes con tratamiento combinado de larga duración y seguimiento trimestral', origin: 'contact' }}>
+<Story
+  name="Long name (title)"
+  args={{
+    name: 'Pacientes con tratamiento combinado de larga duración y seguimiento trimestral',
+    origin: 'contact',
+  }}
+>
   {#snippet template(args)}<TagDot {...args} />{/snippet}
 </Story>

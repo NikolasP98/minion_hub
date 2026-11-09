@@ -15,7 +15,10 @@
 <Story name="Short" args={{ greeting: 'Hi.' }} />
 <Story
   name="Long"
-  args={{ greeting: 'Good morning, Ana. You have three bookings today (10:00 Luis Paredes, 12:30 Marta Ríos, 16:00 a new contact from Instagram), one invoice twelve days overdue, two stock items under their minimum, and the Friday booking you asked me to move is now on Monday. Anything first?' }}
+  args={{
+    greeting:
+      'Good morning, Ana. You have three bookings today (10:00 Luis Paredes, 12:30 Marta Ríos, 16:00 a new contact from Instagram), one invoice twelve days overdue, two stock items under their minimum, and the Friday booking you asked me to move is now on Monday. Anything first?',
+  }}
 />
 
 <Story name="Narrow host">

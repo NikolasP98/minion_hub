@@ -5,7 +5,14 @@
   const sellable = (i, over = {}) => ({
     productId: `p${i}`,
     code: `SKU-${100 + i}`,
-    name: ['Botox 3 zones', 'HA filler 1 ml', 'Chemical peel', 'Laser session', 'Consultation', 'Sunscreen SPF50'][i % 6],
+    name: [
+      'Botox 3 zones',
+      'HA filler 1 ml',
+      'Chemical peel',
+      'Laser session',
+      'Consultation',
+      'Sunscreen SPF50',
+    ][i % 6],
     category: 'Treatments',
     unitPrice: [1200, 890, 350, 600, 150, 95][i % 6],
     active: true,
@@ -44,22 +51,40 @@
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
-<Story name="With discount" args={{ lines: [line(0, { discount: '100' }), line(1, { qty: '2', discount: '50.5' }), line(2)] }}>
+<Story
+  name="With discount"
+  args={{ lines: [line(0, { discount: '100' }), line(1, { qty: '2', discount: '50.5' }), line(2)] }}
+>
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
 <Story
   name="Large totals"
-  args={{ lines: [line(0, { qty: '999', unitPrice: '1234567.89' }), line(1, { qty: '1', unitPrice: '999999999' })] }}
+  args={{
+    lines: [
+      line(0, { qty: '999', unitPrice: '1234567.89' }),
+      line(1, { qty: '1', unitPrice: '999999999' }),
+    ],
+  }}
 >
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Missing price (blocks checkout)" args={{ lines: [line(0, { unitPrice: null, sellable: sellable(0, { unitPrice: null }) }), line(1)] }}>
+<Story
+  name="Missing price (blocks checkout)"
+  args={{
+    lines: [line(0, { unitPrice: null, sellable: sellable(0, { unitPrice: null }) }), line(1)],
+  }}
+>
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Invalid drafts" args={{ lines: [line(0, { qty: 'abc' }), line(1, { discount: '-5' }), line(2, { unitPrice: '1,2,3' })] }}>
+<Story
+  name="Invalid drafts"
+  args={{
+    lines: [line(0, { qty: 'abc' }), line(1, { discount: '-5' }), line(2, { unitPrice: '1,2,3' })],
+  }}
+>
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
@@ -76,11 +101,17 @@
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Read only (payment summary)" args={{ readOnly: true, lines: [line(0, { qty: '2' }), line(1, { discount: '40' }), line(2)] }}>
+<Story
+  name="Read only (payment summary)"
+  args={{ readOnly: true, lines: [line(0, { qty: '2' }), line(1, { discount: '40' }), line(2)] }}
+>
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Price locked (no override)" args={{ settings: { allowPriceOverride: false }, lines: lines(2) }}>
+<Story
+  name="Price locked (no override)"
+  args={{ settings: { allowPriceOverride: false }, lines: lines(2) }}
+>
   {#snippet template(args)}<div class="w-80"><SellCart {...args} /></div>{/snippet}
 </Story>
 
@@ -88,7 +119,11 @@
   name="Long names"
   args={{
     lines: [
-      line(0, { sellable: sellable(0, { name: 'Tratamiento combinado de rejuvenecimiento facial con ácido hialurónico y bioestimuladores (protocolo completo)' }) }),
+      line(0, {
+        sellable: sellable(0, {
+          name: 'Tratamiento combinado de rejuvenecimiento facial con ácido hialurónico y bioestimuladores (protocolo completo)',
+        }),
+      }),
     ],
   }}
 >
@@ -96,6 +131,10 @@
 </Story>
 
 <!-- Responsive: the cart fills its host; names truncate, totals stay on one line. -->
-<Story name="Many lines · Phone" args={{ lines: lines(15) }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Many lines · Phone"
+  args={{ lines: lines(15) }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}<div class="w-full"><SellCart {...args} /></div>{/snippet}
 </Story>

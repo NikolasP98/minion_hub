@@ -8,7 +8,13 @@
 
   // Status comes from global connection state; each story seeds it in `play`.
   // Non-admin page data so the fleet-update poll never fires.
-  const host = { id: 'gw-1', name: 'netcup-prd', url: 'wss://gw.example.com', lastConnectedAt: Date.now() - 5 * 60000, channel: 'prd' };
+  const host = {
+    id: 'gw-1',
+    name: 'netcup-prd',
+    url: 'wss://gw.example.com',
+    lastConnectedAt: Date.now() - 5 * 60000,
+    channel: 'prd',
+  };
   const seed = (state) => async () => {
     hostsState.activeHostId = 'gw-1';
     conn.connected = false;
@@ -28,14 +34,27 @@
     tags: ['autodocs'],
     parameters: {
       docs: { story: { inline: false, height: '220px' } },
-      sveltekit_experimental: { state: { page: { data: { user: { id: 'u-1', role: 'user' }, hosts: { servers: [host] } } } } },
+      sveltekit_experimental: {
+        state: {
+          page: { data: { user: { id: 'u-1', role: 'user' }, hosts: { servers: [host] } } },
+        },
+      },
     },
-    argTypes: { panel: { control: 'select', options: ['below', 'above'] }, popoverEnabled: { control: 'boolean' } },
+    argTypes: {
+      panel: { control: 'select', options: ['below', 'above'] },
+      popoverEnabled: { control: 'boolean' },
+    },
     args: { open: true, panel: 'below', popoverEnabled: true },
   });
 </script>
 
-<Story name="Connected" play={seed({ conn: { connected: true, connectedAt: Date.now() - 3600000 }, hello: { snapshot: { uptimeMs: 86400000 * 3 }, server: { version: '2026.11.1' } } })}>
+<Story
+  name="Connected"
+  play={seed({
+    conn: { connected: true, connectedAt: Date.now() - 3600000 },
+    hello: { snapshot: { uptimeMs: 86400000 * 3 }, server: { version: '2026.11.1' } },
+  })}
+>
   {#snippet template(args)}
     <div class="p-4 pl-6"><ConnectionStatusIndicator {...args} /></div>
   {/snippet}
@@ -53,19 +72,38 @@
   {/snippet}
 </Story>
 
-<Story name="Disconnected (error)" play={seed({ conn: { connectError: 'Gateway unreachable', connectErrorHint: 'Check the server is running and the token is valid.' } })}>
+<Story
+  name="Disconnected (error)"
+  play={seed({
+    conn: {
+      connectError: 'Gateway unreachable',
+      connectErrorHint: 'Check the server is running and the token is valid.',
+    },
+  })}
+>
   {#snippet template(args)}
     <div class="p-4 pl-6"><ConnectionStatusIndicator {...args} /></div>
   {/snippet}
 </Story>
 
-<Story name="Panel above (sidebar footer)" args={{ panel: 'above' }} play={seed({ conn: { connected: true, connectedAt: Date.now() - 120000 }, hello: { snapshot: { uptimeMs: 3600000 } } })}>
+<Story
+  name="Panel above (sidebar footer)"
+  args={{ panel: 'above' }}
+  play={seed({
+    conn: { connected: true, connectedAt: Date.now() - 120000 },
+    hello: { snapshot: { uptimeMs: 3600000 } },
+  })}
+>
   {#snippet template(args)}
     <div class="p-4 pt-48 pl-6"><ConnectionStatusIndicator {...args} /></div>
   {/snippet}
 </Story>
 
-<Story name="Dot only (closed)" args={{ open: false }} play={seed({ conn: { connected: true, connectedAt: Date.now() } })}>
+<Story
+  name="Dot only (closed)"
+  args={{ open: false }}
+  play={seed({ conn: { connected: true, connectedAt: Date.now() } })}
+>
   {#snippet template(args)}
     <div class="p-4 pl-6"><ConnectionStatusIndicator {...args} /></div>
   {/snippet}

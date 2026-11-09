@@ -39,10 +39,36 @@ export const unknown: SubagentSession = { key: key('orphan'), updatedAt: null };
 /** root → child-a → grandchild → great-grandchild (3 levels of nesting). */
 export const nested: SubagentSession[] = [
   { ...running, key: key('root'), label: 'planner: Plan the spring launch', spawnDepth: 0 },
-  { ...running, key: key('child-a'), label: 'researcher: Market sizing', spawnDepth: 1, spawnedBy: key('root'), updatedAt: now - 40_000 },
-  { ...completed, key: key('child-b'), label: 'writer: Draft the brief', spawnDepth: 1, spawnedBy: key('root') },
-  { ...running, key: key('grandchild'), label: 'researcher: Pull SUNAT tariff tables', spawnDepth: 2, spawnedBy: key('child-a'), updatedAt: now - 5_000 },
-  { ...failed, key: key('great-grandchild'), label: 'ops: Fetch the PDF', spawnDepth: 3, spawnedBy: key('grandchild') },
+  {
+    ...running,
+    key: key('child-a'),
+    label: 'researcher: Market sizing',
+    spawnDepth: 1,
+    spawnedBy: key('root'),
+    updatedAt: now - 40_000,
+  },
+  {
+    ...completed,
+    key: key('child-b'),
+    label: 'writer: Draft the brief',
+    spawnDepth: 1,
+    spawnedBy: key('root'),
+  },
+  {
+    ...running,
+    key: key('grandchild'),
+    label: 'researcher: Pull SUNAT tariff tables',
+    spawnDepth: 2,
+    spawnedBy: key('child-a'),
+    updatedAt: now - 5_000,
+  },
+  {
+    ...failed,
+    key: key('great-grandchild'),
+    label: 'ops: Fetch the PDF',
+    spawnDepth: 3,
+    spawnedBy: key('grandchild'),
+  },
 ];
 
 export const many: SubagentSession[] = Array.from({ length: 20 }, (_, i) => ({
@@ -63,7 +89,11 @@ export const piEntries: SubagentEntry[] = nested.map((s, i) => ({
   model: s.model ?? null,
   orchestrationId: i < 3 ? 'orch-launch' : null,
   spawnDepth: s.spawnDepth ?? 0,
-  status: s.abortedLastRun ? 'failed' : (s.updatedAt ?? 0) > now - 300_000 ? 'running' : 'completed',
+  status: s.abortedLastRun
+    ? 'failed'
+    : (s.updatedAt ?? 0) > now - 300_000
+      ? 'running'
+      : 'completed',
   inputTokens: 12_000 * (i + 1),
   outputTokens: 900 * (i + 1),
   spawnedBy: s.spawnedBy ?? null,

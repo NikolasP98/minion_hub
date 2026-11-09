@@ -24,11 +24,19 @@
   {#snippet template(args)}<div class="w-80"><EditableName {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Long name (truncates)" args={{ value: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría y Sánchez de Lozada' }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><EditableName {...args} /></div>{/snippet}
+<Story
+  name="Long name (truncates)"
+  args={{ value: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría y Sánchez de Lozada' }}
+>
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <EditableName {...args} />
+    </div>{/snippet}
 </Story>
 
-<Story name="Slow commit (pending indicator)" args={{ onCommit: () => new Promise((r) => setTimeout(() => r(true), 2500)) }}>
+<Story
+  name="Slow commit (pending indicator)"
+  args={{ onCommit: () => new Promise((r) => setTimeout(() => r(true), 2500)) }}
+>
   {#snippet template(args)}<div class="w-80"><EditableName {...args} /></div>{/snippet}
 </Story>
 
@@ -36,6 +44,13 @@
   {#snippet template(args)}<div class="w-80"><EditableName {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Commit throws" args={{ onCommit: async () => { throw new Error('Network down'); } }}>
+<Story
+  name="Commit throws"
+  args={{
+    onCommit: async () => {
+      throw new Error('Network down');
+    },
+  }}
+>
   {#snippet template(args)}<div class="w-80"><EditableName {...args} /></div>{/snippet}
 </Story>

@@ -9,9 +9,9 @@
     argTypes: {
       pressed: { control: 'boolean' },
       size: { control: 'select', options: ['sm', 'md', 'touch'] },
-      disabled: { control: 'boolean' }
+      disabled: { control: 'boolean' },
     },
-    args: { label: 'Notifications', pressed: false, size: 'md', disabled: false }
+    args: { label: 'Notifications', pressed: false, size: 'md', disabled: false },
   });
 </script>
 

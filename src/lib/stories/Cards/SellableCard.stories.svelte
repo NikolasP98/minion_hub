@@ -29,43 +29,115 @@
 <!-- The component owns no box: the host card is simulated here. -->
 <Story name="Product, all fields">
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
-<Story name="Service" args={{ row: { ...product, name: 'Botox 3 zones', code: 'BTX-3', kind: 'service', stockQty: null, unitPrice: 1200, category: 'Treatments' } }}>
+<Story
+  name="Service"
+  args={{
+    row: {
+      ...product,
+      name: 'Botox 3 zones',
+      code: 'BTX-3',
+      kind: 'service',
+      stockQty: null,
+      unitPrice: 1200,
+      category: 'Treatments',
+    },
+  }}
+>
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
-<Story name="Bundle" args={{ row: { ...product, name: 'Glow pack (3 sessions)', code: 'PK-GLOW', kind: 'bundle', stockQty: null, unitPrice: 2500 } }}>
+<Story
+  name="Bundle"
+  args={{
+    row: {
+      ...product,
+      name: 'Glow pack (3 sessions)',
+      code: 'PK-GLOW',
+      kind: 'bundle',
+      stockQty: null,
+      unitPrice: 2500,
+    },
+  }}
+>
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Price only" args={{ fields: ['price'] }}>
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
 <Story
   name="Missing values (rows kept)"
-  args={{ row: { name: 'Mystery item', code: '', unitPrice: null, kind: 'product', stockQty: null, category: null, active: true, taxonomy: { zone: null, line: null } } }}
+  args={{
+    row: {
+      name: 'Mystery item',
+      code: '',
+      unitPrice: null,
+      kind: 'product',
+      stockQty: null,
+      category: null,
+      active: true,
+      taxonomy: { zone: null, line: null },
+    },
+  }}
 >
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
 <Story
   name="Missing values (hideEmpty)"
-  args={{ hideEmpty: true, row: { name: 'Mystery item', code: '', unitPrice: null, kind: 'product', stockQty: null, category: null, active: true, taxonomy: { zone: null, line: null } } }}
+  args={{
+    hideEmpty: true,
+    row: {
+      name: 'Mystery item',
+      code: '',
+      unitPrice: null,
+      kind: 'product',
+      stockQty: null,
+      category: null,
+      active: true,
+      taxonomy: { zone: null, line: null },
+    },
+  }}
 >
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
@@ -73,7 +145,9 @@
   {#snippet template(args)}
     <div class="flex gap-2">
       {#each [24, 5, 0] as stockQty (stockQty)}
-        <div class="w-40 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1">
+        <div
+          class="w-40 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+        >
           <SellableCard {...args} row={{ ...product, stockQty }} fields={['price', 'stock']} />
         </div>
       {/each}
@@ -83,7 +157,11 @@
 
 <Story name="Inactive" args={{ row: { ...product, active: false } }}>
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>
 
@@ -100,6 +178,10 @@
   }}
 >
   {#snippet template(args)}
-    <div class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"><SellableCard {...args} /></div>
+    <div
+      class="w-56 flex flex-col gap-1 p-3 border border-border rounded-[var(--radius-md)] bg-surface-1"
+    >
+      <SellableCard {...args} />
+    </div>
   {/snippet}
 </Story>

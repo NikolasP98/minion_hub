@@ -9,17 +9,23 @@
     { id: 'faces-clinic', name: 'Faces Clinic' },
   ];
   // Agent options come from the gateway list; agent + mode from the prompt-sections store.
-  const seed = (agentId, mode = 'full') => async () => {
-    gw.agents = agents;
-    promptSections.agentId = agentId;
-    promptSections.mode = mode;
-  };
+  const seed =
+    (agentId, mode = 'full') =>
+    async () => {
+      gw.agents = agents;
+      promptSections.agentId = agentId;
+      promptSections.mode = mode;
+    };
 
   const { Story } = defineMeta({
     title: 'Agents/PromptTopbarChip',
     component: PromptTopbarChip,
     tags: ['autodocs'],
-    parameters: { sveltekit_experimental: { state: { page: { url: new URL('http://localhost/prompt'), data: {} } } } },
+    parameters: {
+      sveltekit_experimental: {
+        state: { page: { url: new URL('http://localhost/prompt'), data: {} } },
+      },
+    },
   });
 </script>
 

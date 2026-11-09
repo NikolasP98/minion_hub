@@ -15,7 +15,16 @@
       disabled: { control: 'boolean' },
       tapToOpen: { control: 'boolean' },
     },
-    args: { label: 'Saves the record', placement: 'top', openDelay: 0, closeDelay: 100, interactive: false, bare: false, disabled: false, tapToOpen: false },
+    args: {
+      label: 'Saves the record',
+      placement: 'top',
+      openDelay: 0,
+      closeDelay: 100,
+      interactive: false,
+      bare: false,
+      disabled: false,
+      tapToOpen: false,
+    },
   });
 
   // Tooltips are hover-driven (no `open` prop): hover the trigger so docs show the panel.
@@ -64,7 +73,9 @@
           <p class="font-semibold text-foreground">Stock: 12 units</p>
           <p class="text-muted-foreground">3 reserved, 9 available</p>
         {/snippet}
-        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Hover for details</span>
+        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted"
+          >Hover for details</span
+        >
       </Tooltip>
     </div>
   {/snippet}
@@ -80,17 +91,26 @@
             <Button size="xs">Open</Button>
           </div>
         {/snippet}
-        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Hover card</span>
+        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Hover card</span
+        >
       </Tooltip>
     </div>
   {/snippet}
 </Story>
 
-<Story name="Long label" args={{ label: 'This tooltip label is long enough to wrap onto several lines, which the 280px max width handles by itself.' }} play={hover}>
+<Story
+  name="Long label"
+  args={{
+    label:
+      'This tooltip label is long enough to wrap onto several lines, which the 280px max width handles by itself.',
+  }}
+  play={hover}
+>
   {#snippet template(args)}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
-        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Long label</span>
+        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Long label</span
+        >
       </Tooltip>
     </div>
   {/snippet}
@@ -108,7 +128,10 @@
   {/snippet}
 </Story>
 
-<Story name="Tap to open (touch)" args={{ tapToOpen: true, label: 'Tap toggles on coarse pointers' }}>
+<Story
+  name="Tap to open (touch)"
+  args={{ tapToOpen: true, label: 'Tap toggles on coarse pointers' }}
+>
   {#snippet template(args)}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>

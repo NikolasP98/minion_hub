@@ -14,11 +14,21 @@
     title: 'Agents/PromptEmptyState',
     component: EmptyState,
     tags: ['autodocs'],
-    parameters: { sveltekit_experimental: { state: { page: { url: new URL('http://localhost/prompt'), data: {} } } } },
+    parameters: {
+      sveltekit_experimental: {
+        state: { page: { url: new URL('http://localhost/prompt'), data: {} } },
+      },
+    },
   });
 </script>
 
-<Story name="With agents to pick" play={seed([{ id: 'panik', name: 'Panik' }, { id: 'faces-clinic', name: 'Faces Clinic' }])}>
+<Story
+  name="With agents to pick"
+  play={seed([
+    { id: 'panik', name: 'Panik' },
+    { id: 'faces-clinic', name: 'Faces Clinic' },
+  ])}
+>
   {#snippet template()}<div class="w-[40rem] h-80 flex"><EmptyState /></div>{/snippet}
 </Story>
 

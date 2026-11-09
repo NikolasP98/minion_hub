@@ -16,7 +16,10 @@
   {#snippet template()}<EnvBadge />{/snippet}
 </Story>
 
-<Story name="PRD (local server on production backend)" parameters={env({ backend: 'prd', local: true })}>
+<Story
+  name="PRD (local server on production backend)"
+  parameters={env({ backend: 'prd', local: true })}
+>
   {#snippet template()}<EnvBadge />{/snippet}
 </Story>
 

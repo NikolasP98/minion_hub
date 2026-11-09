@@ -47,7 +47,16 @@
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Tomorrow with location recurring accepted" args={{ item: item(26 * 60, 60, { location: 'Clínica Faces, Av. Larco 1301, Miraflores', recurring: true, responseStatus: 'accepted' }) }}>
+<Story
+  name="Tomorrow with location recurring accepted"
+  args={{
+    item: item(26 * 60, 60, {
+      location: 'Clínica Faces, Av. Larco 1301, Miraflores',
+      recurring: true,
+      responseStatus: 'accepted',
+    }),
+  }}
+>
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>
 
@@ -63,11 +72,25 @@
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>
 
-<Story name="All day" args={{ item: { ...item(0, 0), startsAt: dayAt(0), endsAt: dayAt(1), isAllDay: true, title: 'Clinic closed · staff training' } }}>
+<Story
+  name="All day"
+  args={{
+    item: {
+      ...item(0, 0),
+      startsAt: dayAt(0),
+      endsAt: dayAt(1),
+      isAllDay: true,
+      title: 'Clinic closed · staff training',
+    },
+  }}
+>
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Shared account" args={{ item: item(90, 30, { shared: true, sharedOwnerName: 'Dra. Pérez' }) }}>
+<Story
+  name="Shared account"
+  args={{ item: item(90, 30, { shared: true, sharedOwnerName: 'Dra. Pérez' }) }}
+>
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>
 
@@ -75,6 +98,15 @@
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Long title and location" args={{ item: item(90, 30, { title: 'Quarterly review with the accountant about SUNAT electronic invoicing, payroll and the new lease', location: 'Estudio contable, piso 14, oficina 1402, Av. Javier Prado Este 4200, Surco' }) }}>
+<Story
+  name="Long title and location"
+  args={{
+    item: item(90, 30, {
+      title:
+        'Quarterly review with the accountant about SUNAT electronic invoicing, payroll and the new lease',
+      location: 'Estudio contable, piso 14, oficina 1402, Av. Javier Prado Este 4200, Surco',
+    }),
+  }}
+>
   {#snippet template(args)}<div class="w-80"><EventCard {...args} /></div>{/snippet}
 </Story>

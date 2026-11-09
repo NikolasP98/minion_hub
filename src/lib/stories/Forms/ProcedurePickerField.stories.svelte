@@ -28,7 +28,9 @@
 </Story>
 
 <Story name="Selected, long name" args={{ value: 'p5' }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><ProcedurePickerField {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <ProcedurePickerField {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="No products" args={{ products: [] }}>

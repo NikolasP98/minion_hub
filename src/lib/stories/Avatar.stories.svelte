@@ -7,7 +7,7 @@
     component: Avatar,
     tags: ['autodocs'],
     argTypes: { size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'touch'] } },
-    args: { name: 'Tenancy Owner', size: 'md' }
+    args: { name: 'Tenancy Owner', size: 'md' },
   });
 </script>
 
@@ -32,7 +32,10 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex items-center gap-3">
-      {#each ['xs', 'sm', 'md', 'lg', 'touch'] as s (s)}<Avatar name="Tenancy Owner" size={s} />{/each}
+      {#each ['xs', 'sm', 'md', 'lg', 'touch'] as s (s)}<Avatar
+          name="Tenancy Owner"
+          size={s}
+        />{/each}
     </div>
   {/snippet}
 </Story>

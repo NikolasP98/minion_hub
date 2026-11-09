@@ -9,14 +9,31 @@
     tags: ['autodocs'],
     parameters: {
       docs: { story: { inline: false, height: '160px' } },
-      sveltekit_experimental: { state: { page: { data: { user: { id: 'u-1', role: 'admin' }, permissions: { permissions: ['settings:manage'], roles: ['owner'] }, activeOrgKind: 'business' } } } },
+      sveltekit_experimental: {
+        state: {
+          page: {
+            data: {
+              user: { id: 'u-1', role: 'admin' },
+              permissions: { permissions: ['settings:manage'], roles: ['owner'] },
+              activeOrgKind: 'business',
+            },
+          },
+        },
+      },
     },
   });
 </script>
 
-<Story name="Armed (press g)" play={async ({ userEvent }) => { await userEvent.keyboard('g'); }}>
+<Story
+  name="Armed (press g)"
+  play={async ({ userEvent }) => {
+    await userEvent.keyboard('g');
+  }}
+>
   {#snippet template()}
-    <p class="text-sm text-muted-foreground">Press <kbd class="px-1 rounded bg-bg3 border border-border font-mono">g</kbd> then a letter.</p>
+    <p class="text-sm text-muted-foreground">
+      Press <kbd class="px-1 rounded bg-bg3 border border-border font-mono">g</kbd> then a letter.
+    </p>
     <GNav />
   {/snippet}
 </Story>
@@ -29,9 +46,17 @@
 </Story>
 
 <!-- Responsive: the chord bar is capped to the viewport width minus gutters and scrolls horizontally. -->
-<Story name="Armed (press g) · Phone" play={async ({ userEvent }) => { await userEvent.keyboard('g'); }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Armed (press g) · Phone"
+  play={async ({ userEvent }) => {
+    await userEvent.keyboard('g');
+  }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template()}
-    <p class="text-sm text-muted-foreground">Press <kbd class="px-1 rounded bg-bg3 border border-border font-mono">g</kbd> then a letter.</p>
+    <p class="text-sm text-muted-foreground">
+      Press <kbd class="px-1 rounded bg-bg3 border border-border font-mono">g</kbd> then a letter.
+    </p>
     <GNav />
   {/snippet}
 </Story>

@@ -32,7 +32,14 @@
   {/snippet}
 </Story>
 
-<Story name="No env badge (deployed prd)" parameters={{ sveltekit_experimental: { state: { page: { data: { ...pageData, env: { backend: 'prd', local: false } } } } } }}>
+<Story
+  name="No env badge (deployed prd)"
+  parameters={{
+    sveltekit_experimental: {
+      state: { page: { data: { ...pageData, env: { backend: 'prd', local: false } } } },
+    },
+  }}
+>
   {#snippet template(args)}
     <div class="w-56 surface-1 p-2"><SidebarUtilities {...args} /></div>
   {/snippet}

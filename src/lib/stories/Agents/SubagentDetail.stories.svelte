@@ -8,7 +8,13 @@
   // Reads the subagent + ui stores (no data props); each story seeds them. The Monitor tab
   // fetches the session's messages (fails here), so it lands on its error state.
   const seed = (selectedKey) => async () => {
-    Object.assign(subagentState, { agentId: AGENT_ID, sessions: [running, completed], selectedKey, loading: false, error: null });
+    Object.assign(subagentState, {
+      agentId: AGENT_ID,
+      sessions: [running, completed],
+      selectedKey,
+      loading: false,
+      error: null,
+    });
     ui.selectedAgentId = AGENT_ID;
     ui.selectedServerId = null;
   };

@@ -38,10 +38,17 @@
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatInput {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Narrow host" args={{ value: 'A draft in a 280 px column that has to wrap over several lines' }}>
+<Story
+  name="Narrow host"
+  args={{ value: 'A draft in a 280 px column that has to wrap over several lines' }}
+>
   {#snippet template(args)}<div class="w-70"><ChatInput {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Typed · Phone" args={{ value: 'Move the Friday booking to Monday' }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Typed · Phone"
+  args={{ value: 'Move the Friday booking to Monday' }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}<div class="w-full"><ChatInput {...args} /></div>{/snippet}
 </Story>

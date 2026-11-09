@@ -9,8 +9,19 @@
   const node = (id, data, x = 0, y = 0) => ({ id, type: 'org', position: { x, y }, data });
   const flow = (nodes, edges = []) => ({ nodes, edges });
 
-  const root = { name: 'Nikolas Petrov', role: 'ceo', status: 'active', title: 'Founder', isRoot: true };
-  const agent = { name: 'Front desk agent', role: 'customer_support', status: 'running', adapterType: 'claude-code' };
+  const root = {
+    name: 'Nikolas Petrov',
+    role: 'ceo',
+    status: 'active',
+    title: 'Founder',
+    isRoot: true,
+  };
+  const agent = {
+    name: 'Front desk agent',
+    role: 'customer_support',
+    status: 'running',
+    adapterType: 'claude-code',
+  };
 
   const { Story } = defineMeta({
     title: 'Cards/OrgChartNode',
@@ -35,7 +46,14 @@
   {#snippet template()}
     <div class="h-64 w-full">
       <SvelteFlow
-        nodes={['active', 'running', 'paused', 'error', 'idle', 'unknown'].map((status, i) => node(status, { ...agent, name: `Agent ${status}`, status }, (i % 3) * 250, Math.floor(i / 3) * 120))}
+        nodes={['active', 'running', 'paused', 'error', 'idle', 'unknown'].map((status, i) =>
+          node(
+            status,
+            { ...agent, name: `Agent ${status}`, status },
+            (i % 3) * 250,
+            Math.floor(i / 3) * 120,
+          ),
+        )}
         {nodeTypes}
         fitView
       />
@@ -48,8 +66,15 @@
     <div class="h-48 w-full">
       <SvelteFlow
         nodes={[
-          node('ok', { ...agent, avatarUrl: 'https://api.dicebear.com/9.x/bottts/svg?seed=minion' }),
-          node('broken', { ...agent, name: 'Broken avatar', avatarUrl: 'https://invalid.local/x.png' }, 250),
+          node('ok', {
+            ...agent,
+            avatarUrl: 'https://api.dicebear.com/9.x/bottts/svg?seed=minion',
+          }),
+          node(
+            'broken',
+            { ...agent, name: 'Broken avatar', avatarUrl: 'https://invalid.local/x.png' },
+            250,
+          ),
         ]}
         {nodeTypes}
         fitView
@@ -62,8 +87,15 @@
   {#snippet template()}
     <div class="h-80 w-full">
       <SvelteFlow
-        nodes={[node('r', root, 125, 0), node('a', agent, 0, 140), node('b', { ...agent, name: 'Billing agent', role: 'finance', status: 'idle' }, 250, 140)]}
-        edges={[{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }]}
+        nodes={[
+          node('r', root, 125, 0),
+          node('a', agent, 0, 140),
+          node('b', { ...agent, name: 'Billing agent', role: 'finance', status: 'idle' }, 250, 140),
+        ]}
+        edges={[
+          { id: 'ra', source: 'r', target: 'a' },
+          { id: 'rb', source: 'r', target: 'b' },
+        ]}
         {nodeTypes}
         fitView
       />
@@ -78,9 +110,17 @@
         nodes={[
           node('r', { ...root, orientation: 'horizontal' }, 0, 60),
           node('a', { ...agent, orientation: 'horizontal' }, 300, 0),
-          node('b', { ...agent, name: 'Billing agent', role: 'finance', orientation: 'horizontal' }, 300, 120),
+          node(
+            'b',
+            { ...agent, name: 'Billing agent', role: 'finance', orientation: 'horizontal' },
+            300,
+            120,
+          ),
         ]}
-        edges={[{ id: 'ra', source: 'r', target: 'a' }, { id: 'rb', source: 'r', target: 'b' }]}
+        edges={[
+          { id: 'ra', source: 'r', target: 'a' },
+          { id: 'rb', source: 'r', target: 'b' },
+        ]}
         {nodeTypes}
         fitView
       />
@@ -92,7 +132,14 @@
   {#snippet template()}
     <div class="h-48 w-full">
       <SvelteFlow
-        nodes={[node('l', { name: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría', role: 'chief_customer_experience_officer', status: 'active', adapterType: 'openai-codex-very-long-adapter-name' })]}
+        nodes={[
+          node('l', {
+            name: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría',
+            role: 'chief_customer_experience_officer',
+            status: 'active',
+            adapterType: 'openai-codex-very-long-adapter-name',
+          }),
+        ]}
         {nodeTypes}
         fitView
       />

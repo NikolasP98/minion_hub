@@ -33,6 +33,15 @@
   {#snippet template(args)}<div class="w-72 bg-bg"><SubagentCard {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Long label" args={{ session: { ...running, label: 'researcher: Compare every dental supplier in Lima by price, delivery time and whether they issue electronic invoices' } }}>
+<Story
+  name="Long label"
+  args={{
+    session: {
+      ...running,
+      label:
+        'researcher: Compare every dental supplier in Lima by price, delivery time and whether they issue electronic invoices',
+    },
+  }}
+>
   {#snippet template(args)}<div class="w-72 bg-bg"><SubagentCard {...args} /></div>{/snippet}
 </Story>

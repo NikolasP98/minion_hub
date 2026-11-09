@@ -6,11 +6,20 @@
   // mocked page carries an admin with every scheduling grant.
   const pageData = {
     user: { role: 'admin' },
-    permissions: { permissions: ['scheduling:view', 'scheduling:create', 'scheduling:update', 'scheduling:delete'] },
+    permissions: {
+      permissions: [
+        'scheduling:view',
+        'scheduling:create',
+        'scheduling:update',
+        'scheduling:delete',
+      ],
+    },
     activeOrgKind: 'business',
   };
   const at = (pathname: string) => ({
-    sveltekit_experimental: { state: { page: { url: new URL(`http://localhost${pathname}`), data: pageData } } },
+    sveltekit_experimental: {
+      state: { page: { url: new URL(`http://localhost${pathname}`), data: pageData } },
+    },
   });
 
   const { Story } = defineMeta({
@@ -26,5 +35,9 @@
 <Story name="Bookings active" parameters={at('/scheduling/bookings')} />
 <Story
   name="Viewer (no page data)"
-  parameters={{ sveltekit_experimental: { state: { page: { url: new URL('http://localhost/scheduling'), data: {} } } } }}
+  parameters={{
+    sveltekit_experimental: {
+      state: { page: { url: new URL('http://localhost/scheduling'), data: {} } },
+    },
+  }}
 />

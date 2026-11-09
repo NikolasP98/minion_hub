@@ -12,14 +12,25 @@
   });
 </script>
 
-<Story name="Welcome (no agent selected)" play={async () => { ui.selectedAgentId = null; }}>
+<Story
+  name="Welcome (no agent selected)"
+  play={async () => {
+    ui.selectedAgentId = null;
+  }}
+>
   {#snippet template()}
     <div class="h-[520px] flex surface-1"><DetailPanel /></div>
   {/snippet}
 </Story>
 
 <!-- Responsive: the panel fills its host width. -->
-<Story name="Welcome (no agent selected) · Phone" play={async () => { ui.selectedAgentId = null; }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Welcome (no agent selected) · Phone"
+  play={async () => {
+    ui.selectedAgentId = null;
+  }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template()}
     <div class="h-[520px] flex surface-1"><DetailPanel /></div>
   {/snippet}

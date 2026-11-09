@@ -15,7 +15,10 @@
   };
   const steps = [
     { target: 'demo.new', message: 'Click "New booking" to open the form.' },
-    { target: 'demo.name', message: 'Type the contact name here. The field auto-advances once you type.' },
+    {
+      target: 'demo.name',
+      message: 'Type the contact name here. The field auto-advances once you type.',
+    },
     { target: 'demo.save', message: 'Save. That is the whole flow.' },
   ];
 
@@ -27,7 +30,9 @@
 </script>
 
 {#snippet page()}
-  <div class="flex h-96 w-full max-w-xl flex-col gap-4 rounded-lg border border-border-default bg-canvas p-6">
+  <div
+    class="flex h-96 w-full max-w-xl flex-col gap-4 rounded-lg border border-border-default bg-canvas p-6"
+  >
     <div class="flex items-center justify-between">
       <h2 class="t-heading">Bookings</h2>
       <Button size="sm" data-assist="demo.new">New booking</Button>
@@ -56,13 +61,34 @@
 
 <Story name="Waiting for a target not on screen">
   {#snippet template()}
-    <div {@attach start([{ target: 'demo.missing', message: 'Open the drawer first — this element is not mounted yet.' }])}>{@render page()}<AssistGuide /></div>
+    <div
+      {@attach start([
+        {
+          target: 'demo.missing',
+          message: 'Open the drawer first — this element is not mounted yet.',
+        },
+      ])}
+    >
+      {@render page()}<AssistGuide />
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Long message">
   {#snippet template()}
-    <div {@attach start([{ target: 'demo.name', message: 'The contact field accepts a name, a phone number or a document id. Start typing and pick from the suggestions; if the contact does not exist yet, press Enter to create it inline without leaving the booking form. '.repeat(2) }])}>{@render page()}<AssistGuide /></div>
+    <div
+      {@attach start([
+        {
+          target: 'demo.name',
+          message:
+            'The contact field accepts a name, a phone number or a document id. Start typing and pick from the suggestions; if the contact does not exist yet, press Enter to create it inline without leaving the booking form. '.repeat(
+              2,
+            ),
+        },
+      ])}
+    >
+      {@render page()}<AssistGuide />
+    </div>
   {/snippet}
 </Story>
 

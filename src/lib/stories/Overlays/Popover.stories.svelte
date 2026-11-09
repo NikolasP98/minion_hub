@@ -63,7 +63,9 @@
     <div class="p-8">
       <Popover {...args} open={true}>
         {#snippet trigger()}<span class={triggerCls}>Bare panel</span>{/snippet}
-        <div class="surface-4 rounded-[var(--radius-lg)] p-4 text-sm shadow-lg">Child brings its own surface.</div>
+        <div class="surface-4 rounded-[var(--radius-lg)] p-4 text-sm shadow-lg">
+          Child brings its own surface.
+        </div>
       </Popover>
     </div>
   {/snippet}

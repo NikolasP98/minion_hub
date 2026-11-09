@@ -14,7 +14,11 @@
     openShifts: [],
     openerName: null,
   };
-  const data = (d) => ({ sveltekit_experimental: { state: { page: { data: { ...base, ...d }, url: new URL('http://localhost/pos/sell') } } } });
+  const data = (d) => ({
+    sveltekit_experimental: {
+      state: { page: { data: { ...base, ...d }, url: new URL('http://localhost/pos/sell') } },
+    },
+  });
 
   const { Story } = defineMeta({
     title: 'Navigation/PosNav',
@@ -36,7 +40,13 @@
   {/snippet}
 </Story>
 
-<Story name="Member permissions" parameters={data({ user: { id: 'u-2', role: 'user' }, permissions: { permissions: ['pos:sell'], roles: ['staff'] } })}>
+<Story
+  name="Member permissions"
+  parameters={data({
+    user: { id: 'u-2', role: 'user' },
+    permissions: { permissions: ['pos:sell'], roles: ['staff'] },
+  })}
+>
   {#snippet template()}
     <div class="w-56 h-[480px] flex surface-1"><PosNav /></div>
   {/snippet}

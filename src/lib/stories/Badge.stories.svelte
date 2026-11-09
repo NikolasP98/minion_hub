@@ -10,13 +10,24 @@
       variant: { control: 'select', options: ['semantic', 'status', 'neutral'] },
       value: {
         control: 'select',
-        options: ['success', 'error', 'warning', 'info', 'accent', 'brand', 'running', 'thinking', 'idle', 'aborted']
+        options: [
+          'success',
+          'error',
+          'warning',
+          'info',
+          'accent',
+          'brand',
+          'running',
+          'thinking',
+          'idle',
+          'aborted',
+        ],
       },
       size: { control: 'select', options: ['sm', 'md'] },
       dot: { control: 'boolean' },
-      pulse: { control: 'boolean' }
+      pulse: { control: 'boolean' },
     },
-    args: { variant: 'semantic', value: 'success', size: 'md', dot: false, pulse: false }
+    args: { variant: 'semantic', value: 'success', size: 'md', dot: false, pulse: false },
   });
 
   const semantic = ['success', 'error', 'warning', 'info', 'accent', 'brand'];

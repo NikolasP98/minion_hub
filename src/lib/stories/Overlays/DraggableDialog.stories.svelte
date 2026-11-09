@@ -56,7 +56,10 @@
   {/snippet}
 </Story>
 
-<Story name="Long title" args={{ title: 'A very long window title that truncates once it runs out of room in the bar' }}>
+<Story
+  name="Long title"
+  args={{ title: 'A very long window title that truncates once it runs out of room in the bar' }}
+>
   {#snippet template(args)}
     <DraggableDialog {...args}>
       <div class="p-4 text-sm">Title truncates.</div>

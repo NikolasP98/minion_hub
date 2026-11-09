@@ -3,7 +3,20 @@
   import { fn } from 'storybook/test';
   import Chart from '$lib/components/charts/Chart.svelte';
 
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
   const sales = [120, 200, 150, 80, 70, 110, 130, 180, 210, 160, 140, 190];
   const returns = [20, 35, 18, 12, 9, 22, 25, 30, 41, 28, 19, 33];
   const axis = { xAxis: { type: 'category', data: months }, yAxis: { type: 'value' } };
@@ -83,7 +96,13 @@
       series: [
         { type: 'line', name: 'Cash', stack: 'all', areaStyle: {}, data: sales },
         { type: 'line', name: 'Card', stack: 'all', areaStyle: {}, data: returns },
-        { type: 'line', name: 'Transfer', stack: 'all', areaStyle: {}, data: sales.map((v) => v / 3) },
+        {
+          type: 'line',
+          name: 'Transfer',
+          stack: 'all',
+          areaStyle: {},
+          data: sales.map((v) => v / 3),
+        },
       ],
     },
     notMergeUpdate: false,
@@ -165,7 +184,13 @@
 
 <Story
   name="Empty data"
-  args={{ options: { xAxis: { type: 'category', data: [] }, yAxis: { type: 'value' }, series: [{ type: 'line', data: [] }] } }}
+  args={{
+    options: {
+      xAxis: { type: 'category', data: [] },
+      yAxis: { type: 'value' },
+      series: [{ type: 'line', data: [] }],
+    },
+  }}
 >
   {#snippet template(args)}<Chart {...args} />{/snippet}
 </Story>
@@ -239,11 +264,18 @@
   {#snippet template(args)}<Chart {...args} />{/snippet}
 </Story>
 
-<Story name="Tall" args={{ height: '480px', options: { ...axis, series: [{ type: 'line', data: sales }] } }}>
+<Story
+  name="Tall"
+  args={{ height: '480px', options: { ...axis, series: [{ type: 'line', data: sales }] } }}
+>
   {#snippet template(args)}<Chart {...args} />{/snippet}
 </Story>
 
 <!-- Responsive: ECharts resizes with its host; the accessible table alternative scrolls horizontally. -->
-<Story name="Line · Phone" args={{ options: { ...axis, series: [{ type: 'line', data: sales }] } }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Line · Phone"
+  args={{ options: { ...axis, series: [{ type: 'line', data: sales }] } }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}<Chart {...args} />{/snippet}
 </Story>

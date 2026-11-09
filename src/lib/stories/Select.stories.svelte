@@ -5,7 +5,7 @@
   const options = [
     { value: 'a', label: 'Option A' },
     { value: 'b', label: 'Option B' },
-    { value: 'c', label: 'Option C', disabled: true }
+    { value: 'c', label: 'Option C', disabled: true },
   ];
 
   const { Story } = defineMeta({
@@ -16,9 +16,9 @@
       size: { control: 'select', options: ['sm', 'md', 'lg', 'touch'] },
       disabled: { control: 'boolean' },
       error: { control: 'text' },
-      helper: { control: 'text' }
+      helper: { control: 'text' },
     },
-    args: { label: 'Choose', options, value: 'a', size: 'md', disabled: false }
+    args: { label: 'Choose', options, value: 'a', size: 'md', disabled: false },
   });
 </script>
 

@@ -7,7 +7,11 @@
 
   // The list reads the subagent store (no data props); each story seeds it.
   const seed = (sessions, patch) => async () => {
-    Object.assign(subagentState, { agentId: AGENT_ID, sessions, selectedKey: null, loading: false, error: null }, patch);
+    Object.assign(
+      subagentState,
+      { agentId: AGENT_ID, sessions, selectedKey: null, loading: false, error: null },
+      patch,
+    );
     piAgentState.subagents = [];
     piAgentState.orchestrations = [];
   };

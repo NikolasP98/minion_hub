@@ -6,11 +6,19 @@
   import { AGENT_ID, nested, many, piEntries, orchestration } from './subagent-fixtures';
 
   // Reads the subagent + pi-agent stores (no data props); each story seeds them.
-  const seed = (sessions, entries = [], orchs = []) => async () => {
-    Object.assign(subagentState, { agentId: AGENT_ID, sessions, selectedKey: null, loading: false, error: null });
-    piAgentState.subagents = entries;
-    piAgentState.orchestrations = orchs;
-  };
+  const seed =
+    (sessions, entries = [], orchs = []) =>
+    async () => {
+      Object.assign(subagentState, {
+        agentId: AGENT_ID,
+        sessions,
+        selectedKey: null,
+        loading: false,
+        error: null,
+      });
+      piAgentState.subagents = entries;
+      piAgentState.orchestrations = orchs;
+    };
 
   const { Story } = defineMeta({
     title: 'Agents/SubagentTree',

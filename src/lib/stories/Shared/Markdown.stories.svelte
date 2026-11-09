@@ -94,8 +94,10 @@ You are a support agent for a small clinic.
 3. Escalate anything about payments.
 `;
 
-  const LONG = Array.from({ length: 12 }, (_, i) =>
-    `## Section ${i + 1}\n\nParagraph ${i + 1}. ${'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(4)}\n\n- point a\n- point b\n`,
+  const LONG = Array.from(
+    { length: 12 },
+    (_, i) =>
+      `## Section ${i + 1}\n\nParagraph ${i + 1}. ${'Lorem ipsum dolor sit amet, consectetur adipiscing elit. '.repeat(4)}\n\n- point a\n- point b\n`,
   ).join('\n');
 
   const { Story } = defineMeta({
@@ -133,11 +135,19 @@ You are a support agent for a small clinic.
 
 <Story name="Long document" args={{ value: LONG }}>
   {#snippet template(args)}
-    <div class="max-w-3xl h-96 overflow-auto rounded-md border border-border p-3"><MarkdownView {...args} /></div>
+    <div class="max-w-3xl h-96 overflow-auto rounded-md border border-border p-3">
+      <MarkdownView {...args} />
+    </div>
   {/snippet}
 </Story>
 
-<Story name="Raw HTML is sanitized" args={{ value: 'Text before <script>alert(1)</script><img src=x onerror="alert(1)"> text after.\n\n<b>Allowed inline HTML</b> stays.' }}>
+<Story
+  name="Raw HTML is sanitized"
+  args={{
+    value:
+      'Text before <script>alert(1)</script><img src=x onerror="alert(1)"> text after.\n\n<b>Allowed inline HTML</b> stays.',
+  }}
+>
   {#snippet template(args)}
     <div class="max-w-3xl"><MarkdownView {...args} /></div>
   {/snippet}
@@ -145,6 +155,8 @@ You are a support agent for a small clinic.
 
 <Story name="Empty" args={{ value: '' }}>
   {#snippet template(args)}
-    <div class="max-w-3xl rounded-md border border-dashed border-border p-3"><MarkdownView {...args} /></div>
+    <div class="max-w-3xl rounded-md border border-dashed border-border p-3">
+      <MarkdownView {...args} />
+    </div>
   {/snippet}
 </Story>

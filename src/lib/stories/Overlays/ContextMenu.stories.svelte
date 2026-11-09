@@ -26,8 +26,20 @@
   ];
 
   const choices = [
-    { id: 'color-service', label: 'Colour by service', icon: Palette, selection: 'radio', checked: true },
-    { id: 'color-staff', label: 'Colour by staff', icon: Palette, selection: 'radio', checked: false },
+    {
+      id: 'color-service',
+      label: 'Colour by service',
+      icon: Palette,
+      selection: 'radio',
+      checked: true,
+    },
+    {
+      id: 'color-staff',
+      label: 'Colour by staff',
+      icon: Palette,
+      selection: 'radio',
+      checked: false,
+    },
     { id: 'show-price', label: 'Show price', icon: Eye, selection: 'checkbox', checked: true },
     { id: 'show-notes', label: 'Show notes', icon: Eye, selection: 'checkbox', checked: false },
   ];

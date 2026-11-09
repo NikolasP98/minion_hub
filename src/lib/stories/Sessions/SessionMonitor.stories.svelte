@@ -10,17 +10,47 @@
   const result = (id, content) => ({ type: 'tool_result', tool_use_id: id, content });
   const completedRun = [
     { role: 'user', content: 'Find last week’s invoices and total them', timestamp: t0 },
-    { role: 'assistant', content: [{ type: 'text', text: 'Searching…' }, use('tu1', 'search_invoices', { range: 'last_week' })], timestamp: t0 + 1_200 },
+    {
+      role: 'assistant',
+      content: [
+        { type: 'text', text: 'Searching…' },
+        use('tu1', 'search_invoices', { range: 'last_week' }),
+      ],
+      timestamp: t0 + 1_200,
+    },
     { role: 'user', content: [result('tu1', '[12 invoices]')], timestamp: t0 + 4_100 },
-    { role: 'assistant', content: [use('tu2', 'bash', { cmd: 'sum amounts' }), use('tu3', 'read_file', { path: 'rates.json' })], timestamp: t0 + 4_500 },
-    { role: 'user', content: [result('tu2', 'S/ 4,812.30'), result('tu3', '{"igv":0.18}')], timestamp: t0 + 9_800 },
-    { role: 'assistant', content: [use('tu4', 'web_search', { q: 'tipo de cambio SUNAT' })], timestamp: t0 + 10_000 },
+    {
+      role: 'assistant',
+      content: [
+        use('tu2', 'bash', { cmd: 'sum amounts' }),
+        use('tu3', 'read_file', { path: 'rates.json' }),
+      ],
+      timestamp: t0 + 4_500,
+    },
+    {
+      role: 'user',
+      content: [result('tu2', 'S/ 4,812.30'), result('tu3', '{"igv":0.18}')],
+      timestamp: t0 + 9_800,
+    },
+    {
+      role: 'assistant',
+      content: [use('tu4', 'web_search', { q: 'tipo de cambio SUNAT' })],
+      timestamp: t0 + 10_000,
+    },
     { role: 'user', content: [result('tu4', 'x'.repeat(4000))], timestamp: t0 + 18_000 },
-    { role: 'assistant', content: [{ type: 'text', text: 'Total: S/ 4,812.30' }], timestamp: t0 + 19_000 },
+    {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Total: S/ 4,812.30' }],
+      timestamp: t0 + 19_000,
+    },
   ];
   const runningRun = [
     { role: 'user', content: 'Reconcile the cash drawer', timestamp: t0 + 60_000 },
-    { role: 'assistant', content: [use('tu9', 'mcp__supabase__execute_sql', { sql: 'select…' })], timestamp: t0 + 61_000 },
+    {
+      role: 'assistant',
+      content: [use('tu9', 'mcp__supabase__execute_sql', { sql: 'select…' })],
+      timestamp: t0 + 61_000,
+    },
   ];
 
   // The main session reads agentChat; any other key is fetched (fails here → error state).
@@ -49,10 +79,20 @@
   {#snippet template(args)}<div class="w-[36rem] h-96"><SessionMonitor {...args} /></div>{/snippet}
 </Story>
 
-<Story name="No tool calls" play={seed([{ role: 'user', content: 'hi', timestamp: t0 }, { role: 'assistant', content: 'Hello', timestamp: t0 + 500 }])}>
+<Story
+  name="No tool calls"
+  play={seed([
+    { role: 'user', content: 'hi', timestamp: t0 },
+    { role: 'assistant', content: 'Hello', timestamp: t0 + 500 },
+  ])}
+>
   {#snippet template(args)}<div class="w-[36rem] h-96"><SessionMonitor {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Other session fetch fails" args={{ sessionKey: `agent:${AGENT}:whatsapp:dm:+51999888777` }} play={seed([])}>
+<Story
+  name="Other session fetch fails"
+  args={{ sessionKey: `agent:${AGENT}:whatsapp:dm:+51999888777` }}
+  play={seed([])}
+>
   {#snippet template(args)}<div class="w-[36rem] h-96"><SessionMonitor {...args} /></div>{/snippet}
 </Story>

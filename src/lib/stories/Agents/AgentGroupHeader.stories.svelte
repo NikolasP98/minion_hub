@@ -3,14 +3,28 @@
   import { fn } from 'storybook/test';
   import AgentGroupHeader from '$lib/components/agents/AgentGroupHeader.svelte';
 
-  const group = { id: 'g1', name: 'Clinic front desk', sortOrder: 0, memberAgentIds: ['panik', 'faces-clinic', 'reminders'] };
+  const group = {
+    id: 'g1',
+    name: 'Clinic front desk',
+    sortOrder: 0,
+    memberAgentIds: ['panik', 'faces-clinic', 'reminders'],
+  };
 
   const { Story } = defineMeta({
     title: 'Agents/AgentGroupHeader',
     component: AgentGroupHeader,
     tags: ['autodocs'],
     argTypes: { collapsed: { control: 'boolean' } },
-    args: { group, collapsed: false, onToggle: fn(), onRename: fn(), onDelete: fn(), onDrop: fn(), onDragOver: fn(), onDragLeave: fn() },
+    args: {
+      group,
+      collapsed: false,
+      onToggle: fn(),
+      onRename: fn(),
+      onDelete: fn(),
+      onDrop: fn(),
+      onDragOver: fn(),
+      onDragLeave: fn(),
+    },
   });
 
   // Double-click the name to enter rename mode.
@@ -31,7 +45,10 @@
   {#snippet template(args)}<div class="w-64 bg-bg2"><AgentGroupHeader {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Long name" args={{ group: { ...group, name: 'Everything that touches billing, SUNAT and the accountant' } }}>
+<Story
+  name="Long name"
+  args={{ group: { ...group, name: 'Everything that touches billing, SUNAT and the accountant' } }}
+>
   {#snippet template(args)}<div class="w-64 bg-bg2"><AgentGroupHeader {...args} /></div>{/snippet}
 </Story>
 

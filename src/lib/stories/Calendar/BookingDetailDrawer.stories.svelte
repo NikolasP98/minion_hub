@@ -32,4 +32,8 @@
 <Story name="Open, read-only" args={{ bookingId: 'b-404', canEdit: false, onpay: undefined }} />
 
 <!-- Responsive: the drawer takes the full width on a phone; the actions row stacks below a 30rem container. -->
-<Story name="Open (fetch fails) · Phone" args={{ bookingId: 'b-404' }} globals={{ viewport: { value: 'phone', isRotated: false } }} />
+<Story
+  name="Open (fetch fails) · Phone"
+  args={{ bookingId: 'b-404' }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>

@@ -9,7 +9,14 @@
     component: TranscribeButton,
     tags: ['autodocs'],
     argTypes: { compact: { control: 'boolean' }, allowTab: { control: 'boolean' } },
-    args: { onfinal: fn(), oninterim: fn(), onpolish: fn(), ondiscard: fn(), hasPending: () => false, detectedLang: () => null },
+    args: {
+      onfinal: fn(),
+      oninterim: fn(),
+      onpolish: fn(),
+      ondiscard: fn(),
+      hasPending: () => false,
+      detectedLang: () => null,
+    },
   });
 </script>
 

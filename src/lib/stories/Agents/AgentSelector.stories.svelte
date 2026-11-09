@@ -10,16 +10,22 @@
     { id: 'reminders', name: 'Reminders' },
   ];
   // Options come from the gateway agent list and the selection from the prompt-sections store.
-  const seed = (list, agentId = null) => async () => {
-    gw.agents = list;
-    promptSections.agentId = agentId;
-  };
+  const seed =
+    (list, agentId = null) =>
+    async () => {
+      gw.agents = list;
+      promptSections.agentId = agentId;
+    };
 
   const { Story } = defineMeta({
     title: 'Agents/AgentSelector',
     component: AgentSelector,
     tags: ['autodocs'],
-    parameters: { sveltekit_experimental: { state: { page: { url: new URL('http://localhost/prompt'), data: {} } } } },
+    parameters: {
+      sveltekit_experimental: {
+        state: { page: { url: new URL('http://localhost/prompt'), data: {} } },
+      },
+    },
   });
 </script>
 

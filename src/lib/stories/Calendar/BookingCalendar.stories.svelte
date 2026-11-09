@@ -12,7 +12,15 @@
   // Lima = UTC-5, no DST: a fixed week so the grid renders the same every time.
   const TZ = 'America/Lima';
   const MON = '2026-09-07';
-  const DAYS = ['2026-09-07', '2026-09-08', '2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12', '2026-09-13'];
+  const DAYS = [
+    '2026-09-07',
+    '2026-09-08',
+    '2026-09-09',
+    '2026-09-10',
+    '2026-09-11',
+    '2026-09-12',
+    '2026-09-13',
+  ];
 
   const resources: CalendarResource[] = [
     { id: 'r-ana', name: 'Ana Quispe', color: 'var(--color-info-border)' },
@@ -21,7 +29,12 @@
   ];
   const eventTypes = [
     { id: 'et-cons', title: 'Consultation', color: null, kindId: 'k-clinic' },
-    { id: 'et-clean', title: 'Deep cleaning and whitening session', color: null, kindId: 'k-clinic' },
+    {
+      id: 'et-clean',
+      title: 'Deep cleaning and whitening session',
+      color: null,
+      kindId: 'k-clinic',
+    },
     { id: 'et-fup', title: 'Follow-up', color: null, kindId: 'k-admin' },
   ];
   const kinds = [
@@ -36,7 +49,9 @@
   /** `hh:mm` local → UTC ISO instant (Lima is UTC-5). */
   function iso(day: string, hhmm: string, plusMin = 0): string {
     const [h, m] = hhmm.split(':').map(Number);
-    const d = new Date(Date.UTC(2026, Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), h + 5, m + plusMin));
+    const d = new Date(
+      Date.UTC(2026, Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)), h + 5, m + plusMin),
+    );
     return d.toISOString();
   }
   let seq = 0;
@@ -63,7 +78,11 @@
 
   const week: CalendarBooking[] = [
     booking(DAYS[0], '09:00', 45, { attendeeName: 'Carla Mendoza' }),
-    booking(DAYS[0], '09:30', 60, { resourceId: 'r-luis', attendeeName: 'Jorge', status: 'pending' }),
+    booking(DAYS[0], '09:30', 60, {
+      resourceId: 'r-luis',
+      attendeeName: 'Jorge',
+      status: 'pending',
+    }),
     booking(DAYS[0], '09:45', 30, { attendeeName: 'Overlap A', status: 'completed' }),
     booking(DAYS[1], '10:00', 90, {
       resourceId: 'r-luis',
@@ -71,28 +90,70 @@
       attendeeName: 'María Fernanda Rodríguez Villanueva-Salazar',
       tags: [{ id: 't-vip', name: 'VIP', color: 'var(--color-warning-border)', origin: 'own' }],
     }),
-    booking(DAYS[1], '14:00', 15, { resourceId: 'r-mar', attendeeName: 'Li', eventTypeId: 'et-fup' }),
+    booking(DAYS[1], '14:00', 15, {
+      resourceId: 'r-mar',
+      attendeeName: 'Li',
+      eventTypeId: 'et-fup',
+    }),
     booking(DAYS[2], '11:00', 45, { status: 'no_show', attendeeName: 'Pedro Castillo' }),
-    booking(DAYS[2], '11:00', 45, { resourceId: 'r-mar', status: 'cancelled', attendeeName: 'Cancelled slot' }),
-    booking(DAYS[3], '08:00', 120, { resourceId: 'r-luis', status: 'rejected', attendeeName: null }),
-    booking(DAYS[3], '16:00', 60, { attendeeName: 'Group visit 1/2', groupId: 'g1', groupSeq: 1, groupLength: 2 }),
-    booking(DAYS[3], '17:00', 30, { attendeeName: 'Group visit 2/2', groupId: 'g1', groupSeq: 2, groupLength: 2, eventTypeId: 'et-fup' }),
-    booking(DAYS[4], '12:00', 45, { attendeeName: 'Paid visit', paid: true, tickets: [{ id: 'tk1', humanId: 'F001-000123' }] }),
-    booking(DAYS[5], '10:00', 240, { resourceId: 'r-mar', attendeeName: 'Long block (4 h)', eventTypeId: 'et-clean' }),
+    booking(DAYS[2], '11:00', 45, {
+      resourceId: 'r-mar',
+      status: 'cancelled',
+      attendeeName: 'Cancelled slot',
+    }),
+    booking(DAYS[3], '08:00', 120, {
+      resourceId: 'r-luis',
+      status: 'rejected',
+      attendeeName: null,
+    }),
+    booking(DAYS[3], '16:00', 60, {
+      attendeeName: 'Group visit 1/2',
+      groupId: 'g1',
+      groupSeq: 1,
+      groupLength: 2,
+    }),
+    booking(DAYS[3], '17:00', 30, {
+      attendeeName: 'Group visit 2/2',
+      groupId: 'g1',
+      groupSeq: 2,
+      groupLength: 2,
+      eventTypeId: 'et-fup',
+    }),
+    booking(DAYS[4], '12:00', 45, {
+      attendeeName: 'Paid visit',
+      paid: true,
+      tickets: [{ id: 'tk1', humanId: 'F001-000123' }],
+    }),
+    booking(DAYS[5], '10:00', 240, {
+      resourceId: 'r-mar',
+      attendeeName: 'Long block (4 h)',
+      eventTypeId: 'et-clean',
+    }),
   ];
 
   /** 60 bookings over the week, three per hour on Ana + Luis. */
   const dense: CalendarBooking[] = DAYS.slice(0, 5).flatMap((day) =>
     [8, 9, 10, 11, 12, 14, 15, 16, 17, 18].flatMap((h) => [
       booking(day, `${String(h).padStart(2, '0')}:00`, 30, { attendeeName: `Slot ${h}:00` }),
-      booking(day, `${String(h).padStart(2, '0')}:15`, 45, { resourceId: 'r-luis', attendeeName: `Overlap ${h}:15`, status: h % 2 ? 'pending' : 'accepted' }),
+      booking(day, `${String(h).padStart(2, '0')}:15`, 45, {
+        resourceId: 'r-luis',
+        attendeeName: `Overlap ${h}:15`,
+        status: h % 2 ? 'pending' : 'accepted',
+      }),
     ]),
   );
 
   // Working hours: Mon–Fri 09:00–18:00 for Ana, Mon–Sat 10:00–20:00 for Luis, Mar unscheduled.
   const hours: Record<string, Partial<Record<number, [number, number]>>> = {
     'r-ana': { 1: [540, 1080], 2: [540, 1080], 3: [540, 1080], 4: [540, 1080], 5: [540, 1080] },
-    'r-luis': { 1: [600, 1200], 2: [600, 1200], 3: [600, 1200], 4: [600, 1200], 5: [600, 1200], 6: [600, 1200] },
+    'r-luis': {
+      1: [600, 1200],
+      2: [600, 1200],
+      3: [600, 1200],
+      4: [600, 1200],
+      5: [600, 1200],
+      6: [600, 1200],
+    },
   };
 
   const invoices: CalendarInvoice[] = [
@@ -206,7 +267,13 @@
     oncolorby: undefined,
     onweekdays: undefined,
     onsubby: undefined,
-    features: { kebab: false, createDrag: false, createDblClick: false, merge: false, datePicker: false },
+    features: {
+      kebab: false,
+      createDrag: false,
+      createDblClick: false,
+      merge: false,
+      datePicker: false,
+    },
   }}
 />
 
@@ -215,6 +282,13 @@
 <!-- Responsive: toolbar controls grow to touch size below 768px; day columns squeeze and truncate. -->
 <Story name="Week populated · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }} />
 
-<Story name="Week populated · Tablet" globals={{ viewport: { value: 'tablet', isRotated: false } }} />
+<Story
+  name="Week populated · Tablet"
+  globals={{ viewport: { value: 'tablet', isRotated: false } }}
+/>
 
-<Story name="Day view · Phone" args={{ view: 'day' }} globals={{ viewport: { value: 'phone', isRotated: false } }} />
+<Story
+  name="Day view · Phone"
+  args={{ view: 'day' }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>

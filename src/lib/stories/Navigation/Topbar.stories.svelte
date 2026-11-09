@@ -8,7 +8,9 @@
     permissions: { permissions: ['settings:manage', 'users:manage'], roles: ['owner'] },
     activeOrgKind: 'business',
     activeOrgId: 'org-1',
-    organizations: [{ id: 'org-1', name: 'Faces Lima', slug: 'faces', role: 'owner', kind: 'business' }],
+    organizations: [
+      { id: 'org-1', name: 'Faces Lima', slug: 'faces', role: 'owner', kind: 'business' },
+    ],
     hosts: { servers: [], channels: [] },
     workspaces: [],
     env: { backend: 'dev' },
@@ -31,7 +33,12 @@
   {/snippet}
 </Story>
 
-<Story name="Menu open" play={async ({ canvas, userEvent }) => { await userEvent.click(canvas.getByRole('button', { name: 'Toggle menu' })); }}>
+<Story
+  name="Menu open"
+  play={async ({ canvas, userEvent }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Toggle menu' }));
+  }}
+>
   {#snippet template()}
     <div class="surface-1 h-[640px]"><Topbar /></div>
   {/snippet}

@@ -7,7 +7,11 @@
     title: 'Sessions/FeedCard',
     component: FeedCard,
     tags: ['autodocs'],
-    args: { title: 'Ana Torres asked to move her Thursday cleaning', subtitle: 'WhatsApp · 12 min ago', icon: '💬' },
+    args: {
+      title: 'Ana Torres asked to move her Thursday cleaning',
+      subtitle: 'WhatsApp · 12 min ago',
+      icon: '💬',
+    },
   });
 </script>
 
@@ -30,7 +34,8 @@
 <Story
   name="Long title"
   args={{
-    title: 'The supplier confirmed the composite resin order but the delivery date moved to the week after next and they want a deposit before dispatch',
+    title:
+      'The supplier confirmed the composite resin order but the delivery date moved to the week after next and they want a deposit before dispatch',
     subtitle: 'Email · from compras@proveedor-ejemplo.pe · yesterday',
     onopen: fn(),
     ondismiss: fn(),

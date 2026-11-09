@@ -29,21 +29,29 @@
     title: 'Cards/KanbanCol',
     component: KanbanCol,
     tags: ['autodocs'],
-    argTypes: { status: { control: 'select', options: ['backlog', 'todo', 'in_progress', 'done'] } },
+    argTypes: {
+      status: { control: 'select', options: ['backlog', 'todo', 'in_progress', 'done'] },
+    },
     args: { status: 'todo', label: 'To do', onDropTask: fn() },
   });
 </script>
 
 <Story name="Empty" args={{ tasks: [] }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><KanbanCol {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <KanbanCol {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="One card" args={{ tasks: many('todo', 1) }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><KanbanCol {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <KanbanCol {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Twelve cards (scrolls)" args={{ tasks: many('todo', 12) }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><KanbanCol {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <KanbanCol {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story
@@ -52,15 +60,24 @@
     tasks: [
       {
         id: 'l1',
-        title: 'Call every patient booked for next Tuesday to confirm the new address and parking instructions',
-        description: 'Includes the three walk-ins from last week who left no email address at the desk',
+        title:
+          'Call every patient booked for next Tuesday to confirm the new address and parking instructions',
+        description:
+          'Includes the three walk-ins from last week who left no email address at the desk',
         status: 'todo',
       },
-      { id: 'l2', title: 'Supercalifragilisticexpialidocious-unbreakable-identifier-0001', description: null, status: 'todo' },
+      {
+        id: 'l2',
+        title: 'Supercalifragilisticexpialidocious-unbreakable-identifier-0001',
+        description: null,
+        status: 'todo',
+      },
     ],
   }}
 >
-  {#snippet template(args)}<div class="w-64 border border-border"><KanbanCol {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <KanbanCol {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Board (four columns)">
@@ -68,7 +85,12 @@
     <div class="grid grid-cols-4 border border-border">
       <KanbanCol {...args} status="backlog" label="Backlog" tasks={many('backlog', 3)} />
       <KanbanCol {...args} status="todo" label="To do" tasks={many('todo', 5)} />
-      <KanbanCol {...args} status="in_progress" label="In progress" tasks={many('in_progress', 2)} />
+      <KanbanCol
+        {...args}
+        status="in_progress"
+        label="In progress"
+        tasks={many('in_progress', 2)}
+      />
       <KanbanCol {...args} status="done" label="Done" tasks={[]} />
     </div>
   {/snippet}

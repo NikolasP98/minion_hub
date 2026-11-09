@@ -4,7 +4,12 @@
   import FeedCard from '$lib/components/my-agent/FeedCard.svelte';
 
   const items = Array.from({ length: 12 }, (_, i) => ({
-    title: ['Ana Torres asked to move her cleaning', 'Supplier confirmed the resin order', 'Reminder bounced for +51 999 888 777', 'New review on Google Maps'][i % 4],
+    title: [
+      'Ana Torres asked to move her cleaning',
+      'Supplier confirmed the resin order',
+      'Reminder bounced for +51 999 888 777',
+      'New review on Google Maps',
+    ][i % 4],
     subtitle: `${(i + 1) * 7} min ago`,
   }));
 
@@ -12,8 +17,19 @@
     title: 'Sessions/FeedSection',
     component: FeedSection,
     tags: ['autodocs'],
-    argTypes: { scrollable: { control: 'boolean' }, collapsible: { control: 'boolean' }, collapsed: { control: 'boolean' } },
-    args: { label: 'Inbox', count: 3, scrollable: false, collapsible: false, collapsed: false, providers: [] },
+    argTypes: {
+      scrollable: { control: 'boolean' },
+      collapsible: { control: 'boolean' },
+      collapsed: { control: 'boolean' },
+    },
+    args: {
+      label: 'Inbox',
+      count: 3,
+      scrollable: false,
+      collapsible: false,
+      collapsed: false,
+      providers: [],
+    },
   });
 </script>
 

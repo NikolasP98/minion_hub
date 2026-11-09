@@ -3,7 +3,7 @@
   import AiReasoning from '$lib/components/ai/AiReasoning.svelte';
 
   const text =
-    'The user asks for next week\'s bookings. I should call bookings.search with a date range rather than listing everything, then group by resource so the answer reads as a schedule.';
+    "The user asks for next week's bookings. I should call bookings.search with a date range rather than listing everything, then group by resource so the answer reads as a schedule.";
   const long = Array.from(
     { length: 18 },
     (_, i) =>

@@ -5,9 +5,34 @@
 
   const now = Date.now();
   const templates = [
-    { name: 'researcher', description: 'Reads the web and the docs, returns a sourced brief.', tags: ['read-only'], model: 'claude-sonnet-4-5', source: 'bundled', version: '1.4.0', spawnCount: 212, lastUsedAt: now - 4 * 60_000 },
-    { name: 'writer', description: 'Turns a brief into customer-facing copy in Spanish.', tags: ['copy', 'es'], model: 'claude-haiku-4-5', source: 'workspace', spawnCount: 87, lastUsedAt: now - 3 * 3_600_000 },
-    { name: 'ops-verifier-for-the-netcup-deploy-pipeline', description: 'Checks a deploy end to end.', tags: [], model: null, source: 'workspace', spawnCount: 0, lastUsedAt: null },
+    {
+      name: 'researcher',
+      description: 'Reads the web and the docs, returns a sourced brief.',
+      tags: ['read-only'],
+      model: 'claude-sonnet-4-5',
+      source: 'bundled',
+      version: '1.4.0',
+      spawnCount: 212,
+      lastUsedAt: now - 4 * 60_000,
+    },
+    {
+      name: 'writer',
+      description: 'Turns a brief into customer-facing copy in Spanish.',
+      tags: ['copy', 'es'],
+      model: 'claude-haiku-4-5',
+      source: 'workspace',
+      spawnCount: 87,
+      lastUsedAt: now - 3 * 3_600_000,
+    },
+    {
+      name: 'ops-verifier-for-the-netcup-deploy-pipeline',
+      description: 'Checks a deploy end to end.',
+      tags: [],
+      model: null,
+      source: 'workspace',
+      spawnCount: 0,
+      lastUsedAt: null,
+    },
   ];
 
   // No loader in the component; each story seeds the pi-agent store directly.

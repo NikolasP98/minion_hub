@@ -16,10 +16,12 @@
   };
 
   // Selection + kill/steer read the stores; reset them per story.
-  const seed = (selectedKey = null, entries = []) => async () => {
-    subagentState.selectedKey = selectedKey;
-    piAgentState.subagents = entries;
-  };
+  const seed =
+    (selectedKey = null, entries = []) =>
+    async () => {
+      subagentState.selectedKey = selectedKey;
+      piAgentState.subagents = entries;
+    };
 
   const { Story } = defineMeta({
     title: 'Agents/SubagentTreeNode',
@@ -41,7 +43,11 @@
   {#snippet template(args)}<div class="w-96 bg-bg"><SubagentTreeNode {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Selected at depth two" args={{ node: leaf(nested[3]), depth: 2 }} play={seed(nested[3].key)}>
+<Story
+  name="Selected at depth two"
+  args={{ node: leaf(nested[3]), depth: 2 }}
+  play={seed(nested[3].key)}
+>
   {#snippet template(args)}<div class="w-96 bg-bg"><SubagentTreeNode {...args} /></div>{/snippet}
 </Story>
 

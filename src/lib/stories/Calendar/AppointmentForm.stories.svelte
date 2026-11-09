@@ -4,8 +4,26 @@
   import AppointmentForm from '$lib/components/scheduling/AppointmentForm.svelte';
 
   const eventTypes = [
-    { id: 'et-cons', title: 'Consultation', productId: 'p-cons', resourceIds: ['r-ana', 'r-luis'], length: 30, price: 120, currency: 'PEN', active: true },
-    { id: 'et-clean', title: 'Deep cleaning and whitening session', productId: 'p-clean', resourceIds: ['r-ana'], length: 90, price: 480.5, currency: 'PEN', active: true },
+    {
+      id: 'et-cons',
+      title: 'Consultation',
+      productId: 'p-cons',
+      resourceIds: ['r-ana', 'r-luis'],
+      length: 30,
+      price: 120,
+      currency: 'PEN',
+      active: true,
+    },
+    {
+      id: 'et-clean',
+      title: 'Deep cleaning and whitening session',
+      productId: 'p-clean',
+      resourceIds: ['r-ana'],
+      length: 90,
+      price: 480.5,
+      currency: 'PEN',
+      active: true,
+    },
     { id: 'et-fup', title: 'Follow-up', productId: null, length: 15, price: null, active: true },
     { id: 'et-old', title: 'Retired service', productId: null, length: 30, active: false },
   ];
@@ -21,7 +39,11 @@
     component: AppointmentForm,
     tags: ['autodocs'],
     parameters: {
-      sveltekit_experimental: { state: { page: { data: { permissions: { permissions: ['pos:create', 'scheduling:create'] } } } } },
+      sveltekit_experimental: {
+        state: {
+          page: { data: { permissions: { permissions: ['pos:create', 'scheduling:create'] } } },
+        },
+      },
     },
     args: {
       eventTypes,
@@ -38,9 +60,35 @@
 <Story name="Blank" />
 <Story
   name="Prefilled slot + customer"
-  args={{ initialDate: '2026-09-08', initialTime: '10:30', initialResourceId: 'r-ana', initialEventTypeId: 'et-cons', initialCustomerName: 'María Fernanda Rodríguez Villanueva', initialPhone: '+51 987 654 321', initialPartyId: 'party-1' }}
+  args={{
+    initialDate: '2026-09-08',
+    initialTime: '10:30',
+    initialResourceId: 'r-ana',
+    initialEventTypeId: 'et-cons',
+    initialCustomerName: 'María Fernanda Rodríguez Villanueva',
+    initialPhone: '+51 987 654 321',
+    initialPartyId: 'party-1',
+  }}
 />
-<Story name="Locked customer" args={{ initialCustomerName: 'Jorge Paredes', initialPartyId: 'party-2', lockCustomer: true, initialDate: '2026-09-08' }} />
-<Story name="Multi-service" args={{ multiService: true, initialEventTypeId: 'et-cons', extraEventTypeIds: ['et-clean', 'et-fup'], initialDate: '2026-09-08', initialTime: '09:00', initialResourceId: 'r-ana' }} />
+<Story
+  name="Locked customer"
+  args={{
+    initialCustomerName: 'Jorge Paredes',
+    initialPartyId: 'party-2',
+    lockCustomer: true,
+    initialDate: '2026-09-08',
+  }}
+/>
+<Story
+  name="Multi-service"
+  args={{
+    multiService: true,
+    initialEventTypeId: 'et-cons',
+    extraEventTypeIds: ['et-clean', 'et-fup'],
+    initialDate: '2026-09-08',
+    initialTime: '09:00',
+    initialResourceId: 'r-ana',
+  }}
+/>
 <Story name="Cannot book" args={{ canBook: false, initialEventTypeId: 'et-cons' }} />
 <Story name="No services configured" args={{ eventTypes: [] }} />

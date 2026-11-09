@@ -4,8 +4,24 @@
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
-  const names = ['VIP', 'new', 'follow-up', 'allergy', 'no-show risk', 'wholesale', 'student', 'referral', 'promo-2026', 'lapsed'];
-  const tags = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''), color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length] }));
+  const names = [
+    'VIP',
+    'new',
+    'follow-up',
+    'allergy',
+    'no-show risk',
+    'wholesale',
+    'student',
+    'referral',
+    'promo-2026',
+    'lapsed',
+  ];
+  const tags = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
+      color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
+    }));
   const ids = (n) => Array.from({ length: n }, (_, i) => `t${i}`);
 
   const { Story } = defineMeta({
@@ -31,7 +47,9 @@
 </Story>
 
 <Story name="Twenty selected (wraps)" args={{ allTags: tags(20), value: ids(20) }}>
-  {#snippet template(args)}<div class="w-80 border border-border"><TagsField {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-80 border border-border">
+      <TagsField {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Disabled" args={{ value: ids(2), disabled: true }}>
@@ -54,7 +72,10 @@
   {#snippet template(args)}<div class="w-80"><TagsField {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Slow save" args={{ value: ids(1), onchange: () => new Promise((r) => setTimeout(r, 2500)) }}>
+<Story
+  name="Slow save"
+  args={{ value: ids(1), onchange: () => new Promise((r) => setTimeout(r, 2500)) }}
+>
   {#snippet template(args)}<div class="w-80"><TagsField {...args} /></div>{/snippet}
 </Story>
 
@@ -63,6 +84,12 @@
 </Story>
 
 <!-- Responsive: chips wrap to the host width. -->
-<Story name="Twenty selected (wraps) · Phone" args={{ allTags: tags(20), value: ids(20) }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
-  {#snippet template(args)}<div class="w-full border border-border"><TagsField {...args} /></div>{/snippet}
+<Story
+  name="Twenty selected (wraps) · Phone"
+  args={{ allTags: tags(20), value: ids(20) }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
+  {#snippet template(args)}<div class="w-full border border-border">
+      <TagsField {...args} />
+    </div>{/snippet}
 </Story>

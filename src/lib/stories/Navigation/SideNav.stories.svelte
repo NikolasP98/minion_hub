@@ -1,7 +1,16 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
-  import { Home, Users, Calendar, Package, Wallet, Settings, BarChart3, Inbox } from 'lucide-svelte';
+  import {
+    Home,
+    Users,
+    Calendar,
+    Package,
+    Wallet,
+    Settings,
+    BarChart3,
+    Inbox,
+  } from 'lucide-svelte';
   import SideNav from '$lib/components/ui/SideNav.svelte';
 
   const flat = [
@@ -16,7 +25,13 @@
   const grouped = [
     { label: 'Flows', items: flat.slice(0, 4) },
     { label: 'Setup', adminOnly: true, items: flat.slice(4) },
-    { label: 'Reports', items: [{ id: 'reports', label: 'Daily report', icon: BarChart3, href: '#r' }, { id: 'inbox', label: 'Inbox', icon: Inbox, badge: '99+' }] },
+    {
+      label: 'Reports',
+      items: [
+        { id: 'reports', label: 'Daily report', icon: BarChart3, href: '#r' },
+        { id: 'inbox', label: 'Inbox', icon: Inbox, badge: '99+' },
+      ],
+    },
   ];
 
   const nested = [
@@ -41,7 +56,14 @@
     component: SideNav,
     tags: ['autodocs'],
     argTypes: { dividers: { control: 'boolean' }, leftBorder: { control: 'boolean' } },
-    args: { items: flat, activeId: 'customers', ariaLabel: 'Example nav', dividers: true, leftBorder: false, onSelect: fn() },
+    args: {
+      items: flat,
+      activeId: 'customers',
+      ariaLabel: 'Example nav',
+      dividers: true,
+      leftBorder: false,
+      onSelect: fn(),
+    },
   });
 </script>
 
@@ -75,31 +97,50 @@
   {/snippet}
 </Story>
 
-<Story name="With search" args={{ items: many, activeId: 'item-2', search: { enabled: true, placeholder: 'Filter sections' }, searchQuery: 'alpha' }}>
+<Story
+  name="With search"
+  args={{
+    items: many,
+    activeId: 'item-2',
+    search: { enabled: true, placeholder: 'Filter sections' },
+    searchQuery: 'alpha',
+  }}
+>
   {#snippet template(args)}
     <div class="w-56 h-80 flex surface-1"><SideNav {...args} /></div>
   {/snippet}
 </Story>
 
-<Story name="Header + footer" args={{ header: 'Point of sale', items: grouped, activeId: 'calendar' }}>
+<Story
+  name="Header + footer"
+  args={{ header: 'Point of sale', items: grouped, activeId: 'calendar' }}
+>
   {#snippet template(args)}
     <div class="w-56 h-96 flex surface-1">
       <SideNav {...args}>
         {#snippet footer()}
-          <div class="p-2 text-xs text-muted-foreground border-t border-[var(--hairline)]">Shift open since 09:00</div>
+          <div class="p-2 text-xs text-muted-foreground border-t border-[var(--hairline)]">
+            Shift open since 09:00
+          </div>
         {/snippet}
       </SideNav>
     </div>
   {/snippet}
 </Story>
 
-<Story name="Left-border indicator" args={{ leftBorder: true, items: grouped, activeId: 'customers' }}>
+<Story
+  name="Left-border indicator"
+  args={{ leftBorder: true, items: grouped, activeId: 'customers' }}
+>
   {#snippet template(args)}
     <div class="w-56 h-96 flex surface-1"><SideNav {...args} /></div>
   {/snippet}
 </Story>
 
-<Story name="Buttons (no href, onSelect)" args={{ items: flat.map(({ href, ...i }) => i), activeId: 'calendar' }}>
+<Story
+  name="Buttons (no href, onSelect)"
+  args={{ items: flat.map(({ href, ...i }) => i), activeId: 'calendar' }}
+>
   {#snippet template(args)}
     <div class="w-56 h-80 flex surface-1"><SideNav {...args} /></div>
   {/snippet}
@@ -118,13 +159,21 @@
 </Story>
 
 <!-- Responsive: labels and headers show from xl (1280px); below that the nav is a 56px icon rail. -->
-<Story name="Grouped · Phone" args={{ items: grouped, activeId: 'stock' }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Grouped · Phone"
+  args={{ items: grouped, activeId: 'stock' }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}
     <div class="h-96 flex surface-1"><SideNav {...args} /></div>
   {/snippet}
 </Story>
 
-<Story name="Grouped · Tablet" args={{ items: grouped, activeId: 'stock' }} globals={{ viewport: { value: 'tablet', isRotated: false } }}>
+<Story
+  name="Grouped · Tablet"
+  args={{ items: grouped, activeId: 'stock' }}
+  globals={{ viewport: { value: 'tablet', isRotated: false } }}
+>
   {#snippet template(args)}
     <div class="h-96 flex surface-1"><SideNav {...args} /></div>
   {/snippet}

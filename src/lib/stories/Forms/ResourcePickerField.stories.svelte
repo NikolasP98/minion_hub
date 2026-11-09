@@ -8,7 +8,12 @@
     { id: 'r3', name: 'Ana Torres', kind: 'staff', email: null },
     { id: 'r4', name: 'On vacation', kind: 'staff', email: 'away@example.com', active: false },
     { id: 'r5', name: 'Room 1', kind: 'room' },
-    { id: 'r6', name: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría', kind: 'staff', email: 'max@example.com' },
+    {
+      id: 'r6',
+      name: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría',
+      kind: 'staff',
+      email: 'max@example.com',
+    },
   ];
 
   const { Story } = defineMeta({
@@ -36,13 +41,28 @@
 </Story>
 
 <Story name="Long name" args={{ value: ['r6'] }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><ResourcePickerField {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <ResourcePickerField {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="No staff (rooms only)" args={{ resources: [resources[4]] }}>
   {#snippet template(args)}<div class="w-80"><ResourcePickerField {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Forty members, twenty selected" args={{ resources: Array.from({ length: 40 }, (_, i) => ({ id: `m${i}`, name: `Member ${i + 1}`, kind: 'staff', email: `m${i}@example.com` })), value: Array.from({ length: 20 }, (_, i) => `m${i}`) }}>
-  {#snippet template(args)}<div class="w-80 border border-border"><ResourcePickerField {...args} /></div>{/snippet}
+<Story
+  name="Forty members, twenty selected"
+  args={{
+    resources: Array.from({ length: 40 }, (_, i) => ({
+      id: `m${i}`,
+      name: `Member ${i + 1}`,
+      kind: 'staff',
+      email: `m${i}@example.com`,
+    })),
+    value: Array.from({ length: 20 }, (_, i) => `m${i}`),
+  }}
+>
+  {#snippet template(args)}<div class="w-80 border border-border">
+      <ResourcePickerField {...args} />
+    </div>{/snippet}
 </Story>

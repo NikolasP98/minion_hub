@@ -88,7 +88,12 @@
     <div class="max-w-xs">
       <Combobox {...args}>
         {#snippet item({ item, selected, itemTextProps })}
-          <span {...itemTextProps} class="flex w-full items-center justify-between gap-3 px-2 py-1 text-sm {selected ? 'text-accent' : 'text-foreground'}">
+          <span
+            {...itemTextProps}
+            class="flex w-full items-center justify-between gap-3 px-2 py-1 text-sm {selected
+              ? 'text-accent'
+              : 'text-foreground'}"
+          >
             <span>{item.name}</span>
             <span class="text-xs text-muted-foreground">{item.region}</span>
           </span>

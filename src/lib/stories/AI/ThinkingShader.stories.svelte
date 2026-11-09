@@ -46,6 +46,8 @@
 
 <Story name="Inline with text">
   {#snippet template(args)}
-    <p class="flex items-center gap-2 t-body text-muted-foreground"><ThinkingShader {...args} /> Thinking…</p>
+    <p class="flex items-center gap-2 t-body text-muted-foreground">
+      <ThinkingShader {...args} /> Thinking…
+    </p>
   {/snippet}
 </Story>

@@ -12,7 +12,11 @@
     { id: 'panik', identity: { name: 'Panik' }, status: 'running' },
     { id: 'faces-clinic', identity: { name: 'Faces Clinic' }, emoji: '🦷', status: 'idle' },
     { id: 'reminders', identity: { name: 'Reminders' }, status: 'thinking' },
-    { id: 'bookkeeper', identity: { name: 'Bookkeeper with a very long display name' }, status: 'idle' },
+    {
+      id: 'bookkeeper',
+      identity: { name: 'Bookkeeper with a very long display name' },
+      status: 'idle',
+    },
   ];
   const seed = (patch) => async () => {
     Object.assign(conn, { connected: false, connecting: false });
@@ -30,7 +34,11 @@
     title: 'Agents/AgentSidebar',
     component: AgentSidebar,
     tags: ['autodocs'],
-    parameters: { sveltekit_experimental: { state: { page: { url: new URL('http://localhost/agents'), data: {} } } } },
+    parameters: {
+      sveltekit_experimental: {
+        state: { page: { url: new URL('http://localhost/agents'), data: {} } },
+      },
+    },
     argTypes: { collapseLevel: { control: 'select', options: ['expanded', 'mini', 'collapsed'] } },
     args: { collapseLevel: 'expanded' },
   });
@@ -38,30 +46,40 @@
 
 <Story name="Not connected" play={seed()}>
   {#snippet template(args)}
-    <div class="w-64 h-[32rem]"><QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider></div>
+    <div class="w-64 h-[32rem]">
+      <QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider>
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Connecting" play={seed(() => (conn.connecting = true))}>
   {#snippet template(args)}
-    <div class="w-64 h-[32rem]"><QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider></div>
+    <div class="w-64 h-[32rem]">
+      <QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider>
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Connected with agents" play={seed(connected)}>
   {#snippet template(args)}
-    <div class="w-64 h-[32rem]"><QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider></div>
+    <div class="w-64 h-[32rem]">
+      <QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider>
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Connected no agents" play={seed(() => (conn.connected = true))}>
   {#snippet template(args)}
-    <div class="w-64 h-[32rem]"><QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider></div>
+    <div class="w-64 h-[32rem]">
+      <QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider>
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Mini" args={{ collapseLevel: 'mini' }} play={seed(connected)}>
   {#snippet template(args)}
-    <div class="w-14 h-[32rem]"><QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider></div>
+    <div class="w-14 h-[32rem]">
+      <QueryClientProvider client={queryClient}><AgentSidebar {...args} /></QueryClientProvider>
+    </div>
   {/snippet}
 </Story>

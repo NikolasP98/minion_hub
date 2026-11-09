@@ -55,7 +55,14 @@
   {#snippet template(args)}<div class="w-64"><Sparkline {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Dense (144 bins)" args={{ bins: Array.from({ length: 144 }, (_, i) => Math.max(0, Math.round(Math.sin(i / 6) * 7 + Math.sin(i / 2) * 3 + 6))) }}>
+<Story
+  name="Dense (144 bins)"
+  args={{
+    bins: Array.from({ length: 144 }, (_, i) =>
+      Math.max(0, Math.round(Math.sin(i / 6) * 7 + Math.sin(i / 2) * 3 + 6)),
+    ),
+  }}
+>
   {#snippet template(args)}<div class="w-full"><Sparkline {...args} /></div>{/snippet}
 </Story>
 

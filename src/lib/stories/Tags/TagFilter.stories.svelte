@@ -4,16 +4,41 @@
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
-  const names = ['VIP', 'new', 'follow-up', 'allergy', 'no-show risk', 'wholesale', 'student', 'referral', 'promo-2026', 'lapsed'];
-  const tags = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''), color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length] }));
+  const names = [
+    'VIP',
+    'new',
+    'follow-up',
+    'allergy',
+    'no-show risk',
+    'wholesale',
+    'student',
+    'referral',
+    'promo-2026',
+    'lapsed',
+  ];
+  const tags = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
+      color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
+    }));
 
   // The popover's open state is internal: click the trigger to see the list.
   const { Story } = defineMeta({
     title: 'Tags/TagFilter',
     component: TagFilter,
     tags: ['autodocs'],
-    argTypes: { scope: { control: 'select', options: ['crm', 'stock', 'catalog', 'event'] }, label: { control: 'text' } },
-    args: { scope: 'event', tags: tags(6), selected: new Set(), onselect: fn(), ontagschange: fn() },
+    argTypes: {
+      scope: { control: 'select', options: ['crm', 'stock', 'catalog', 'event'] },
+      label: { control: 'text' },
+    },
+    args: {
+      scope: 'event',
+      tags: tags(6),
+      selected: new Set(),
+      onselect: fn(),
+      ontagschange: fn(),
+    },
   });
 </script>
 

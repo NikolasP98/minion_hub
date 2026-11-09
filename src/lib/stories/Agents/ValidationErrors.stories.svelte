@@ -25,7 +25,18 @@
   {#snippet template(args)}<div class="w-96"><ValidationErrors {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Long match" args={{ errors: [{ rule: 'no-secrets', match: 'ghp_9f8e7d6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a3', severity: 'block' }] }}>
+<Story
+  name="Long match"
+  args={{
+    errors: [
+      {
+        rule: 'no-secrets',
+        match: 'ghp_9f8e7d6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d2c1b0a9f8e7d6c5b4a3',
+        severity: 'block',
+      },
+    ],
+  }}
+>
   {#snippet template(args)}<div class="w-96"><ValidationErrors {...args} /></div>{/snippet}
 </Story>
 

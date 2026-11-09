@@ -1,7 +1,9 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
-  import ColorSourcePicker, { type ColorSourceOption } from '$lib/components/scheduling/ColorSourcePicker.svelte';
+  import ColorSourcePicker, {
+    type ColorSourceOption,
+  } from '$lib/components/scheduling/ColorSourcePicker.svelte';
 
   const options: ColorSourceOption[] = [
     {

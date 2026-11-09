@@ -29,6 +29,11 @@
   {#snippet template(args)}<div class="w-96"><CustomerQuickAdd {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Narrow host" args={{ initialQuery: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría' }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><CustomerQuickAdd {...args} /></div>{/snippet}
+<Story
+  name="Narrow host"
+  args={{ initialQuery: 'Maximiliano Alejandro de la Cruz Villanueva-Echeverría' }}
+>
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <CustomerQuickAdd {...args} />
+    </div>{/snippet}
 </Story>

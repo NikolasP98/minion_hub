@@ -6,8 +6,22 @@
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
-  const names = ['VIP', 'new', 'follow-up', 'allergy', 'no-show risk', 'wholesale', 'student', 'referral', 'promo-2026', 'lapsed'];
-  const twenty = Array.from({ length: 20 }, (_, i) => ({ name: `${names[i % names.length]} ${i + 1}`, color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length] }));
+  const names = [
+    'VIP',
+    'new',
+    'follow-up',
+    'allergy',
+    'no-show risk',
+    'wholesale',
+    'student',
+    'referral',
+    'promo-2026',
+    'lapsed',
+  ];
+  const twenty = Array.from({ length: 20 }, (_, i) => ({
+    name: `${names[i % names.length]} ${i + 1}`,
+    color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
+  }));
 
   const { Story } = defineMeta({
     title: 'Tags/TagChip',
@@ -15,7 +29,10 @@
     tags: ['autodocs'],
     argTypes: {
       size: { control: 'select', options: ['sm', 'md'] },
-      origin: { control: 'select', options: [undefined, 'own', 'contact', 'product', 'ingredient'] },
+      origin: {
+        control: 'select',
+        options: [undefined, 'own', 'contact', 'product', 'ingredient'],
+      },
       dashed: { control: 'boolean' },
     },
     args: { name: 'VIP', color: CRM_TAG_COLORS[0], size: 'md' },
@@ -52,7 +69,11 @@
 <Story name="Origins">
   {#snippet template(args)}
     <div class="flex flex-wrap gap-2">
-      {#each ['own', 'contact', 'product', 'ingredient'] as origin (origin)}<TagChip {...args} name={origin} {origin} />{/each}
+      {#each ['own', 'contact', 'product', 'ingredient'] as origin (origin)}<TagChip
+          {...args}
+          name={origin}
+          {origin}
+        />{/each}
     </div>
   {/snippet}
 </Story>
@@ -65,8 +86,16 @@
   {#snippet template(args)}<TagChip {...args}><Star size={iconSizes.xs} /></TagChip>{/snippet}
 </Story>
 
-<Story name="Long name (truncates in a narrow host)" args={{ name: 'Pacientes con tratamiento combinado de larga duración y seguimiento trimestral', onremove: fn() }}>
-  {#snippet template(args)}<div class="w-48 border border-border"><TagChip {...args} /></div>{/snippet}
+<Story
+  name="Long name (truncates in a narrow host)"
+  args={{
+    name: 'Pacientes con tratamiento combinado de larga duración y seguimiento trimestral',
+    onremove: fn(),
+  }}
+>
+  {#snippet template(args)}<div class="w-48 border border-border">
+      <TagChip {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Twenty tags (overflow)">

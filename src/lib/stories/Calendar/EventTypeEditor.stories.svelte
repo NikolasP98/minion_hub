@@ -15,8 +15,20 @@
     { id: 'p-fup', name: 'Follow-up (free)' },
   ];
   const kinds = [
-    { id: 'k-clinic', name: 'Clinical', color: 'var(--color-info-border)', isDefault: true, position: 0 },
-    { id: 'k-admin', name: 'Administrative', color: 'var(--color-warning-border)', isDefault: false, position: 1 },
+    {
+      id: 'k-clinic',
+      name: 'Clinical',
+      color: 'var(--color-info-border)',
+      isDefault: true,
+      position: 0,
+    },
+    {
+      id: 'k-admin',
+      name: 'Administrative',
+      color: 'var(--color-warning-border)',
+      isDefault: false,
+      position: 1,
+    },
   ];
   const tags = [
     { id: 't-vip', name: 'VIP', color: 'var(--color-warning-border)' },
@@ -51,7 +63,14 @@
     tags: ['autodocs'],
     parameters: {
       sveltekit_experimental: {
-        state: { page: { data: { user: { role: 'admin' }, permissions: { permissions: ['scheduling:create', 'scheduling:update'] } } } },
+        state: {
+          page: {
+            data: {
+              user: { role: 'admin' },
+              permissions: { permissions: ['scheduling:create', 'scheduling:update'] },
+            },
+          },
+        },
       },
     },
     args: { resources, products, kinds, tags, onsaved: fn(), oncancel: fn() },
@@ -60,9 +79,29 @@
 
 <Story name="New" />
 <Story name="Editing" args={{ eventType, tagIds: ['t-vip'] }} />
-<Story name="From preset" args={{ preset: { title: 'Consultation', length: 30, productId: 'p-cons', resourceIds: ['r-ana'] } }} />
-<Story name="No kinds, no tags" args={{ kinds: [], tags: [], eventType: { ...eventType, kindId: null, useCustomSchedule: false, scheduleRules: [] } }} />
+<Story
+  name="From preset"
+  args={{
+    preset: { title: 'Consultation', length: 30, productId: 'p-cons', resourceIds: ['r-ana'] },
+  }}
+/>
+<Story
+  name="No kinds, no tags"
+  args={{
+    kinds: [],
+    tags: [],
+    eventType: { ...eventType, kindId: null, useCustomSchedule: false, scheduleRules: [] },
+  }}
+/>
 
 <!-- Responsive: the field grid is one column below md and two columns from 768px. -->
-<Story name="Editing · Phone" args={{ eventType, tagIds: ['t-vip'] }} globals={{ viewport: { value: 'phone', isRotated: false } }} />
-<Story name="Editing · Tablet" args={{ eventType, tagIds: ['t-vip'] }} globals={{ viewport: { value: 'tablet', isRotated: false } }} />
+<Story
+  name="Editing · Phone"
+  args={{ eventType, tagIds: ['t-vip'] }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>
+<Story
+  name="Editing · Tablet"
+  args={{ eventType, tagIds: ['t-vip'] }}
+  globals={{ viewport: { value: 'tablet', isRotated: false } }}
+/>

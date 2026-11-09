@@ -22,14 +22,38 @@
     ...over,
   });
   const defs = [
-    def('room', 'Room', 'select', { type: 'select', options: [{ id: 'r1', label: 'Room 1', color: null }, { id: 'r2', label: 'Room 2', color: null }] }),
+    def('room', 'Room', 'select', {
+      type: 'select',
+      options: [
+        { id: 'r1', label: 'Room 1', color: null },
+        { id: 'r2', label: 'Room 2', color: null },
+      ],
+    }),
     def('deposit', 'Deposit', 'number', { type: 'number', min: 0, max: null, precision: 2 }),
     def('consent', 'Consent signed', 'boolean', { type: 'boolean' }),
     def('notes', 'Prep notes', 'text', { type: 'text', maxLength: 500 }),
   ];
-  const cell = (propertyId, recordId, value) => ({ propertyId, recordId, present: value !== null, value, effectiveValue: value, version: 1, updatedAt: ts });
-  const values = (bookingId, v) => ({ [bookingId]: Object.fromEntries(defs.map((d) => [d.id, cell(d.id, bookingId, v[d.id] ?? null)])) });
-  const store = ({ bookingId = 'bk-1', vals = {}, canEdit = true, failed = false, loaded = true } = {}) => {
+  const cell = (propertyId, recordId, value) => ({
+    propertyId,
+    recordId,
+    present: value !== null,
+    value,
+    effectiveValue: value,
+    version: 1,
+    updatedAt: ts,
+  });
+  const values = (bookingId, v) => ({
+    [bookingId]: Object.fromEntries(
+      defs.map((d) => [d.id, cell(d.id, bookingId, v[d.id] ?? null)]),
+    ),
+  });
+  const store = ({
+    bookingId = 'bk-1',
+    vals = {},
+    canEdit = true,
+    failed = false,
+    loaded = true,
+  } = {}) => {
     const bundle = {
       definitions: defs,
       values: loaded ? values(bookingId, vals) : {},
@@ -72,14 +96,26 @@
   {#snippet template(args)}<div class="w-96"><BookingCustomFields {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Summary (nothing set, renders nothing)" args={{ summary: true, customValues: store() }}>
-  {#snippet template(args)}<div class="w-96 border border-border"><BookingCustomFields {...args} /></div>{/snippet}
+<Story
+  name="Summary (nothing set, renders nothing)"
+  args={{ summary: true, customValues: store() }}
+>
+  {#snippet template(args)}<div class="w-96 border border-border">
+      <BookingCustomFields {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Not loaded yet (renders nothing)" args={{ customValues: store({ loaded: false }) }}>
-  {#snippet template(args)}<div class="w-96 border border-border"><BookingCustomFields {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-96 border border-border">
+      <BookingCustomFields {...args} />
+    </div>{/snippet}
 </Story>
 
-<Story name="Definitions refused (renders nothing)" args={{ customValues: store({ failed: true }) }}>
-  {#snippet template(args)}<div class="w-96 border border-border"><BookingCustomFields {...args} /></div>{/snippet}
+<Story
+  name="Definitions refused (renders nothing)"
+  args={{ customValues: store({ failed: true }) }}
+>
+  {#snippet template(args)}<div class="w-96 border border-border">
+      <BookingCustomFields {...args} />
+    </div>{/snippet}
 </Story>

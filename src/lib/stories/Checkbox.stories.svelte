@@ -11,9 +11,9 @@
       indeterminate: { control: 'boolean' },
       disabled: { control: 'boolean' },
       error: { control: 'text' },
-      helper: { control: 'text' }
+      helper: { control: 'text' },
     },
-    args: { label: 'Send receipt', checked: false, indeterminate: false, disabled: false }
+    args: { label: 'Send receipt', checked: false, indeterminate: false, disabled: false },
   });
 </script>
 

@@ -24,12 +24,18 @@
   name="Long labels"
   args={{
     options: [
-      { label: 'Walk me through creating the event type, the availability and the first booking step by step' },
+      {
+        label:
+          'Walk me through creating the event type, the availability and the first booking step by step',
+      },
       { label: 'Create everything with sensible defaults and tell me what you changed afterwards' },
     ],
   }}
 />
-<Story name="Many options" args={{ options: Array.from({ length: 7 }, (_, i) => ({ label: `Option ${i + 1}` })) }} />
+<Story
+  name="Many options"
+  args={{ options: Array.from({ length: 7 }, (_, i) => ({ label: `Option ${i + 1}` })) }}
+/>
 
 <Story name="Narrow host">
   {#snippet template(args)}<div class="w-64"><AssistChoice {...args} /></div>{/snippet}

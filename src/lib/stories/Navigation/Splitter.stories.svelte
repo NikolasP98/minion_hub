@@ -12,7 +12,14 @@
       minibarSize: { control: { type: 'number', min: 3, max: 15 } },
       maxSize: { control: { type: 'number', min: 20, max: 60 } },
     },
-    args: { storageKey: 'sb-splitter-default', defaultSize: 25, minibarSize: 6, maxSize: 40, oncollapse: fn(), onexpand: fn() },
+    args: {
+      storageKey: 'sb-splitter-default',
+      defaultSize: 25,
+      minibarSize: 6,
+      maxSize: 40,
+      oncollapse: fn(),
+      onexpand: fn(),
+    },
   });
 </script>
 
@@ -27,7 +34,9 @@
   {#snippet template(args)}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
-        <div class="p-3 text-sm text-muted-foreground">Content. Drag the handle; double-click toggles mini.</div>
+        <div class="p-3 text-sm text-muted-foreground">
+          Content. Drag the handle; double-click toggles mini.
+        </div>
       </Splitter>
     </div>
   {/snippet}
@@ -43,11 +52,16 @@
   {/snippet}
 </Story>
 
-<Story name="Collapsed (popout tab)" args={{ storageKey: 'sb-splitter-collapsed', onapi: (api) => api.hide() }}>
+<Story
+  name="Collapsed (popout tab)"
+  args={{ storageKey: 'sb-splitter-collapsed', onapi: (api) => api.hide() }}
+>
   {#snippet template(args)}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
-        <div class="p-3 text-sm text-muted-foreground">Panel hidden; the chevron tab expands it.</div>
+        <div class="p-3 text-sm text-muted-foreground">
+          Panel hidden; the chevron tab expands it.
+        </div>
       </Splitter>
     </div>
   {/snippet}
@@ -64,7 +78,11 @@
 </Story>
 
 <!-- Responsive: the panel and content split the full viewport width. -->
-<Story name="Expanded · Phone" args={{ storageKey: 'sb-splitter-phone' }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Expanded · Phone"
+  args={{ storageKey: 'sb-splitter-phone' }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>

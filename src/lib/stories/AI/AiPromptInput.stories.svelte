@@ -9,8 +9,12 @@
     { id: 'a2', name: 'IMG_20261108_094512_very_long_camera_filename.jpg', size: 3_145_728 },
     { id: 'a3', name: 'notes.txt' },
   ];
-  const multiline = 'First line of the draft.\nSecond line, after Shift+Enter.\n\nA fourth line after a blank one.';
-  const tall = Array.from({ length: 14 }, (_, i) => `Line ${i + 1} of a draft taller than MAX_ROWS, so the box scrolls.`).join('\n');
+  const multiline =
+    'First line of the draft.\nSecond line, after Shift+Enter.\n\nA fourth line after a blank one.';
+  const tall = Array.from(
+    { length: 14 },
+    (_, i) => `Line ${i + 1} of a draft taller than MAX_ROWS, so the box scrolls.`,
+  ).join('\n');
 
   const { Story } = defineMeta({
     title: 'AI/AiPromptInput',
@@ -21,7 +25,13 @@
       disabled: { control: 'boolean' },
       compact: { control: 'boolean' },
     },
-    args: { placeholder: 'Ask your agent', onsubmit: fn(), onstop: fn(), onattach: fn(), onremoveattachment: fn() },
+    args: {
+      placeholder: 'Ask your agent',
+      onsubmit: fn(),
+      onstop: fn(),
+      onattach: fn(),
+      onremoveattachment: fn(),
+    },
   });
 </script>
 
@@ -61,7 +71,10 @@
   {#snippet template(args)}<div class="w-full max-w-xl"><AiPromptInput {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Attachments only allowEmpty" args={{ attachments: attachments.slice(0, 1), allowEmpty: true }}>
+<Story
+  name="Attachments only allowEmpty"
+  args={{ attachments: attachments.slice(0, 1), allowEmpty: true }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><AiPromptInput {...args} /></div>{/snippet}
 </Story>
 
@@ -81,12 +94,24 @@
   {#snippet template(args)}
     <div class="w-full max-w-xl">
       <AiPromptInput {...args}>
-        <SegmentedControl items={[{ value: 'ask', label: 'Ask' }, { value: 'capture', label: 'Capture' }]} value="ask" aria-label="Mode" onValueChange={fn()} />
+        <SegmentedControl
+          items={[
+            { value: 'ask', label: 'Ask' },
+            { value: 'capture', label: 'Capture' },
+          ]}
+          value="ask"
+          aria-label="Mode"
+          onValueChange={fn()}
+        />
       </AiPromptInput>
     </div>
   {/snippet}
 </Story>
 
-<Story name="Typed · Phone" args={{ value: multiline, attachments }} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Typed · Phone"
+  args={{ value: multiline, attachments }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template(args)}<div class="w-full"><AiPromptInput {...args} /></div>{/snippet}
 </Story>

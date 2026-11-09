@@ -10,7 +10,11 @@
     component: PageHeader,
     tags: ['autodocs'],
     argTypes: { sticky: { control: 'boolean' } },
-    args: { title: 'Point of Sale', subtitle: 'Sell, accounts and catalog in one place', sticky: false }
+    args: {
+      title: 'Point of Sale',
+      subtitle: 'Sell, accounts and catalog in one place',
+      sticky: false,
+    },
   });
 </script>
 
@@ -32,12 +36,16 @@
   {#snippet template(args)}
     <PageHeader {...args}>
       {#snippet leading()}
-        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label="Back" variant="ghost"
+          >{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/snippet}
       {#snippet primaryActions()}<Button variant="primary">New sale</Button>{/snippet}
       {#snippet secondaryActions()}<Button variant="secondary">Export</Button>{/snippet}
       {#snippet overflowActions()}
-        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label="More" variant="ghost"
+          >{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/snippet}
     </PageHeader>
   {/snippet}
@@ -54,12 +62,16 @@
   {#snippet template(args)}
     <PageHeader {...args}>
       {#snippet leading()}
-        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label="Back" variant="ghost"
+          >{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/snippet}
       {#snippet primaryActions()}<Button variant="primary">New sale</Button>{/snippet}
       {#snippet secondaryActions()}<Button variant="secondary">Export</Button>{/snippet}
       {#snippet overflowActions()}
-        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label="More" variant="ghost"
+          >{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/snippet}
     </PageHeader>
   {/snippet}
@@ -69,12 +81,16 @@
   {#snippet template(args)}
     <PageHeader {...args}>
       {#snippet leading()}
-        <IconButton label="Back" variant="ghost">{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label="Back" variant="ghost"
+          >{#snippet icon()}<ArrowLeft size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/snippet}
       {#snippet primaryActions()}<Button variant="primary">New sale</Button>{/snippet}
       {#snippet secondaryActions()}<Button variant="secondary">Export</Button>{/snippet}
       {#snippet overflowActions()}
-        <IconButton label="More" variant="ghost">{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label="More" variant="ghost"
+          >{#snippet icon()}<Ellipsis size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/snippet}
     </PageHeader>
   {/snippet}

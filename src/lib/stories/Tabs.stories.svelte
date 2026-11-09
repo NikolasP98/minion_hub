@@ -6,7 +6,7 @@
     { value: 'overview', label: 'Overview' },
     { value: 'activity', label: 'Activity', count: 3 },
     { value: 'settings', label: 'Settings' },
-    { value: 'billing', label: 'Billing', disabled: true }
+    { value: 'billing', label: 'Billing', disabled: true },
   ];
 
   const { Story } = defineMeta({
@@ -16,9 +16,16 @@
     argTypes: {
       size: { control: 'select', options: ['sm', 'md'] },
       fitted: { control: 'boolean' },
-      value: { control: 'select', options: tabs.map((t) => t.value) }
+      value: { control: 'select', options: tabs.map((t) => t.value) },
     },
-    args: { tabs, value: 'overview', size: 'md', fitted: false, id: 'sb-tabs', 'aria-label': 'Sections' }
+    args: {
+      tabs,
+      value: 'overview',
+      size: 'md',
+      fitted: false,
+      id: 'sb-tabs',
+      'aria-label': 'Sections',
+    },
   });
 </script>
 

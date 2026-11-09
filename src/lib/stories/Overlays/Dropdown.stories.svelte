@@ -61,7 +61,17 @@
   {/snippet}
 </Story>
 
-<Story name="Plain labels (no icons)" args={{ items: [{ value: 'a', label: 'First' }, { value: 'b', label: 'Second' }, { value: 'c', label: 'Third' }] }} play={open}>
+<Story
+  name="Plain labels (no icons)"
+  args={{
+    items: [
+      { value: 'a', label: 'First' },
+      { value: 'b', label: 'Second' },
+      { value: 'c', label: 'Third' },
+    ],
+  }}
+  play={open}
+>
   {#snippet template(args)}
     <div class="p-6">
       <Dropdown {...args}>
@@ -71,7 +81,16 @@
   {/snippet}
 </Story>
 
-<Story name="Many items" args={{ items: Array.from({ length: 25 }, (_, i) => ({ value: `opt-${i + 1}`, label: `Option ${i + 1}` })) }} play={open}>
+<Story
+  name="Many items"
+  args={{
+    items: Array.from({ length: 25 }, (_, i) => ({
+      value: `opt-${i + 1}`,
+      label: `Option ${i + 1}`,
+    })),
+  }}
+  play={open}
+>
   {#snippet template(args)}
     <div class="p-6">
       <Dropdown {...args} class="max-h-64 overflow-y-auto">
@@ -89,7 +108,9 @@
         {#snippet item({ item, highlighted })}
           <span class="flex-1 flex items-center justify-between gap-4">
             <span>{item.label}</span>
-            <kbd class="text-[length:var(--font-size-telemetry)] font-mono text-muted-foreground">{highlighted ? 'enter' : ''}</kbd>
+            <kbd class="text-[length:var(--font-size-telemetry)] font-mono text-muted-foreground"
+              >{highlighted ? 'enter' : ''}</kbd
+            >
           </span>
         {/snippet}
       </Dropdown>

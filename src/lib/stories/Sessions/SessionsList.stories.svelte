@@ -10,9 +10,22 @@
     id: `s${i}`,
     serverId: 'srv-1',
     agentId,
-    sessionKey: i === 0 ? `agent:${agentId}:main` : `agent:${agentId}:whatsapp:dm:+5199${String(1000000 + i).slice(-7)}`,
+    sessionKey:
+      i === 0
+        ? `agent:${agentId}:main`
+        : `agent:${agentId}:whatsapp:dm:+5199${String(1000000 + i).slice(-7)}`,
     status: statuses[i % statuses.length],
-    metadata: i % 3 === 0 ? JSON.stringify({ displayName: ['Ana Torres', 'Luis Paredes', 'Nightly stock check', 'Walk-in with a very long customer name that overflows'][i % 4] }) : null,
+    metadata:
+      i % 3 === 0
+        ? JSON.stringify({
+            displayName: [
+              'Ana Torres',
+              'Luis Paredes',
+              'Nightly stock check',
+              'Walk-in with a very long customer name that overflows',
+            ][i % 4],
+          })
+        : null,
     createdAt: now - i * 3_600_000,
     updatedAt: now - i * 11 * 60_000,
   });
@@ -39,6 +52,9 @@
   {#snippet template(args)}<div class="w-80 h-96"><SessionsList {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Fifty sessions three agents" args={{ sessions: fifty, selectedKey: fifty[7].sessionKey }}>
+<Story
+  name="Fifty sessions three agents"
+  args={{ sessions: fifty, selectedKey: fifty[7].sessionKey }}
+>
   {#snippet template(args)}<div class="w-80 h-96"><SessionsList {...args} /></div>{/snippet}
 </Story>

@@ -12,9 +12,9 @@
       disabled: { control: 'boolean' },
       required: { control: 'boolean' },
       error: { control: 'text' },
-      helper: { control: 'text' }
+      helper: { control: 'text' },
     },
-    args: { label: 'Name', placeholder: 'Jane Doe', size: 'md', disabled: false, required: false }
+    args: { label: 'Name', placeholder: 'Jane Doe', size: 'md', disabled: false, required: false },
   });
 </script>
 
@@ -45,7 +45,11 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex flex-col gap-3">
-      {#each ['sm', 'md', 'lg', 'touch'] as s (s)}<Input label={s} size={s} placeholder={s} />{/each}
+      {#each ['sm', 'md', 'lg', 'touch'] as s (s)}<Input
+          label={s}
+          size={s}
+          placeholder={s}
+        />{/each}
     </div>
   {/snippet}
 </Story>

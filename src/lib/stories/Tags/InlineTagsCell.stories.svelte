@@ -4,8 +4,24 @@
   import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
-  const names = ['VIP', 'new', 'follow-up', 'allergy', 'no-show risk', 'wholesale', 'student', 'referral', 'promo-2026', 'lapsed'];
-  const tags = (n) => Array.from({ length: n }, (_, i) => ({ id: `t${i}`, name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''), color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length] }));
+  const names = [
+    'VIP',
+    'new',
+    'follow-up',
+    'allergy',
+    'no-show risk',
+    'wholesale',
+    'student',
+    'referral',
+    'promo-2026',
+    'lapsed',
+  ];
+  const tags = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `t${i}`,
+      name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
+      color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
+    }));
   const registry = tags(10);
 
   // Saves PUT `/api/tags/<kind>/<id>`, which fails in Storybook — pick a tag to
@@ -19,7 +35,15 @@
       canEdit: { control: 'boolean' },
       showAdd: { control: 'boolean' },
     },
-    args: { scope: 'event', kind: 'booking', entityId: 'bk-1', registry, selected: registry.slice(0, 2), onsaved: fn(), onregistrychange: fn() },
+    args: {
+      scope: 'event',
+      kind: 'booking',
+      entityId: 'bk-1',
+      registry,
+      selected: registry.slice(0, 2),
+      onsaved: fn(),
+      onregistrychange: fn(),
+    },
   });
 </script>
 
@@ -31,7 +55,10 @@
   {#snippet template(args)}<div class="w-80"><InlineTagsCell {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Read-only and inherited tags" args={{ readonly: registry.slice(5, 7), inherited: registry.slice(8, 10) }}>
+<Story
+  name="Read-only and inherited tags"
+  args={{ readonly: registry.slice(5, 7), inherited: registry.slice(8, 10) }}
+>
   {#snippet template(args)}<div class="w-80"><InlineTagsCell {...args} /></div>{/snippet}
 </Story>
 
@@ -48,7 +75,9 @@
 </Story>
 
 <Story name="Twenty selected" args={{ registry: tags(20), selected: tags(20) }}>
-  {#snippet template(args)}<div class="w-80 border border-border"><InlineTagsCell {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-80 border border-border">
+      <InlineTagsCell {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="Product scope" args={{ scope: 'catalog', kind: 'product', entityId: 'p-1' }}>

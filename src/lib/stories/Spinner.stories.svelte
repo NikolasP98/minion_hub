@@ -6,8 +6,11 @@
     title: 'Hub/Spinner',
     component: Spinner,
     tags: ['autodocs'],
-    argTypes: { size: { control: 'select', options: ['xs', 'sm', 'md', 'lg'] }, label: { control: 'text' } },
-    args: { size: 'md', label: 'Loading' }
+    argTypes: {
+      size: { control: 'select', options: ['xs', 'sm', 'md', 'lg'] },
+      label: { control: 'text' },
+    },
+    args: { size: 'md', label: 'Loading' },
   });
 </script>
 

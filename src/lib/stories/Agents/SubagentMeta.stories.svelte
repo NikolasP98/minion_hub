@@ -7,7 +7,14 @@
     title: 'Agents/SubagentMeta',
     component: SubagentMeta,
     tags: ['autodocs'],
-    args: { session: { ...running, spawnedBy: 'agent:panik:main', sessionId: 'a1b2c3d4-0000-4000-8000-000000000001', displayName: 'Scan competitors' } },
+    args: {
+      session: {
+        ...running,
+        spawnedBy: 'agent:panik:main',
+        sessionId: 'a1b2c3d4-0000-4000-8000-000000000001',
+        displayName: 'Scan competitors',
+      },
+    },
   });
 </script>
 

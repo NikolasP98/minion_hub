@@ -19,7 +19,12 @@
   const artifact = tool('tu-9', 'chat_artifact', {
     title: 'Confirm reminder',
     html: '<p class="m-0">Send 14 reminders from the clinic number?</p>',
-    buttons: [[{ text: 'Send', callback_data: 'send', style: 'primary' }, { text: 'Cancel', callback_data: 'cancel', style: 'danger' }]],
+    buttons: [
+      [
+        { text: 'Send', callback_data: 'send', style: 'primary' },
+        { text: 'Cancel', callback_data: 'cancel', style: 'danger' },
+      ],
+    ],
   });
 
   const { Story } = defineMeta({
@@ -39,15 +44,33 @@
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Streaming tools running no answer yet" args={{ message: message(blocks.slice(0, 3)), toolResults: { 'tu-1': toolResults['tu-1'] }, streaming: true }}>
+<Story
+  name="Streaming tools running no answer yet"
+  args={{
+    message: message(blocks.slice(0, 3)),
+    toolResults: { 'tu-1': toolResults['tu-1'] },
+    streaming: true,
+  }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Streaming with textOverride typewriter" args={{ streaming: true, textOverride: 'Three bookings next week: **Tue 10:0' }}>
+<Story
+  name="Streaming with textOverride typewriter"
+  args={{ streaming: true, textOverride: 'Three bookings next week: **Tue 10:0' }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Tool failed" args={{ toolResults: { ...toolResults, 'tu-2': { content: 'PermissionError: role cannot read contacts', isError: true } } }}>
+<Story
+  name="Tool failed"
+  args={{
+    toolResults: {
+      ...toolResults,
+      'tu-2': { content: 'PermissionError: role cannot read contacts', isError: true },
+    },
+  }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
@@ -55,11 +78,38 @@
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Many tools grouped" args={{ message: message([blocks[0], ...Array.from({ length: 7 }, (_, i) => tool(`tu-${i}`, ['bookings.search', 'crm.contact.get', 'fin.invoice.list'][i % 3], { i })), blocks[3]]), toolResults: {} }}>
+<Story
+  name="Many tools grouped"
+  args={{
+    message: message([
+      blocks[0],
+      ...Array.from({ length: 7 }, (_, i) =>
+        tool(`tu-${i}`, ['bookings.search', 'crm.contact.get', 'fin.invoice.list'][i % 3], { i }),
+      ),
+      blocks[3],
+    ]),
+    toolResults: {},
+  }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Web sources" args={{ message: message([tool('tu-w', 'web_search', { query: 'SUNAT factura electrónica 2026' }), { type: 'text', text: 'Per SUNAT, the deadline moved to March.' }]), toolResults: { 'tu-w': { content: '[{"url":"https://www.sunat.gob.pe/orientacion/factura","title":"Factura electrónica"},{"url":"https://gob.pe/sunat-2026","title":"Cronograma 2026"}]', isError: false } } }}>
+<Story
+  name="Web sources"
+  args={{
+    message: message([
+      tool('tu-w', 'web_search', { query: 'SUNAT factura electrónica 2026' }),
+      { type: 'text', text: 'Per SUNAT, the deadline moved to March.' },
+    ]),
+    toolResults: {
+      'tu-w': {
+        content:
+          '[{"url":"https://www.sunat.gob.pe/orientacion/factura","title":"Factura electrónica"},{"url":"https://gob.pe/sunat-2026","title":"Cronograma 2026"}]',
+        isError: false,
+      },
+    },
+  }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
@@ -67,10 +117,19 @@
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="chat artifact no send path disabled" args={{ message: message([artifact]), toolResults: {}, onArtifactCallback: undefined }}>
+<Story
+  name="chat artifact no send path disabled"
+  args={{ message: message([artifact]), toolResults: {}, onArtifactCallback: undefined }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>
 
-<Story name="User turn" args={{ message: { role: 'user', content: 'What do I have next week?', timestamp: ts }, toolResults: {} }}>
+<Story
+  name="User turn"
+  args={{
+    message: { role: 'user', content: 'What do I have next week?', timestamp: ts },
+    toolResults: {},
+  }}
+>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatTurn {...args} /></div>{/snippet}
 </Story>

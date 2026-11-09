@@ -7,7 +7,9 @@
     { id: 'org-2', name: 'Barberia El Norte', slug: 'norte', role: 'admin', kind: 'business' },
     { id: 'org-3', name: 'Ana (personal)', slug: null, role: 'owner', kind: 'personal' },
   ];
-  const data = (organizations, activeOrgId) => ({ sveltekit_experimental: { state: { page: { data: { organizations, activeOrgId } } } } });
+  const data = (organizations, activeOrgId) => ({
+    sveltekit_experimental: { state: { page: { data: { organizations, activeOrgId } } } },
+  });
 
   const { Story } = defineMeta({
     title: 'Navigation/OrgPicker',
@@ -45,7 +47,22 @@
   {/snippet}
 </Story>
 
-<Story name="Long org name" parameters={data([{ id: 'x', name: 'Centro Estetico Integral de la Molina y alrededores', slug: 'x', role: 'owner', kind: 'business' }, orgs[2]], 'x')}>
+<Story
+  name="Long org name"
+  parameters={data(
+    [
+      {
+        id: 'x',
+        name: 'Centro Estetico Integral de la Molina y alrededores',
+        slug: 'x',
+        role: 'owner',
+        kind: 'business',
+      },
+      orgs[2],
+    ],
+    'x',
+  )}
+>
   {#snippet template()}
     <div class="w-52 surface-1 p-2"><OrgPicker /></div>
   {/snippet}

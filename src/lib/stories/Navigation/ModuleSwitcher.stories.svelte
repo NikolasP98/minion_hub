@@ -51,7 +51,14 @@
   {/snippet}
 </Story>
 
-<Story name="Personal org" parameters={{ sveltekit_experimental: { state: { page: { data: { ...pageData, activeOrgKind: 'personal' } } } } }}>
+<Story
+  name="Personal org"
+  parameters={{
+    sveltekit_experimental: {
+      state: { page: { data: { ...pageData, activeOrgKind: 'personal' } } },
+    },
+  }}
+>
   {#snippet template(args)}
     <div class="w-52 surface-1 p-2"><ModuleSwitcher {...args} /></div>
   {/snippet}

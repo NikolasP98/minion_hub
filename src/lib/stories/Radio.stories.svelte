@@ -7,7 +7,7 @@
     component: Radio,
     tags: ['autodocs'],
     argTypes: { disabled: { control: 'boolean' }, helper: { control: 'text' } },
-    args: { label: 'Cash', value: 'cash', name: 'pay', disabled: false }
+    args: { label: 'Cash', value: 'cash', name: 'pay', disabled: false },
   });
 </script>
 

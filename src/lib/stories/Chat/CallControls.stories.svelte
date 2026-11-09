@@ -13,7 +13,15 @@
       muted: { control: 'boolean' },
       disabled: { control: 'boolean' },
     },
-    args: { active: false, muted: false, status: 'idle', disabled: false, onstart: fn(), onend: fn(), ontoggleMute: fn() },
+    args: {
+      active: false,
+      muted: false,
+      status: 'idle',
+      disabled: false,
+      onstart: fn(),
+      onend: fn(),
+      ontoggleMute: fn(),
+    },
   });
 </script>
 

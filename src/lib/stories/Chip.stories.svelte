@@ -8,9 +8,9 @@
     tags: ['autodocs'],
     argTypes: {
       status: { control: 'select', options: [undefined, 'success', 'warning', 'danger', 'info'] },
-      count: { control: 'number' }
+      count: { control: 'number' },
     },
-    args: {}
+    args: {},
   });
 </script>
 

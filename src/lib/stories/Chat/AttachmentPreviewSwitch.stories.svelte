@@ -21,9 +21,28 @@
     <div class="flex w-full max-w-xl flex-col gap-3">
       <AttachmentPreviewSwitch />
       <div class={['flex flex-col gap-1', attachmentPreview.mode === 'card' && 'grid grid-cols-3']}>
-        <AttachmentTile name="before.jpg" contentType="image/jpeg" sizeBytes={812_000} meta="2 h ago" preview={attachmentPreview.mode} thumb={() => svg} />
-        <AttachmentTile name="consent.pdf" contentType="application/pdf" sizeBytes={184_320} meta="yesterday" preview={attachmentPreview.mode} />
-        <AttachmentTile name="note.m4a" contentType="audio/mp4" sizeBytes={1_024_000} meta="3 days ago" preview={attachmentPreview.mode} />
+        <AttachmentTile
+          name="before.jpg"
+          contentType="image/jpeg"
+          sizeBytes={812_000}
+          meta="2 h ago"
+          preview={attachmentPreview.mode}
+          thumb={() => svg}
+        />
+        <AttachmentTile
+          name="consent.pdf"
+          contentType="application/pdf"
+          sizeBytes={184_320}
+          meta="yesterday"
+          preview={attachmentPreview.mode}
+        />
+        <AttachmentTile
+          name="note.m4a"
+          contentType="audio/mp4"
+          sizeBytes={1_024_000}
+          meta="3 days ago"
+          preview={attachmentPreview.mode}
+        />
       </div>
     </div>
   {/snippet}

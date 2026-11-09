@@ -48,6 +48,10 @@
 </Story>
 
 <!-- Responsive: the shortcut hint (kbd) is hidden below sm. -->
-<Story name="Open · Phone" play={openWith('')} globals={{ viewport: { value: 'phone', isRotated: false } }}>
+<Story
+  name="Open · Phone"
+  play={openWith('')}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+>
   {#snippet template()}<CommandPalette />{/snippet}
 </Story>

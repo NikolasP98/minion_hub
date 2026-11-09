@@ -10,15 +10,15 @@
     tags: ['autodocs'],
     argTypes: {
       tone: { control: 'select', options: ['neutral', 'error'] },
-      compact: { control: 'boolean' }
+      compact: { control: 'boolean' },
     },
     args: {
       title: 'No items yet',
       description: 'Create your first item to get started.',
       icon: Inbox,
       tone: 'neutral',
-      compact: false
-    }
+      compact: false,
+    },
   });
 </script>
 
@@ -36,7 +36,10 @@
   {/snippet}
 </Story>
 
-<Story name="Error" args={{ title: 'Something went wrong', description: 'Retry or contact support.', tone: 'error' }}>
+<Story
+  name="Error"
+  args={{ title: 'Something went wrong', description: 'Retry or contact support.', tone: 'error' }}
+>
   {#snippet template(args)}
     <EmptyState {...args}>
       {#snippet action()}<Button variant="secondary">Retry</Button>{/snippet}

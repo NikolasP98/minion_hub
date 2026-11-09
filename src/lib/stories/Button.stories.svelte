@@ -10,9 +10,9 @@
     argTypes: {
       variant: { control: 'select', options: ['primary', 'secondary', 'ghost', 'danger'] },
       size: { control: 'select', options: ['sm', 'md', 'lg'] },
-      disabled: { control: 'boolean' }
+      disabled: { control: 'boolean' },
     },
-    args: { variant: 'primary', size: 'md', disabled: false }
+    args: { variant: 'primary', size: 'md', disabled: false },
   });
 </script>
 

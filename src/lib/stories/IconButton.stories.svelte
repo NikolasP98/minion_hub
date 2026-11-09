@@ -12,9 +12,9 @@
       variant: { control: 'select', options: ['primary', 'secondary', 'ghost', 'danger'] },
       size: { control: 'select', options: ['sm', 'md', 'lg'] },
       loading: { control: 'boolean' },
-      disabled: { control: 'boolean' }
+      disabled: { control: 'boolean' },
     },
-    args: { label: 'Add item', variant: 'secondary', size: 'md', loading: false, disabled: false }
+    args: { label: 'Add item', variant: 'secondary', size: 'md', loading: false, disabled: false },
   });
 </script>
 
@@ -28,7 +28,9 @@
   {#snippet template()}
     <div class="flex gap-2">
       {#each ['primary', 'secondary', 'ghost', 'danger'] as v (v)}
-        <IconButton label={v} variant={v}>{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton>
+        <IconButton label={v} variant={v}
+          >{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton
+        >
       {/each}
     </div>
   {/snippet}

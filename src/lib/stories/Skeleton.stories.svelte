@@ -6,8 +6,12 @@
     title: 'Hub/Skeleton',
     component: Skeleton,
     tags: ['autodocs'],
-    argTypes: { width: { control: 'text' }, height: { control: 'text' }, rounded: { control: 'text' } },
-    args: { width: '240px', height: '12px', rounded: 'rounded' }
+    argTypes: {
+      width: { control: 'text' },
+      height: { control: 'text' },
+      rounded: { control: 'text' },
+    },
+    args: { width: '240px', height: '12px', rounded: 'rounded' },
   });
 </script>
 

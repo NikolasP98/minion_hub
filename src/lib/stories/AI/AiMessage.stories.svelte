@@ -11,7 +11,8 @@
     { icon: RotateCcw, label: 'Retry', onclick: fn() },
     { icon: ThumbsUp, label: 'Good answer', onclick: fn() },
   ];
-  const sqlReply = 'Here is the query:\n\n```sql\nselect id, starts_at from bookings\nwhere starts_at >= now()\norder by starts_at;\n```\n\n- 3 rows\n- **none** cancelled';
+  const sqlReply =
+    'Here is the query:\n\n```sql\nselect id, starts_at from bookings\nwhere starts_at >= now()\norder by starts_at;\n```\n\n- 3 rows\n- **none** cancelled';
   const long = 'This reply goes on for a while so the row has to wrap. '.repeat(14);
 
   const { Story } = defineMeta({
@@ -24,24 +25,43 @@
 </script>
 
 {#snippet bubble(text, user = false)}
-  <div class="rounded-lg px-3 py-2 t-body {user ? 'bg-accent text-on-accent' : 'bg-surface-2 text-foreground'}">{text}</div>
+  <div
+    class="rounded-lg px-3 py-2 t-body {user
+      ? 'bg-accent text-on-accent'
+      : 'bg-surface-2 text-foreground'}"
+  >
+    {text}
+  </div>
 {/snippet}
 
 <Story name="Assistant">
   {#snippet template(args)}
-    <div class="flex w-full flex-col"><AiMessage {...args}>{@render bubble('Three bookings next week: Tue 10:00, Wed 15:30 and Fri 09:00.')}</AiMessage></div>
+    <div class="flex w-full flex-col">
+      <AiMessage {...args}
+        >{@render bubble(
+          'Three bookings next week: Tue 10:00, Wed 15:30 and Fri 09:00.',
+        )}</AiMessage
+      >
+    </div>
   {/snippet}
 </Story>
 
-<Story name="User" args={{ from: 'user', actions: [{ icon: Pencil, label: 'Edit', onclick: fn() }] }}>
+<Story
+  name="User"
+  args={{ from: 'user', actions: [{ icon: Pencil, label: 'Edit', onclick: fn() }] }}
+>
   {#snippet template(args)}
-    <div class="flex w-full flex-col"><AiMessage {...args}>{@render bubble('What do I have next week?', true)}</AiMessage></div>
+    <div class="flex w-full flex-col">
+      <AiMessage {...args}>{@render bubble('What do I have next week?', true)}</AiMessage>
+    </div>
   {/snippet}
 </Story>
 
 <Story name="No timestamp no actions" args={{ timestamp: undefined, actions: [] }}>
   {#snippet template(args)}
-    <div class="flex w-full flex-col"><AiMessage {...args}>{@render bubble('Bare row: just the bubble.')}</AiMessage></div>
+    <div class="flex w-full flex-col">
+      <AiMessage {...args}>{@render bubble('Bare row: just the bubble.')}</AiMessage>
+    </div>
   {/snippet}
 </Story>
 
@@ -66,9 +86,17 @@
 <Story name="Thread both sides">
   {#snippet template(args)}
     <div class="flex w-full flex-col gap-3">
-      <AiMessage {...args} from="user" timestamp="10:41" actions={[]}>{@render bubble('What do I have next week?', true)}</AiMessage>
-      <AiMessage {...args}>{@render bubble('Three bookings next week: Tue 10:00, Wed 15:30 and Fri 09:00.')}</AiMessage>
-      <AiMessage {...args} from="user" timestamp="10:43" actions={[]}>{@render bubble('Move the Friday one to Monday.', true)}</AiMessage>
+      <AiMessage {...args} from="user" timestamp="10:41" actions={[]}
+        >{@render bubble('What do I have next week?', true)}</AiMessage
+      >
+      <AiMessage {...args}
+        >{@render bubble(
+          'Three bookings next week: Tue 10:00, Wed 15:30 and Fri 09:00.',
+        )}</AiMessage
+      >
+      <AiMessage {...args} from="user" timestamp="10:43" actions={[]}
+        >{@render bubble('Move the Friday one to Monday.', true)}</AiMessage
+      >
       <AiMessage {...args} timestamp="10:43">{@render bubble(long)}</AiMessage>
     </div>
   {/snippet}
@@ -77,7 +105,9 @@
 <Story name="Thread · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
   {#snippet template(args)}
     <div class="flex w-full flex-col gap-3">
-      <AiMessage {...args} from="user" timestamp="10:41" actions={[]}>{@render bubble('What do I have next week?', true)}</AiMessage>
+      <AiMessage {...args} from="user" timestamp="10:41" actions={[]}
+        >{@render bubble('What do I have next week?', true)}</AiMessage
+      >
       <AiMessage {...args}>{@render bubble(long)}</AiMessage>
     </div>
   {/snippet}

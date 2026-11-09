@@ -8,7 +8,11 @@
     { id: 's2', title: 'Botox 3 zones', length: 45 },
     { id: 's3', title: 'HA filler 1 ml', length: 60 },
     { id: 's4', title: 'Retired peel', length: 40, active: false },
-    { id: 's5', title: 'Tratamiento combinado de rejuvenecimiento facial (protocolo completo)', length: 180 },
+    {
+      id: 's5',
+      title: 'Tratamiento combinado de rejuvenecimiento facial (protocolo completo)',
+      length: 180,
+    },
     { id: 's6', title: 'No length set' },
   ];
 
@@ -33,13 +37,24 @@
 </Story>
 
 <Story name="Selected, long title" args={{ value: 's5' }}>
-  {#snippet template(args)}<div class="w-64 border border-border"><ServicePickerField {...args} /></div>{/snippet}
+  {#snippet template(args)}<div class="w-64 border border-border">
+      <ServicePickerField {...args} />
+    </div>{/snippet}
 </Story>
 
 <Story name="No services" args={{ services: [] }}>
   {#snippet template(args)}<div class="w-80"><ServicePickerField {...args} /></div>{/snippet}
 </Story>
 
-<Story name="Sixty services" args={{ services: Array.from({ length: 60 }, (_, i) => ({ id: `m${i}`, title: `Service ${i + 1}`, length: 15 * (1 + (i % 8)) })) }}>
+<Story
+  name="Sixty services"
+  args={{
+    services: Array.from({ length: 60 }, (_, i) => ({
+      id: `m${i}`,
+      title: `Service ${i + 1}`,
+      length: 15 * (1 + (i % 8)),
+    })),
+  }}
+>
   {#snippet template(args)}<div class="w-80"><ServicePickerField {...args} /></div>{/snippet}
 </Story>

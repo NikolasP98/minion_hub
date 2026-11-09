@@ -12,9 +12,9 @@
       rows: { control: 'number' },
       disabled: { control: 'boolean' },
       error: { control: 'text' },
-      helper: { control: 'text' }
+      helper: { control: 'text' },
     },
-    args: { label: 'Notes', placeholder: 'Anything to add?', rows: 3, size: 'md', disabled: false }
+    args: { label: 'Notes', placeholder: 'Anything to add?', rows: 3, size: 'md', disabled: false },
   });
 </script>
 

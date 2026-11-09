@@ -18,7 +18,12 @@
   ];
 
   let seq = 0;
-  const booking = (day: string, h: number, minutes: number, patch: Partial<CalendarBooking> = {}): CalendarBooking => {
+  const booking = (
+    day: string,
+    h: number,
+    minutes: number,
+    patch: Partial<CalendarBooking> = {},
+  ): CalendarBooking => {
     seq += 1;
     const start = Date.UTC(2026, 8, Number(day), h + 5); // Lima = UTC-5
     return {
@@ -37,14 +42,37 @@
 
   const bookings: CalendarBooking[] = [
     booking('07', 9, 45),
-    booking('07', 10, 60, { resourceId: 'r-luis', status: 'pending', attendeeName: 'Jorge Paredes' }),
-    booking('07', 11, 30, { status: 'completed', attendeeName: 'María Fernanda Rodríguez Villanueva-Salazar', eventTypeId: 'et-clean' }),
+    booking('07', 10, 60, {
+      resourceId: 'r-luis',
+      status: 'pending',
+      attendeeName: 'Jorge Paredes',
+    }),
+    booking('07', 11, 30, {
+      status: 'completed',
+      attendeeName: 'María Fernanda Rodríguez Villanueva-Salazar',
+      eventTypeId: 'et-clean',
+    }),
     booking('08', 9, 45, { resourceId: 'r-mar', status: 'no_show', attendeeName: null }),
     booking('08', 14, 60, { status: 'cancelled', attendeeName: 'Pedro Castillo' }),
-    booking('08', 16, 60, { attendeeName: 'Visit (2 services)', groupId: 'g1', groupSeq: 1, groupLength: 2 }),
-    booking('08', 17, 30, { attendeeName: 'Visit (2 services)', groupId: 'g1', groupSeq: 2, groupLength: 2, eventTypeId: 'et-fup' }),
+    booking('08', 16, 60, {
+      attendeeName: 'Visit (2 services)',
+      groupId: 'g1',
+      groupSeq: 1,
+      groupLength: 2,
+    }),
+    booking('08', 17, 30, {
+      attendeeName: 'Visit (2 services)',
+      groupId: 'g1',
+      groupSeq: 2,
+      groupLength: 2,
+      eventTypeId: 'et-fup',
+    }),
     booking('09', 8, 45, { resourceId: 'r-luis', status: 'rejected', attendeeName: 'Li' }),
-    booking('09', 12, 45, { attendeeName: 'Paid', paid: true, tickets: [{ id: 'tk1', humanId: 'F001-000123' }] }),
+    booking('09', 12, 45, {
+      attendeeName: 'Paid',
+      paid: true,
+      tickets: [{ id: 'tk1', humanId: 'F001-000123' }],
+    }),
   ];
 
   // The store's definition fetch 404s under Storybook and is caught: no custom columns.
@@ -74,7 +102,10 @@
 <Story name="By status" />
 <Story name="By staff" args={{ axis: 'staff' }} />
 <Story name="Empty" args={{ bookings: [] }} />
-<Story name="Read-only (no drag)" args={{ onstatus: undefined, onvisitstatus: undefined, onstaff: undefined }} />
+<Story
+  name="Read-only (no drag)"
+  args={{ onstatus: undefined, onvisitstatus: undefined, onstaff: undefined }}
+/>
 <Story
   name="Many cards"
   args={{
