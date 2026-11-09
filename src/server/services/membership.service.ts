@@ -1,3 +1,7 @@
+import {
+  simulatedMutationOwner,
+  requireUnscopedSimulationMutation,
+} from '$server/auth/simulated-record-scope';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
@@ -38,19 +42,31 @@ export function addInterval(from: Date, unit: IntervalUnit, count: number): Date
 
 // ── Plans (admin) ─────────────────────────────────────────────────────────────
 export function listPlans(ctx: CoreCtx): Promise<MembershipPlan[]> {
-  return withOrgCore(ctx, (tx) => tx.select().from(membershipPlans).where(eq(membershipPlans.orgId, ctx.tenantId)));
+  return withOrgCore(ctx, (tx) =>
+    tx.select().from(membershipPlans).where(eq(membershipPlans.orgId, ctx.tenantId)),
+  );
 }
 
-export type NewPlanInput = Omit<typeof membershipPlans.$inferInsert, 'id' | 'orgId' | 'createdAt' | 'updatedAt'>;
+export type NewPlanInput = Omit<
+  typeof membershipPlans.$inferInsert,
+  'id' | 'orgId' | 'createdAt' | 'updatedAt'
+>;
 
 export async function createPlan(ctx: CoreCtx, input: NewPlanInput): Promise<MembershipPlan> {
   const [row] = await withOrgCore(ctx, (tx) =>
-    tx.insert(membershipPlans).values({ ...input, orgId: ctx.tenantId }).returning(),
+    tx
+      .insert(membershipPlans)
+      .values({ ...input, orgId: ctx.tenantId })
+      .returning(),
   );
   return row;
 }
 
-export async function updatePlan(ctx: CoreCtx, id: string, patch: Partial<NewPlanInput>): Promise<MembershipPlan | null> {
+export async function updatePlan(
+  ctx: CoreCtx,
+  id: string,
+  patch: Partial<NewPlanInput>,
+): Promise<MembershipPlan | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .update(membershipPlans)
@@ -64,7 +80,11 @@ export async function updatePlan(ctx: CoreCtx, id: string, patch: Partial<NewPla
 // ── Memberships ───────────────────────────────────────────────────────────────
 export function listMemberships(ctx: CoreCtx): Promise<Membership[]> {
   return withOrgCore(ctx, (tx) =>
-    tx.select().from(memberships).where(eq(memberships.orgId, ctx.tenantId)).orderBy(memberships.createdAt),
+    tx
+      .select()
+      .from(memberships)
+      .where(eq(memberships.orgId, ctx.tenantId))
+      .orderBy(memberships.createdAt),
   );
 }
 
@@ -77,7 +97,10 @@ export interface NewMembershipInput {
 }
 
 /** Start a membership. First cycle spawns on the next tick (next_cycle_date = start). */
-export async function createMembership(ctx: CoreCtx, input: NewMembershipInput): Promise<Membership> {
+export async function createMembership(
+  ctx: CoreCtx,
+  input: NewMembershipInput,
+): Promise<Membership> {
   const started = input.startedAt ?? new Date();
   const [row] = await withOrgCore(ctx, async (tx) => {
     // planId must be a real plan in the caller's org (no cross-tenant linkage).
@@ -102,7 +125,11 @@ export async function createMembership(ctx: CoreCtx, input: NewMembershipInput):
   return row;
 }
 
-export async function setMembershipStatus(ctx: CoreCtx, id: string, status: string): Promise<Membership | null> {
+export async function setMembershipStatus(
+  ctx: CoreCtx,
+  id: string,
+  status: string,
+): Promise<Membership | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .update(memberships)
@@ -129,6 +156,7 @@ export async function listEnabledMembershipOrgs(): Promise<string[]> {
 }
 
 async function spawnCycle(tx: CoreTx, ctx: CoreCtx, m: Membership, now: Date): Promise<boolean> {
+  const ownerId = simulatedMutationOwner(ctx, 'sales', 'create');
   const [plan] = await tx
     .select()
     .from(membershipPlans)
@@ -153,6 +181,7 @@ async function spawnCycle(tx: CoreTx, ctx: CoreCtx, m: Membership, now: Date): P
       .insert(salesOrders)
       .values({
         orgId: ctx.tenantId,
+        ownerId,
         humanId,
         partyId: m.partyId,
         crmContactId: m.crmContactId,
@@ -164,7 +193,10 @@ async function spawnCycle(tx: CoreTx, ctx: CoreCtx, m: Membership, now: Date): P
         metadata: { membershipId: m.id, cycleNo },
       })
       .returning({ id: salesOrders.id });
-    await tx.update(membershipCycles).set({ salesOrderId: so.id }).where(eq(membershipCycles.id, cyc.id));
+    await tx
+      .update(membershipCycles)
+      .set({ salesOrderId: so.id })
+      .where(eq(membershipCycles.id, cyc.id));
   }
 
   // Advance the watermark either way (a conflict means the cycle already exists).
@@ -179,12 +211,19 @@ async function spawnCycle(tx: CoreTx, ctx: CoreCtx, m: Membership, now: Date): P
  *  ponytail: advances one cycle per tick — a long-dormant membership catches up
  *  over successive ticks, not all at once. Raise the cadence if that matters. */
 export async function processMembershipCycles(ctx: CoreCtx, now: Date): Promise<CycleRunResult> {
+  requireUnscopedSimulationMutation(ctx, 'sales', 'create');
   const res: CycleRunResult = { spawned: 0, skipped: 0 };
   const due = await withOrgCore(ctx, (tx) =>
     tx
       .select()
       .from(memberships)
-      .where(and(eq(memberships.orgId, ctx.tenantId), eq(memberships.status, 'active'), lte(memberships.nextCycleDate, now)))
+      .where(
+        and(
+          eq(memberships.orgId, ctx.tenantId),
+          eq(memberships.status, 'active'),
+          lte(memberships.nextCycleDate, now),
+        ),
+      )
       .limit(200),
   );
   for (const m of due) {

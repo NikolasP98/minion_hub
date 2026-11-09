@@ -49,6 +49,9 @@ import {
   revalidateChannel,
 } from '$lib/state/features/hosts.svelte';
 import { userState } from '$lib/state/features/user.svelte';
+import { page } from '$app/state';
+import type { RoleSimulationState } from '$lib/role-simulation';
+const roleSimulation = () => (page.data as { roleSimulation?: RoleSimulationState }).roleSimulation;
 import type { Host } from '$lib/types/host';
 import {
   armEagerReconnect,
@@ -200,7 +203,13 @@ function mapGatewaySessionRows(raw: unknown[]): Session[] {
 // cycle. This file still owns the client *lifecycle*.
 let stopSessionBootstrap: (() => void) | null = null;
 const authenticatedSessions = new WeakMap<GatewayClient, AuthenticatedSession<HelloOk>>();
-const identityKey = () => JSON.stringify([userState.user?.id ?? null, userState.orgId]);
+const identityKey = () =>
+  JSON.stringify([
+    userState.user?.id ?? null,
+    userState.orgId,
+    roleSimulation()?.generation ?? null,
+    roleSimulation()?.active ?? false,
+  ]);
 let publishedOwner: { hostId: string; url: string; identity: string } | null = null;
 // One-shot guard: when the gateway closes with NOT_PAIRED / "device identity
 // required", we refetch the token and try exactly once more. A second auth-
@@ -723,6 +732,10 @@ setReconnectSink(() => {
 });
 
 export async function wsConnect() {
+  if (roleSimulation()?.active) {
+    wsDisconnect({ persistWorkshop: false });
+    return;
+  }
   const generation = lifecycleFence.begin();
   const identity = identityKey();
   const activeHost = getActiveHost();
@@ -858,6 +871,10 @@ export async function cutoverToHost(
   host: Host,
   sourceHostId = hostsState.activeHostId,
 ): Promise<boolean> {
+  if (roleSimulation()?.active) {
+    wsDisconnect({ persistWorkshop: false });
+    return false;
+  }
   host = { ...host };
   const sourceClient = getClient();
   const identity = identityKey();
@@ -923,7 +940,7 @@ export async function cutoverToHost(
   return true;
 }
 
-export function wsDisconnect() {
+export function wsDisconnect(options: { persistWorkshop?: boolean } = {}) {
   lifecycleFence.invalidate();
   conn.closed = true;
   conn.connected = false;
@@ -945,7 +962,10 @@ export function wsDisconnect() {
   }
   clearPendingEagerReconnect();
 
-  resetGatewayData(publishedOwner?.hostId ?? hostsState.activeHostId);
+  resetGatewayData(
+    publishedOwner?.hostId ?? hostsState.activeHostId,
+    options.persistWorkshop !== false,
+  );
   publishedOwner = null;
 
   ui.shutdownReason = null;
@@ -959,14 +979,14 @@ export function wsDisconnect() {
  * client). `hostIdForAutosave` is the host being left, so the workshop
  * layout is saved under the right key before it's cleared.
  */
-function resetGatewayData(hostIdForAutosave: string | null): void {
+function resetGatewayData(hostIdForAutosave: string | null, persistWorkshop = true): void {
   retireGatewaySessionOwner();
   resetReliability();
   stopPolling();
   stopSqliteFlush();
 
   // Save current host's workshop layout before clearing state
-  autoSave(hostIdForAutosave);
+  if (persistWorkshop) autoSave(hostIdForAutosave);
   resetWorkshop();
 
   // Clear session status timers and eviction timers

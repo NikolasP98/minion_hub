@@ -164,6 +164,12 @@ interface UserSpec {
 }
 
 const USERS: UserSpec[] = [
+  {
+    id: 'tenancy.user.access-manager',
+    systemRole: 'custom-qa-access',
+    legacyRole: 'member',
+    orgs: [ORG_BUSINESS],
+  },
   { id: 'tenancy.user.owner', systemRole: 'owner', legacyRole: 'owner', orgs: [ORG_BUSINESS] },
   { id: 'tenancy.user.admin', systemRole: 'admin', legacyRole: 'admin', orgs: [ORG_BUSINESS] },
   { id: 'tenancy.user.manager', systemRole: 'manager', legacyRole: 'member', orgs: [ORG_BUSINESS] },
@@ -213,8 +219,58 @@ const USERS: UserSpec[] = [
   },
 ];
 
+export const SIMULATION_OWNER_TWO_ORGS = 'tenancy.user.simulation-owner-two-orgs';
+
+/** Narrow additive seed for browser/native org-switch proof; touches only this persona. */
+export async function seedSimulationOwnerTwoOrgs(
+  ctx: Pick<SeedContext, 'sql' | 'admin' | 'register' | 'now'>,
+): Promise<void> {
+  const { sql, admin, register, now } = ctx;
+  const email = personaEmail(SIMULATION_OWNER_TWO_ORGS);
+  const profileId = await findOrCreateGoTrueUser(
+    admin,
+    userId(SIMULATION_OWNER_TWO_ORGS),
+    email,
+    QA_PASSWORD,
+    {
+      full_name: SIMULATION_OWNER_TWO_ORGS,
+    },
+  );
+  await sql.begin(async (tx) => {
+    await tx`insert into profiles(id,email,display_name,role,account_type,onboarded_at)
+      values(${profileId},${email},${SIMULATION_OWNER_TWO_ORGS},'user','person',${now})
+      on conflict(id) do update set email=excluded.email,display_name=excluded.display_name,
+        role=excluded.role,account_type=excluded.account_type,onboarded_at=excluded.onboarded_at`;
+    for (const orgId of [ORG_BUSINESS, ORG_PERSONAL]) {
+      await tx`insert into organization_members(organization_id,profile_id,role)
+        values(${orgId},${profileId},'owner')
+        on conflict(organization_id,profile_id) do update set role=excluded.role`;
+      await tx`insert into member_roles(org_id,profile_id,role_key) values(${orgId},${profileId},'owner')
+        on conflict(org_id,profile_id,role_key) do nothing`;
+    }
+  });
+  await ensureSeededPersonalAgent(ctx, {
+    profileId,
+    agentId: matrixTextId(SIMULATION_OWNER_TWO_ORGS, 'personal-agent'),
+    displayName: `${SIMULATION_OWNER_TWO_ORGS} agent`,
+  });
+  register(SIMULATION_OWNER_TWO_ORGS, { table: 'profiles', where: { id: profileId } });
+}
+
 export async function seed(ctx: SeedContext): Promise<void> {
   const { sql, admin, register, now } = ctx;
+  // The schema snapshot intentionally has no data. Canonical system catalog is
+  // required by both normal role management and simulation rank admission.
+  for (const [key, name, rank] of [
+    ['owner', 'Owner', 100],
+    ['admin', 'Admin', 80],
+    ['manager', 'Manager', 60],
+    ['staff', 'Staff', 40],
+    ['viewer', 'Viewer', 20],
+  ] as const) {
+    await sql`insert into permission_roles(key,name,rank,is_system) values(${key},${name},${rank},true) on conflict(key) do nothing`;
+    register(`tenancy.system-role.${key}`, { table: 'permission_roles', where: { key } });
+  }
 
   // `onboarded_at` stamps every seeded org and persona (below) as already set
   // up, so no QA login lands on the first-run /onboarding flows.
@@ -322,6 +378,8 @@ export async function seed(ctx: SeedContext): Promise<void> {
       });
     }
   }
+  await seedSimulationOwnerTwoOrgs(ctx);
+
   register('tenancy.user.pending-agent', {
     table: 'personal_agents',
     where: { profile_id: userId('tenancy.user.pending-agent'), provisioning_status: 'pending' },
@@ -425,5 +483,85 @@ export async function seed(ctx: SeedContext): Promise<void> {
   register('tenancy.nav.staff-sell-viewer-rule', {
     table: 'permission_rules',
     where: { org_id: ORG_BUSINESS, role_key: 'viewer', module: 'page:k3x9q2' },
+  });
+  // Simulation sessions come from real GoTrue login; seeds never fabricate session claims.
+  for (const [key, name] of [
+    ['custom-qa-access', 'Access manager (QA)'],
+    ['custom-qa-empty', 'No pages (QA)'],
+  ]) {
+    await sql`insert into org_roles(org_id,key,name,rank,source_role_key,created_by)
+      values(${ORG_BUSINESS},${key},${name},40,'viewer',${userId('tenancy.user.owner')})
+      on conflict(org_id,key) do update set name=excluded.name,rank=excluded.rank`;
+  }
+  const fixtures = [
+    {
+      role: 'custom-qa-access',
+      module: 'users',
+      view: true,
+      edit: false,
+      manage: true,
+      own: false,
+      level: 0,
+    },
+    {
+      role: 'custom-qa-access',
+      module: 'crm',
+      view: true,
+      edit: true,
+      manage: false,
+      own: true,
+      level: 0,
+    },
+    {
+      role: 'custom-qa-empty',
+      module: 'overview',
+      view: false,
+      edit: false,
+      manage: false,
+      own: false,
+      level: 0,
+    },
+    {
+      role: 'custom-qa-empty',
+      module: 'page:/home',
+      view: false,
+      edit: false,
+      manage: false,
+      own: false,
+      level: 0,
+    },
+    {
+      role: 'custom-qa-empty',
+      module: 'page:/overview',
+      view: false,
+      edit: false,
+      manage: false,
+      own: false,
+      level: 0,
+    },
+  ];
+  for (const row of fixtures) {
+    await sql`insert into permission_rules(org_id,role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level)
+      values(${ORG_BUSINESS},${row.role},${row.module},${row.view},false,${row.edit},false,false,${row.manage},${row.own},${row.level})
+      on conflict(org_id,role_key,module) do update set can_view=excluded.can_view,can_edit=excluded.can_edit,
+      can_manage=excluded.can_manage,if_owner=excluded.if_owner,field_level=excluded.field_level`;
+  }
+  register('tenancy.simulation.access-role', {
+    table: 'org_roles',
+    where: { org_id: ORG_BUSINESS, key: 'custom-qa-access' },
+  });
+  register('tenancy.simulation.empty-role', {
+    table: 'org_roles',
+    where: { org_id: ORG_BUSINESS, key: 'custom-qa-empty' },
+  });
+  register('tenancy.simulation.crm-limits', {
+    table: 'permission_rules',
+    where: {
+      org_id: ORG_BUSINESS,
+      role_key: 'custom-qa-access',
+      module: 'crm',
+      if_owner: true,
+      field_level: 0,
+    },
   });
 }

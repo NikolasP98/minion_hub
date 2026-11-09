@@ -18,6 +18,12 @@ const ownerFilterMock = vi.fn<(locals: unknown, module: string) => Promise<strin
   async () => 'owner-1',
 );
 vi.mock('$server/services/rbac.service', () => ({
+  shouldMaskSensitive: async () => false,
+  apiReadCapability: () => ({
+    module: 'crm',
+    action: 'view',
+    anyOf: [{ module: 'pos', action: 'view' }],
+  }),
   hasOrgCapability: (locals: unknown, module: string, action: string) =>
     hasOrgCapabilityMock(locals, module, action),
   ownerFilter: (locals: unknown, module: string) => ownerFilterMock(locals, module),
@@ -59,7 +65,7 @@ vi.mock('$server/services/party.service', () => ({
   setPartyDniVerified: (_ctx: unknown, id: string, v: boolean) => setVerifiedMock(id, v),
   setPartyDocument: (_ctx: unknown, id: string, doc: string, expected?: Date) =>
     setDocMock(id, doc, expected),
-  getParty: (_ctx: unknown, id: string) => getPartyMock(id),
+  getPartyForRead: (_ctx: unknown, id: string) => getPartyMock(id),
   contactIdForParty: (_ctx: unknown, id: string, ownerId?: string) =>
     contactIdForPartyMock(id, ownerId),
 }));

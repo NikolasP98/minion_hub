@@ -23,6 +23,9 @@ await mkdir(out, { recursive: true });
 const checks: string[] = [];
 const browser = await chromium.launch({ headless: true });
 const returnPath = '/en/account/home?settings-return=qa#selection';
+// ProfileMenu uses localized account-menu names; active simulation appends its role.
+const accountMenuName =
+  /^(?:Account menu(?: · Simulating .+)?|Menú de cuenta(?: · Simulando .+)?)$/u;
 let lastPage: Page | undefined;
 const pageErrors: string[] = [];
 const ownerEvidence: { checkpoint: string; state: unknown }[] = [];
@@ -103,7 +106,7 @@ async function avatarSettings(page: Page) {
   // Production has no query inspector. Its development-only floating logo
   // overlaps the avatar in the QA Vite server; keep real app clicks unobstructed.
   await page.addStyleTag({ content: '.tsqd-parent-container { display: none !important; }' });
-  await page.getByRole('button', { name: 'Profile menu', exact: true }).click();
+  await page.getByRole('button', { name: accountMenuName }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/appearance$/);
   await expect(page.getByRole('heading', { name: 'Language', exact: true })).toBeVisible();

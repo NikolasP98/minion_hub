@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 /**
  * Server-side one-shot gateway RPC helper.
  *
@@ -77,6 +78,7 @@ export async function resolveCredentialsForUser(
   orgId?: string | null,
   channel?: GatewayChannel,
 ): Promise<{ url: string; token: string }> {
+  rejectSimulatedDelegation();
   const chan = channel ?? currentBuildChannel();
   // 0. The (org, channel) lease — ONE authority for which instance serves this
   //    org on this channel, shared with the endpoint the browser connects to.
@@ -148,6 +150,7 @@ async function gatewayCallWithCreds<T = unknown>(
     jwt?: string;
   } = {},
 ): Promise<T> {
+  rejectSimulatedDelegation();
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   // Origin header must match an entry in gateway.controlUi.allowedOrigins so
@@ -418,6 +421,7 @@ export function openQualifiedGateway(
   credentials: { url: string; token: string },
   input: Pick<QualifiedGatewayInput, 'version' | 'commit' | 'signal'>,
 ): Promise<QualifiedGatewayConnection> {
+  rejectSimulatedDelegation();
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(credentials.url, {
       headers: { Origin: env.MINION_HUB_ORIGIN || hubBaseUrl() },

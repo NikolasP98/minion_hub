@@ -196,7 +196,6 @@
     Download,
     Plus,
     X,
-    Search,
     GripVertical,
     WrapText,
     Sigma,
@@ -269,6 +268,7 @@
   } from './selection';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import type { TagScope } from '$lib/tags/scope';
+  import CompactSearch from '$lib/components/ui/CompactSearch.svelte';
   import ColumnFilter from './ColumnFilter.svelte';
   import FilterAddMenu from './FilterAddMenu.svelte';
   import FilterChip from './FilterChip.svelte';
@@ -3364,15 +3364,13 @@
   {#if searchOn || exportOn || addShown || showColMenu || toolbar || actions || bulkShown || customEnabled || canSwitchOpenMode || filterBarOn}
     <div class="dt-toolbar view-toolbar" data-action-scope="collection">
       {#if searchOn}
-        <div class="dt-search">
-          <Search size={iconSizes.sm} class="dt-search-ico" />
-          <input
-            bind:this={searchInputEl}
-            bind:value={search}
-            oninput={() => server && emitSearchQuery()}
-            placeholder={searchPlaceholder ?? m.data_table_search()}
-          />
-        </div>
+        <CompactSearch
+          class="dt-search"
+          bind:inputRef={searchInputEl}
+          bind:value={search}
+          oninput={() => server && emitSearchQuery()}
+          placeholder={searchPlaceholder ?? m.data_table_search()}
+        />
       {/if}
       {#if selectedIds.size > 0}
         <span class="dt-count text-accent" role="status" aria-live="polite">
@@ -4833,52 +4831,6 @@
     font-size: var(--font-size-label);
     color: var(--color-muted-foreground);
     white-space: nowrap;
-  }
-  .dt-search {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    min-width: 9rem;
-  }
-  :global(.dt-search .dt-search-ico) {
-    position: absolute;
-    left: 0.35rem;
-    color: var(--color-muted-foreground);
-    pointer-events: none;
-  }
-  .dt-search input {
-    height: var(--control-height-xs);
-    width: 100%;
-    padding: 0 var(--space-2) 0 var(--space-6);
-    font-size: var(--font-size-body);
-    color: var(--color-foreground);
-    background: transparent;
-    border: 1px solid transparent;
-    border-bottom-color: var(--hairline);
-    border-radius: var(--radius-sm);
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      border-color var(--duration-fast) var(--ease-standard);
-  }
-  .dt-search input::placeholder {
-    color: var(--color-muted-foreground);
-    opacity: 0.7;
-  }
-  .dt-search input:hover {
-    background: color-mix(in srgb, var(--color-foreground) 4%, transparent);
-  }
-  .dt-search input:focus {
-    outline: none;
-    background: var(--color-bg3);
-    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-  }
-  .dt-search input:focus-visible {
-    box-shadow: var(--shadow-focus);
-  }
-  @media (pointer: coarse) {
-    .dt-search input {
-      height: var(--control-height-touch);
-    }
   }
   /* ── Toolbar icon-button contract (owner directive 2026-09-29: "squares vs
      squircles" — every toolbar icon trigger now shares ONE box) ─────────────

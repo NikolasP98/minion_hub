@@ -1,3 +1,7 @@
+import {
+  simulatedMutationOwner,
+  assertSimulatedRecordAccess,
+} from '$server/auth/simulated-record-scope';
 import { sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
@@ -126,6 +130,7 @@ export async function applyStandardization(
   fixes: Array<{ contactId: string; name: string; before?: string | null }>,
   ownerId?: string,
 ): Promise<ApplyStandardizationResult> {
+  ownerId = simulatedMutationOwner(ctx, 'crm', 'edit') ?? ownerId;
   if (fixes.length === 0) return { updated: 0, skipped: 0 };
   // Trim + drop empties first (same skip the per-row loop did).
   const valid = fixes
@@ -440,10 +445,13 @@ export async function mergeContacts(
    *  (never a wholesale replace), so untouched keys are preserved. */
   overrides?: { displayName?: string; customFields?: Record<string, unknown> },
 ): Promise<void> {
+  simulatedMutationOwner(ctx, 'crm', 'delete');
   const losers = loserIds.filter((id) => id && id !== survivorId);
   if (losers.length === 0) return;
 
   await withOrgCore(ctx, async (tx) => {
+    for (const id of [...new Set([survivorId, ...losers])].sort())
+      await assertSimulatedRecordAccess(tx, ctx, 'crm', id, 'edit');
     const org = ctx.tenantId;
     const loserArr = sql`(${sql.join(
       losers.map((id) => sql`${id}`),

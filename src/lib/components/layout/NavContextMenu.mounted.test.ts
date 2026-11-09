@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { createRawSnippet } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 import { EMPTY_NAV_CONFIG, type NavConfig } from '$lib/nav/custom-sections';
 
 const state = vi.hoisted(() => ({
@@ -75,6 +75,57 @@ describe('NavContextMenu', () => {
     const r = await rows();
     expect(r).toHaveLength(1);
     expect(r[0]).toMatch(/home/i);
+  });
+
+  it('exposes access through visible More with users:manage and no settings:manage', async () => {
+    setup(['users:manage']);
+    mount({ kind: 'header', sectionId: 'custom:st4ff1' });
+    await fireEvent.click(screen.getByRole('button', { name: 'More actions: Row' }));
+    const text = (await rows()).join('|');
+    expect(text).toContain('Manage section access');
+    expect(text).not.toContain('Rename');
+    expect(text).not.toContain('New page');
+  });
+  it('opens only the nearest menu when a touch press is nested in an area host', async () => {
+    vi.useFakeTimers();
+    try {
+      setup(['settings:manage', 'users:manage']);
+      render(NavContextMenu, {
+        props: {
+          kind: 'area',
+          children: createRawSnippet(() => ({
+            render: () => '<div data-testid="nested-target"></div>',
+          })),
+        },
+      });
+      render(NavContextMenu, {
+        target: screen.getByTestId('nested-target'),
+        props: { kind: 'item', href: '/pos/sell', label: 'Sell', children: child },
+      });
+      await fireEvent.pointerDown(screen.getByTestId('row'), {
+        pointerType: 'touch',
+        clientX: 20,
+        clientY: 30,
+      });
+      await vi.advanceTimersByTimeAsync(501);
+      await tick();
+      expect(screen.getAllByRole('menu')).toHaveLength(1);
+      expect(screen.queryByRole('menuitem', { name: 'New section…' })).toBeNull();
+      expect(screen.getByRole('menuitem', { name: 'Page access' })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps native page access separate from structural controls', async () => {
+    setup(['users:manage']);
+    mount({ kind: 'item', href: '/pos/sell' });
+    await fireEvent.keyDown(screen.getByTestId('row'), { key: 'F10', shiftKey: true });
+    const text = (await rows()).join('|');
+    expect(text).toContain('Page access');
+    expect(text).not.toContain('Rename');
+    expect(screen.getByTestId('row').tagName).toBe('A');
+    expect(screen.getByRole('button', { name: 'More actions: Row' }).closest('a')).toBeNull();
   });
 
   it('(b) admin on a built-in page: copy/duplicate/move/rename/hide, no delete', async () => {

@@ -1,3 +1,4 @@
+import { assertStatusChangeInTx, type Actor as WorkflowActor } from './workflow.service';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import {
@@ -10,6 +11,10 @@ import { nextSerialId } from './naming-series';
 import { autoAssign } from './assignment.service';
 import { computeChanges } from './activity.service';
 import { docAuditLog } from '$server/db/pg-activity-schema';
+import {
+  simulatedMutationPredicate,
+  simulatedOwnerAssignment,
+} from '$server/auth/simulated-record-scope';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { StaleWriteError, staleGuard } from './errors';
 import { emitHubEvent } from '$server/events/emit';
@@ -113,7 +118,8 @@ export interface IssueFilters {
 export async function listIssues(ctx: CoreCtx, f: IssueFilters = {}): Promise<SupportIssue[]> {
   return withOrgCore(ctx, (tx) => {
     const conds = [eq(supportIssues.orgId, ctx.tenantId)];
-    if (f.status === 'open_all') conds.push(sql`${supportIssues.status} in ('open','replied','on_hold')`);
+    if (f.status === 'open_all')
+      conds.push(sql`${supportIssues.status} in ('open','replied','on_hold')`);
     else if (f.status) conds.push(eq(supportIssues.status, f.status));
     if (f.priority) conds.push(eq(supportIssues.priority, f.priority));
     if (f.crmContactId) conds.push(eq(supportIssues.crmContactId, f.crmContactId));
@@ -145,7 +151,11 @@ export async function issueCountForContact(ctx: CoreCtx, contactId: string): Pro
   return Number(row?.n ?? 0);
 }
 
-export async function getIssue(ctx: CoreCtx, id: string, ownerId?: string): Promise<SupportIssue | null> {
+export async function getIssue(
+  ctx: CoreCtx,
+  id: string,
+  ownerId?: string,
+): Promise<SupportIssue | null> {
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .select()
@@ -174,6 +184,7 @@ export interface CreateIssueInput {
 }
 
 export async function createIssue(ctx: CoreCtx, input: CreateIssueInput): Promise<SupportIssue> {
+  const ownerId = simulatedOwnerAssignment(ctx, 'support', 'create', input.ownerId, true);
   const sla = await getSlaConfig(ctx);
   const priority = input.priority ?? 'medium';
   const now = new Date();
@@ -185,7 +196,7 @@ export async function createIssue(ctx: CoreCtx, input: CreateIssueInput): Promis
     priority,
     crmContactId: input.crmContactId ?? null,
     partyId: input.partyId ?? null,
-    ownerId: input.ownerId ?? null,
+    ownerId: ownerId ?? null,
     source: input.source ?? 'manual',
     channel: input.channel ?? null,
     responseBy,
@@ -193,7 +204,10 @@ export async function createIssue(ctx: CoreCtx, input: CreateIssueInput): Promis
   };
   const [row] = await withOrgCore(ctx, async (tx) => {
     const humanId = await nextSerialId(tx, ctx.tenantId, 'TKT-.YYYY.-', now);
-    return tx.insert(supportIssues).values({ ...values, humanId }).returning();
+    return tx
+      .insert(supportIssues)
+      .values({ ...values, humanId })
+      .returning();
   });
   // Auto-assign via assignment rules (no-op if owner already set or no rule matches).
   if (!row.ownerId) {
@@ -223,14 +237,20 @@ export async function updateIssue(
   input: UpdateIssueInput,
   actor: { id: string | null; name: string | null } = { id: null, name: null },
   expectedUpdatedAt?: Date,
+  workflowActor?: WorkflowActor,
 ): Promise<SupportIssue | null> {
+  simulatedOwnerAssignment(ctx, 'support', 'edit', input.ownerId);
+  const ownership = simulatedMutationPredicate(ctx, 'support', 'edit', supportIssues.ownerId);
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
       .select()
       .from(supportIssues)
-      .where(and(eq(supportIssues.id, id), eq(supportIssues.orgId, ctx.tenantId)))
+      .where(and(eq(supportIssues.id, id), eq(supportIssues.orgId, ctx.tenantId), ownership))
+      .for('update')
       .limit(1);
     if (!cur) return null;
+    if (workflowActor && input.status !== undefined)
+      await assertStatusChangeInTx(tx, ctx, 'support_issue', cur, input.status, workflowActor);
 
     const now = new Date();
     const patch: Partial<NewSupportIssue> = { updatedAt: now };
@@ -266,6 +286,7 @@ export async function updateIssue(
           eq(supportIssues.id, id),
           eq(supportIssues.orgId, ctx.tenantId),
           staleGuard(supportIssues.updatedAt, expectedUpdatedAt),
+          ownership,
         ),
       )
       .returning();

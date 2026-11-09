@@ -1,4 +1,8 @@
 import {
+  assertSimulatedRegistrationContactAccess,
+  assertSimulatedRegistrationPartyAccess,
+} from '$server/auth/simulated-record-scope';
+import {
   and,
   eq,
   ne,
@@ -441,6 +445,7 @@ async function bookOccurrenceInTx(
   // references must instead identify a live contact in this org or fail closed.
   let crmContactId: string | null = null;
   if (input.crmContactId) {
+    await assertSimulatedRegistrationContactAccess(tx, ctx, input.crmContactId);
     const [hit] = await tx
       .select({ id: crmContacts.id })
       .from(crmContacts)
@@ -462,6 +467,7 @@ async function bookOccurrenceInTx(
   // Validated in-org like the contact id above.
   let partyId: string | null = null;
   if (input.partyId) {
+    await assertSimulatedRegistrationPartyAccess(tx, ctx, input.partyId);
     const [p] = await tx
       .select({ id: parties.id })
       .from(parties)
@@ -475,7 +481,10 @@ async function bookOccurrenceInTx(
       .from(crmContacts)
       .where(and(eq(crmContacts.partyId, partyId), eq(crmContacts.orgId, ctx.tenantId)))
       .limit(1);
-    if (hit) crmContactId = hit.id;
+    if (hit) {
+      await assertSimulatedRegistrationContactAccess(tx, ctx, hit.id);
+      crmContactId = hit.id;
+    }
   }
   if (!crmContactId)
     crmContactId =

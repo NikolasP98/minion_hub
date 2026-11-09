@@ -1,3 +1,5 @@
+import { simulationAuditContext } from '$server/auth/effective-authority';
+import { assertSimulatedRecordAccess } from '$server/auth/simulated-record-scope';
 import { and, eq, desc, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { docComments, docAuditLog } from '$server/db/pg-activity-schema';
@@ -78,8 +80,12 @@ export async function addComment(
   body: string,
   actor: { id: string | null; name: string | null },
 ): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx.insert(docComments).values({
+  await withOrgCore(ctx, async (tx) => {
+    const module = (
+      { crm_contact: 'crm', sales_order: 'sales', support_issue: 'support' } as const
+    )[refType as 'crm_contact' | 'sales_order' | 'support_issue'];
+    if (module) await assertSimulatedRecordAccess(tx, ctx, module, refId, 'edit');
+    await tx.insert(docComments).values({
       orgId: ctx.tenantId,
       refType,
       refId,
@@ -87,8 +93,8 @@ export async function addComment(
       body,
       actorId: actor.id,
       actorName: actor.name,
-    }),
-  );
+    });
+  });
 }
 
 /** Append an audit entry. No-op when there are no changes. Run inside the
@@ -107,6 +113,7 @@ export async function recordAuditsInTx(
   ctx: CoreCtx,
   inputs: AuditInput[],
 ): Promise<void> {
+  const simulation = simulationAuditContext(ctx.tenantId, ctx.profileId ?? null);
   const values = inputs
     .filter((input) => input.changes.length > 0)
     .map((input) => ({
@@ -115,8 +122,8 @@ export async function recordAuditsInTx(
       refId: input.refId,
       op: input.op ?? 'update',
       changes: input.changes,
-      actorId: input.actor.id,
-      actorName: input.actor.name,
+      actorId: simulation?.profileId ?? input.actor.id,
+      actorName: simulation?.actorName ?? input.actor.name,
     }));
   if (values.length > 0) await tx.insert(docAuditLog).values(values);
 }

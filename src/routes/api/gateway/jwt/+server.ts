@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error, isHttpError } from '@sveltejs/kit';
 import * as Sentry from '@sentry/sveltekit';
@@ -37,6 +38,7 @@ async function entitlementClaims(orgId: string) {
  * id is required.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
+  rejectSimulatedDelegation();
   const headers = { 'Cache-Control': 'no-store' };
   try {
     const authUser = requireAuth(locals);

@@ -1,3 +1,5 @@
+import { error } from '@sveltejs/kit';
+import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import type { PageServerLoad } from './$types';
 import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { listResources, listEventTypes, listEventKinds } from '$server/services/scheduling.service';
@@ -11,14 +13,23 @@ export const load: PageServerLoad = async ({ locals, url }) => {
   // CRM tags/contact are CRM data: own handle; denied => no tags, no prefill.
   const crm = await datasetCtx(locals, 'crm');
   const contactId = url.searchParams.get('contact');
+  const [ownerId, maskSensitive]: [string | undefined, boolean] = isDenied(crm)
+    ? [undefined, false]
+    : await Promise.all([ownerFilter(locals, 'crm'), shouldMaskSensitive(locals, 'crm')]);
   const [resources, eventTypes, kinds, tags, rec, prefill] = await Promise.all([
     listResources(ctx),
     listEventTypes(ctx),
     listEventKinds(ctx),
     isDenied(crm) ? Promise.resolve([]) : listTags(crm, 'event'),
-    contactId && !isDenied(crm) ? getContact(crm, contactId) : Promise.resolve(null),
-    contactId && !isDenied(crm) ? getContactPrefill(crm, contactId) : Promise.resolve(null),
+    contactId && !isDenied(crm)
+      ? getContact(crm, contactId, ownerId, maskSensitive)
+      : Promise.resolve(null),
+    contactId && !isDenied(crm)
+      ? getContactPrefill(crm, contactId, ownerId, maskSensitive)
+      : Promise.resolve(null),
   ]);
+  if (contactId && !isDenied(crm) && (!rec?.contact || !prefill))
+    throw error(404, 'Contact not found');
   return {
     scheduling: {
       orgTz: schedulingTimeZone(resources),

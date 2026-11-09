@@ -1,3 +1,9 @@
+import { isHttpError } from '@sveltejs/kit';
+import {
+  simulatedActorForOrg,
+  simulatedRegistrationOwner,
+  assertSimulatedRegistrationContactAccess,
+} from '$server/auth/simulated-record-scope';
 import { sql } from 'drizzle-orm';
 import type { CoreTx } from '$server/db/with-org-core';
 import { crmContacts, crmContactIdentities } from '$server/db/pg-crm-schema';
@@ -24,6 +30,8 @@ export async function resolveCrmContact(
   phone: string | null | undefined,
   email: string | null | undefined,
 ): Promise<string | null> {
+  const actor = simulatedActorForOrg(orgId);
+  if (actor) simulatedRegistrationOwner(actor);
   const p9 = phone ? phone9(phone) : '';
   const em = email ? email.trim().toLowerCase() : '';
   if (p9.length < 8 && !em) return null;
@@ -38,8 +46,11 @@ export async function resolveCrmContact(
         )
       limit 1
     `)) as unknown as Array<{ contact_id: string }>;
-    return rows.length ? rows[0].contact_id : null;
-  } catch {
+    const id = rows[0]?.contact_id ?? null;
+    if (id && actor) await assertSimulatedRegistrationContactAccess(tx, actor, id);
+    return id;
+  } catch (e) {
+    if (actor || isHttpError(e)) throw e;
     // CRM tables absent / disabled — booking still succeeds without the bridge.
     // TODO(handoff): inside a caller's tx this catch leaves the tx aborted (same flaw F2
     // fixed for the insert); only reachable if the CRM tables are missing. Proposal
@@ -75,6 +86,8 @@ export async function ensureCrmContact(
   orgId: string,
   input: EnsureCrmContactInput,
 ): Promise<{ id: string; created: boolean } | null> {
+  const actor = simulatedActorForOrg(orgId);
+  const ownerId = actor ? simulatedRegistrationOwner(actor) : undefined;
   const { name, phone, email, source, firstTouch } = input;
   const existing = await resolveCrmContact(tx, orgId, phone, email);
   if (existing) return { id: existing, created: false };
@@ -89,6 +102,7 @@ export async function ensureCrmContact(
         .insert(crmContacts)
         .values({
           orgId,
+          ...(ownerId ? { ownerId } : {}),
           displayName: name?.trim() || null,
           source,
           ...(firstTouch ? { firstTouch } : {}),
@@ -117,12 +131,15 @@ export async function ensureCrmContact(
       return { id: c.id, created: true };
     });
   } catch (e) {
+    if (isHttpError(e)) throw e;
     const err = e as { code?: string; cause?: { code?: string } };
     if (err?.code === '23505' || err?.cause?.code === '23505') {
       // Lost the race on crm_contact_identity_uniq: the winner's contact is committed now.
       const winner = await resolveCrmContact(tx, orgId, phone, email);
       return winner ? { id: winner, created: false } : null;
     }
+    // An admitted simulation must fail before its caller can write dependent rows.
+    if (actor) throw e;
     // CRM tables absent / disabled — booking still succeeds without the bridge.
     return null;
   }

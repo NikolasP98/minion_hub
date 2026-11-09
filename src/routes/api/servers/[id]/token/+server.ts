@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { browserSharedTokenOff } from '$lib/gateway-browser-token';
@@ -24,6 +25,7 @@ import {
  * proxy access logs, and the default HTTP cache.
  */
 export const POST: RequestHandler = async ({ locals, params }) => {
+  rejectSimulatedDelegation();
   // Spec 045 I1: once the dashboard connects with its own per-gateway JWT, no
   // browser gets the shared token. TODO(handoff): delete this route in A4 (T054).
   if (browserSharedTokenOff()) {

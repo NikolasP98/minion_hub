@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, uuid, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
 
 /**
@@ -45,6 +46,12 @@ export const docAuditLog = pgTable(
     refId: uuid('ref_id').notNull(),
     actorId: uuid('actor_id'),
     actorName: text('actor_name'),
+    simulationRoleKey: text('simulation_role_key').default(
+      sql`nullif(current_setting('app.simulation_role_key',true),'')`,
+    ),
+    simulationGeneration: uuid('simulation_generation').default(
+      sql`nullif(current_setting('app.simulation_generation',true),'')::uuid`,
+    ),
     /** 'create' | 'update' | 'status' | 'assign' | … */
     op: text('op').notNull().default('update'),
     changes: jsonb('changes').notNull().default([]),

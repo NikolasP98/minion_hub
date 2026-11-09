@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { simulationAuditContext } from '$server/auth/effective-authority';
 import { getOrgTransactionDb, type getCoreDb } from './pg-client';
 import { recordDatabaseTiming } from '$lib/server/performance-context';
 import { currentAmbientOrgTx, type AmbientOrgTx } from './ambient-org-tx';
@@ -34,10 +35,16 @@ export async function withOrgCoreTransaction<T>(
     org: string | null;
     profile: string | null;
     timeout: string;
+    simulationRole: string | null;
+    simulationGeneration: string | null;
+    simulationActor: string | null;
   }>(sql`select current_setting('role') as role,
     current_setting('app.current_org_id', true) as org,
     current_setting('app.current_profile_id', true) as profile,
-    current_setting('idle_in_transaction_session_timeout') as timeout`);
+    current_setting('idle_in_transaction_session_timeout') as timeout,
+    current_setting('app.simulation_role_key',true) as "simulationRole",
+    current_setting('app.simulation_generation',true) as "simulationGeneration",
+    current_setting('app.simulation_actor',true) as "simulationActor"`);
   if (!previous) throw new Error('Cannot capture transaction scope');
   await applyOrgTxScope(tx, tenantId, profileId ?? null);
   let failed = false;
@@ -51,7 +58,10 @@ export async function withOrgCoreTransaction<T>(
       await tx.execute(sql`select set_config('role', ${previous.role}, true),
         set_config('app.current_org_id', ${previous.org ?? ''}, true),
         set_config('app.current_profile_id', ${previous.profile ?? ''}, true),
-        set_config('idle_in_transaction_session_timeout', ${previous.timeout}, true)`);
+        set_config('idle_in_transaction_session_timeout', ${previous.timeout}, true),
+        set_config('app.simulation_role_key', ${previous.simulationRole ?? ''}, true),
+        set_config('app.simulation_generation', ${previous.simulationGeneration ?? ''}, true),
+        set_config('app.simulation_actor', ${previous.simulationActor ?? ''}, true)`);
     } catch (restoreError) {
       // SQL errors leave PostgreSQL in an aborted transaction. Preserve the
       // original failure; the outer transaction must roll back before reuse.
@@ -81,11 +91,15 @@ export function applyOrgTxScope(
   tenantId: string,
   profileId: string | null,
 ): Promise<unknown> {
+  const simulation = simulationAuditContext(tenantId, profileId);
   return tx.execute(
     sql`select set_config('idle_in_transaction_session_timeout', '20s', true),
                set_config('role', 'app_ledger', true),
                set_config('app.current_org_id', ${tenantId}, true),
-               set_config('app.current_profile_id', ${profileId ?? ''}, true)`,
+               set_config('app.current_profile_id', ${profileId ?? ''}, true),
+               set_config('app.simulation_role_key', ${simulation?.roleKey ?? ''}, true),
+               set_config('app.simulation_generation', ${simulation?.generation ?? ''}, true),
+               set_config('app.simulation_actor', ${simulation ? JSON.stringify({ id: simulation.profileId, name: simulation.actorName ?? null }) : ''}, true)`,
   );
 }
 

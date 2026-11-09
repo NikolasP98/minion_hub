@@ -85,6 +85,64 @@ async function counts() {
   return r;
 }
 describe('native attachment deletion lifecycle', () => {
+  it('post-capture audit extension preserves ordinary writes and attributes simulated writes to the actual actor', async () => {
+    const columns = await f.owner`
+      SELECT a.attname,format_type(a.atttypid,a.atttypmod) AS type,
+        a.attnotnull,pg_get_expr(d.adbin,d.adrelid) AS default_expression
+      FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid
+      JOIN pg_namespace n ON n.oid=c.relnamespace
+      LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum
+      WHERE n.nspname=${f.schema} AND c.relname='doc_audit_log'
+        AND a.attname IN ('simulation_role_key','simulation_generation')
+      ORDER BY a.attname`;
+    expect([...columns]).toEqual([
+      {
+        attname: 'simulation_generation',
+        type: 'uuid',
+        attnotnull: false,
+        default_expression:
+          "(NULLIF(current_setting('app.simulation_generation'::text, true), ''::text))::uuid",
+      },
+      {
+        attname: 'simulation_role_key',
+        type: 'text',
+        attnotnull: false,
+        default_expression:
+          "NULLIF(current_setting('app.simulation_role_key'::text, true), ''::text)",
+      },
+    ]);
+    await f.seedFile();
+    await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());
+    const [ordinary] =
+      await f.owner`SELECT simulation_role_key,simulation_generation FROM doc_audit_log`;
+    expect(ordinary).toEqual({ simulation_role_key: null, simulation_generation: null });
+    const generation = '90000000-0000-4000-8000-000000000001';
+    await f.owner.begin(async (tx) => {
+      await tx`SELECT set_config('app.simulation_role_key','custom-role',true),
+        set_config('app.simulation_generation',${generation},true),
+        set_config('app.simulation_actor',${JSON.stringify({ id: USER, name: 'Actual person' })},true)`;
+      const [simulated] = await tx`
+        INSERT INTO doc_audit_log(org_id,ref_type,ref_id,actor_id,actor_name,op)
+        VALUES (${ORG},'booking',${BOOKING},NULL,'System','fixture.audit')
+        RETURNING actor_id,actor_name,simulation_role_key,simulation_generation`;
+      expect(simulated).toEqual({
+        actor_id: USER,
+        actor_name: 'Actual person',
+        simulation_role_key: 'custom-role',
+        simulation_generation: generation,
+      });
+    });
+    await expect(
+      f.owner.begin(async (tx) => {
+        await tx`SELECT set_config('app.simulation_role_key','custom-role',true),
+        set_config('app.simulation_generation',${generation},true),
+        set_config('app.simulation_actor','',true)`;
+        await tx`INSERT INTO doc_audit_log(org_id,ref_type,ref_id,op)
+        VALUES (${ORG},'booking',${BOOKING},'fixture.missing-actor')`;
+      }),
+    ).rejects.toThrow('Simulation audit requires the actual actor');
+    expect(f.receipt.runtimeAuditExtension.kind).toBe('post-capture-runtime-extension');
+  });
   it('rolls back failed claim admission before any object-store effect', async () => {
     await f.seedFile();
     await linkAttachment(f.ctx, { fileId: 'file-a', ...ref }, access());

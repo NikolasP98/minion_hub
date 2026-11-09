@@ -1,3 +1,4 @@
+import { assertSimulatedRecordAccess } from '$server/auth/simulated-record-scope';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
@@ -881,6 +882,8 @@ export async function putCustomPropertyValueInTx(
   expectedVersion: number,
 ): Promise<CustomPropertyValueCell> {
   customPropertyTablePolicy(tableId);
+  if (tableId === 'crm.customers')
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', recordId, 'edit');
   const who = actor(ctx);
   await lockTableGraph(tx, ctx.tenantId, tableId);
   const property = await lockProperty(tx, ctx.tenantId, propertyId);

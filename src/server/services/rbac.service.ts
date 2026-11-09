@@ -1,9 +1,15 @@
 import { error } from '@sveltejs/kit';
+import {
+  currentEffectiveAuthority,
+  narrowAdmittedCapabilities,
+  currentRequestCapabilities,
+} from '$server/auth/effective-authority';
 import { z } from 'zod';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import { supabaseAdmin } from '$server/supabase';
 import {
   MODULE_SUBRESOURCES,
+  RBAC_BUSINESS_MODULES,
   ALL_SUBRESOURCES,
   FIELD_LEVEL_MODULES,
   SENSITIVE_FIELD_LEVEL,
@@ -74,21 +80,7 @@ export type ActionSet = Record<PermAction, boolean>;
 export { MODULE_LABELS };
 
 /** Modules that hold business data (vs platform/admin config). */
-export const BUSINESS_MODULES: readonly Module[] = [
-  'crm',
-  'finance',
-  'sales',
-  'scheduling',
-  'support',
-  'projects',
-  'memberships',
-  'comms',
-  'brains',
-  'stock',
-  'ads',
-  'pos',
-  'pulse',
-];
+export const BUSINESS_MODULES: readonly Module[] = RBAC_BUSINESS_MODULES;
 const ADMIN_MODULES: readonly Module[] = [
   'agents',
   'channels',
@@ -324,6 +316,10 @@ export async function listOrgCapabilityKeys(orgId: string, profileId: string): P
 }
 
 export async function resolveCapabilities(orgId: string, profileId: string): Promise<Capabilities> {
+  const effective = currentEffectiveAuthority(orgId, profileId);
+  if (effective) return effective.capabilities;
+  const freshRequest = currentRequestCapabilities(orgId, profileId);
+  if (freshRequest) return freshRequest;
   // Capabilities is a bundle of closures, so the cache holds the raw rows
   // (roles + override rules) and rebuilds. Cuts 2-3 PostgREST calls per call
   // site; resolveCapabilities runs 3x+ per navigation (permissions load,
@@ -476,6 +472,7 @@ function rowToActionSet(r: CapabilityOverrideRow): ActionSet {
 }
 
 export interface SubResourceCaps {
+  revision: string;
   key: string;
   label: string;
   caps: ActionSet;
@@ -483,6 +480,7 @@ export interface SubResourceCaps {
   overridden: boolean;
 }
 export interface RoleModuleCaps {
+  revision: string;
   module: Module;
   label: string;
   caps: ActionSet;
@@ -514,79 +512,10 @@ export interface RbacRoleView {
  * matrix and member count for one org — powers the settings/roles UI.
  */
 export async function listRbacRoles(orgId: string): Promise<RbacRoleView[]> {
-  const admin = supabaseAdmin();
-  const [cat, orgCat, mrows, orows] = await Promise.all([
-    admin.from('permission_roles').select('key, name, rank, description, is_system'),
-    listOrgRoles(orgId),
-    admin.from('member_roles').select('role_key').eq('org_id', orgId),
-    admin
-      .from('permission_rules')
-      .select(
-        'role_key, module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner, field_level',
-      )
-      .eq('org_id', orgId),
-  ]);
-
-  const counts = new Map<string, number>();
-  for (const r of (mrows.data ?? []) as Array<{ role_key: string }>) {
-    counts.set(r.role_key, (counts.get(r.role_key) ?? 0) + 1);
-  }
-  const ovr = new Map<string, ActionSet>();
-  const ifOwnerMap = new Map<string, boolean>();
-  const fieldLvlMap = new Map<string, number>();
-  for (const r of (orows.data ?? []) as CapabilityOverrideRow[]) {
-    ovr.set(`${r.role_key}:${r.module}`, rowToActionSet(r));
-    if (r.if_owner) ifOwnerMap.set(`${r.role_key}:${r.module}`, true);
-    if (typeof r.field_level === 'number')
-      fieldLvlMap.set(`${r.role_key}:${r.module}`, r.field_level);
-  }
-
-  type CatRow = {
-    key: string;
-    name: string;
-    rank: number;
-    description: string | null;
-    is_system: boolean;
-  };
-  const allCat: CatRow[] = [
-    ...((cat.data ?? []) as CatRow[]),
-    ...orgCat.map((c) => ({
-      key: c.key,
-      name: c.name,
-      rank: c.rank,
-      description: null,
-      is_system: false,
-    })),
-  ].sort((a, b) => b.rank - a.rank);
-  return allCat.map((c) => ({
-    key: c.key,
-    name: c.name,
-    rank: c.rank,
-    description: c.description,
-    isSystem: c.is_system,
-    memberCount: counts.get(c.key) ?? 0,
-    modules: MODULES.map((mod) => {
-      const o = ovr.get(`${c.key}:${mod}`);
-      const parentCaps = o ?? defaultCaps(c.key, mod);
-      const subs: readonly SubResource[] = MODULE_SUBRESOURCES[mod] ?? [];
-      return {
-        module: mod,
-        label: MODULE_LABELS[mod],
-        caps: parentCaps,
-        overridden: !!o,
-        ifOwner: ifOwnerMap.get(`${c.key}:${mod}`) ?? false,
-        ownerScopable: mod in OWNER_SCOPABLE_MODULES,
-        fieldLevel: fieldLvlMap.get(`${c.key}:${mod}`) ?? defaultFieldLevel(mod),
-        fieldScopable: mod in FIELD_LEVEL_MODULES,
-        // Sub-resource caps: explicit override row if present, else inherit
-        // the parent module's effective caps.
-        subResources: subs.map((s) => {
-          const so = ovr.get(`${c.key}:${s.key}`);
-          return { key: s.key, label: s.label, caps: so ?? parentCaps, overridden: !!so };
-        }),
-      };
-    }),
-  }));
+  // Lazy import avoids a static cycle: the shared policy projection reuses
+  // buildCapabilities, and both editors must receive the identical revision.
+  const { listRoleAccessMatrix } = await import('./section-access.service');
+  return listRoleAccessMatrix(orgId);
 }
 
 export const SYSTEM_ROLE_KEYS = ['owner', 'admin', 'manager', 'staff', 'viewer'] as const;
@@ -706,6 +635,8 @@ async function callerRankCap(
 ): Promise<number> {
   if (system) return Number.MAX_SAFE_INTEGER; // explicit trusted internal/seed path — never inferred from a missing id
   if (!callerProfileId) throw error(403, 'Caller identity required to grant or clone roles.'); // fail closed
+  const effective = currentEffectiveAuthority(orgId, callerProfileId);
+  if (effective) return effective.rank;
   const admin = supabaseAdmin();
   const { data: prof } = await admin
     .from('profiles')
@@ -838,27 +769,15 @@ export async function createCustomRole(
  * still references it — unassign members first. 404s for a key this org never
  * created (including system role keys, which are never deletable).
  */
-export async function deleteCustomRole(orgId: string, key: string): Promise<void> {
-  const admin = supabaseAdmin();
-  const { data: role } = await admin
-    .from('org_roles')
-    .select('key')
-    .eq('org_id', orgId)
-    .eq('key', key)
-    .maybeSingle();
-  if (!role) throw error(404, 'Custom role not found.');
-
-  const { count } = await admin
-    .from('member_roles')
-    .select('profile_id', { count: 'exact', head: true })
-    .eq('org_id', orgId)
-    .eq('role_key', key);
-  if (count && count > 0)
-    throw error(409, 'This role is still assigned to a member — remove it from them first.');
-
-  await admin.from('permission_rules').delete().eq('org_id', orgId).eq('role_key', key);
-  await admin.from('org_roles').delete().eq('org_id', orgId).eq('key', key);
-  await invalidateRbac(orgId);
+export async function deleteCustomRole(
+  orgId: string,
+  key: string,
+  locals?: App.Locals,
+): Promise<void> {
+  if (!locals?.user?.supabaseId || locals.tenantCtx?.tenantId !== orgId)
+    throw error(403, 'Authenticated organization actor required');
+  const { deleteRoleAccessCatalog } = await import('./section-access.service');
+  await deleteRoleAccessCatalog(locals, key);
 }
 
 /**
@@ -1194,6 +1113,42 @@ export function isSelfOnlyObservation(path: string, method: string): boolean {
   return path === '/api/assistant/decision-events' && method === 'POST';
 }
 
+/** Module admission for direct data reads, sharing the write route registry. */
+export function apiReadCapability(pathname: string): {
+  module: Module;
+  action: PermAction;
+  anyOf?: ReadonlyArray<{ module: Module; action: PermAction }>;
+} | null {
+  if (
+    pathname.startsWith('/api/scheduling/public/') ||
+    pathname === '/api/nav/resolve' ||
+    pathname === '/api/modules' ||
+    pathname === '/api/plugins/ui-list'
+  )
+    return null;
+  if (pathname === '/api/nav/access') return { module: 'users', action: 'manage' };
+  // Parties are shared customer/supplier records, used outside CRM too.
+  if (pathname === '/api/crm/parties' || /^\/api\/crm\/parties\/[^/]+$/.test(pathname))
+    return {
+      module: 'crm',
+      action: 'view',
+      anyOf: (
+        ['pos', 'scheduling', 'stock', 'finance', 'sales', 'support', 'memberships'] as const
+      ).map((module) => ({
+        module,
+        action: 'view' as const,
+      })),
+    };
+  let best: readonly [string, Module] | null = null;
+  for (const entry of API_WRITE_PREFIXES)
+    if (
+      (pathname === entry[0] || pathname.startsWith(`${entry[0]}/`)) &&
+      (!best || entry[0].length > best[0].length)
+    )
+      best = entry;
+  return best ? { module: best[1], action: 'view' } : null;
+}
+
 export function apiWriteCapability(
   pathname: string,
   method: string,
@@ -1204,6 +1159,7 @@ export function apiWriteCapability(
   anyOf?: ReadonlyArray<{ module: Module; action: PermAction }>;
 } | null {
   if (!WRITE_METHODS.has(method)) return null;
+  if (pathname === '/api/nav/access') return { module: 'users', action: 'manage' };
   if (isSelfOnlyObservation(pathname, method)) return null;
   if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
   // POST /api/join-requests (exact path only) is the APPLICANT creating their
@@ -1301,9 +1257,16 @@ export async function resolveFreshCapabilitiesInTransaction(
   const rules = await tx.execute<CapabilityOverrideRow & Record<string, unknown>>(
     sql`select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from permission_rules where org_id=${orgId}::uuid for share`,
   );
+  const effective = currentEffectiveAuthority(orgId, profileId);
   return {
-    capabilities: buildCapabilities(roles, [...rules]),
-    roles,
+    // Membership is proven independently above; one admitted role replaces real assignments.
+    capabilities: effective
+      ? narrowAdmittedCapabilities(
+          buildCapabilities(effective.invalid ? [] : [effective.roleKey], [...rules]),
+          effective.capabilities,
+        )
+      : buildCapabilities(roles, [...rules]),
+    roles: effective ? [effective.roleKey] : roles,
     membershipRole: members[0].role,
   };
 }

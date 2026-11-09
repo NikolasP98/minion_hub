@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   ensureContactFacetForParty: vi.fn(),
 }));
 
+vi.mock('$server/services/rbac.service', () => ({ hasOrgCapability: async () => false }));
+
 vi.mock('$server/services/ruc-registry', () => ({
   lookupRucConfigured: mocks.lookupRucConfigured,
 }));
@@ -143,7 +145,7 @@ describe('POST /api/crm/parties document defaults', () => {
         name: biopas.legalName,
       }),
     );
-    expect(mocks.applyRucRegistry).toHaveBeenCalledWith({ tenantId: 'org-1' }, 'p1', biopas);
+    expect(mocks.applyRucRegistry).toHaveBeenCalledWith({ tenantId: 'org-1' }, 'p1', biopas, true);
   });
 
   it('an unknown RUC is refused (422 ruc_not_found) and nothing is created', async () => {

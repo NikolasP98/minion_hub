@@ -545,11 +545,6 @@
     "class": "todo"
   },
   {
-    "file": "src/server/services/nav-config.service.ts",
-    "calls": ["supabaseAdmin"],
-    "class": "todo"
-  },
-  {
     "file": "src/server/services/notif.service.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
@@ -630,9 +625,24 @@
     "class": "todo"
   },
   {
+    "file": "src/server/services/role-simulation.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "user-scoped"
+  },
+  {
     "file": "src/server/services/scheduling-public.service.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
+  },
+  {
+    "file": "src/server/services/section-access-return.ts",
+    "calls": ["getCoreDb"],
+    "class": "user-scoped"
+  },
+  {
+    "file": "src/server/services/section-access.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "org-scoped"
   },
   {
     "file": "src/server/services/shared-identity.service.ts",

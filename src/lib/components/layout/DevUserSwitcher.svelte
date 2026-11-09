@@ -1,6 +1,6 @@
 <script lang="ts">
   // Spec 2026-09-16-hub-minion-run-dev-switcher §2.3. Opened from
-  // ProfileMenu's "Switch user…" item, DEV-backend only. Fetches
+  // The DEV badge's "Switch QA account…" item, DEV-backend only. Fetches
   // /api/dev/users on open, groups by org (dev-user-switcher.logic.ts),
   // filters with a plain `includes` over name/email/username, and switches
   // via POST /api/dev/switch-user + a full navigation (location.assign) so
@@ -107,6 +107,7 @@
 <Sheet
   bind:open
   title={m.dev_switcher_title()}
+  description={m.dev_switcher_description()}
   placement="right"
   size="md"
   initialFocus="[data-dev-switcher-search]"

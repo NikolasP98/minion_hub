@@ -419,13 +419,35 @@
             {#if navMode.mode === 'personal'}
               <PersonalSidebar />
             {:else}
+              {#if !moduleItems.some((item) => item.group)}
+                <NavContextMenu
+                  kind="header"
+                  module={navMode.activeModule?.id}
+                  label={navMode.activeModule?.label}
+                  targetHrefs={moduleItems.map((item) => item.href)}
+                >
+                  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                  <div class="t-label" tabindex="0">{navMode.activeModule?.label}</div>
+                </NavContextMenu>
+              {/if}
               {#each moduleItems as item, i (item.id)}
                 {#if item.group && item.group !== moduleItems[i - 1]?.group}
-                  <div
-                    class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+                  <NavContextMenu
+                    kind="header"
+                    module={navMode.activeModule?.id}
+                    label={item.group}
+                    targetHrefs={moduleItems
+                      .filter((row) => row.group === item.group)
+                      .map((row) => row.href)}
                   >
-                    {item.group}
-                  </div>
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                    <div
+                      class="px-3 py-1 text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong mt-1"
+                      tabindex="0"
+                    >
+                      {item.group}
+                    </div>
+                  </NavContextMenu>
                 {/if}
                 <NavContextMenu kind="item" href={item.href} label={item.label}>
                   <a

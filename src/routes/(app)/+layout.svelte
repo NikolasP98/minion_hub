@@ -12,13 +12,13 @@
   // hover pill isn't there" — regression from the P2 boot-diet commit,
   // which mis-grouped it with the genuinely invoke-only overlays).
   import { type Snippet } from 'svelte';
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy, tick, untrack } from 'svelte';
   import { beforeNavigate, afterNavigate, replaceState } from '$lib/navigation';
   import { provideViewMemory } from '$lib/shell/view-context';
   import { viewKey } from '$lib/shell/view-memory';
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { captureScroll, restoreScroll, type ScrollPosition } from '$lib/shell/scroll-memory';
-  import { openRecord } from '$lib/records/peek.svelte';
+  import { openRecord, isCurrentPeek } from '$lib/records/peek.svelte';
   import { page } from '$app/state';
   import { setInstanceMap } from '$lib/nav/alias-reroute';
   import { canonicalInstancePath, mainPathFor, type NavConfig } from '$lib/nav/custom-sections';
@@ -37,6 +37,60 @@
   import RecordPeek from '$lib/records/RecordPeek.svelte';
   import { registerGlobalTools } from '$lib/assistant/global-tools';
   import { hasFeature } from '$lib/access/premium';
+  import { inactiveSimulation, type RoleSimulationState } from '$lib/role-simulation';
+  import {
+    installRoleSimulationClient,
+    retireAuthorityDocument,
+  } from '$lib/services/role-simulation-client';
+  import AuthorityRetirement from '$lib/components/layout/AuthorityRetirement.svelte';
+  import { wsConnect, wsDisconnect } from '$lib/services/gateway.svelte';
+  import SimulationFrame from '$lib/components/layout/SimulationFrame.svelte';
+
+  const simulation = $derived(
+    (page.data as { roleSimulation?: RoleSimulationState }).roleSimulation ?? inactiveSimulation(),
+  );
+  let authorityRetiring = $state(false);
+  const disposeSimulationClient =
+    typeof window !== 'undefined'
+      ? installRoleSimulationClient({
+          readState: () => simulation,
+          readOwner: () => `${page.data.user?.id ?? ''}:${page.data.activeOrgId ?? ''}`,
+          onBeforeTransition: () => {
+            wsDisconnect({ persistWorkshop: false });
+            queryClient.clear();
+          },
+          onRejected: () => {
+            if (!simulation.active) void wsConnect();
+          },
+          onRetire: () => {
+            authorityRetiring = true;
+            try {
+              const { peek, ...cleanState } = page.state;
+              if (peek) replaceState('', cleanState);
+            } catch {
+              /* The document nonce/fence still rejects historical raw payloads. */
+            }
+            try {
+              wsDisconnect({ persistWorkshop: false });
+            } finally {
+              queryClient.clear();
+            }
+          },
+        })
+      : undefined;
+  onDestroy(() => disposeSimulationClient?.());
+  let displayedGeneration: string | undefined;
+  $effect(() => {
+    const generation = simulation.generation;
+    if (displayedGeneration !== undefined && displayedGeneration !== generation) {
+      authorityRetiring = true;
+      untrack(() => {
+        if (!retireAuthorityDocument()) window.location.reload();
+      });
+    }
+    displayedGeneration = generation;
+    if (simulation.active) untrack(() => wsDisconnect({ persistWorkshop: false }));
+  });
 
   let { children }: { children: Snippet } = $props();
 
@@ -99,13 +153,26 @@
       scroll: ScrollPosition[];
       peek: { href: string; mode: 'modal' | 'tray' } | null;
     }>(owner, `shell:${viewKey(page.url)}`);
+    // Historical payloads supply only a route/mode hint; their record data
+    // must be fetched again under this document's current authority.
+    const historical = page.state.peek;
+    const rememberedPeek =
+      saved?.peek ??
+      (historical && !isCurrentPeek(historical)
+        ? { href: historical.href, mode: historical.mode }
+        : null);
     // An explicit fragment always wins over remembered scroll/panels.
-    if (!saved || page.url.hash || navigation.type === 'enter') return;
+    if (
+      page.url.hash ||
+      (!saved && !rememberedPeek) ||
+      (navigation.type === 'enter' && !historical)
+    )
+      return;
     await tick();
     if (epoch !== navigationEpoch || preferenceOwner() !== owner || !viewport) return;
-    cancelRestore = restoreScroll(viewport, saved.scroll);
-    if (saved.peek && !page.state.peek)
-      void openRecord(saved.peek.href, saved.peek.mode, { fallbackToPage: false });
+    if (saved) cancelRestore = restoreScroll(viewport, saved.scroll);
+    if (rememberedPeek && !isCurrentPeek(page.state.peek))
+      void openRecord(rememberedPeek.href, rememberedPeek.mode, { fallbackToPage: false });
   });
   onDestroy(() => {
     navigationEpoch += 1;
@@ -138,9 +205,9 @@
       settingsLayer.observe();
     });
     void ensurePermissions();
-    void hydratePluginNav();
+    if (!simulation.active) void hydratePluginNav();
     // Assistant UI tools (navigate / pages / guide / choice) live for the app shell's lifetime.
-    const disposeTools = registerGlobalTools();
+    const disposeTools = simulation.active ? () => {} : registerGlobalTools();
     const markIdle = () => (idleReady = true);
     if ('requestIdleCallback' in window) requestIdleCallback(markIdle, { timeout: 1500 });
     else setTimeout(markIdle, 300);
@@ -150,7 +217,7 @@
   // Daily feed knock — once per org-local day (see maybeRequestDailyKnock).
   $effect(() => {
     const orgId = (page.data as { activeOrgId?: string })?.activeOrgId;
-    if (orgId) void maybeRequestDailyKnock(orgId);
+    if (orgId && !simulation.active) void maybeRequestDailyKnock(orgId);
   });
 
   // Re-sync hosts whenever the authoritative list lands or changes.
@@ -194,12 +261,16 @@
     </div>
   </AppViewport>
 
-  <GlobalDropTarget />
-  <RecordPeek />
-  <AssistGuide />
+  <SimulationFrame state={simulation} />
+  <AuthorityRetirement active={authorityRetiring} />
+  {#if !authorityRetiring}
+    <GlobalDropTarget />
+    <RecordPeek />
+    {#if !simulation.active}<AssistGuide />{/if}
+  {/if}
 
-  {#if idleReady}
-    {#if hasFeature('ai.chat')}
+  {#if idleReady && !authorityRetiring}
+    {#if !simulation.active && hasFeature('ai.chat')}
       {#await import('$lib/components/layout/FloatingAssistant.svelte') then { default: FloatingAssistant }}
         <FloatingAssistant />
       {/await}
@@ -207,9 +278,11 @@
     {#await import('$lib/components/layout/CommandPalette.svelte') then { default: CommandPalette }}
       <CommandPalette />
     {/await}
-    {#await import('$lib/components/sessions/LiveRunWidget.svelte') then { default: LiveRunWidget }}
-      <LiveRunWidget />
-    {/await}
+    {#if !simulation.active}
+      {#await import('$lib/components/sessions/LiveRunWidget.svelte') then { default: LiveRunWidget }}
+        <LiveRunWidget />
+      {/await}
+    {/if}
     {#await import('$lib/components/layout/ShortcutsOverlay.svelte') then { default: ShortcutsOverlay }}
       <ShortcutsOverlay />
     {/await}
@@ -218,7 +291,7 @@
     {/await}
   {/if}
 
-  {#if import.meta.env.DEV}
+  {#if import.meta.env.DEV && !authorityRetiring}
     {#await import('@tanstack/svelte-query-devtools') then { SvelteQueryDevtools }}
       <!-- bottom-left, not the (default) bottom-right: FloatingAssistant's docked pill
            lives in that corner and the two floating buttons visually collide there in

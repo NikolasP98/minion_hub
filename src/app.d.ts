@@ -34,6 +34,11 @@ declare global {
        * requireDevBackend() treats a missing value as 'prd' (fail closed).
        */
       backend?: 'dev' | 'prd';
+      /** Verified GoTrue claim, never a client role/cookie. */
+      authSessionId?: string;
+      requestCapabilities?: import('$server/auth/effective-authority').RequestCapabilityScope;
+      actualUser?: Locals['user'];
+      roleSimulation?: import('$lib/role-simulation').RoleSimulationState;
       user?: {
         id: string;
         supabaseId?: string;

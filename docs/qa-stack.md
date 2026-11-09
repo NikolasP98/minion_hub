@@ -108,11 +108,16 @@ curl -s -X POST http://127.0.0.1:5199/api/dev/switch-user \
   -d '{"userId":"<id from the listing above>"}'
 ```
 
-Both endpoints require an authenticated session first (they switch an
-existing session, they don't create one) and same-origin POSTs. This is
-server-only (spec `specs/2026-09-16-hub-minion-run-dev-switcher-spec.md`
-slice S1) — the Topbar badge and the "Switch user…" menu entry (slice S2)
-are not part of this doc's scope yet; use the endpoints directly until then.
+Both endpoints require an authenticated caller; the POST requires the same
+origin and creates a GoTrue session for the selected test account. In the local
+UI, open **DEV → Switch QA account…** in the desktop sidebar or mobile topbar.
+The control is also available in the collapsed sidebar and is hidden during
+role simulation.
+
+To retain an Owner/Admin identity while testing a role, use **avatar → Simulate
+a role… → select a role → Apply role**. Active simulation shows a frame around
+all four viewport edges, and the avatar entry becomes **Finish simulation**.
+Switching QA accounts changes the signed-in identity; role simulation retains it.
 
 ## Never-prod guards
 

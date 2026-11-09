@@ -548,8 +548,9 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/attachments.lifecycle.sql.integration.test.ts',
-      minimumAssertions: 30,
+      minimumAssertions: 31,
       requiredBehaviors: [
+        'native attachment deletion lifecycle post-capture audit extension preserves ordinary writes and attributes simulated writes to the actual actor',
         'native attachment deletion lifecycle rolls back failed claim admission before any object-store effect',
         'native attachment deletion lifecycle storage failure keeps a tombstone, blocks relink/read, and a new sweep resumes the same claim',
         'native attachment deletion lifecycle database cleanup failure after blob deletion retries without resurrecting the file or repeating physical deletion',
@@ -631,6 +632,31 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
   ],
   'qa-native': [
+    {
+      file: 'src/server/services/role-simulation.sql.integration.test.ts',
+      minimumAssertions: 9,
+      requiredBehaviors: [
+        'role simulation native session admission rejects foreign roles and non-admin actors without changing membership',
+        'role simulation native session admission clears simulation on a legitimate organization switch without changing membership',
+        'role simulation native session admission keeps mode rows inaccessible to browser database roles',
+        'role simulation native session admission ignores warmed real-role rows after a policy commit without cache invalidation',
+        'role simulation native session admission serializes concurrent first Starts, replaces roles and atomically records actual identity',
+        'role simulation native session admission reads the committed generation after waiting behind an in-progress transition lock',
+        'role simulation native session admission restricts expired mode until Finish, then rotates off generation and restores an authorized original URL',
+        'role simulation native session admission keeps a deleted selected role restricted and still permits authenticated Finish',
+        'role simulation native session admission rejects a revoked formerly simulated session before absent-state detection with an unexpired signed token',
+      ],
+    },
+    {
+      file: 'src/server/services/section-access.sql.integration.test.ts',
+      minimumAssertions: 4,
+      requiredBehaviors: [
+        'section policy against concurrent PostgreSQL transactions serializes independent first overrides and commits exactly one with its audit',
+        'section policy against concurrent PostgreSQL transactions serializes whole-nav removal and rejects a queued policy for the deleted target',
+        'section policy against concurrent PostgreSQL transactions serializes custom-role removal and rejects a queued override for the deleted catalog key',
+        'section policy against concurrent PostgreSQL transactions uses the same advisory key for the exported coordinator',
+      ],
+    },
     {
       file: 'src/server/services/pulse-digest.admission.test.ts',
       minimumAssertions: 9,
