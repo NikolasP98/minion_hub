@@ -12,7 +12,7 @@
     isUpdateRestartExpected,
     setUpdateProgress,
   } from '$lib/state/gateway/update-state.svelte';
-  import { configState, loadConfig, getField, restartState } from '$lib/state/config/config.svelte';
+  import { configState, ensureConfigLoaded, getField, restartState } from '$lib/state/config/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import { PackageCheck, Download, RotateCw, AlertTriangle, Square } from 'lucide-svelte';
@@ -217,9 +217,7 @@
     // Notify targets live in gateway config — load it if some other page
     // hasn't already (mirrors the `conn.connected && !configState.loaded`
     // guard used throughout the hub, e.g. AgentSidebar.svelte).
-    if (conn.connected && !configState.loaded && !configState.loading) {
-      loadConfig().catch(() => {});
-    }
+    if (conn.connected) ensureConfigLoaded();
     // Resume an already-active (or terminal-failed) fleet job on mount — a
     // page reload mid-rollout picks the driving loop back up; a failed job
     // stays visible with its Retry action instead of vanishing.
