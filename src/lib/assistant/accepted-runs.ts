@@ -63,11 +63,39 @@ let owner = '';
 let gatewayGeneration = 0;
 const gatewayLeases = new WeakMap<
   AcceptedBinding,
-  { generation: number; owner: GatewaySessionOwner | null }
+  { generation: number; owner: GatewaySessionOwner | null; awaiting?: string }
 >();
+const ownerIdentity = (o: GatewaySessionOwner) =>
+  `${o.actorId}\0${o.orgId}\0${o.hostId}\0${o.hostUrl}`;
+/**
+ * Submitted (ack lost, or acked and still streaming) and not yet claimed by a
+ * live final: the reply may exist only in the transcript.
+ */
+const isPending = (b: AcceptedBinding) => b.state === 'unclaimed' && b.transport !== 'rejected';
 onGatewaySessionLifetimeChange(() => {
   gatewayGeneration++;
-  for (const binding of runs.values()) revoke(binding, 'invalidated', 'owner_changed');
+  const next = captureGatewaySessionOwner();
+  for (const binding of runs.values()) {
+    // A pending run outlives a reconnect of the SAME user/org/host (a dead
+    // socket mid-turn): its lease waits for the replacement session and is
+    // re-pointed to it (fresh generation, so isRunCurrent accepts it), so the
+    // transcript reply can still be claimed. While awaiting, nothing can run:
+    // execution needs a history reload, which needs the session whose publish
+    // re-leases or revokes first. A lease with no owner has no identity, and a
+    // run already claimed, or any other identity, is revoked as before.
+    const lease = gatewayLeases.get(binding);
+    const awaiting = lease?.awaiting ?? (lease?.owner ? ownerIdentity(lease.owner) : undefined);
+    if (isPending(binding) && awaiting && (!next || ownerIdentity(next) === awaiting)) {
+      gatewayLeases.set(
+        binding,
+        next
+          ? { generation: gatewayGeneration, owner: next }
+          : { generation: gatewayGeneration, owner: null, awaiting },
+      );
+      continue;
+    }
+    revoke(binding, 'invalidated', 'owner_changed');
+  }
 });
 const equalScope = (a: SubmissionScope, b: SubmissionScope) =>
   a.actorId === b.actorId &&
@@ -267,6 +295,20 @@ export function getAcceptedRun(
   const binding = runId ? runs.get(runId) : undefined;
   return binding && (!sessionKey || binding.sessionKey === sessionKey) ? binding : undefined;
 }
+/** The user moved on: a later user prompt was submitted on the same surface. */
+export function isSuperseded(binding: AcceptedBinding): boolean {
+  let seen = false;
+  for (const other of runs.values()) {
+    if (other === binding) seen = true;
+    else if (seen && other.surface === binding.surface && other.origin === 'user') return true;
+  }
+  return false;
+}
+/** Runs this client submitted that no live `final` has claimed (ack lost or still running). */
+export function pendingRuns(sessionKey: string): AcceptedBinding[] {
+  sweep();
+  return [...runs.values()].filter((b) => b.sessionKey === sessionKey && isPending(b));
+}
 export function isRunCurrent(binding: AcceptedBinding, checkRevision = true): boolean {
   binding.surface.updateScope();
   sweep();
@@ -329,9 +371,13 @@ export function finishRun(binding: AcceptedBinding) {
     });
   }
 }
-export function terminalRun(runId: string | undefined, sessionKey: string) {
+export function terminalRun(
+  runId: string | undefined,
+  sessionKey: string,
+  reason: (typeof REASONS)[number] = 'context_changed',
+) {
   const binding = getAcceptedRun(runId, sessionKey);
-  if (binding) revoke(binding);
+  if (binding) revoke(binding, 'invalidated', reason);
 }
 export function associateRunMessage(message: object, binding: AcceptedBinding) {
   messageRuns.set(message, binding);

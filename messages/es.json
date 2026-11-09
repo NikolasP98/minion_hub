@@ -2513,6 +2513,8 @@
   "fleet_update_title": "Actualización de la flota",
   "floatingAssistant_askAnything": "Pregunta cualquier cosa",
   "floatingAssistant_connecting": "Conectando…",
+  "floatingAssistant_connectionLost": "Se perdió la conexión con el asistente. Reconectando para continuar donde quedó…",
+  "floatingAssistant_replyLost": "La respuesta del asistente no llegó a tiempo. Envía tu mensaje de nuevo.",
   "floatingAssistant_greeting": "Pregunta cualquier cosa sobre el hub. Puedo ver lo que estás viendo y ejecutar herramientas y habilidades que tu agente personal ha habilitado.",
   "floatingAssistant_listening": "Escuchando…",
   "floatingAssistant_loading": "Cargando asistente…",

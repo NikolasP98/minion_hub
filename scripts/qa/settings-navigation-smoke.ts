@@ -25,6 +25,33 @@ const browser = await chromium.launch({ headless: true });
 const returnPath = '/en/account/home?settings-return=qa#selection';
 let lastPage: Page | undefined;
 const pageErrors: string[] = [];
+const ownerEvidence: { checkpoint: string; state: unknown }[] = [];
+async function recordOwner(page: Page, checkpoint: string) {
+  const state = await page.evaluate(async (expectedHref) => {
+    const path = '/src/lib/nav/settings-navigation.qa.ts';
+    try {
+      const probe: { readSettingsNavigation(href: string): unknown } = await import(path);
+      return probe.readSettingsNavigation(expectedHref);
+    } catch (error) {
+      const response = await fetch(path);
+      return {
+        diagnosticError: String(error),
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        body: (await response.text()).slice(0, 1200),
+      };
+    }
+  }, returnPath);
+  ownerEvidence.push({ checkpoint, state });
+}
+const repeatedLocaleNavigations: string[] = [];
+function watchLocaleNavigation(page: Page) {
+  page.on('framenavigated', (frame) => {
+    if (frame !== page.mainFrame()) return;
+    if (/^\/(?:en|es)\/(?:en|es)(?:\/|$)/.test(new URL(frame.url()).pathname))
+      repeatedLocaleNavigations.push(frame.url());
+  });
+}
 const navigationEvidence: {
   checkpoint: string;
   url: string;
@@ -43,6 +70,8 @@ async function login(context: BrowserContext, persona: string) {
   assert.equal(response.status(), 200, `Synthetic ${persona} login`);
 }
 async function shot(page: Page, name: string) {
+  await recordOwner(page, name);
+  assert.deepEqual(repeatedLocaleNavigations, [], 'No transient doubled-locale navigation');
   const document = await page.evaluate(() => performance.timeOrigin);
   const back = await page
     .locator('aside[aria-label="Primary"] a[aria-label="Back"]')
@@ -54,13 +83,26 @@ async function shot(page: Page, name: string) {
   checks.push(name);
   await writeFile(
     `${out}/checks.json`,
-    JSON.stringify({ checks, navigationEvidence, transport: 'seeded loopback QA' }, null, 2),
+    JSON.stringify(
+      {
+        checks,
+        navigationEvidence,
+        ownerEvidence,
+        repeatedLocaleNavigations,
+        transport: 'seeded loopback QA',
+      },
+      null,
+      2,
+    ),
   );
 }
 function primary(page: Page) {
   return page.locator('aside[aria-label="Primary"] [data-layout="primary"]');
 }
 async function avatarSettings(page: Page) {
+  // Production has no query inspector. Its development-only floating logo
+  // overlaps the avatar in the QA Vite server; keep real app clicks unobstructed.
+  await page.addStyleTag({ content: '.tsqd-parent-container { display: none !important; }' });
   await page.getByRole('button', { name: 'Profile menu', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/appearance$/);
@@ -95,6 +137,7 @@ try {
   context.setDefaultTimeout(45_000);
   await login(context, 'platform-admin');
   const page = await context.newPage();
+  watchLocaleNavigation(page);
   page.on('pageerror', (error) => pageErrors.push(error.message));
   lastPage = page;
   await page.goto(`${base}${returnPath}`);
@@ -108,6 +151,7 @@ try {
     page.getByRole('button', { name: 'Open Tanstack query devtools', exact: true }),
   ).toBeVisible();
   flowDocument = await page.evaluate(() => performance.timeOrigin);
+  await recordOwner(page, 'home-before-settings');
   await avatarSettings(page);
   await expect(page.locator('aside[aria-label="Primary"]')).not.toHaveClass(/is-collapsed/);
   assert.equal(await page.evaluate(() => localStorage.getItem('hub-sidebar-collapsed')), '1');
@@ -140,6 +184,9 @@ try {
     const config: { setField(path: string, value: unknown): void } = await import(modulePath);
     config.setField('settingsNavigationQaProbe', true);
   });
+  await expect(
+    page.locator('aside[aria-label="Primary"]').getByRole('link', { name: 'Back', exact: true }),
+  ).toHaveAttribute('href', returnPath);
   await page
     .locator('aside[aria-label="Primary"]')
     .getByRole('link', { name: 'Back', exact: true })
@@ -192,6 +239,7 @@ try {
   staff.setDefaultTimeout(45_000);
   await login(staff, 'staff');
   const mobile = await staff.newPage();
+  watchLocaleNavigation(mobile);
   mobile.on('pageerror', (error) => pageErrors.push(error.message));
   lastPage = mobile;
   await mobile.goto(`${base}/en/account/home`);
@@ -203,11 +251,14 @@ try {
   await expect(mobile.locator('[data-component="section-nav"]:visible')).toHaveCount(1);
   await vertical(mobileNav);
   await expect(sheet.getByRole('link', { name: 'Organizations', exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('link', { name: 'Plugins', exact: true })).toHaveCount(0);
   await expect(sheet.getByRole('button', { name: 'Security', exact: true })).toHaveCount(0);
   assert(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await shot(mobile, 'staff-mobile-settings');
-  await mobileNav.getByRole('link', { name: 'Plugins', exact: true }).click();
-  await expect(mobile).toHaveURL(/\/settings\/plugins$/);
+  // Staff cannot manage plugin settings. Exercise the permitted native link
+  // and its navigation-completion close behavior without widening permissions.
+  await mobileNav.getByRole('link', { name: 'Appearance', exact: true }).click();
+  await expect(mobile).toHaveURL(/\/settings\/appearance$/);
   await expect(sheet).not.toBeVisible();
   await mobile.getByRole('button', { name: 'Toggle menu', exact: true }).click();
   await sheet.getByRole('link', { name: 'Back', exact: true }).click();
@@ -231,6 +282,8 @@ try {
           document: await lastPage.evaluate(() => performance.timeOrigin).catch(() => null),
           error: String(error),
           pageErrors,
+          ownerEvidence,
+          repeatedLocaleNavigations,
         },
         null,
         2,

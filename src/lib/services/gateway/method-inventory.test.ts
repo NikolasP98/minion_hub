@@ -153,6 +153,7 @@ const NOT_RPC: Record<string, string> = {
   'chat.cancel': 'hub chat state transition',
   'chat.commit': 'hub chat state transition',
   'chat.guard_timeout': 'hub diagnostic event',
+  'chat.reconcile': 'hub diagnostic event',
   'channels.send': 'flow diagram label text',
   'hub.artifact.context.get': 'artifact iframe RPC answered by the hub API, never forwarded',
   'hub.navigate': 'assistant tool name (runs in the hub)',
