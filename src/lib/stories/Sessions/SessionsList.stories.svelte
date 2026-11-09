@@ -10,7 +10,7 @@
     id: `s${i}`,
     serverId: 'srv-1',
     agentId,
-    sessionKey: i % 4 === 0 ? `agent:${agentId}:main` : `agent:${agentId}:whatsapp:dm:+5199${String(1000000 + i).slice(-7)}`,
+    sessionKey: i === 0 ? `agent:${agentId}:main` : `agent:${agentId}:whatsapp:dm:+5199${String(1000000 + i).slice(-7)}`,
     status: statuses[i % statuses.length],
     metadata: i % 3 === 0 ? JSON.stringify({ displayName: ['Ana Torres', 'Luis Paredes', 'Nightly stock check', 'Walk-in with a very long customer name that overflows'][i % 4] }) : null,
     createdAt: now - i * 3_600_000,

@@ -1,5 +1,7 @@
 <script module>
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  // Canvas edge in px, not an icon size.
+  const SHADER_PX = 48;
   import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
   import { THINKING_STYLES } from '$lib/components/assistant/thinking-shader';
 

@@ -68,7 +68,7 @@
   {/snippet}
 </Story>
 
-<Story name="ManyRows" args={{ events: makeEvents(500) }}>
+<Story name="ManyRows" args={{ events: makeEvents(200) }}>
   {#snippet template(args)}
     <div style="height: 32rem; display: flex; flex-direction: column"><ActivityLogTable {...args} /></div>
   {/snippet}
