@@ -7,7 +7,13 @@
     type AsyncBoundaryState,
   } from '$lib/components/ui/foundations';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { configState, loadConfig, ensureConfigLoaded, isDirty, groups } from '$lib/state/config/config.svelte';
+  import {
+    configState,
+    loadConfig,
+    ensureConfigLoaded,
+    isDirty,
+    groups,
+  } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, countConfiguredKeys } from '$lib/utils/config-schema';
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
   import Splitter from '$lib/components/layout/Splitter.svelte';
@@ -116,14 +122,9 @@
       {#snippet unavailableAction()}
         <Button variant="outline" size="sm" href="/">{m.config_goToDashboard()}</Button>
       {/snippet}
-    <Splitter
-        storageKey="sidebar-config"
-        defaultSize={17}
-        minibarSize={5}
-        maxSize={26}
-    >
+      <Splitter storageKey="sidebar-config" defaultSize={17} minibarSize={5} maxSize={26}>
         {#snippet panel({ collapseLevel })}
-            <ConfigSidebar {activeGroupId} onselect={scrollToGroup} {collapseLevel} />
+          <ConfigSidebar {activeGroupId} onselect={scrollToGroup} {collapseLevel} />
         {/snippet}
         <div class="flex-1 flex flex-col min-h-0">
           <div bind:this={contentEl} class="flex-1 overflow-y-auto px-6 py-5">
@@ -154,7 +155,7 @@
             <ConfigSaveBar />
           {/if}
         </div>
-    </Splitter>
+      </Splitter>
     </AsyncBoundary>
   </PageBody>
 </PageShell>
