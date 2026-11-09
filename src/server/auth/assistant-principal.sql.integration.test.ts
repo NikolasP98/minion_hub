@@ -15,6 +15,8 @@ const entrypoints = vi.hoisted(() => ({ db: vi.fn(), admin: vi.fn() }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: entrypoints.db }));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: entrypoints.admin }));
 import { resolveAssistantPrincipal } from './assistant-principal';
+import { readSectionAccess } from '$server/services/section-access.service';
+import { sectionAccessReceiptSchema } from '$lib/nav/section-access';
 import { POST as overridePost } from '../../routes/api/roles/overrides/+server';
 const ORG = '10000000-0000-4000-8000-000000000001',
   OTHER_ORG = '10000000-0000-4000-8000-000000000002';
@@ -27,8 +29,9 @@ const load = (name: string): { catalog: CapturedCatalog; provenance: Record<stri
   JSON.parse(readFileSync(new URL(`../test-utils/fixtures/${name}`, import.meta.url), 'utf8'));
 const attachment = load('attachment-catalog.json'),
   principal = load('assistant-principal-catalog.json'),
-  auth = load('attachment-auth-catalog.json');
-const catalog = mergeCapturedCatalogs(attachment.catalog, principal.catalog);
+  auth = load('attachment-auth-catalog.json'),
+  policy = load('assistant-principal-policy-catalog.json');
+const catalog = mergeCapturedCatalogs(attachment.catalog, principal.catalog, policy.catalog);
 const schema = `qc_job_stock_${crypto.randomUUID().replaceAll('-', '')}`,
   authSchema = `${schema}_auth`;
 let harness: Awaited<ReturnType<typeof openDisposablePostgres>>;
@@ -37,7 +40,7 @@ const requests: { method: string; table: string }[] = [];
 const transportTables = new Set(['organization_members', 'member_roles', 'permission_rules']);
 /** Installed Supabase query builders, translated at the HTTP boundary to native
  * SQL over the captured catalog. This is NOT PostgREST/JWT/service-role RLS proof.
- * Mutations commit on a separate real connection before returning the response. */
+ * Canonical policy-route writes use a separate native connection directly. */
 const localTransport: typeof fetch = async (input, init) => {
   const request = new Request(input, init),
     url = new URL(request.url),
@@ -46,26 +49,6 @@ const localTransport: typeof fetch = async (input, init) => {
     throw new Error('Unexpected native fixture HTTP target');
   const allowed = new Set(catalog.columns.filter((c) => c.relname === table).map((c) => c.attname));
   requests.push({ method: request.method, table });
-  if (request.method === 'POST') {
-    if (
-      table !== 'permission_rules' ||
-      url.searchParams.get('on_conflict') !== 'org_id,role_key,module'
-    )
-      throw new Error('Unexpected native fixture mutation');
-    const row: Record<string, string | number | boolean | null> = await request.json();
-    const columns = Object.keys(row);
-    if (columns.some((c) => !allowed.has(c))) throw new Error('Unexpected mutation field');
-    await writer.begin(async (tx) => {
-      await tx.unsafe(
-        `INSERT INTO permission_rules (${columns.map(qi).join(',')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(',')}) ON CONFLICT(org_id,role_key,module) DO UPDATE SET ${columns
-          .filter((c) => !['org_id', 'role_key', 'module'].includes(c))
-          .map((c) => `${qi(c)}=EXCLUDED.${qi(c)}`)
-          .join(',')}`,
-        columns.map((c) => row[c]),
-      );
-    });
-    return Response.json(null, { status: 201 });
-  }
   if (request.method !== 'GET') throw new Error('Unexpected native fixture HTTP method');
   const selected = (url.searchParams.get('select') ?? '').split(',');
   if (selected.some((c) => !allowed.has(c)))
@@ -120,7 +103,12 @@ beforeAll(async () => {
     ...harness.identity,
     schema,
     authSchema,
-    sourceCatalogs: [attachment.provenance, principal.provenance, auth.provenance],
+    sourceCatalogs: [
+      attachment.provenance,
+      principal.provenance,
+      auth.provenance,
+      policy.provenance,
+    ],
     ddlSha256: createHash('sha256').update(ddl).digest('hex'),
     providerProof: false,
     cacheBackend: 'actual-memory',
@@ -128,6 +116,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   requests.length = 0;
+  entrypoints.db.mockReturnValue(drizzle(reader));
   configureCache({
     namespace: `native-principal-${crypto.randomUUID()}`,
     backend: createBackend({ backend: 'memory' }),
@@ -138,6 +127,7 @@ beforeEach(async () => {
   await harness.owner.unsafe(
     `INSERT INTO ${qi(authSchema)}.users(id,email) VALUES ('${PROFILE}','principal@example.invalid'),('${OTHER_PROFILE}','other@example.invalid')`,
   );
+  await writer`INSERT INTO permission_roles(key,name,rank,is_system) VALUES ('owner','Owner',100,true),('admin','Admin',80,true),('manager','Manager',60,true),('staff','Staff',40,true),('viewer','Viewer',20,true)`;
   await writer`INSERT INTO organizations(id,name) VALUES (${ORG},'Native org'),(${OTHER_ORG},'Other native org')`;
   await writer`INSERT INTO organization_members(organization_id,profile_id,role) VALUES (${ORG},${PROFILE},'owner'),(${OTHER_ORG},${OTHER_PROFILE},'viewer')`;
   await writer`INSERT INTO gateway(id,legacy_server_id,org_id,name,url) VALUES (${GATEWAY},'legacy-native',${ORG},'Native','ws://fixture.invalid'),(${OTHER_GATEWAY},'legacy-other',${OTHER_ORG},'Other','ws://other.invalid')`;
@@ -196,6 +186,8 @@ describe('native assistant persisted assignment and revocation', () => {
     await expect(resolve()).rejects.toMatchObject({ status: 403 });
   });
   it('actual authorized override route commits through second connection and invalidates the warm real cache', async () => {
+    // The canonical writer checks the persisted platform role, not just the local claim.
+    await writer`UPDATE profiles SET role='admin' WHERE id=${PROFILE}`;
     await writer`INSERT INTO member_roles(org_id,profile_id,role_key) VALUES (${ORG},${PROFILE},'viewer')`;
     expect((await resolve()).capabilities.can('finance', 'view')).toBe(true);
     const before = requests.filter(
@@ -205,25 +197,65 @@ describe('native assistant persisted assignment and revocation', () => {
     expect(
       requests.filter((r) => r.table === 'permission_rules' && r.method === 'GET'),
     ).toHaveLength(before);
+    const adminLocals = {
+      user: { id: PROFILE, supabaseId: PROFILE, role: 'admin' },
+      tenantCtx: { tenantId: ORG },
+    } as App.Locals;
+    const revision = (await readSectionAccess(adminLocals, 'finance')).roles.find(
+      (role) => role.key === 'viewer',
+    )!.revision;
+    const [readerConnection] = await reader<{ pid: number }[]>`select pg_backend_pid() as pid`;
+    const [writerConnection] = await writer<{ pid: number }[]>`select pg_backend_pid() as pid`;
+    expect(readerConnection.pid).not.toBe(writerConnection.pid);
+    const writerDb = drizzle(writer);
+    entrypoints.db.mockReturnValueOnce(writerDb);
     const response = await overridePost({
-      locals: {
-        user: { id: PROFILE, supabaseId: PROFILE, role: 'admin' },
-        tenantCtx: { tenantId: ORG },
-      },
+      locals: adminLocals,
       request: new Request('http://native-principal.invalid/api/roles/overrides', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ roleKey: 'viewer', module: 'finance', caps: { view: false } }),
+        body: JSON.stringify({
+          roleKey: 'viewer',
+          module: 'finance',
+          revision,
+          caps: {
+            view: false,
+            create: false,
+            edit: false,
+            delete: false,
+            export: false,
+            manage: false,
+          },
+        }),
       }),
     } as never);
     expect(response.status).toBe(200);
-    expect(requests).toContainEqual({ method: 'POST', table: 'permission_rules' });
+    const receipt = sectionAccessReceiptSchema.parse(await response.json());
+    expect(receipt.revision).not.toBe(revision);
+    expect(entrypoints.db).toHaveReturnedWith(writerDb);
+    // Visibility on the independent reader proves the native transaction committed.
+    expect(
+      await reader`SELECT can_view FROM permission_rules WHERE org_id=${ORG} AND role_key='viewer' AND module='finance'`,
+    ).toEqual([{ can_view: false }]);
+    expect(
+      await reader`SELECT actor_id,ref_type FROM doc_audit_log WHERE org_id=${ORG} AND ref_type='section_access'`,
+    ).toEqual([{ actor_id: PROFILE, ref_type: 'section_access' }]);
+    expect(requests.some((request) => request.method === 'POST')).toBe(false);
     expect((await resolve()).capabilities.can('finance', 'view')).toBe(false);
     expect(
       requests.filter((r) => r.table === 'permission_rules' && r.method === 'GET').length,
     ).toBeGreaterThan(before);
   });
   it('denies a nonmember override request before any native permission mutation', async () => {
+    const revision = (
+      await readSectionAccess(
+        {
+          user: { id: PROFILE, supabaseId: PROFILE, role: 'user' },
+          tenantCtx: { tenantId: ORG },
+        } as App.Locals,
+        'finance',
+      )
+    ).roles.find((role) => role.key === 'viewer')!.revision;
     await expect(
       overridePost({
         locals: {
@@ -233,10 +265,24 @@ describe('native assistant persisted assignment and revocation', () => {
         request: new Request('http://native-principal.invalid/api/roles/overrides', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ roleKey: 'viewer', module: 'finance', caps: { view: true } }),
+          body: JSON.stringify({
+            roleKey: 'viewer',
+            module: 'finance',
+            revision,
+            caps: {
+              view: true,
+              create: false,
+              edit: false,
+              delete: false,
+              export: false,
+              manage: false,
+            },
+          }),
         }),
       } as never),
     ).rejects.toMatchObject({ status: 403 });
     expect(requests.some((r) => r.method === 'POST')).toBe(false);
+    expect(await reader`SELECT * FROM permission_rules`).toHaveLength(0);
+    expect(await reader`SELECT * FROM doc_audit_log`).toHaveLength(0);
   });
 });
