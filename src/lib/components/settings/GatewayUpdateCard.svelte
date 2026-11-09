@@ -12,7 +12,12 @@
     isUpdateRestartExpected,
     setUpdateProgress,
   } from '$lib/state/gateway/update-state.svelte';
-  import { configState, ensureConfigLoaded, getField, restartState } from '$lib/state/config/config.svelte';
+  import {
+    configState,
+    ensureConfigLoaded,
+    getField,
+    restartState,
+  } from '$lib/state/config/config.svelte';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import ScanLine from '$lib/components/decorations/ScanLine.svelte';
   import { PackageCheck, Download, RotateCw, AlertTriangle, Square } from 'lucide-svelte';
