@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { Carta, Markdown } from "carta-md";
-  import DOMPurify from "dompurify";
-  import "carta-md/default.css";
+  import { Carta, Markdown } from 'carta-md';
+  import DOMPurify from 'dompurify';
+  import 'carta-md/default.css';
 
   interface Props {
     value: string;
     class?: string;
   }
-  const { value, class: className = "" }: Props = $props();
+  const { value, class: className = '' }: Props = $props();
 
   const carta = new Carta({ sanitizer: (html) => DOMPurify.sanitize(html) });
 </script>
@@ -107,12 +107,12 @@
   .md-view :global(li > p) {
     margin: 0;
   }
-  .md-view :global(li:has(> input[type="checkbox"])) {
+  .md-view :global(li:has(> input[type='checkbox'])) {
     list-style: none;
     margin-left: calc(-1 * var(--space-6));
     padding-left: 0;
   }
-  .md-view :global(input[type="checkbox"]) {
+  .md-view :global(input[type='checkbox']) {
     margin-right: var(--space-2);
     vertical-align: middle;
     accent-color: var(--color-accent);
