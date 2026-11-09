@@ -7,7 +7,7 @@
     type AsyncBoundaryState,
   } from '$lib/components/ui/foundations';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { configState, loadConfig, isDirty, groups } from '$lib/state/config/config.svelte';
+  import { configState, loadConfig, ensureConfigLoaded, isDirty, groups } from '$lib/state/config/config.svelte';
   import { hasConfiguredValues, countConfiguredKeys } from '$lib/utils/config-schema';
   import ConfigSidebar from '$lib/components/config/ConfigSidebar.svelte';
   import Splitter from '$lib/components/layout/Splitter.svelte';
@@ -20,9 +20,7 @@
   let expandedIds = $state(new Set<string>());
 
   $effect(() => {
-    if (conn.connected && !configState.loaded && !configState.loading) {
-      loadConfig();
-    }
+    if (conn.connected) ensureConfigLoaded();
     if (!conn.connected && configState.loading) {
       configState.loading = false;
     }

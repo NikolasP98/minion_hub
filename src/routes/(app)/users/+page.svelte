@@ -2,7 +2,7 @@
   import TeamTab from '$lib/components/users/TeamTab.svelte';
   import BindingsTab from '$lib/components/users/BindingsTab.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
-  import { configState, loadConfig } from '$lib/state/config/config.svelte';
+  import { configState, ensureConfigLoaded } from '$lib/state/config/config.svelte';
   import * as m from '$lib/paraglide/messages';
   import { gatewayMethodAllowed } from '$lib/services/gateway/platform-admin-methods';
   import { PageHeader, Tabs, type TabItem } from '$lib/components/ui';
@@ -19,9 +19,7 @@
 
   // Load gateway config when switching to bindings tab (if not already loaded)
   $effect(() => {
-    if (activeTab === 'bindings' && conn.connected && !configState.loaded && !configState.loading) {
-      loadConfig();
-    }
+    if (activeTab === 'bindings' && conn.connected) ensureConfigLoaded();
   });
 </script>
 
