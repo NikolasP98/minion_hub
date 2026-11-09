@@ -113,7 +113,7 @@ async function loadPolicyRows(tx: CoreTx, orgId: string): Promise<PolicyRows> {
   `);
   const customRoles = await tx.execute<RoleRow>(sql`
     select key,name,rank,null::text as description,false as is_system,source_role_key
-    from org_roles where org_id=${orgId}::uuid for share
+    from org_roles where org_id=${orgId}::text for share
   `);
   const roles = [...systemRoles, ...customRoles].sort(
     (a, b) => b.rank - a.rank || a.key.localeCompare(b.key),
@@ -764,7 +764,7 @@ export async function deleteRoleAccessCatalog(locals: App.Locals, key: string): 
     await tx.execute(
       sql`delete from permission_rules where org_id=${actor.orgId}::uuid and role_key=${key}`,
     );
-    await tx.execute(sql`delete from org_roles where org_id=${actor.orgId}::uuid and key=${key}`);
+    await tx.execute(sql`delete from org_roles where org_id=${actor.orgId}::text and key=${key}`);
     const simulation = currentEffectiveAuthority(actor.orgId, actor.profileId);
     const removed = {
       key: role.key,

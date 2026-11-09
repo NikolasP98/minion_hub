@@ -83,7 +83,7 @@ beforeAll(async () => {
     create table organization_members(organization_id uuid,profile_id uuid,role text);
     create table member_roles(org_id uuid,profile_id uuid,role_key text);
     create table permission_roles(key text primary key,name text,rank integer,description text,is_system boolean);
-    create table org_roles(org_id uuid,key text,name text,rank integer,source_role_key text);
+    create table org_roles(org_id text,key text,name text,rank integer,source_role_key text);
     create table permission_rules(org_id uuid,role_key text,module text,can_view boolean,can_create boolean,can_edit boolean,
       can_delete boolean,can_export boolean,can_manage boolean,if_owner boolean default false,field_level integer default 0,
       updated_at timestamptz default now(),unique(org_id,role_key,module));
@@ -194,6 +194,24 @@ describe('contextual/legacy policy shared persistence', () => {
     ).rows;
     expect(audit).toHaveLength(2);
     expect(audit.every((entry) => entry.actor_id === profile)).toBe(true);
+  });
+  it('reads and removes custom roles using the real TEXT org key while preserving another org with the same role key', async () => {
+    await client.query(
+      `insert into org_roles(org_id,key,name,rank,source_role_key) values($1,'custom-text','Own custom',20,'viewer'),('legacy-text-org','custom-text','Foreign custom',20,'viewer')`,
+      [org],
+    );
+    const snapshot = await readSectionAccess(locals, 'crm');
+    expect(
+      snapshot.roles.filter((row) => row.key === 'custom-text').map((row) => row.name),
+    ).toEqual(['Own custom']);
+    await deleteRoleAccessCatalog(locals, 'custom-text');
+    expect(
+      (
+        await client.query<{ org_id: string; name: string }>(
+          `select org_id,name from org_roles where key='custom-text'`,
+        )
+      ).rows,
+    ).toEqual([{ org_id: 'legacy-text-org', name: 'Foreign custom' }]);
   });
   it('rejects protected owner, unknown/foreign/deleted targets and unknown org role before writing', async () => {
     await expect(

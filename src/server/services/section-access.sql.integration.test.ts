@@ -62,7 +62,7 @@ beforeAll(async () => {
     create table "${schema}".organization_members(organization_id uuid,profile_id uuid,role text);
     create table "${schema}".member_roles(org_id uuid,profile_id uuid,role_key text);
     create table "${schema}".permission_roles(key text primary key,name text,rank integer,description text,is_system boolean);
-    create table "${schema}".org_roles(org_id uuid,key text,name text,rank integer,source_role_key text);
+    create table "${schema}".org_roles(org_id text,key text,name text,rank integer,source_role_key text);
     create table "${schema}".permission_rules(org_id uuid,role_key text,module text,can_view boolean,can_create boolean,can_edit boolean,
       can_delete boolean,can_export boolean,can_manage boolean,if_owner boolean default false,field_level integer default 0,
       updated_at timestamptz default now(),unique(org_id,role_key,module));

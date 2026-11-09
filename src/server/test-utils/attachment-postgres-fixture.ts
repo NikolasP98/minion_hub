@@ -10,6 +10,7 @@ import * as pgSchema from '@minion-stack/db/pg';
 import { openDisposablePostgres } from '../../../scripts/qc/disposable-postgres';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import type { AttachmentAccess } from '$server/services/attachment-access';
+import { applyAttachmentRuntimeAuditFixture } from './attachment-runtime-audit-fixture';
 
 /** Minimal PGlite service-seam substrate only; never used for native/RLS qualification. */
 export const ATTACHMENT_FIXTURE_DDL = `
@@ -80,6 +81,7 @@ export async function openAttachmentFixture() {
   try {
     const authSchema = `${schema}_auth`;
     await ddl.unsafe(capturedAttachmentDdl(schema, authSchema));
+    const runtimeAuditExtension = await applyAttachmentRuntimeAuditFixture(ddl, schema);
     // Adversarial default grants on the NEW table exercise the migration's
     // explicit revocation; existing captured table ACLs above remain exact.
     await ddl.unsafe(
@@ -188,6 +190,7 @@ export async function openAttachmentFixture() {
         namespaceMapping: { public: schema, auth: authSchema },
         ownerMapping: { postgres: 'minion_qc' },
         catalogProvenance: [domainCatalog.provenance, authCatalog.provenance],
+        runtimeAuditExtension,
         ddlSha256: createHash('sha256')
           .update(capturedAttachmentDdl(schema, authSchema))
           .digest('hex'),

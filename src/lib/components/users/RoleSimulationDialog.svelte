@@ -17,6 +17,7 @@
   import { page } from '$app/state';
   import { Button, Input, Radio } from '@minion-stack/ui';
   import Sheet from '$lib/components/ui/foundations/Sheet.svelte';
+  import { AUTHORITY_DIALOG_CLASS } from '$lib/components/layout/floating-assistant-modal';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { tryUseActions } from '$lib/services/actions/context';
   import { transitionRoleSimulation } from '$lib/services/role-simulation-client';
@@ -88,6 +89,7 @@
 </script>
 
 <Sheet
+  class={AUTHORITY_DIALOG_CLASS}
   bind:open
   title={m.roleSimulation_title()}
   description={simulation.orgName ?? undefined}

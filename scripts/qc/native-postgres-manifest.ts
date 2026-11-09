@@ -548,8 +548,9 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/attachments.lifecycle.sql.integration.test.ts',
-      minimumAssertions: 30,
+      minimumAssertions: 31,
       requiredBehaviors: [
+        'native attachment deletion lifecycle post-capture audit extension preserves ordinary writes and attributes simulated writes to the actual actor',
         'native attachment deletion lifecycle rolls back failed claim admission before any object-store effect',
         'native attachment deletion lifecycle storage failure keeps a tombstone, blocks relink/read, and a new sweep resumes the same claim',
         'native attachment deletion lifecycle database cleanup failure after blob deletion retries without resurrecting the file or repeating physical deletion',

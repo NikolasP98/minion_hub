@@ -5,6 +5,7 @@
   import Toggle from '$lib/components/ui/Toggle.svelte';
   import { Dialog, FormField, AsyncBoundary } from '$lib/components/ui/foundations';
   import { localizePath } from '$lib/canonical-path';
+  import { AUTHORITY_DIALOG_CLASS } from '$lib/components/layout/floating-assistant-modal';
   import { ApiError, fetchJson } from '$lib/api/fetch-json';
   import { tryUseActions } from '$lib/services/actions/context';
   import {
@@ -416,6 +417,7 @@
 </script>
 
 <Dialog
+  class={AUTHORITY_DIALOG_CLASS}
   bind:open
   title={review
     ? m.sectionAccess_reviewTitle()
