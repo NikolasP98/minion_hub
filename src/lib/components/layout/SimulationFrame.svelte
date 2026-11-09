@@ -68,7 +68,7 @@
     background: transparent;
     z-index: var(--layer-debug);
     border: calc(var(--space-0-5) / 2) solid
-      color-mix(in srgb, var(--color-warning-fg) 45%, transparent);
+      color-mix(in srgb, var(--color-warning-fg) 45%, var(--color-canvas));
     animation: simulation-breathe calc(var(--duration-slow) * 8) var(--ease-standard) infinite;
     pointer-events: none;
     box-sizing: border-box;

@@ -15,6 +15,7 @@
     Eye,
     ChevronRight,
     Undo2,
+    KeyRound,
   } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { iconSizes, Dropdown } from '$lib/components/ui';
@@ -145,9 +146,14 @@
           ? m.roleSimulation_profile({ role: simulation.roleName ?? simulation.roleKey ?? '' })
           : m.roleSimulation_profileDefault()}</span
       >
-      <span aria-hidden="true"
-        ><UserAvatar name={displayName} {email} src={avatarUrl} size={28} /></span
-      >
+      <span class="account-avatar" aria-hidden="true">
+        <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
+        {#if simulation.active}
+          <span class="simulation-badge" data-role-simulation-badge>
+            <KeyRound size={iconSizes.xs} />
+          </span>
+        {/if}
+      </span>
     </span>
   {/snippet}
 
@@ -211,6 +217,29 @@
   .account-trigger {
     min-width: var(--control-height-md);
     min-height: var(--control-height-md);
+  }
+  .account-avatar {
+    position: relative;
+    display: inline-flex;
+  }
+  .simulation-badge {
+    position: absolute;
+    inset-block-start: calc(-1 * var(--space-1));
+    inset-inline-end: calc(-1 * var(--space-1));
+    display: grid;
+    place-items: center;
+    width: var(--space-4);
+    height: var(--space-4);
+    padding: var(--space-0-5);
+    border: calc(var(--space-0-5) / 2) solid var(--color-canvas);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-warning-fg) 45%, var(--color-canvas));
+    color: var(--color-text-primary);
+    pointer-events: none;
+  }
+  .simulation-badge :global(svg) {
+    width: 100%;
+    height: 100%;
   }
   @media (pointer: coarse) {
     .account-trigger {
