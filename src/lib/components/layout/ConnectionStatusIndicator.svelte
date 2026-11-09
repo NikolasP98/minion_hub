@@ -21,7 +21,13 @@
     popoverEnabled = true,
     open = $bindable(false),
     panel = 'below',
-  }: { popoverEnabled?: boolean; open?: boolean; panel?: 'below' | 'above' } = $props();
+    comfortable = false,
+  }: {
+    popoverEnabled?: boolean;
+    open?: boolean;
+    panel?: 'below' | 'above';
+    comfortable?: boolean;
+  } = $props();
 
   const activeHost = $derived(getActiveHost());
   const connected = $derived(conn.connected);
@@ -145,6 +151,7 @@
 
 <div
   class="relative flex items-center"
+  class:status-comfortable={comfortable}
   onmouseenter={show}
   onmouseleave={hide}
   onfocusin={show}
@@ -153,13 +160,20 @@
 >
   <Button
     variant="ghost"
-    size="xs"
+    size={comfortable ? 'md' : 'xs'}
+    shape={comfortable ? 'icon' : 'default'}
     type="button"
-    class="flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    class={comfortable
+      ? 'connection-status-button'
+      : 'flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent'}
     aria-label={ariaLabel}
     aria-expanded={open}
   >
-    <span class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors {DOT_CLASS[dotState]}"></span>
+    <span
+      class="rounded-full shrink-0 transition-colors {comfortable
+        ? 'status-signal'
+        : 'w-1.5 h-1.5'} {DOT_CLASS[dotState]}"
+    ></span>
   </Button>
 
   {#if open}
@@ -272,3 +286,23 @@
     </div>
   {/if}
 </div>
+
+<style>
+  .status-comfortable :global(.connection-status-button) {
+    width: var(--control-height-md);
+    height: var(--control-height-md);
+    margin: 0;
+    padding: 0;
+    border-radius: var(--radius-md);
+  }
+  .status-signal {
+    width: var(--space-2);
+    height: var(--space-2);
+  }
+  @media (pointer: coarse) {
+    .status-comfortable :global(.connection-status-button) {
+      width: var(--control-height-touch);
+      height: var(--control-height-touch);
+    }
+  }
+</style>
