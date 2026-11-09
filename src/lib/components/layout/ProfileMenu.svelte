@@ -6,11 +6,10 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe, GitBranch, User, Users, Settings, Eye } from 'lucide-svelte';
+  import { LogOut, Globe, GitBranch, User, Settings, Eye } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { iconSizes, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
-  import DevUserSwitcher from './DevUserSwitcher.svelte';
   import RoleSimulationDialog, {
     simulationErrorMessage,
   } from '$lib/components/users/RoleSimulationDialog.svelte';
@@ -33,15 +32,6 @@
   const channels = $derived(hostsState.channels);
   const activeChannel = $derived(hostsState.activeChannel ?? channels[0]?.channel ?? null);
   const showBuildChannel = $derived(!simulation.active && isAdmin.value && channels.length > 0);
-  // DEV-only: /api/dev/* 404s outside a loopback Supabase backend (spec
-  // 2026-09-16-hub-minion-run-dev-switcher §2.3), so this item — and the
-  // switcher it opens — never render against a hosted/deployed backend.
-  const showDevSwitcher = $derived(
-    !simulation.active &&
-      (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
-  );
-
-  let devSwitcherOpen = $state(false);
 
   // Account header + account link + preference toggles + logout. Language and
   // build channel stay open so their live badges update in place. Gateway
@@ -72,16 +62,12 @@
           },
         ]
       : []),
-    ...(showDevSwitcher
-      ? [{ value: 'switch-user', label: m.profile_switch_user(), icon: Users }]
-      : []),
     { value: 'logout', label: m.profile_logout(), icon: LogOut, danger: true },
   ]);
 
   function onSelect(value: string) {
     if (value === 'language') locale.toggle();
     else if (value === 'build-channel') switchBuildChannel();
-    else if (value === 'switch-user') devSwitcherOpen = true;
     else if (value === 'logout') logout();
     else if (value === 'simulation') {
       if (simulation.active) void finishSimulation();
@@ -180,10 +166,6 @@
     {/if}
   {/snippet}
 </Dropdown>
-
-{#if showDevSwitcher}
-  <DevUserSwitcher bind:open={devSwitcherOpen} currentUserId={userState.user?.id ?? null} />
-{/if}
 
 {#if simulation.eligible && !simulation.active}
   <RoleSimulationDialog bind:open={simulationOpen} state={simulation} />

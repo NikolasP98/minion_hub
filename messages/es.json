@@ -2079,7 +2079,7 @@
   "dev_switcher_error": "No se pudo cambiar de usuario",
   "dev_switcher_no_org": "Sin organización",
   "dev_switcher_search": "Buscar por nombre, correo o nombre de usuario",
-  "dev_switcher_title": "Cambiar de usuario",
+  "dev_switcher_title": "Cambiar de cuenta de QA",
   "dialog_discardConfirm": "Descartar cambios",
   "dialog_discardKeep": "Seguir editando",
   "dialog_discardMessage": "Tienes cambios sin guardar en este formulario. Si lo cierras ahora se perderán.",
@@ -2182,7 +2182,7 @@
   "emoji_changeIcon": "Cambiar ícono",
   "emoji_closePickerLabel": "Cerrar selector de ícono",
   "env_badge_dev": "DEV",
-  "env_badge_dev_hint": "Backend de desarrollo local — cambia de usuario desde el menú de perfil, sin contraseña.",
+  "env_badge_dev_hint": "Backend de QA local. Abre DEV para cambiar de cuenta de prueba.",
   "env_badge_prd": "PRD",
   "env_badge_prd_hint": "Este servidor local está conectado al backend de producción. Los cambios son reales.",
   "event_allDay": "Todo el día",
@@ -3840,7 +3840,7 @@
   "pos_walkin_override": "Forzar fuera de horario (walk-in)",
   "profile_logout": "Cerrar sesión",
   "profile_settings": "Configuración de perfil",
-  "profile_switch_user": "Cambiar de usuario…",
+  "profile_switch_user": "Cambiar de cuenta de QA…",
   "projects_daysOverdue": "d vencido",
   "projects_daysUnit": "d",
   "projects_leadAgent": "Agente responsable",
@@ -7415,5 +7415,7 @@
   "sectionAccess_dirtyBeforeApply": "Guarda o descarta los cambios pendientes antes de aplicar el acceso.",
   "sectionAccess_pendingBeforeApply": "Espera a que terminen las acciones pendientes y luego aplica el acceso.",
   "sectionAccess_cannotPrepare": "Todavía no se puede cambiar el acceso. Actualiza esta vista y vuelve a intentarlo.",
-  "roleSimulation_refreshRequired": "Actualiza para continuar."
+  "roleSimulation_refreshRequired": "Actualiza para continuar.",
+  "dev_switcher_description": "Cambia la cuenta de prueba con la que has iniciado sesión.",
+  "env_badge_qa_tools": "Herramientas de QA local"
 }

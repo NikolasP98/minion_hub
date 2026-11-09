@@ -99,6 +99,7 @@
       <ProfileMenu placement="right" />
     </span>
   {:else}
+    <EnvBadge />
     <ProfileMenu placement="right" />
   {/if}
 </div>

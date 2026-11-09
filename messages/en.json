@@ -2079,7 +2079,7 @@
   "dev_switcher_error": "Could not switch user",
   "dev_switcher_no_org": "No organization",
   "dev_switcher_search": "Search by name, email, or username",
-  "dev_switcher_title": "Switch user",
+  "dev_switcher_title": "Switch QA account",
   "dialog_discardConfirm": "Discard changes",
   "dialog_discardKeep": "Keep editing",
   "dialog_discardMessage": "You have unsaved changes in this form. If you close it now they will be lost.",
@@ -2182,7 +2182,7 @@
   "emoji_changeIcon": "Change icon",
   "emoji_closePickerLabel": "Close icon picker",
   "env_badge_dev": "DEV",
-  "env_badge_dev_hint": "Local dev backend — switch users from the profile menu, no password needed.",
+  "env_badge_dev_hint": "Local QA backend. Open DEV to switch test accounts.",
   "env_badge_prd": "PRD",
   "env_badge_prd_hint": "This local server is connected to the production backend. Changes are real.",
   "event_allDay": "All day",
@@ -3840,7 +3840,7 @@
   "pos_walkin_override": "Force outside hours (walk-in)",
   "profile_logout": "Log out",
   "profile_settings": "Profile settings",
-  "profile_switch_user": "Switch user…",
+  "profile_switch_user": "Switch QA account…",
   "projects_daysOverdue": "d overdue",
   "projects_daysUnit": "d",
   "projects_leadAgent": "Lead agent",
@@ -7415,5 +7415,7 @@
   "sectionAccess_dirtyBeforeApply": "Save or discard your pending changes before applying access.",
   "sectionAccess_pendingBeforeApply": "Wait for pending actions to finish, then apply access.",
   "sectionAccess_cannotPrepare": "Access cannot be changed yet. Refresh this view and try again.",
-  "roleSimulation_refreshRequired": "Refresh to continue."
+  "roleSimulation_refreshRequired": "Refresh to continue.",
+  "dev_switcher_description": "Changes your signed-in test account.",
+  "env_badge_qa_tools": "Local QA tools"
 }

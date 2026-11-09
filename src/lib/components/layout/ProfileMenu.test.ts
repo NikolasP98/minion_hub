@@ -89,15 +89,14 @@ describe('ProfileMenu build-channel row', () => {
   });
 });
 
-describe('ProfileMenu DEV user switcher item', () => {
-  it('shows "Switch user…" above "Sign out" when the backend is dev', () => {
+describe('ProfileMenu keeps QA account changes separate from simulation', () => {
+  it('does not offer account switching in the avatar menu on DEV', () => {
     data.env = { backend: 'dev', local: true };
     const out = html([]);
 
-    const switchUser = out.indexOf('Switch user');
-    const signOut = out.indexOf('Log out');
-    expect(switchUser).toBeGreaterThan(-1);
-    expect(signOut).toBeGreaterThan(switchUser);
+    expect(out).not.toContain('Switch user');
+    expect(out).not.toContain('Switch QA account');
+    expect(out).not.toContain('/api/dev/switch-user');
   });
 
   it('hides "Switch user…" when the backend is prd', () => {
