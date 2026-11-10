@@ -274,9 +274,13 @@ export function servicesTitle(
  *  its own session, a plan is paid off through the plan), not yet paid, and not
  *  closed — a cancelled service is not for sale. The ONE rule behind the
  *  drawer's Charge button and the calendar context menu's Cobrar item, so the
- *  two can never disagree about what is still owed. */
+ *  two can never disagree about what is still owed. A service priced exactly 0
+ *  (a free follow-up "Control") can never be charged, so it is never owed; a
+ *  null price (no catalog product) still is. SQL twin: `UNBILLED_BOOKING_WHERE`. */
 export function chargeableRows(rows: readonly VisitRow[]): VisitRow[] {
-  return rows.filter((r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status));
+  return rows.filter(
+    (r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status) && r.price !== 0,
+  );
 }
 
 /** What the POS charge handoff needs to prefill a cart. */
