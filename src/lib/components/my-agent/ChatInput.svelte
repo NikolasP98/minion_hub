@@ -11,6 +11,7 @@
   } from '$lib/utils/drag-context';
   import { createHotkeysAttachment } from '$lib/hotkeys';
   import { tick } from 'svelte';
+  import { nativeFieldSizing } from '$lib/utils/field-sizing';
   import { detectTrigger, matches, type Suggestion } from '$lib/chat/chat-suggest';
   import { visibleAgents } from '$lib/state/gateway/gateway-data.svelte';
   import { agentSkillsState, loadAgentSkills } from '$lib/state/agents/agent-skills.svelte';
@@ -338,7 +339,7 @@
   }
 
   function autoGrow() {
-    if (!textarea) return;
+    if (!textarea || nativeFieldSizing) return; // CSS grows it (see the @supports block)
     textarea.style.height = 'auto';
     const max = focused ? 96 : 52;
     textarea.style.height = Math.min(textarea.scrollHeight, max) + 'px';
@@ -614,6 +615,17 @@
     font-family: inherit;
     outline: none;
     padding: 0;
+  }
+
+  /* Same caps as the scripted autoGrow: 52 px blurred, 96 px focused. */
+  @supports (field-sizing: content) {
+    textarea {
+      field-sizing: content;
+      max-height: 52px;
+    }
+    .chat-input.focused textarea {
+      max-height: 96px;
+    }
   }
 
   textarea::placeholder {

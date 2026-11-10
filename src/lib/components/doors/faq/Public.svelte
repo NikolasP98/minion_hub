@@ -6,6 +6,8 @@
   import { faqJsonLd, type FaqPublicData } from '$lib/doors/kinds/faq';
 
   let { data }: DoorPublicProps = $props();
+  // One shared `name` per door instance: the browser then keeps a single entry open.
+  const uid = $props.id();
 
   const faq = $derived(data as unknown as FaqPublicData);
   const entries = $derived(faq.entries ?? []);
@@ -28,7 +30,7 @@
     <p class="t-body muted">{m.doors_faq_public_empty()}</p>
   {:else}
     {#each entries as entry, i (i)}
-      <details class="entry">
+      <details class="entry" name="faq-{uid}">
         <summary class="t-label">{entry.q}</summary>
         <p class="t-body answer">{entry.a}</p>
       </details>

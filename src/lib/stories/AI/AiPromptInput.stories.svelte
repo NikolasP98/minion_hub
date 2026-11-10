@@ -16,6 +16,9 @@
     (_, i) => `Line ${i + 1} of a draft taller than MAX_ROWS, so the box scrolls.`,
   ).join('\n');
 
+  const draft = (n: number) =>
+    Array.from({ length: n }, (_, i) => `Draft line ${i + 1}`).join('\n');
+
   const { Story } = defineMeta({
     title: 'Components/AI/AiPromptInput',
     component: AiPromptInput,
@@ -48,6 +51,18 @@
 </Story>
 
 <Story name="Tall draft scrolls past 8 rows" args={{ value: tall }}>
+  {#snippet template(args)}<div class="w-full max-w-xl"><AiPromptInput {...args} /></div>{/snippet}
+</Story>
+
+<Story name="Grows 1 line" args={{ value: draft(1) }}>
+  {#snippet template(args)}<div class="w-full max-w-xl"><AiPromptInput {...args} /></div>{/snippet}
+</Story>
+
+<Story name="Grows 6 lines" args={{ value: draft(6) }}>
+  {#snippet template(args)}<div class="w-full max-w-xl"><AiPromptInput {...args} /></div>{/snippet}
+</Story>
+
+<Story name="Grows 20 lines capped and scrolling" args={{ value: draft(20) }}>
   {#snippet template(args)}<div class="w-full max-w-xl"><AiPromptInput {...args} /></div>{/snippet}
 </Story>
 
