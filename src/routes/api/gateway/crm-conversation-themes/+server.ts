@@ -4,6 +4,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { resolveAssistantPrincipal } from '$server/auth/assistant-principal';
 import { conversationThemes } from '$server/services/crm-conversation-analysis.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 
 /**
  * POST /api/gateway/crm-conversation-themes?agentId=personal-<uuid>[&orgId=<org>]
@@ -17,7 +18,22 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { principalId, orgId, capabilities } = await resolveAssistantPrincipal(locals, url);
   if (!capabilities.can('crm', 'view')) {
-    return json({ error: 'Your role does not permit reading this organization’s CRM data.' }, { status: 403 });
+    return json(
+      { error: 'Your role does not permit reading this organization’s CRM data.' },
+      { status: 403 },
+    );
+  }
+  // TODO(handoff): Keep restricted roles denied until scoped retrieval/masking is
+  // qualified; minion-meta proposals/2026-11-10-hub-crm-analyst-gateway-authentication.md.
+  if (capabilities.ownerScoped('crm') || capabilities.fieldLevel('crm') < SENSITIVE_FIELD_LEVEL) {
+    return json(
+      {
+        code: 'CRM_CONVERSATION_SCOPE_UNSUPPORTED',
+        error:
+          'Conversation analysis is unavailable for roles with record or sensitive-field restrictions.',
+      },
+      { status: 403 },
+    );
   }
   const ctx: CoreCtx = { db: getCoreDb(), tenantId: orgId, profileId: principalId };
 

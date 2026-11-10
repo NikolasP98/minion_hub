@@ -6,6 +6,7 @@ import { embedText } from '$server/services/embeddings';
 import { similarConversations } from '$server/services/crm-conversation-vectors.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { requireOrgFeature } from '$server/services/entitlements.service';
+import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 
 /**
  * POST /api/gateway/search-crm-conversations?agentId=personal-<uuid>[&orgId=<org>]
@@ -22,6 +23,18 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
   if (!capabilities.can('crm', 'view')) {
     return json(
       { error: 'Your role does not permit reading this organization’s CRM data.' },
+      { status: 403 },
+    );
+  }
+  // TODO(handoff): Keep restricted roles denied until scoped retrieval/masking is
+  // qualified; minion-meta proposals/2026-11-10-hub-crm-analyst-gateway-authentication.md.
+  if (capabilities.ownerScoped('crm') || capabilities.fieldLevel('crm') < SENSITIVE_FIELD_LEVEL) {
+    return json(
+      {
+        code: 'CRM_CONVERSATION_SCOPE_UNSUPPORTED',
+        error:
+          'Conversation analysis is unavailable for roles with record or sensitive-field restrictions.',
+      },
       { status: 403 },
     );
   }
