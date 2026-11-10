@@ -103,8 +103,10 @@ beforeEach(() => {
     vi.fn(async () => new Response('{"flows":[],"servers":[]}')),
   );
 });
-afterEach(() => {
+afterEach(async () => {
   wsDisconnect();
+  // Reconnect starts a lazy config import; finish it while mocks still exist.
+  await vi.dynamicImportSettled();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });

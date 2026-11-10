@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
     );
   }
   // TODO(handoff): Keep restricted roles denied until scoped retrieval/masking is
-  // qualified; minion-meta proposals/2026-11-10-hub-crm-analyst-gateway-authentication.md.
+  // qualified; minion-meta proposals/2026-11-10-crm-conversation-restricted-role-support.md.
   if (capabilities.ownerScoped('crm') || capabilities.fieldLevel('crm') < SENSITIVE_FIELD_LEVEL) {
     return json(
       {
