@@ -134,6 +134,8 @@ export function visitRows(input: {
       minutes: input.minutes,
       status: input.booking.status,
       paid: input.paid,
+      // TODO(handoff): price-0 rule — this fallback has no price, so an ungrouped price-0
+      // booking still shows Charge while UNBILLED_BOOKING_WHERE excludes it; join the product here.
       price: null,
       paidAmount: charged.reduce((sum, t) => sum + (Number(t.lineTotal) || 0), 0),
       currency: charged[0]?.currency ?? null,
