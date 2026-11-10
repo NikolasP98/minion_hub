@@ -29,10 +29,15 @@ import {
  * The organization's finance timezone defines calendar days and series buckets
  * for both revenue and cost. from includes local midnight; to includes its whole
  * local day, converted to an exclusive next-midnight SQL bound (including DST).
- * Returns { period, periodSemantics, summary, series, products, clients, ranking };
- * metric is revenue (default), quantity or margin; limit is 1..100. ranking
- * discloses source/identity coverage, currency groups and tie/truncation state.
- * Legacy products is revenue-selected and cannot prove quantity or margin.
+ * Returns { period, periodSemantics, summary, series, products, clients, ranking,
+ * legacyProductsSemantics }. metric is revenue (default), quantity or margin;
+ * limit is 1..100 (default 15) and applies only to ranking. The requested metric
+ * is ranked before limiting identifiable nonvoid, unshadowed invoice items;
+ * POS-only sales are excluded and unidentified rows are disclosed separately.
+ * Revenue groups keep currencies separate; coverage and boundary ties are
+ * disclosed. Margin is unavailable without attributed product costs, including
+ * for principals with sensitive-field access. Legacy products remains the
+ * revenue-selected top 15 and cannot prove quantity or margin.
  * period contains resolved instants, while periodSemantics discloses mode,
  * timezone, calendarFrom/calendarTo and bound inclusivity. Dashboard parsing
  * and callers using the default revenueSeries timezone retain their own rules.
@@ -40,7 +45,8 @@ import {
  * Field-level masking uses the resolved `capabilities` from the trusted
  * principal (NOT `shouldMaskSensitive(locals,...)` — that helper keys off
  * `locals.user`, which is unset for gateway/server-token callers, so it would
- * silently apply the wrong default here).
+ * silently apply the wrong default here). Masking covers summary and each
+ * series bucket's opCost, discount and gross; masked buckets set sensitiveMasked.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
   const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'finance', 'view');

@@ -30,6 +30,16 @@ const bodySchema = z.object({
  * POST /api/gateway/actions/stock-entry-create?agentId=personal-<uuid>[&orgId=]
  * body: { confirm, type, partyId?, note?, currency?, rateMode?, lines: [{ itemId, qty, uom?, rate?, fromWarehouseId?, toWarehouseId? }] }
  *
+ * Omitted currency means the organization's Finance valuation currency; omitted
+ * rateMode means per-unit input. total means the whole line's cost, divided by
+ * qty before native FX conversion. Zero rates are valid. Cross-currency input
+ * requires a positive finite configured exchange rate; no rate is guessed.
+ * Preview lines are valuation-currency unit rates (valuationCurrency,
+ * rateMode: 'unit'); inputCurrency/inputRateMode retain the supplied meaning.
+ * Confirmation uses the same conversion and stores input facts with FX metadata.
+ * These defaults describe the direct action; form-fill defaults live in
+ * STOCK_ENTRY_FORM in src/lib/assistant/catalog.ts.
+ *
  * Creates a DRAFT stock entry only — submission (which writes the append-only
  * ledger and moves stock) is a deliberate separate step done from the /stock
  * UI, not exposed to the agent in v1.

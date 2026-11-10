@@ -151,7 +151,13 @@ function ensureRun(binding: SubmissionScope & { runId: string }) {
   }
   return run;
 }
-/** A waiting, not-yet-mounted form can be interrupted before any invocation. */
+/**
+ * Register a claimed UI-bearing final before any asynchronous rendering or tool
+ * wait: revocation may precede dispatch. Only bounded in-memory receipt metadata
+ * survives for the same actor/org/agent/session/host; no inputs or result bodies
+ * are retained. Late receipts can refine certainty, never authorize replay or a
+ * follow-up. Retention bounds and expiry are defined by this module's constants.
+ */
 export function beginEffectRun(binding: SubmissionScope & { runId: string }) {
   ensureRun(binding);
 }

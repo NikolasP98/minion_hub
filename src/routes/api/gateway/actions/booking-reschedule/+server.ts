@@ -60,11 +60,22 @@ function bookingReceipt(booking: SchedBooking, maskSensitive: boolean) {
 }
 
 /**
+ * POST /api/gateway/actions/booking-reschedule?agentId=personal-<uuid>[&orgId=]
+ * body: { confirm, bookingId, start, expectedUpdatedAt?, resourceId?,
+ *         eventTypeId?, crmContactId?, attendeeName?, attendeeEmail?, attendeePhone?, notes? }
+ * start and expectedUpdatedAt are ISO datetimes with explicit offsets.
+ * Legacy event/contact/attendee/notes fields may only match the stored facts;
+ * grouped bookings require the separate group flow.
+ *
  * Move an existing booking in place. Preview validates the original, contact,
  * resource and strict assistant availability, excluding the original slot.
- * Confirm echoes preview.expectedUpdatedAt and revalidates under a row lock.
- * No booking is created/cancelled and no payment/package/series link changes.
- * Same-target retries return a persisted no-op receipt; stale other moves fail.
+ * It reserves nothing. Confirm requires preview.expectedUpdatedAt (400 if absent)
+ * and revalidates under a row lock; a stale different-target move returns 409.
+ * Duration and payment/package/series links remain attached to the same ID.
+ * An exact same-target/resource retry returns outcome: 'already-at-target'
+ * without rechecking changed availability rules or advancing updatedAt;
+ * a committed move returns outcome: 'moved' with a monotonically newer updatedAt.
+ * Receipts whitelist scheduling fields and mask attendee PII by principal level.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'scheduling', 'edit');

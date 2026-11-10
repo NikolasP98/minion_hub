@@ -1415,11 +1415,10 @@ function conflictMessage(conflicts: BookingConflict[]): string {
 /**
  * Drag/drop or resize a booking (spec §3.2b). Org-scoped; rejects a
  * cancelled/rejected booking, a zero/negative-length move, or an inactive/
- * foreign target resource. Conflict check reuses the same buffer-padded
- * overlap test the slot engine uses (`intervalsOverlap` in slots.ts) against
- * every other non-cancelled booking on the target resource, padded by the
- * booking's own event type buffers (mirrors how `createBooking` pads busy
- * intervals by the booked event type's buffers before slotting).
+ * foreign target resource. Overlap policy is owned by `findBookingConflicts`;
+ * the human caller may explicitly override conflicts and working hours.
+ * Assistant moves instead enter through `rescheduleAssistantBooking` for strict
+ * availability preflight before this shared in-place write.
  */
 export async function rescheduleBooking(
   ctx: CoreCtx,
@@ -1476,9 +1475,9 @@ async function rescheduleBookingInTx(
   if (conflicts.length && !input.overrideConflicts)
     throw new BookingConflictError(conflictMessage(conflicts), conflicts);
 
-  // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
-  // on a holiday / during staff leave (a human scheduler decides) — this
-  // never blocks on it, but no warnings payload surfaces it either. Add a
+  // TODO(handoff): spec §3.2b allows a human reschedule outside working hours /
+  // on a holiday / during staff leave. This shared write does not check those
+  // rules (the assistant preflight does), nor return human warnings. Add a
   // `{ warnings: string[] }` return (checked against schedAvailability /
   // the org holiday+leave tables) when the calendar UI wants to show one.
   const [row] = await tx
@@ -2931,8 +2930,8 @@ export interface UpdateBookingInput {
 /**
  * General edit of an existing booking (spec S5): title/notes/contact/service/
  * product/resource/kind/attendee fields. A `resourceId` change is delegated to
- * `rescheduleBooking` (same start/end) so the buffer-padded conflict check
- * never gets a second implementation; the calendar's own drag/resize keeps
+ * `rescheduleBooking` (same start/end) so the conflict policy owned by
+ * `findBookingConflicts` has one implementation; the calendar's drag/resize keeps
  * going through `rescheduleBooking` directly when the time changes too.
  */
 export async function updateBooking(
