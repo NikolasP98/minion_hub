@@ -161,6 +161,16 @@
     text-decoration: none;
   }
 
+  /* Shared floating panels are `popover="manual"` (top layer, `portal-in-layer.ts`).
+     Undo the UA popover box; Zag's inline position/top/left/transform place them. */
+  [data-part='positioner'][popover] {
+    inset: auto;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    overflow: visible;
+  }
+
   /* ── Global focus ring (single source of truth, theme-adaptive) ── */
   :focus-visible {
     outline: 2px solid var(--color-accent);

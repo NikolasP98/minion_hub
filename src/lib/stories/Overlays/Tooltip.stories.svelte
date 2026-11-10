@@ -3,6 +3,7 @@
   import type { PlayFunction } from 'storybook/internal/types';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Button } from '$lib/components/ui';
+  import { showModal, tooltipOnTop } from './top-layer-play';
 
   const { Story } = defineMeta({
     title: 'Atoms/Overlays/Tooltip',
@@ -150,6 +151,48 @@
       <Tooltip {...args}>
         <span class="text-sm text-muted-foreground">No tooltip here</span>
       </Tooltip>
+    </div>
+  {/snippet}
+</Story>
+
+<Story name="InsideModalDialog" play={tooltipOnTop}>
+  {#snippet template()}
+    <dialog
+      {@attach showModal}
+      data-testid="clip"
+      class="m-auto surface-3 rounded-[var(--radius-lg)] p-4 text-sm text-foreground"
+    >
+      <p class="mb-2 text-muted-foreground">A modal drawer (top layer).</p>
+      <Tooltip
+        label="Paints above the dialog, past its bottom edge"
+        placement="bottom"
+        openDelay={0}
+      >
+        <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Hover me</span>
+      </Tooltip>
+    </dialog>
+  {/snippet}
+</Story>
+
+<Story name="InsideOverflowHidden" play={tooltipOnTop}>
+  {#snippet template()}
+    <div class="sb-clip-stage">
+      <div
+        data-testid="clip"
+        class="sb-clip-box rounded-[var(--radius-md)] border border-[var(--hairline)]"
+      >
+        <Tooltip
+          label="Not clipped by the box, not covered by its sibling"
+          placement="bottom"
+          openDelay={0}
+        >
+          <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Hover me</span
+          >
+        </Tooltip>
+      </div>
+      <div aria-hidden="true" class="sb-clip-cover surface-4 p-2 text-xs text-muted-foreground">
+        A higher z-index sibling over the label's area.
+      </div>
     </div>
   {/snippet}
 </Story>

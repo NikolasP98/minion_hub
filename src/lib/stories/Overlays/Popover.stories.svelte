@@ -1,6 +1,7 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Popover from '$lib/components/ui/Popover.svelte';
+  import { popoverInDialog, popoverOnTop, showModal } from './top-layer-play';
 
   const { Story } = defineMeta({
     title: 'Atoms/Overlays/Popover',
@@ -104,6 +105,44 @@
           Panel content wider than most viewports; it shrinks and scrolls instead of overflowing.
         </div>
       </Popover>
+    </div>
+  {/snippet}
+</Story>
+
+<Story name="InsideModalDialog" play={popoverInDialog}>
+  {#snippet template()}
+    <dialog
+      {@attach showModal}
+      data-testid="clip"
+      class="m-auto surface-3 rounded-[var(--radius-lg)] p-4 text-sm text-foreground"
+    >
+      <p class="mb-2 text-muted-foreground">A modal drawer (top layer).</p>
+      <Popover>
+        {#snippet trigger()}<span class={triggerCls}>Filters</span>{/snippet}
+        <div class="p-2 text-sm w-56 h-40">
+          <p class="font-medium text-foreground">Status</p>
+          <p class="text-muted-foreground">Paints above the dialog, past its edge.</p>
+        </div>
+      </Popover>
+    </dialog>
+  {/snippet}
+</Story>
+
+<Story name="InsideOverflowHidden" play={popoverOnTop}>
+  {#snippet template()}
+    <div class="sb-clip-stage">
+      <div
+        data-testid="clip"
+        class="sb-clip-box rounded-[var(--radius-md)] border border-[var(--hairline)]"
+      >
+        <Popover>
+          {#snippet trigger()}<span class={triggerCls}>Filters</span>{/snippet}
+          <div class="p-2 text-sm w-56 h-40">Not clipped, not covered.</div>
+        </Popover>
+      </div>
+      <div aria-hidden="true" class="sb-clip-cover surface-4 p-2 text-xs text-muted-foreground">
+        A higher z-index sibling over the panel's area.
+      </div>
     </div>
   {/snippet}
 </Story>
