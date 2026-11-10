@@ -427,3 +427,28 @@ describe('chargeableRows price', () => {
     expect(chargeableRows(row(null))).toHaveLength(1);
   });
 });
+
+describe('chargeableRows ungrouped fallback price', () => {
+  const booking = { id: 'b1', eventTypeId: 'et1', status: 'accepted' };
+  const rows = (price?: number | null) =>
+    chargeableRows(
+      visitRows({
+        visit: null,
+        booking,
+        eventTypeTitle: 'Control',
+        minutes: 30,
+        paid: false,
+        price,
+      }),
+    );
+
+  it('a free ungrouped booking has no chargeable row', () => {
+    expect(rows(0)).toEqual([]);
+  });
+
+  it('ungrouped bookings priced 80 or with a null/absent price stay chargeable', () => {
+    expect(rows(80)).toHaveLength(1);
+    expect(rows(null)).toHaveLength(1);
+    expect(rows()).toHaveLength(1);
+  });
+});

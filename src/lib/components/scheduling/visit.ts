@@ -104,11 +104,13 @@ export function visitRows(input: {
   minutes: number;
   paid: boolean;
   /** Ungrouped fallback only — a visit's members carry their own money. The
-   *  booking has no price of its own here (nothing joins its product), so the
    *  row's money is what its tickets took; VOIDED tickets took nothing. */
   tickets?: readonly RowTicket[];
   /** Ungrouped fallback only: `grant` / `plan` when the booking draws on one. */
   funding?: 'cash' | 'grant' | 'plan';
+  /** Ungrouped fallback only: the service's catalog price (`BookingDetail.unitPrice`);
+   *  null/absent = no product. */
+  price?: number | null;
 }): VisitRow[] {
   if (input.visit) {
     return input.visit.members.map((mb) => ({
@@ -134,9 +136,7 @@ export function visitRows(input: {
       minutes: input.minutes,
       status: input.booking.status,
       paid: input.paid,
-      // TODO(handoff): price-0 rule — this fallback has no price, so an ungrouped price-0
-      // booking still shows Charge while UNBILLED_BOOKING_WHERE excludes it; join the product here.
-      price: null,
+      price: input.price ?? null,
       paidAmount: charged.reduce((sum, t) => sum + (Number(t.lineTotal) || 0), 0),
       currency: charged[0]?.currency ?? null,
       funding: input.funding ?? 'cash',
