@@ -26,7 +26,7 @@ cf() {
   [[ -n $body ]] && args+=(--data "$body")
   curl "${args[@]}" <<<"header = \"Authorization: Bearer $TOKEN\""
 }
-ok() { python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("success") else 1)'; }
+ok() { python3 -c 'import json,sys; d=json.load(sys.stdin); ok=d.get("success"); ok or print("cloudflare:", d.get("errors"), file=sys.stderr); sys.exit(0 if ok else 1)'; }
 field() { python3 -c "import json,sys; d=json.load(sys.stdin); r=d['result']; r=(r[0] if r else None) if isinstance(r,list) else r; print(r$1 if r else '')"; }
 
 ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-$(cf GET /accounts | field "['id']")}
@@ -50,7 +50,7 @@ if [[ -n $REC_ID ]]; then cf PUT "/zones/$ZONE_ID/dns_records/$REC_ID" "$REC" | 
 echo "dns $HOST -> $PROJECT.pages.dev"
 
 # 3. Access application over every hostname, allow-list of emails.
-cf GET "/accounts/$ACCOUNT_ID/access/organizations" | ok || {
+cf GET "/accounts/$ACCOUNT_ID/access/apps" | ok || {
   echo "Zero Trust is not enabled on this account: open dash.cloudflare.com > Zero Trust once, pick a team name and the Free plan, then rerun." >&2
   exit 1
 }
