@@ -510,6 +510,33 @@ describe('C03 native shared slot preflight', () => {
 });
 
 describe('C04 actual SQL completeness and masking', () => {
+  it('N03 reconciles eleven booking identities and all statuses even when only ten rows return', async () => {
+    await seedBookings(11);
+    await pg.exec(`update sched_bookings set status = case
+      when uid::int <= 4 then 'no_show' when uid::int <= 7 then 'completed'
+      when uid::int <= 9 then 'pending' when uid::int = 10 then 'accepted' else 'cancelled' end
+      where org_id='synthetic-org'`);
+    const result = await queryAssistantBookings(ctx, { from: start, to: start, limit: 10 });
+    expect(result).toMatchObject({
+      total: 11,
+      returned: 10,
+      truncated: true,
+      statusCounts: { no_show: 4, completed: 3, pending: 2, accepted: 1, cancelled: 1 },
+      summary: {
+        source: 'booking_ids',
+        coverage: 'complete_filtered_population',
+        people: 'not_computed',
+      },
+    });
+    const counts = result.statusCounts as Record<string, number>;
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(result.total);
+    const count = await queryAssistantBookings(ctx, { from: start, to: start, countOnly: true });
+    expect(count.statusCounts).toEqual(result.statusCounts);
+    // Repeating an overlapping read does not add another population or another booking.
+    expect((await queryAssistantBookings(ctx, { from: start, to: start, limit: 5 })).total).toBe(
+      11,
+    );
+  });
   it('reports 501 with 500 bounded rows, ties ordered stably, and exact count mode', async () => {
     await seedBookings(501);
     const opts = {

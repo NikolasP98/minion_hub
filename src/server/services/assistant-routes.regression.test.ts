@@ -1,5 +1,8 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('$lib/permissions', () => ({ SENSITIVE_FIELD_LEVEL: 1 }));
+vi.mock('$server/services/assistant-product-ranking.service', () => ({
+  assistantProductRanking: async () => ({ metric: 'revenue', status: 'available', groups: [] }),
+}));
 const fixture = vi.hoisted(() => ({
   allowed: true,
   fieldLevel: 0,
@@ -188,6 +191,26 @@ describe('C04 real list route', () => {
 });
 
 describe('C05 actual agent parser and finance route', () => {
+  it('masks per-bucket costs as well as summary costs for a low-field-level principal', async () => {
+    fixture.series.mockResolvedValue([
+      { bucket: '2030-01', revenue: 500, opCost: 123, discount: 12, gross: 488 },
+    ]);
+    const body = await (await finance(event('metric=margin'))).json();
+    expect(body.series).toEqual([
+      {
+        bucket: '2030-01',
+        revenue: 500,
+        opCost: null,
+        discount: null,
+        gross: null,
+        sensitiveMasked: true,
+      },
+    ]);
+    fixture.fieldLevel = 1;
+    expect((await (await finance(event())).json()).series).toEqual([
+      { bucket: '2030-01', revenue: 500, opCost: 123, discount: 12, gross: 488 },
+    ]);
+  });
   it.each([
     'from=not-a-date',
     'to=2030-02-30',

@@ -28,6 +28,13 @@
   import { AttachmentUploadError } from '$lib/attachments/upload';
   import { ATTACHMENT_LIMITS } from '$lib/attachments/limits';
   import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
+  import InterruptedEffectsNotice from '$lib/components/assistant/InterruptedEffectsNotice.svelte';
+  import { getActiveHost } from '$lib/state/features/hosts.svelte';
+  import {
+    discardInterruptedOwner,
+    sameInterruptionOwner,
+    type InterruptionOwner,
+  } from '$lib/assistant/interrupted-effects';
   import { canonicalPath } from '$lib/canonical-path';
   import { appLocale } from '$lib/utils/format';
   import { Button, iconSizes } from '$lib/components/ui';
@@ -333,6 +340,17 @@
     followUp: async (parent, results) => sendCallback('', 'ui_followup', parent, results),
   });
   const acceptedActivity = acceptedSurface.activity;
+  const interruptionOwner = $derived.by(() => {
+    const host = getActiveHost();
+    return { ...readSubmissionScope(), hostId: host?.id ?? '', hostUrl: host?.url ?? '' };
+  });
+  let previousInterruptionOwner: InterruptionOwner | undefined;
+  $effect(() => {
+    const next = interruptionOwner;
+    if (previousInterruptionOwner && !sameInterruptionOwner(previousInterruptionOwner, next))
+      discardInterruptedOwner(previousInterruptionOwner);
+    previousInterruptionOwner = { ...next };
+  });
   function updateSubmissionScope() {
     pendingSubmissions.setScope(readSubmissionScope());
     acceptedSurface.updateScope();
@@ -1133,6 +1151,9 @@
         contentKey={threadKey}
       >
         <div class="flex-1 flex flex-col gap-2">
+          {#if composerMode === 'chat'}
+            <InterruptedEffectsNotice owner={interruptionOwner} />
+          {/if}
           {#if composerMode === 'factory'}
             <div
               class="flex-1 flex flex-col items-center justify-center text-center px-7 factory-welcome"

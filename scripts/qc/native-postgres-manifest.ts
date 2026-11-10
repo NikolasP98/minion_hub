@@ -633,6 +633,25 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/services/assistant-contracts.sql.integration.test.ts',
+      minimumAssertions: 13,
+      requiredBehaviors: [
+        'assistant contracts against native PostgreSQL role and RLS uses the nonbypass app_ledger role and actor GUC then resets pooled scope',
+        'assistant contracts against native PostgreSQL role and RLS denies a cross-org write with native RLS and keeps independent org reads isolated',
+        'assistant contracts against native PostgreSQL role and RLS ranks the full scoped quantity population and separates money currencies under native RLS',
+        'assistant contracts against native PostgreSQL role and RLS returns full booking status aggregates despite row caps and masks attendee PII',
+        'assistant contracts against native PostgreSQL role and RLS discovers active scoped references and real local-day slots without resource PII',
+        'assistant contracts against native PostgreSQL role and RLS applies native holiday rules to availability and assistant moves',
+        'assistant contracts against native PostgreSQL role and RLS previews without effects and moves the same booking while preserving links and duration',
+        'assistant contracts against native PostgreSQL role and RLS returns a same-target replay without another write after availability changes',
+        'assistant contracts against native PostgreSQL role and RLS serializes competing moves and rejects the stale preview without a duplicate',
+        'assistant contracts against native PostgreSQL role and RLS serializes different originals targeting one resource slot without moving both',
+        'assistant contracts against native PostgreSQL role and RLS rolls back an injected final-update failure with the original booking intact',
+        'assistant contracts against native PostgreSQL role and RLS rejects foreign originals and contacts before any move',
+        'assistant contracts against native PostgreSQL role and RLS excludes the original overlap but rejects another booking at the target',
+      ],
+    },
+    {
       file: 'src/server/services/role-simulation.sql.integration.test.ts',
       minimumAssertions: 9,
       requiredBehaviors: [

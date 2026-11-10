@@ -7421,5 +7421,14 @@
   "roleSimulation_change": "Change simulated role",
   "roleSimulation_as": "Simulating as",
   "roleSimulation_changeAria": "Change simulated role: {role}",
-  "pos_sell_activity_button": "Activity"
+  "pos_sell_activity_button": "Activity",
+  "assistant_interruption_title": "Assistant action interrupted",
+  "assistant_interruption_notStarted": "The connection ended before the action started.",
+  "assistant_interruption_unknown": "{count} action outcome(s) remain unconfirmed. Check this page before retrying.",
+  "assistant_interruption_partial": "Some changes have save receipts; completion of other actions remains unconfirmed.",
+  "assistant_interruption_confirmed": "The action returned a save receipt. Check this page for the saved changes.",
+  "assistant_interruption_returned": "An action returned information, but its completion is not confirmed. Check this page before retrying.",
+  "assistant_interruption_read": "A read was interrupted. Ask again if you still need the information.",
+  "assistant_interruption_noReplay": "No action was repeated automatically.",
+  "assistant_interruption_dismiss": "Dismiss interrupted action notice"
 }

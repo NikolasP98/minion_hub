@@ -5,11 +5,6 @@
     "class": "todo"
   },
   {
-    "file": "src/lib/assistant/turn-router.ts",
-    "calls": ["getCoreDb"],
-    "class": "todo"
-  },
-  {
     "file": "src/lib/server/agents/health-metrics.ts",
     "calls": ["getCoreDb"],
     "class": "todo"

@@ -1,8 +1,12 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json } from '@sveltejs/kit';
+import { json, error } from '@sveltejs/kit';
 import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 import { parseAssistantPeriod } from '$server/services/assistant-period';
 import { requireAssistantCapability } from '../../_shared/action-auth';
+import {
+  assistantProductRanking,
+  type AssistantRankingMetric,
+} from '$server/services/assistant-product-ranking.service';
 import {
   getFinSettings,
   financeSummary,
@@ -13,7 +17,7 @@ import {
 } from '$server/services/finance.service';
 
 /**
- * GET /api/gateway/query/finance?agentId=personal-<uuid>[&orgId=][&from=][&to=][&bucket=][&range=all]
+ * GET /api/gateway/query/finance?agentId=personal-<uuid>[&orgId=][&from=][&to=][&bucket=][&range=all][&metric=][&limit=]
  *
  * Finance summary, revenue/cost series and top products/clients use the shared
  * finance services with assistant-specific period parsing. Explicit from/to
@@ -25,7 +29,10 @@ import {
  * The organization's finance timezone defines calendar days and series buckets
  * for both revenue and cost. from includes local midnight; to includes its whole
  * local day, converted to an exclusive next-midnight SQL bound (including DST).
- * Returns { period, periodSemantics, summary, series, products, clients };
+ * Returns { period, periodSemantics, summary, series, products, clients, ranking };
+ * metric is revenue (default), quantity or margin; limit is 1..100. ranking
+ * discloses source/identity coverage, currency groups and tie/truncation state.
+ * Legacy products is revenue-selected and cannot prove quantity or margin.
  * period contains resolved instants, while periodSemantics discloses mode,
  * timezone, calendarFrom/calendarTo and bound inclusivity. Dashboard parsing
  * and callers using the default revenueSeries timezone retain their own rules.
@@ -40,13 +47,45 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const { timezone } = await getFinSettings(ctx);
   const { period, periodSemantics } = parseAssistantPeriod(url, timezone);
   const maskCost = capabilities.fieldLevel('finance') < SENSITIVE_FIELD_LEVEL;
+  const metric = url.searchParams.get('metric') ?? 'revenue';
+  if (!['revenue', 'quantity', 'margin'].includes(metric))
+    throw error(400, 'metric: expected revenue, quantity or margin');
+  const limit = Number(url.searchParams.get('limit') ?? 15);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw error(400, 'limit: expected integer 1..100');
 
-  const [rawSummary, series, products, clients] = await Promise.all([
+  const [rawSummary, series, products, clients, ranking] = await Promise.all([
     financeSummary(ctx, period),
     revenueSeries(ctx, period, undefined, undefined, { timezone }),
     topProducts(ctx, period, { limit: 15 }),
     topClients(ctx, period, { limit: 10 }),
+    assistantProductRanking(ctx, period, {
+      metric: metric as AssistantRankingMetric,
+      limit,
+      allowCost: !maskCost,
+    }),
   ]);
   const summary = maskCost ? maskFinanceSummary(rawSummary) : rawSummary;
-  return json({ period, periodSemantics, summary, series, products, clients });
+  // Match maskFinanceSummary's cost/discount/gross boundary in every bucket;
+  // otherwise a caller could reconstruct hidden totals from the series.
+  const visibleSeries = maskCost
+    ? series.map((row) => ({
+        ...row,
+        opCost: null,
+        discount: null,
+        gross: null,
+        sensitiveMasked: true,
+      }))
+    : series;
+  return json({
+    period,
+    periodSemantics,
+    summary,
+    series: visibleSeries,
+    products,
+    clients,
+    ranking,
+    legacyProductsSemantics:
+      'Revenue-selected invoice items only; use ranking for the requested metric and coverage.',
+  });
 };

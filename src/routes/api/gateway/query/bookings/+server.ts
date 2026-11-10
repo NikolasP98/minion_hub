@@ -12,10 +12,13 @@ import { queryAssistantBookings } from '$server/services/scheduling-bookings.ser
  * limit is an integer 1..500 (default 500), mode is list (default) or count;
  * invalid limit/mode values return 400.
  *
- * Returns { bookings, total, returned, truncated, limit, mode }. List rows and
+ * Returns { bookings, total, returned, truncated, limit, mode, statusCounts, summary }. List rows and
  * total share one SQL snapshot, ordered by startTime then id descending. A
  * truncated list is incomplete; there is no continuation cursor. Count mode
  * returns the exact filtered total with bookings:[], returned:0, truncated:false.
+ * statusCounts covers the complete filtered population in the same statement,
+ * even when rows are capped. Do not sum overlapping result windows or infer
+ * distinct people from attendee display names. summary.people is not_computed.
  * Email/phone masking follows the resolved principal's scheduling field level.
  */
 export const GET: RequestHandler = async ({ locals, url }) => {
