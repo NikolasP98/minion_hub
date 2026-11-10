@@ -93,6 +93,8 @@ import {
 } from '$lib/state/gateway/update-state.svelte';
 import { extractText } from '$lib/utils/text';
 import { runAssistantUiCalls } from '$lib/assistant/dispatch';
+import { extractUiCalls } from '$lib/assistant/runner';
+import { beginEffectRun } from '$lib/assistant/interrupted-effects';
 import type { ChatMessage } from '$lib/types/chat';
 import { loadAgentGroups } from '$lib/state/features/agent-groups.svelte';
 // Lazy paraglide messages: this module loads with the root layout, and a
@@ -1485,6 +1487,7 @@ function onChatEvent(payload: ChatEvent) {
           };
     const binding = claimRunFinal(payload.runId, sk);
     if (binding) {
+      if (extractUiCalls(extractText(finalMsg) ?? '').length) beginEffectRun(binding);
       associateRunMessage(finalMsg, binding);
       // A pending run that outlived a dead socket just completed live: drop
       // the "reconnecting" status line its lost ack left behind.

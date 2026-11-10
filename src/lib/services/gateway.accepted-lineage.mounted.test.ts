@@ -128,6 +128,10 @@ import Home from '../../routes/(app)/home/+page.svelte';
 import { page } from '../../../tests/fixtures/pending-submission/page.svelte';
 import { sourceMessageRun } from '$lib/assistant/accepted-runs';
 import { decisionEvents } from '$lib/assistant/decision-events';
+import { get } from 'svelte/store';
+import { interruptedEffects } from '$lib/assistant/interrupted-effects';
+import { registerTool } from '$lib/assistant/model-context';
+import * as m from '$lib/paraglide/messages';
 vi.mock('@sentry/sveltekit', () => ({ captureException: vi.fn(), captureMessage: vi.fn() }));
 vi.mock('$app/state', async () => import('../../../tests/fixtures/pending-submission/page.svelte'));
 vi.mock('$lib/assistant/turn-router', async (original) => ({
@@ -169,7 +173,110 @@ afterEach(() => {
   decisionEvents.setOwner({ actorId: '', orgId: '' });
   resetAcceptedRuns();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
+
+it.each(['rendering', 'waiting form', 'plain text'] as const)(
+  'mounted Home retains same-owner interruption visibility during %s without replay',
+  async (phase) => {
+    await wsConnect();
+    const client = authenticate(0, 'mounted-interruption');
+    await settle();
+    const view = render(Home, {
+      data: {
+        user: { id: 'actor' },
+        activeOrgId: 'org',
+        personalAgent: { agent: { agentId: 'owned' } },
+      } as unknown as ComponentProps<typeof Home>['data'],
+    });
+    const input = await waitFor(() => view.getByRole('textbox') as HTMLTextAreaElement);
+    await fireEvent.input(input, { target: { value: 'Prepare a fixture form' } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
+    const chat = ensureAgentChat('owned');
+    await waitFor(() => expect(chat.runId).toBeTruthy());
+    const binding = getAcceptedRun(chat.runId)!;
+    vi.useFakeTimers();
+    const text =
+      'Fixture reply. '.repeat(100) +
+      (phase === 'plain text'
+        ? ''
+        : '\n```minion-ui\n{"tool":"fill_interruption_fixture","input":{}}\n```');
+    client.options.onEvent?.({
+      type: 'event',
+      event: 'chat',
+      payload: {
+        sessionKey: binding.sessionKey,
+        runId: binding.runId,
+        state: 'final',
+        message: { role: 'assistant', content: [{ type: 'text', text }] },
+      },
+    });
+    expect(binding.state).toBe('claimed');
+    expect(chat.streamMessage).not.toBeNull();
+    if (phase === 'waiting form') {
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(chat.streamMessage).toBeNull();
+      expect(binding.state).toBe('claimed');
+    }
+    client.options.onClose?.(1006, 'fixture interruption');
+    expect(binding.controller.signal.aborted).toBe(true);
+    await settle();
+    flushSync();
+    if (phase === 'plain text') {
+      expect(get(interruptedEffects)).toHaveLength(0);
+      expect(view.queryByText(m.assistant_interruption_title())).toBeNull();
+    } else {
+      expect(get(interruptedEffects)).toMatchObject([
+        {
+          runId: binding.runId,
+          owner: {
+            actorId: 'actor',
+            orgId: 'org',
+            agentId: 'owned',
+            sessionKey: binding.sessionKey,
+            hostId: 'a',
+            hostUrl: 'wss://a.invalid',
+          },
+          started: 0,
+          confirmed: 0,
+          unknown: 0,
+        },
+      ]);
+      expect(view.getByText(m.assistant_interruption_notStarted())).toBeTruthy();
+      expect(view.getByText(m.assistant_interruption_noReplay())).toBeTruthy();
+    }
+    client.options.onAuthenticated?.(hello('mounted-reconnected'), { generation: 2 });
+    const execute = vi.fn(async () => ({ ok: true }));
+    const offTool = registerTool({
+      name: 'fill_interruption_fixture',
+      description: '',
+      inputSchema: {},
+      execute,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await settle();
+      flushSync();
+      expect(execute).not.toHaveBeenCalled();
+      expect(binding.state).toBe('invalidated');
+      expect(getAcceptedRun(binding.runId)).toBe(binding);
+      if (phase !== 'plain text') {
+        expect(view.getByText(m.assistant_interruption_title())).toBeTruthy();
+        flushSync(() => {
+          chat.sessionKey = 'agent:owned:chat:other';
+        });
+        expect(view.queryByText(m.assistant_interruption_title())).toBeNull();
+        flushSync(() => {
+          chat.sessionKey = binding.sessionKey;
+        });
+        expect(view.queryByText(m.assistant_interruption_title())).toBeNull();
+        expect(get(interruptedEffects)).toHaveLength(0);
+      }
+    } finally {
+      offTool();
+    }
+  },
+);
 
 it.each(['known', 'unknown', 'mixed'] as const)(
   'mounted Home %s sources use actual gateway ingestion at the five-follow-up cap',
