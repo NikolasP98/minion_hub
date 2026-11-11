@@ -7421,5 +7421,14 @@
   "roleSimulation_change": "Cambiar rol simulado",
   "roleSimulation_as": "Simulando como",
   "roleSimulation_changeAria": "Cambiar rol simulado: {role}",
-  "pos_sell_activity_button": "Actividad"
+  "pos_sell_activity_button": "Actividad",
+  "assistant_interruption_title": "Acción del asistente interrumpida",
+  "assistant_interruption_notStarted": "La conexión terminó antes de iniciar la acción.",
+  "assistant_interruption_unknown": "El resultado de {count} acción(es) sigue sin confirmarse. Revisa esta página antes de reintentar.",
+  "assistant_interruption_partial": "Hay constancia de algunos cambios guardados; la finalización de otras acciones sigue sin confirmarse.",
+  "assistant_interruption_confirmed": "La acción devolvió constancia de guardado. Revisa esta página para ver los cambios.",
+  "assistant_interruption_returned": "Una acción devolvió información, pero su finalización no está confirmada. Revisa esta página antes de reintentar.",
+  "assistant_interruption_read": "Se interrumpió una consulta. Vuelve a pedir la información si aún la necesitas.",
+  "assistant_interruption_noReplay": "No se repitió ninguna acción automáticamente.",
+  "assistant_interruption_dismiss": "Ocultar aviso de acción interrumpida"
 }

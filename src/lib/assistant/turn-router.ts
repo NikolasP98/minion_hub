@@ -131,14 +131,10 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
     // 0.61 on 2026-10-15 — one bad roll from regressing. The next-highest false
     // score across 46 probes that day was 0.07, so 0.45 keeps a wide margin.
     threshold: 0.45,
-    // TODO(handoff): prose only — the latest release notes are NOT inlined here,
-    // because fetching them would add a getCoreDb() query to EVERY assistant turn
-    // and production Postgres is CPU-throttled. Better fix: a `hub_releases` tool
-    // on the gateway agent so it reads them only when it needs them. See meta
-    // proposals/2026-10-12-hub-assistant-jev-context-router.md open end 3.
     inject:
       'If the user asks about this dashboard’s own updates, releases, changelog or ' +
-      '"what’s new": answer from the hub’s own release notes and link the user to ' +
+      '"what’s new": call hub_releases (discover it with search_tools if needed), ' +
+      'answer from those Hub release notes, then link the user to ' +
       '[the changelog](/changelog). These are THIS app’s releases. Never web-search ' +
       'other projects (OpenClaw, Claude Code, upstream forks) to answer it, and never ' +
       'present another project’s release notes as ours.',

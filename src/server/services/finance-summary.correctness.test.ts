@@ -66,7 +66,7 @@ beforeAll(async () => {
       total numeric, subtotal numeric, discount numeric, tax numeric
     );
     create table fin_invoice_items (invoice_id text, product_id text, code text, description text, total numeric, quantity numeric);
-    create table fin_products (id text primary key, name text);
+    create table fin_products (id text primary key, org_id text, name text);
     create table fin_clients (id text primary key, org_id text, party_id text);
     create table crm_contacts (id text primary key, party_id text, org_id text, display_name text, deleted_at timestamptz, created_at timestamptz default now());
     create table stk_entries (id text primary key, type text);

@@ -75,9 +75,12 @@ Timezone math via the project's existing date lib (verify: `date-fns-tz` / `Temp
 **Public** — `/book/[slug]` **outside** `(app)`, unauthenticated: resolves org + link/event-type from slug, shows slots, takes a booking. API under `/api/scheduling/*`; public booking endpoints resolve the org from the slug then run under a **system core ctx scoped to that org**, rate-limited.
 
 **Assistant API** — preview/confirmation semantics are documented in
-[`actions/booking-create/+server.ts`](../../../src/routes/api/gateway/actions/booking-create/+server.ts);
-bounded list/count responses in
-[`query/bookings/+server.ts`](../../../src/routes/api/gateway/query/bookings/+server.ts).
+[`actions/booking-create/+server.ts`](../../../src/routes/api/gateway/actions/booking-create/+server.ts)
+and [`actions/booking-reschedule/+server.ts`](../../../src/routes/api/gateway/actions/booking-reschedule/+server.ts);
+bounded list/count and status summaries in
+[`query/bookings/+server.ts`](../../../src/routes/api/gateway/query/bookings/+server.ts),
+and typed references/availability in
+[`query/booking-options/+server.ts`](../../../src/routes/api/gateway/query/booking-options/+server.ts).
 
 > **Security note (main consideration):** the public path supplies the org id from the slug _without_ a user session. RLS still **forces** `org_id` on every `sched_*` table, so the public path can only ever read/write rows for the resolved org. The slug→org resolution and rate-limiting are the trust boundary; everything downstream is RLS-isolated like the rest of the hub.
 

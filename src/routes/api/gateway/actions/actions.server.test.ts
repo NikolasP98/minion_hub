@@ -46,8 +46,14 @@ vi.mock('$server/services/stock.service', () => ({
   buildInvoiceIssuePreview: (...args: unknown[]) => mockBuildInvoiceIssuePreview(...args),
   createIssueFromInvoice: (...args: unknown[]) => mockCreateIssueFromInvoice(...args),
 }));
-vi.mock('$server/services/stock.logic', () => ({
-  ENTRY_TYPES: ['receipt', 'issue', 'transfer', 'adjustment'],
+vi.mock('$server/services/finance.service', () => ({
+  getFinSettings: async () => ({
+    currency: 'PEN',
+    timezone: 'America/Lima',
+    fxBase: 'USD',
+    fxQuote: 'PEN',
+    fxRate: 3.75,
+  }),
 }));
 
 const mockCreateNote = vi.fn();
