@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Radio } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Radio',
+    title: 'Atoms/Inputs/Radio',
     component: Radio,
     tags: ['autodocs'],
     argTypes: { disabled: { control: 'boolean' }, helper: { control: 'text' } },

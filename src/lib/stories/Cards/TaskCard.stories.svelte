@@ -1,9 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import TaskCard from '$lib/components/tasks/TaskCard.svelte';
+  import TaskCard, { type KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
+
+  const statuses: KanbanTask['status'][] = ['backlog', 'todo', 'in_progress', 'done'];
 
   const { Story } = defineMeta({
-    title: 'Cards/TaskCard',
+    title: 'Components/Cards/TaskCard',
     component: TaskCard,
     tags: ['autodocs'],
     args: {
@@ -24,7 +26,7 @@
 <Story name="All statuses">
   {#snippet template(args)}
     <div class="w-64">
-      {#each ['backlog', 'todo', 'in_progress', 'done'] as status (status)}
+      {#each statuses as status (status)}
         <TaskCard task={{ ...args.task, id: status, status }} />
       {/each}
     </div>

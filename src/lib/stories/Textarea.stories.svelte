@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Textarea } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Textarea',
+    title: 'Atoms/Inputs/Textarea',
     component: Textarea,
     tags: ['autodocs'],
     argTypes: {

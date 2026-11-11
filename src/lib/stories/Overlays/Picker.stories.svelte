@@ -1,7 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
-  import Picker from '$lib/components/ui/Picker.svelte';
+  import Picker, {
+    type PickerColumn,
+    type PickerCreateContext,
+  } from '$lib/components/ui/Picker.svelte';
   import { Button, Input } from '$lib/components/ui';
 
   const rows = Array.from({ length: 18 }, (_, i) => ({
@@ -14,15 +17,24 @@
     category: ['Hair', 'Hair', 'Beard', 'Hair', 'Nails', 'Nails'][i % 6],
   }));
 
-  const columns = [
+  type Row = (typeof rows)[number];
+
+  // Picker is generic; its props are inferred with T = unknown here, so rows are narrowed by cast.
+  const columns: PickerColumn<unknown>[] = [
     { key: 'name', label: 'Name', emphasis: 'primary', searchable: true, priority: 1 },
     { key: 'sku', label: 'SKU', searchable: true, priority: 2 },
     { key: 'category', label: 'Category', priority: 3, defaultHidden: true },
-    { key: 'price', label: 'Price', align: 'right', priority: 4, value: (r) => `S/ ${r.price}` },
+    {
+      key: 'price',
+      label: 'Price',
+      align: 'right',
+      priority: 4,
+      value: (r) => `S/ ${(r as Row).price}`,
+    },
   ];
 
   const { Story } = defineMeta({
-    title: 'Overlays/Picker',
+    title: 'Atoms/Inputs/Picker',
     component: Picker,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '600px' } } },
@@ -36,7 +48,7 @@
       title: 'Add a service',
       columns,
       rows,
-      getRowId: (r) => r.id,
+      getRowId: (r) => (r as Row).id,
       onPick: fn(),
       onclose: fn(),
       selectionMode: 'single',
@@ -45,12 +57,12 @@
   });
 </script>
 
-<script>
+<script lang="ts">
   let triggerOpen = $state(false);
   let picked = $state(new Set(['p-2', 'p-5']));
 </script>
 
-{#snippet createForm(ctx)}
+{#snippet createForm(ctx: PickerCreateContext<unknown>)}
   <div class="space-y-3 p-1">
     <Input label="Name" value={ctx.query} oninput={() => ctx.setDirty(true)} />
     <div class="flex gap-2 justify-end">
@@ -93,8 +105,8 @@
     <Picker
       {...args}
       pickedIds={picked}
-      onPick={(r) => (picked = new Set([...picked, r.id]))}
-      onUnpick={(r) => (picked = new Set([...picked].filter((id) => id !== r.id)))}
+      onPick={(r) => (picked = new Set([...picked, (r as Row).id]))}
+      onUnpick={(r) => (picked = new Set([...picked].filter((id) => id !== (r as Row).id)))}
     />
   {/snippet}
 </Story>
@@ -154,9 +166,9 @@
   {#snippet template(args)}
     <Picker
       {...args}
-      isRowDisabled={(r) => r.category === 'Nails'}
+      isRowDisabled={(r) => (r as Row).category === 'Nails'}
       rowDisabledReason={(r) =>
-        r.category === 'Nails' ? 'Nail services need a different room' : undefined}
+        (r as Row).category === 'Nails' ? 'Nail services need a different room' : undefined}
     />
   {/snippet}
 </Story>

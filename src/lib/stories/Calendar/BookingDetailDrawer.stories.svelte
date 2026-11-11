@@ -7,7 +7,7 @@
   // API, so an open drawer shows its loading → error path. The filled state
   // cannot be driven by props.
   const { Story } = defineMeta({
-    title: 'Calendar/BookingDetailDrawer',
+    title: 'Components/Calendar/BookingDetailDrawer',
     component: BookingDetailDrawer,
     tags: ['autodocs'],
     args: {

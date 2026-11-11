@@ -11,7 +11,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/GroupByPicker',
+    title: 'Components/Data/GroupByPicker',
     component: GroupByPicker,
     tags: ['autodocs'],
     argTypes: { value: { control: 'select', options: ['', ...options.map((o) => o.value)] } },

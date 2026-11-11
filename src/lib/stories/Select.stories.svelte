@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Select } from '@minion-stack/ui';
 
@@ -9,7 +9,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Shared/Select',
+    title: 'Atoms/Inputs/Select',
     component: Select,
     tags: ['autodocs'],
     argTypes: {

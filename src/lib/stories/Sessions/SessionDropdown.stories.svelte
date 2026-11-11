@@ -1,13 +1,14 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { PlayFunction } from 'storybook/internal/types';
   import SessionDropdown from '$lib/components/sessions/SessionDropdown.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
 
   const AGENT = 'panik';
   const now = Date.now();
-  const k = (tail) => `agent:${AGENT}:${tail}`;
-  const sessions = [
+  const k = (tail: string) => `agent:${AGENT}:${tail}`;
+  const sessions: typeof gw.sessions = [
     { sessionKey: k('main'), updatedAt: now - 30_000 },
     {
       sessionKey: k('whatsapp:dm:+51999888777'),
@@ -23,7 +24,7 @@
     { sessionKey: k('workshop:conv:panik:faces-clinic'), updatedAt: now - 2 * 86_400_000 },
     { sessionKey: k('chat:0c1d2e3f-aaaa-bbbb-cccc-0123456789ab'), updatedAt: now - 9 * 86_400_000 },
   ];
-  const status = {
+  const status: typeof ui.sessionStatus = {
     [k('main')]: 'running',
     [k('whatsapp:dm:+51999888777')]: 'thinking',
     [k('whatsapp:dm:+51988777666')]: 'idle',
@@ -32,19 +33,19 @@
 
   // Options come from the gateway session list + ui status map; each story seeds them.
   const seed =
-    (list, selected = k('main')) =>
+    (list: typeof gw.sessions, selected: string | null = k('main')) =>
     async () => {
       gw.sessions = list;
       ui.sessionStatus = status;
       ui.selectedSessionKey = selected;
     };
-  const opened = async (ctx) => {
+  const opened: PlayFunction = async (ctx) => {
     await seed(sessions)();
     await ctx.userEvent.click(ctx.canvas.getAllByRole('button')[0]);
   };
 
   const { Story } = defineMeta({
-    title: 'Sessions/SessionDropdown',
+    title: 'Components/Sessions/SessionDropdown',
     component: SessionDropdown,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '360px' } } },

@@ -1,18 +1,22 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiOrb from '$lib/components/ai/AiOrb.svelte';
-  import { orbPalette } from '$lib/components/ai/orb-color';
+  import { orbPalette, type OrbPalette } from '$lib/components/ai/orb-color';
   import { ACCENT_OPTIONS } from '$lib/themes/presets';
-  const accent = (id) => ACCENT_OPTIONS.find((a) => a.id === id).value;
+  const accent = (id: string) => {
+    const option = ACCENT_OPTIONS.find((a) => a.id === id);
+    if (!option) throw new Error(`Unknown accent ${id}`);
+    return option.value;
+  };
 
   // The orb fills its parent; the palette is what AiOrbFace derives from the accent.
   const blue = orbPalette(accent('blue'));
   const violet = orbPalette(accent('purple'));
   const green = orbPalette(accent('green'));
-  const palette = (p) => ({ stops: p.stops, body: p.body, edge: p.edge });
+  const palette = (p: OrbPalette) => ({ stops: p.stops, body: p.body, edge: p.edge });
 
   const { Story } = defineMeta({
-    title: 'AI/AiOrb',
+    title: 'Components/AI/AiOrb',
     component: AiOrb,
     tags: ['autodocs'],
     argTypes: {

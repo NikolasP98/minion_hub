@@ -4,7 +4,7 @@
   import { Button } from '$lib/components/ui';
 
   const { Story } = defineMeta({
-    title: 'Data/CollapsibleFilters',
+    title: 'Components/Data/CollapsibleFilters',
     component: CollapsibleFilters,
     tags: ['autodocs'],
     argTypes: { activeCount: { control: 'number' } },

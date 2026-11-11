@@ -1,5 +1,6 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import { fn } from 'storybook/test';
   import BookingCalendar from '$lib/components/scheduling/BookingCalendar.svelte';
   import type {
@@ -188,7 +189,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Calendar/BookingCalendar',
+    title: 'Components/Calendar/BookingCalendar',
     component: BookingCalendar,
     render: template,
     tags: ['autodocs'],
@@ -225,7 +226,7 @@
 </script>
 
 <!-- The grid fills its parent; the canvas needs a bounded height. -->
-{#snippet template(args: Record<string, unknown>)}
+{#snippet template(args: ComponentProps<typeof BookingCalendar>)}
   <div style="height: 80vh; display: flex; flex-direction: column;">
     <BookingCalendar {...args} />
   </div>

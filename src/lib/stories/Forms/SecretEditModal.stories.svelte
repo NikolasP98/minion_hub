@@ -1,18 +1,19 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import SecretEditModal from '$lib/components/settings/SecretEditModal.svelte';
+  import type { SecretsProbeStatus } from '$lib/types/secrets';
 
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const probe =
-    (probeStatus, probeMessage, ms = 800) =>
+    (probeStatus: SecretsProbeStatus, probeMessage: string, ms = 800) =>
     async () => {
       await wait(ms);
       return { probeStatus, probeMessage };
     };
 
   const { Story } = defineMeta({
-    title: 'Forms/SecretEditModal',
+    title: 'Components/Forms/SecretEditModal',
     component: SecretEditModal,
     tags: ['autodocs'],
     argTypes: { open: { control: 'boolean' } },

@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import { fn } from 'storybook/test';
   import AgentGroupHeader from '$lib/components/agents/AgentGroupHeader.svelte';
 
@@ -11,7 +12,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentGroupHeader',
+    title: 'Components/Agents/AgentGroupHeader',
     component: AgentGroupHeader,
     tags: ['autodocs'],
     argTypes: { collapsed: { control: 'boolean' } },
@@ -28,7 +29,7 @@
   });
 
   // Double-click the name to enter rename mode.
-  const edit = async ({ canvas, userEvent }) => {
+  const edit: NonNullable<ComponentProps<typeof Story>['play']> = async ({ canvas, userEvent }) => {
     await userEvent.dblClick(canvas.getByText(group.name));
   };
 </script>

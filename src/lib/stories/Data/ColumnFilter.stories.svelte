@@ -12,7 +12,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/ColumnFilter',
+    title: 'Components/Data/ColumnFilter',
     component: ColumnFilter,
     tags: ['autodocs'],
     argTypes: {

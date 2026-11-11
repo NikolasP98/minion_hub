@@ -76,8 +76,8 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/DataTable',
-    component: DataTable,
+    title: 'Components/Data/DataTable',
+    component: DataTable<Row>,
     tags: ['autodocs'],
     argTypes: {
       variant: { control: 'select', options: ['full', 'plain'] },

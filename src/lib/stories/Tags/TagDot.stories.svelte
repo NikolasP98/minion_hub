@@ -1,10 +1,12 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import TagDot from '$lib/components/tags/TagDot.svelte';
+  import TagDot, { type TagDotOrigin } from '$lib/components/tags/TagDot.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
+  const origins: TagDotOrigin[] = ['own', 'contact', 'product', 'ingredient'];
+
   const { Story } = defineMeta({
-    title: 'Tags/TagDot',
+    title: 'Components/Tags/TagDot',
     component: TagDot,
     tags: ['autodocs'],
     argTypes: {
@@ -33,11 +35,7 @@
 <Story name="Origins (shapes)">
   {#snippet template(args)}
     <div class="flex items-center gap-2 p-2 bg-surface-1">
-      {#each ['own', 'contact', 'product', 'ingredient'] as origin (origin)}<TagDot
-          {...args}
-          name={origin}
-          {origin}
-        />{/each}
+      {#each origins as origin (origin)}<TagDot {...args} name={origin} {origin} />{/each}
     </div>
   {/snippet}
 </Story>

@@ -4,7 +4,7 @@
   import DataView, { type DataViewKind } from '$lib/components/data-view/DataView.svelte';
 
   const { Story } = defineMeta({
-    title: 'Data/DataView',
+    title: 'Components/Data/DataView',
     component: DataView,
     tags: ['autodocs'],
     argTypes: { value: { control: 'select', options: ['calendar', 'table', 'board', 'gallery'] } },

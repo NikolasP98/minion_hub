@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiToolCall from '$lib/components/ai/AiToolCall.svelte';
 
@@ -34,7 +34,7 @@
   ).join('\n');
 
   const { Story } = defineMeta({
-    title: 'AI/AiToolCall',
+    title: 'Components/AI/AiToolCall',
     component: AiToolCall,
     tags: ['autodocs'],
     argTypes: {

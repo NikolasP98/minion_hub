@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SubagentMeta from '$lib/components/agents/SubagentMeta.svelte';
   import { running, unknown, failed } from './subagent-fixtures';
 
   const { Story } = defineMeta({
-    title: 'Agents/SubagentMeta',
+    title: 'Components/Agents/SubagentMeta',
     component: SubagentMeta,
     tags: ['autodocs'],
     args: {

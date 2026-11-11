@@ -1,13 +1,17 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SubagentTreeNode from '$lib/components/agents/SubagentTreeNode.svelte';
-  import { subagentState } from '$lib/state/features/subagent-data.svelte';
-  import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
+  import {
+    subagentState,
+    type SubagentSession,
+    type SubagentTreeNode as TreeNode,
+  } from '$lib/state/features/subagent-data.svelte';
+  import { piAgentState, type SubagentEntry } from '$lib/state/features/pi-agent-state.svelte';
   import { running, completed, failed, nested, piEntries } from './subagent-fixtures';
 
-  const leaf = (session) => ({ session, children: [] });
+  const leaf = (session: SubagentSession): TreeNode => ({ session, children: [] });
   // root → child-a (→ grandchild → great-grandchild) + child-b
-  const tree = {
+  const tree: TreeNode = {
     session: nested[0],
     children: [
       { session: nested[1], children: [{ session: nested[3], children: [leaf(nested[4])] }] },
@@ -17,14 +21,14 @@
 
   // Selection + kill/steer read the stores; reset them per story.
   const seed =
-    (selectedKey = null, entries = []) =>
+    (selectedKey: string | null = null, entries: SubagentEntry[] = []) =>
     async () => {
       subagentState.selectedKey = selectedKey;
       piAgentState.subagents = entries;
     };
 
   const { Story } = defineMeta({
-    title: 'Agents/SubagentTreeNode',
+    title: 'Components/Agents/SubagentTreeNode',
     component: SubagentTreeNode,
     tags: ['autodocs'],
     args: { node: leaf(running), depth: 0 },

@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
-  import Splitter from '$lib/components/layout/Splitter.svelte';
+  import Splitter, { type CollapseLevel } from '$lib/components/layout/Splitter.svelte';
 
   const { Story } = defineMeta({
-    title: 'Navigation/Splitter',
+    title: 'Components/Navigation/Splitter',
     component: Splitter,
     tags: ['autodocs'],
     argTypes: {
@@ -23,7 +23,7 @@
   });
 </script>
 
-{#snippet panel({ collapseLevel })}
+{#snippet panel({ collapseLevel }: { collapseLevel: CollapseLevel })}
   <div class="h-full surface-1 p-3 text-sm text-foreground">
     <p class="font-medium">Left panel</p>
     <p class="text-xs text-muted-foreground">level: {collapseLevel}</p>
@@ -31,7 +31,7 @@
 {/snippet}
 
 <Story name="Expanded">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
         <div class="p-3 text-sm text-muted-foreground">
@@ -43,7 +43,7 @@
 </Story>
 
 <Story name="Mini bar" args={{ storageKey: 'sb-splitter-mini', onapi: (api) => api.mini() }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
         <div class="p-3 text-sm text-muted-foreground">Panel snapped to its minibar size.</div>
@@ -56,7 +56,7 @@
   name="Collapsed (popout tab)"
   args={{ storageKey: 'sb-splitter-collapsed', onapi: (api) => api.hide() }}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
         <div class="p-3 text-sm text-muted-foreground">
@@ -68,7 +68,7 @@
 </Story>
 
 <Story name="Wide default" args={{ storageKey: 'sb-splitter-wide', defaultSize: 40, maxSize: 60 }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
         <div class="p-3 text-sm text-muted-foreground">40% panel.</div>
@@ -83,7 +83,7 @@
   args={{ storageKey: 'sb-splitter-phone' }}
   globals={{ viewport: { value: 'phone', isRotated: false } }}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="h-80 flex">
       <Splitter {...args} {panel}>
         <div class="p-3 text-sm text-muted-foreground">Content beside the panel at 390px.</div>

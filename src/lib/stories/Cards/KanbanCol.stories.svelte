@@ -1,7 +1,8 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import KanbanCol from '$lib/components/tasks/KanbanCol.svelte';
+  import type { KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
 
   const titles = [
     'Reconcile Friday shift',
@@ -17,16 +18,17 @@
     'Review refund policy wording',
     'Send birthday messages',
   ];
-  const task = (i, status) => ({
+  const task = (i: number, status: KanbanTask['status']): KanbanTask => ({
     id: `t${i}`,
     title: titles[i % titles.length],
     description: i % 3 === 0 ? null : `Detail line ${i + 1} with a bit more context`,
     status,
   });
-  const many = (status, n) => Array.from({ length: n }, (_, i) => task(i, status));
+  const many = (status: KanbanTask['status'], n: number) =>
+    Array.from({ length: n }, (_, i) => task(i, status));
 
   const { Story } = defineMeta({
-    title: 'Cards/KanbanCol',
+    title: 'Components/Cards/KanbanCol',
     component: KanbanCol,
     tags: ['autodocs'],
     argTypes: {

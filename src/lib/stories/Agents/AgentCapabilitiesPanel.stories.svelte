@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import AgentCapabilitiesPanel from '$lib/components/agents/AgentCapabilitiesPanel.svelte';
   import { agentToolsState } from '$lib/state/agents/agent-tools.svelte';
   import { agentSkillsState } from '$lib/state/agents/agent-skills.svelte';
@@ -26,7 +27,7 @@
   }));
 
   // Child panels load via the gateway on mount (fails here); seed both stores afterwards.
-  const seed = (t, s) => async () => {
+  const seed = (t: typeof agentToolsState.tools, s: typeof agentSkillsState.skills) => async () => {
     Object.assign(agentToolsState, {
       tools: t,
       groups: {},
@@ -42,13 +43,13 @@
       error: null,
     });
   };
-  const skillsTab = async (ctx) => {
+  const skillsTab: Play = async (ctx) => {
     await seed(tools, skills)();
     await ctx.userEvent.click(ctx.canvas.getAllByRole('button')[1]);
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentCapabilitiesPanel',
+    title: 'Components/Agents/AgentCapabilitiesPanel',
     component: AgentCapabilitiesPanel,
     tags: ['autodocs'],
     parameters: {
@@ -60,6 +61,7 @@
     },
     args: { agentId: 'panik' },
   });
+  type Play = NonNullable<ComponentProps<typeof Story>['play']>;
 </script>
 
 <Story name="Tools tab" play={seed(tools, skills)}>

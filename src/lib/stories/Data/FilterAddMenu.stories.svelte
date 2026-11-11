@@ -14,7 +14,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/FilterAddMenu',
+    title: 'Components/Data/FilterAddMenu',
     component: FilterAddMenu,
     tags: ['autodocs'],
     argTypes: { open: { control: 'boolean' }, active: { control: 'boolean' } },

@@ -1,7 +1,7 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SubagentTimeline from '$lib/components/agents/SubagentTimeline.svelte';
-  import { subagentState } from '$lib/state/features/subagent-data.svelte';
+  import { subagentState, type SubagentSession } from '$lib/state/features/subagent-data.svelte';
   import { AGENT_ID, running, completed, failed, many } from './subagent-fixtures';
 
   const yesterday = {
@@ -13,7 +13,7 @@
 
   // Reads the subagent store (no data props); each story seeds it.
   const seed =
-    (sessions, selectedKey = null) =>
+    (sessions: SubagentSession[], selectedKey: string | null = null) =>
     async () => {
       Object.assign(subagentState, {
         agentId: AGENT_ID,
@@ -25,7 +25,7 @@
     };
 
   const { Story } = defineMeta({
-    title: 'Agents/SubagentTimeline',
+    title: 'Components/Agents/SubagentTimeline',
     component: SubagentTimeline,
     tags: ['autodocs'],
   });

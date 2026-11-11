@@ -24,7 +24,7 @@
   const documents = Array.from({ length: 8 }, (_, i) => doc(i));
 
   const { Story } = defineMeta({
-    title: 'Data/BrainDocumentsTable',
+    title: 'Components/Data/BrainDocumentsTable',
     component: BrainDocumentsTable,
     tags: ['autodocs'],
     argTypes: { canEdit: { control: 'boolean' } },

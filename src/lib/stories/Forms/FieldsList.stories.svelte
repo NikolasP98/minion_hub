@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import FieldsList from '$lib/components/scheduling/FieldsList.svelte';
@@ -22,14 +22,14 @@
   const order = fields.map((f) => f.key);
 
   const { Story } = defineMeta({
-    title: 'Forms/FieldsList',
+    title: 'Components/Forms/FieldsList',
     component: FieldsList,
     tags: ['autodocs'],
     args: {
       heading: 'Card fields',
       fields,
       order,
-      hidden: new Set(),
+      hidden: new Set<string>(),
       ontoggle: fn(),
       onmove: fn(),
     },

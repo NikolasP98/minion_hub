@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Spinner from '$lib/components/ui/Spinner.svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/Spinner',
+    title: 'Atoms/Feedback/Spinner',
     component: Spinner,
     tags: ['autodocs'],
     argTypes: {
@@ -12,6 +12,8 @@
     },
     args: { size: 'md', label: 'Loading' },
   });
+
+  const sizes = ['xs', 'sm', 'md', 'lg'] as const;
 </script>
 
 <Story name="Default">
@@ -23,7 +25,7 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex items-center gap-4">
-      {#each ['xs', 'sm', 'md', 'lg'] as s (s)}<Spinner size={s} label="Loading" />{/each}
+      {#each sizes as s (s)}<Spinner size={s} label="Loading" />{/each}
     </div>
   {/snippet}
 </Story>

@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import NavContextMenu from '$lib/components/layout/NavContextMenu.svelte';
   import { EMPTY_NAV_CONFIG } from '$lib/nav/custom-sections';
   import { Button } from '$lib/components/ui';
@@ -25,7 +26,7 @@
       },
     ],
   };
-  const data = (perms) => ({
+  const data = (perms: string[]) => ({
     sveltekit_experimental: {
       state: {
         page: {
@@ -40,7 +41,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Navigation/NavContextMenu',
+    title: 'Components/Navigation/NavContextMenu',
     component: NavContextMenu,
     tags: ['autodocs'],
     parameters: {
@@ -50,7 +51,10 @@
     args: { kind: 'item', href: '/pos/sell', label: 'Sell' },
   });
 
-  const rightClick = async ({ canvas, userEvent }) => {
+  const rightClick: NonNullable<ComponentProps<typeof Story>['play']> = async ({
+    canvas,
+    userEvent,
+  }) => {
     await userEvent.pointer({ keys: '[MouseRight]', target: canvas.getByTestId('row') });
   };
   const rowCls =
@@ -58,7 +62,7 @@
 </script>
 
 <Story name="Item (built-in page, editor)" play={rightClick}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <NavContextMenu {...args}
       ><Button variant="ghost" data-testid="row" class={rowCls}>Sell</Button></NavContextMenu
     >
@@ -70,7 +74,7 @@
   args={{ href: '/staff/sell~k3x9q2', label: 'Sell' }}
   play={rightClick}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <NavContextMenu {...args}
       ><Button variant="ghost" data-testid="row" class={rowCls}>Sell (alias)</Button
       ></NavContextMenu
@@ -83,7 +87,7 @@
   args={{ kind: 'header', sectionId: 'custom:st4ff1', label: 'Staff' }}
   play={rightClick}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <NavContextMenu {...args}
       ><span data-testid="row" class="{rowCls} uppercase text-xs text-muted-foreground">Staff</span
       ></NavContextMenu
@@ -92,7 +96,7 @@
 </Story>
 
 <Story name="Empty nav area" args={{ kind: 'area' }} play={rightClick}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <NavContextMenu {...args}>
       <div
         data-testid="row"
@@ -105,7 +109,7 @@
 </Story>
 
 <Story name="Member (set-as-home only)" play={rightClick} parameters={data([])}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <NavContextMenu {...args}
       ><Button variant="ghost" data-testid="row" class={rowCls}>Sell</Button></NavContextMenu
     >
@@ -113,7 +117,7 @@
 </Story>
 
 <Story name="Trigger (idle)">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <NavContextMenu {...args}
       ><Button variant="ghost" class={rowCls}>Right-click, Shift+F10 or long-press</Button
       ></NavContextMenu

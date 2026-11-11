@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Toggle } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Toggle',
+    title: 'Atoms/Inputs/Toggle',
     component: Toggle,
     tags: ['autodocs'],
     argTypes: {
@@ -13,6 +13,8 @@
     },
     args: { label: 'Notifications', pressed: false, size: 'md', disabled: false },
   });
+
+  const sizes = ['sm', 'md', 'touch'] as const;
 </script>
 
 <Story name="Default">
@@ -36,7 +38,7 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex flex-col gap-3">
-      {#each ['sm', 'md', 'touch'] as s (s)}<Toggle label={s} size={s} pressed />{/each}
+      {#each sizes as s (s)}<Toggle label={s} size={s} pressed />{/each}
     </div>
   {/snippet}
 </Story>

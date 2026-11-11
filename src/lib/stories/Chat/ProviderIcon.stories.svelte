@@ -1,12 +1,13 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { iconSizes } from '$lib/components/ui';
   import ProviderIcon from '$lib/components/my-agent/ProviderIcon.svelte';
+  import type { ProviderKey } from '$lib/components/my-agent/provider';
 
-  const PROVIDERS = ['gmail', 'outlook', 'apple', 'mail'];
+  const PROVIDERS: ProviderKey[] = ['gmail', 'outlook', 'apple', 'mail'];
 
   const { Story } = defineMeta({
-    title: 'Chat/ProviderIcon',
+    title: 'Components/Chat/ProviderIcon',
     component: ProviderIcon,
     tags: ['autodocs'],
     argTypes: {

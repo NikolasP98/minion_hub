@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ConsoleEntry } from '$lib/utils/console-interceptor';
   import BugReporter from '$lib/components/layout/BugReporter.svelte';
   import { bugReporter, cancelReport } from '$lib/state/ui/bug-reporter.svelte';
 
@@ -10,7 +11,7 @@
     encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="gray"/><text x="20" y="100" font-size="20" fill="white">screenshot</text></svg>',
     );
-  const logs = [
+  const logs: ConsoleEntry[] = [
     {
       level: 'error',
       message: 'TypeError: cannot read properties of undefined (reading "id")',
@@ -22,13 +23,13 @@
     { level: 'log', message: 'render /pos/sell', timestamp: Date.now() - 1000 },
   ];
 
-  const seed = (patch) => async () => {
+  const seed = (patch: Partial<typeof bugReporter>) => async () => {
     cancelReport();
     Object.assign(bugReporter, patch);
   };
 
   const { Story } = defineMeta({
-    title: 'Overlays/BugReporter',
+    title: 'Components/Overlays/BugReporter',
     component: BugReporter,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '560px' } } },

@@ -58,7 +58,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Calendar/EventTypeEditor',
+    title: 'Components/Calendar/EventTypeEditor',
     component: EventTypeEditor,
     tags: ['autodocs'],
     parameters: {

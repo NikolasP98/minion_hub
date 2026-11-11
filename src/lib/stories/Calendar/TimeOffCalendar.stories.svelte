@@ -80,7 +80,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Calendar/TimeOffCalendar',
+    title: 'Components/Calendar/TimeOffCalendar',
     component: TimeOffCalendar,
     tags: ['autodocs'],
     parameters: { sveltekit_experimental: { state: { page } } },

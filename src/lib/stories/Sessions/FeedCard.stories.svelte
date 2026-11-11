@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import FeedCard from '$lib/components/my-agent/FeedCard.svelte';
 
   const { Story } = defineMeta({
-    title: 'Sessions/FeedCard',
+    title: 'Components/Sessions/FeedCard',
     component: FeedCard,
     tags: ['autodocs'],
     args: {

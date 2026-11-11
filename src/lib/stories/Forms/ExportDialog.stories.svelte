@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import ExportDialog from '$lib/components/crm/ExportDialog.svelte';
@@ -13,7 +13,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Forms/ExportDialog',
+    title: 'Components/Forms/ExportDialog',
     component: ExportDialog,
     tags: ['autodocs'],
     argTypes: { open: { control: 'boolean' }, count: { control: 'number' } },

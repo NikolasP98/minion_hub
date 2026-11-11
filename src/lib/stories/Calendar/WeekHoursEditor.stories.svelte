@@ -7,7 +7,7 @@
   const weekdays = [day(false), day(true), day(true), day(true), day(true), day(true), day(false)];
 
   const { Story } = defineMeta({
-    title: 'Calendar/WeekHoursEditor',
+    title: 'Components/Calendar/WeekHoursEditor',
     component: WeekHoursEditor,
     tags: ['autodocs'],
     args: { week: weekdays },

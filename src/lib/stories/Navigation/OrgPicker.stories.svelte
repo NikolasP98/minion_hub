@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import OrgPicker from '$lib/components/layout/OrgPicker.svelte';
 
   const orgs = [
@@ -7,18 +8,18 @@
     { id: 'org-2', name: 'Barberia El Norte', slug: 'norte', role: 'admin', kind: 'business' },
     { id: 'org-3', name: 'Ana (personal)', slug: null, role: 'owner', kind: 'personal' },
   ];
-  const data = (organizations, activeOrgId) => ({
+  const data = (organizations: typeof orgs, activeOrgId: string | null) => ({
     sveltekit_experimental: { state: { page: { data: { organizations, activeOrgId } } } },
   });
 
   const { Story } = defineMeta({
-    title: 'Navigation/OrgPicker',
+    title: 'Components/Navigation/OrgPicker',
     component: OrgPicker,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '240px' } }, ...data(orgs, 'org-1') },
   });
 
-  const open = async ({ canvas, userEvent }) => {
+  const open: NonNullable<ComponentProps<typeof Story>['play']> = async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getAllByRole('button')[0]);
   };
 </script>

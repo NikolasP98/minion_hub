@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import DreamActivity from '$lib/components/agents/DreamActivity.svelte';
-  import { dreamState } from '$lib/state/features/dream-data.svelte';
+  import { dreamState, type DreamData } from '$lib/state/features/dream-data.svelte';
 
-  const data = {
+  const data: DreamData = {
     state: {
       lastConsolidatedAt: Date.now() - 30 * 3_600_000,
       lastSessionScanAt: Date.now() - 6 * 60_000,
@@ -29,12 +29,12 @@
   };
 
   // The component loads via the gateway on mount (fails here); seed the store afterwards.
-  const seed = (patch) => async () => {
+  const seed = (patch?: Partial<typeof dreamState>) => async () => {
     Object.assign(dreamState, { agentId: 'panik', data: null, loading: false, error: null }, patch);
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/DreamActivity',
+    title: 'Components/Agents/DreamActivity',
     component: DreamActivity,
     tags: ['autodocs'],
     args: { agentId: 'panik' },

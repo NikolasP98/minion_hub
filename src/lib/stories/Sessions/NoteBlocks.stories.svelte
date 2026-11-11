@@ -1,16 +1,38 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import NoteBlocks from '$lib/components/my-agent/NoteBlocks.svelte';
-  import { notesState } from '$lib/state/features/agent-notes.svelte';
+  import {
+    notesState,
+    type AgentNote,
+    type EaselItem,
+    type NoteBlock,
+    type TodoItem,
+  } from '$lib/state/features/agent-notes.svelte';
 
   // Block edits go through the notes store by note id, so the fixtures live in the store
   // and the stories render the store's own (reactive) copies.
   const now = Date.now();
-  const text = (id, md) => ({ id, type: 'text', md, attachments: [] });
-  const todo = (id, title, items) => ({ id, type: 'todo', title, items });
-  const easel = (id, title, items = []) => ({ id, type: 'easel', title, items });
-  const note = (id, title, blocks) => ({
+  type Block<K extends NoteBlock['type']> = Extract<NoteBlock, { type: K }>;
+  const text = (id: string, md: string): Block<'text'> => ({
+    id,
+    type: 'text',
+    md,
+    attachments: [],
+  });
+  const todo = (id: string, title: string, items: TodoItem[]): Block<'todo'> => ({
+    id,
+    type: 'todo',
+    title,
+    items,
+  });
+  const easel = (id: string, title: string, items: EaselItem[] = []): Block<'easel'> => ({
+    id,
+    type: 'easel',
+    title,
+    items,
+  });
+  const note = (id: string, title: string, blocks: NoteBlock[]): AgentNote => ({
     id,
     kind: 'note',
     title,
@@ -68,10 +90,14 @@
   ];
   for (const n of fixtures)
     if (!notesState.notes.some((x) => x.id === n.id)) notesState.notes.push(n);
-  const byId = (id) => notesState.notes.find((n) => n.id === id);
+  const byId = (id: string): AgentNote => {
+    const n = notesState.notes.find((x) => x.id === id);
+    if (!n) throw new Error(`Missing note fixture ${id}`);
+    return n;
+  };
 
   const { Story } = defineMeta({
-    title: 'Sessions/NoteBlocks',
+    title: 'Components/Sessions/NoteBlocks',
     component: NoteBlocks,
     tags: ['autodocs'],
     argTypes: { compact: { control: 'boolean' } },

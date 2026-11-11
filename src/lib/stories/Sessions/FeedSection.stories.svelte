@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import FeedSection from '$lib/components/my-agent/FeedSection.svelte';
   import FeedCard from '$lib/components/my-agent/FeedCard.svelte';
@@ -14,7 +14,7 @@
   }));
 
   const { Story } = defineMeta({
-    title: 'Sessions/FeedSection',
+    title: 'Components/Sessions/FeedSection',
     component: FeedSection,
     tags: ['autodocs'],
     argTypes: {
@@ -34,7 +34,7 @@
 </script>
 
 <Story name="Three items">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="w-80">
       <FeedSection {...args}>
         {#each items.slice(0, 3) as it (it.subtitle)}<FeedCard {...it} />{/each}
@@ -44,7 +44,7 @@
 </Story>
 
 <Story name="Scrollable twelve items" args={{ count: 12, scrollable: true }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="w-80 h-64 flex flex-col">
       <FeedSection {...args}>
         {#each items as it (it.subtitle)}<FeedCard {...it} />{/each}
@@ -54,7 +54,7 @@
 </Story>
 
 <Story name="With providers" args={{ label: 'Email', providers: ['gmail', 'outlook'] }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="w-80">
       <FeedSection {...args}>
         {#each items.slice(0, 3) as it (it.subtitle)}<FeedCard {...it} />{/each}
@@ -64,7 +64,7 @@
 </Story>
 
 <Story name="Collapsible expanded" args={{ collapsible: true }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="w-80">
       <FeedSection {...args}>
         {#snippet summary()}<p class="text-xs text-muted">3 unread, newest 7 min ago</p>{/snippet}
@@ -75,7 +75,7 @@
 </Story>
 
 <Story name="Collapsible collapsed with summary" args={{ collapsible: true, collapsed: true }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="w-80">
       <FeedSection {...args}>
         {#snippet summary()}<p class="text-xs text-muted">3 unread, newest 7 min ago</p>{/snippet}
@@ -86,7 +86,7 @@
 </Story>
 
 <Story name="Zero items" args={{ count: 0 }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="w-80">
       <FeedSection {...args}><p class="text-xs text-muted p-2">Nothing new.</p></FeedSection>
     </div>

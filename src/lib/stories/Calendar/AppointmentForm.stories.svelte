@@ -35,7 +35,7 @@
   // Submitting posts to `bookEndpoint`, which Storybook does not serve: the
   // request-failed state is reachable by clicking Book.
   const { Story } = defineMeta({
-    title: 'Calendar/AppointmentForm',
+    title: 'Components/Calendar/AppointmentForm',
     component: AppointmentForm,
     tags: ['autodocs'],
     parameters: {

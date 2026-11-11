@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/ProgressBar',
+    title: 'Atoms/Feedback/ProgressBar',
     component: ProgressBar,
     tags: ['autodocs'],
     argTypes: {

@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import SubagentDetail from '$lib/components/agents/SubagentDetail.svelte';
   import { subagentState } from '$lib/state/features/subagent-data.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
@@ -7,7 +8,7 @@
 
   // Reads the subagent + ui stores (no data props); each story seeds them. The Monitor tab
   // fetches the session's messages (fails here), so it lands on its error state.
-  const seed = (selectedKey) => async () => {
+  const seed = (selectedKey: string | null) => async () => {
     Object.assign(subagentState, {
       agentId: AGENT_ID,
       sessions: [running, completed],
@@ -18,16 +19,17 @@
     ui.selectedAgentId = AGENT_ID;
     ui.selectedServerId = null;
   };
-  const metaTab = async (ctx) => {
+  const metaTab: Play = async (ctx) => {
     await seed(running.key)();
     await ctx.userEvent.click(ctx.canvas.getByRole('button', { name: 'Meta' }));
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/SubagentDetail',
+    title: 'Components/Agents/SubagentDetail',
     component: SubagentDetail,
     tags: ['autodocs'],
   });
+  type Play = NonNullable<ComponentProps<typeof Story>['play']>;
 </script>
 
 <Story name="Nothing selected" play={seed(null)}>

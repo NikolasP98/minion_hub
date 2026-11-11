@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { iconSizes } from '$lib/components/ui';
   import { Calendar } from 'lucide-svelte';
   import NavIcon from '$lib/components/layout/NavIcon.svelte';
 
   const { Story } = defineMeta({
-    title: 'Navigation/NavIcon',
+    title: 'Components/Navigation/NavIcon',
     component: NavIcon,
     tags: ['autodocs'],
     argTypes: { size: { control: { type: 'number', min: 12, max: 48 } } },

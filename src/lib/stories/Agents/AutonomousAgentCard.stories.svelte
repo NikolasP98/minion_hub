@@ -1,6 +1,7 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AutonomousAgentCard from '$lib/components/agents/AutonomousAgentCard.svelte';
+  import type { AutonomousAgentVM } from '$lib/agents/autonomous';
 
   // Flat placeholder avatar (fixture content, not UI styling).
   const avatarUrl =
@@ -9,7 +10,7 @@
       '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="32" fill="gray"/></svg>',
     );
 
-  const agent = {
+  const agent: AutonomousAgentVM = {
     id: 'scheduling.reminders',
     source: 'system',
     name: 'Reminders',
@@ -23,7 +24,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AutonomousAgentCard',
+    title: 'Components/Agents/AutonomousAgentCard',
     component: AutonomousAgentCard,
     tags: ['autodocs'],
     argTypes: { canAdd: { control: 'boolean' } },

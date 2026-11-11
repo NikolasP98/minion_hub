@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import SessionsList from '$lib/components/sessions/SessionsList.svelte';
@@ -6,7 +6,7 @@
   const now = Date.now();
   const agents = ['panik', 'faces-clinic', 'reminders'];
   const statuses = ['running', 'thinking', 'idle', 'aborted', 'done'];
-  const row = (i, agentId = agents[i % agents.length]) => ({
+  const row = (i: number, agentId = agents[i % agents.length]) => ({
     id: `s${i}`,
     serverId: 'srv-1',
     agentId,
@@ -33,7 +33,7 @@
   const fifty = Array.from({ length: 50 }, (_, i) => row(i));
 
   const { Story } = defineMeta({
-    title: 'Sessions/SessionsList',
+    title: 'Components/Sessions/SessionsList',
     component: SessionsList,
     tags: ['autodocs'],
     args: { sessions: five, selectedKey: null, onSelect: fn() },

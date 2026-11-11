@@ -32,8 +32,8 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/BoardView',
-    component: BoardView,
+    title: 'Components/Data/BoardView',
+    component: BoardView<Row>,
     tags: ['autodocs'],
     args: {
       columns,

@@ -60,7 +60,7 @@
   // Submitting posts to the bookings API, which Storybook does not serve: the
   // request-failed state is reachable by submitting.
   const { Story } = defineMeta({
-    title: 'Calendar/BookingCreateForm',
+    title: 'Components/Calendar/BookingCreateForm',
     component: BookingCreateForm,
     tags: ['autodocs'],
     parameters: {

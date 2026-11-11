@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import EntityChip from '$lib/components/ui/EntityChip.svelte';
-  import { KIND_COLOR } from '$lib/types/entities';
+  import { KIND_COLOR, type EntityRef } from '$lib/types/entities';
 
-  const refs = [
+  const refs: EntityRef[] = [
     {
       kind: 'org',
       id: 'o1',
@@ -47,7 +47,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Cards/EntityChip',
+    title: 'Atoms/Display/EntityChip',
     component: EntityChip,
     tags: ['autodocs'],
     argTypes: { size: { control: 'select', options: ['sm', 'md'] }, link: { control: 'boolean' } },

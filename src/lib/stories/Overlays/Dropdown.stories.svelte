@@ -1,7 +1,8 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import { Copy, Pencil, Trash2, ExternalLink, Archive } from 'lucide-svelte';
+  import type { PlayFunction } from 'storybook/internal/types';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
 
   const items = [
@@ -14,7 +15,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Overlays/Dropdown',
+    title: 'Atoms/Overlays/Dropdown',
     component: Dropdown,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '300px' } } },
@@ -26,7 +27,7 @@
     'inline-flex items-center gap-1 px-3 h-[var(--control-height-sm)] rounded-[var(--radius-md)] surface-3 text-sm text-foreground';
 
   // Zag menus have no `open` prop: click the trigger so docs show the panel.
-  const open = async ({ canvas, userEvent }) => {
+  const open: PlayFunction = async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getAllByRole('button')[0]);
   };
 </script>

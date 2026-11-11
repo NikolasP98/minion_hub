@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import MarkdownView from '$lib/components/prompt/MarkdownView.svelte';
 
@@ -101,7 +101,7 @@ You are a support agent for a small clinic.
   ).join('\n');
 
   const { Story } = defineMeta({
-    title: 'Shared/Markdown',
+    title: 'Components/Shared/Markdown',
     component: MarkdownView,
     tags: ['autodocs'],
     argTypes: { value: { control: 'text' } },
@@ -145,7 +145,7 @@ You are a support agent for a small clinic.
   name="Raw HTML is sanitized"
   args={{
     value:
-      'Text before <script>alert(1)</script><img src=x onerror="alert(1)"> text after.\n\n<b>Allowed inline HTML</b> stays.',
+      'Text before <script lang="ts">alert(1)</script><img src=x onerror="alert(1)"> text after.\n\n<b>Allowed inline HTML</b> stays.',
   }}
 >
   {#snippet template(args)}

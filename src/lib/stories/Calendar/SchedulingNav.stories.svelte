@@ -23,7 +23,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Calendar/SchedulingNav',
+    title: 'Components/Calendar/SchedulingNav',
     component: SchedulingNav,
     tags: ['autodocs'],
     parameters: at('/scheduling/calendar'),

@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import GNav from '$lib/components/layout/GNav.svelte';
 
   // Renders nothing until `g` is pressed; the chord hint then shows for 1.5s.
   const { Story } = defineMeta({
-    title: 'Navigation/GNav',
+    title: 'Components/Navigation/GNav',
     component: GNav,
     tags: ['autodocs'],
     parameters: {

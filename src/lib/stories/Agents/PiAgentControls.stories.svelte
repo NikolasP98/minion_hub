@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import PiAgentControls from '$lib/components/agents/PiAgentControls.svelte';
   import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
 
-  const usage = (percent) => ({
+  const usage = (percent: number) => ({
     tokenCount: Math.round(200_000 * (percent / 100)),
     contextWindow: 200_000,
     percent,
@@ -19,7 +19,7 @@
   };
 
   // No loader in the component; each story seeds the pi-agent store directly.
-  const seed = (patch) => async () => {
+  const seed = (patch?: Partial<typeof piAgentState>) => async () => {
     Object.assign(
       piAgentState,
       {
@@ -36,7 +36,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/PiAgentControls',
+    title: 'Components/Agents/PiAgentControls',
     component: PiAgentControls,
     tags: ['autodocs'],
     args: { agentId: 'panik' },

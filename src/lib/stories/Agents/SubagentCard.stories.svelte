@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import SubagentCard from '$lib/components/agents/SubagentCard.svelte';
   import { running, completed, failed, unknown } from './subagent-fixtures';
 
   const { Story } = defineMeta({
-    title: 'Agents/SubagentCard',
+    title: 'Components/Agents/SubagentCard',
     component: SubagentCard,
     tags: ['autodocs'],
     argTypes: { selected: { control: 'boolean' } },

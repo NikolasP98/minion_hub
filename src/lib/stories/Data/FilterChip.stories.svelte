@@ -11,7 +11,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/FilterChip',
+    title: 'Components/Data/FilterChip',
     component: FilterChip,
     tags: ['autodocs'],
     argTypes: {

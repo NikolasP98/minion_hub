@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import AiPromptInput from '$lib/components/ai/AiPromptInput.svelte';
@@ -17,7 +17,7 @@
   ).join('\n');
 
   const { Story } = defineMeta({
-    title: 'AI/AiPromptInput',
+    title: 'Components/AI/AiPromptInput',
     component: AiPromptInput,
     tags: ['autodocs'],
     argTypes: {

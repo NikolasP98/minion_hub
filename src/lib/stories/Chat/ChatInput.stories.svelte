@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
@@ -6,7 +6,7 @@
   // Suggestion popovers (`/skills`, `@mentions`, channel pickers) read gateway state;
   // offline they simply show nothing. Everything else is prop-driven.
   const { Story } = defineMeta({
-    title: 'Chat/ChatInput',
+    title: 'Components/Chat/ChatInput',
     component: ChatInput,
     tags: ['autodocs'],
     argTypes: { running: { control: 'boolean' } },

@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentFiles from '$lib/components/agents/AgentFiles.svelte';
 
   // The tree is fetched through the gateway WebSocket on mount (no props for data),
   // so the only reachable state here is the "not connected" error.
   const { Story } = defineMeta({
-    title: 'Agents/AgentFiles',
+    title: 'Components/Agents/AgentFiles',
     component: AgentFiles,
     tags: ['autodocs'],
     args: { agentId: 'panik' },

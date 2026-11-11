@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Checkbox } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Checkbox',
+    title: 'Atoms/Inputs/Checkbox',
     component: Checkbox,
     tags: ['autodocs'],
     argTypes: {

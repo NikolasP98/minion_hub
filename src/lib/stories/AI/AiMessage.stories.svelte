@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import { Copy, Pencil, RotateCcw, ThumbsUp } from 'lucide-svelte';
@@ -16,7 +16,7 @@
   const long = 'This reply goes on for a while so the row has to wrap. '.repeat(14);
 
   const { Story } = defineMeta({
-    title: 'AI/AiMessage',
+    title: 'Components/AI/AiMessage',
     component: AiMessage,
     tags: ['autodocs'],
     argTypes: { from: { control: 'select', options: ['user', 'assistant'] } },
@@ -24,7 +24,7 @@
   });
 </script>
 
-{#snippet bubble(text, user = false)}
+{#snippet bubble(text: string, user = false)}
   <div
     class="rounded-lg px-3 py-2 t-body {user
       ? 'bg-accent text-on-accent'
@@ -35,7 +35,7 @@
 {/snippet}
 
 <Story name="Assistant">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col">
       <AiMessage {...args}
         >{@render bubble(
@@ -50,7 +50,7 @@
   name="User"
   args={{ from: 'user', actions: [{ icon: Pencil, label: 'Edit', onclick: fn() }] }}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col">
       <AiMessage {...args}>{@render bubble('What do I have next week?', true)}</AiMessage>
     </div>
@@ -58,7 +58,7 @@
 </Story>
 
 <Story name="No timestamp no actions" args={{ timestamp: undefined, actions: [] }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col">
       <AiMessage {...args}>{@render bubble('Bare row: just the bubble.')}</AiMessage>
     </div>
@@ -66,13 +66,13 @@
 </Story>
 
 <Story name="Long wraps at 85 pct">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col"><AiMessage {...args}>{@render bubble(long)}</AiMessage></div>
   {/snippet}
 </Story>
 
 <Story name="Markdown child code block">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col">
       <AiMessage {...args}>
         <div class="rounded-lg bg-surface-2 px-3 py-2">
@@ -84,7 +84,7 @@
 </Story>
 
 <Story name="Thread both sides">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col gap-3">
       <AiMessage {...args} from="user" timestamp="10:41" actions={[]}
         >{@render bubble('What do I have next week?', true)}</AiMessage
@@ -103,7 +103,7 @@
 </Story>
 
 <Story name="Thread · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex w-full flex-col gap-3">
       <AiMessage {...args} from="user" timestamp="10:41" actions={[]}
         >{@render bubble('What do I have next week?', true)}</AiMessage

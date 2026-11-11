@@ -1,10 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { PlayFunction } from 'storybook/internal/types';
   import Tooltip from '$lib/components/ui/Tooltip.svelte';
   import { Button } from '$lib/components/ui';
 
   const { Story } = defineMeta({
-    title: 'Overlays/Tooltip',
+    title: 'Atoms/Overlays/Tooltip',
     component: Tooltip,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '200px' } } },
@@ -27,14 +28,16 @@
     },
   });
 
+  const placements = ['top', 'bottom', 'left', 'right'] as const;
+
   // Tooltips are hover-driven (no `open` prop): hover the trigger so docs show the panel.
-  const hover = async ({ canvas, userEvent }) => {
+  const hover: PlayFunction = async ({ canvas, userEvent }) => {
     await userEvent.hover(canvas.getByTestId('tip-trigger'));
   };
 </script>
 
 <Story name="Hovered" play={hover}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
         <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Hover me</span>
@@ -44,7 +47,7 @@
 </Story>
 
 <Story name="Trigger (idle)">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args} openDelay={200}>
         <span class="text-sm underline decoration-dotted">Hover me</span>
@@ -54,9 +57,9 @@
 </Story>
 
 <Story name="Placements">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex gap-8 justify-center">
-      {#each ['top', 'bottom', 'left', 'right'] as p (p)}
+      {#each placements as p (p)}
         <Tooltip {...args} placement={p} label="Placement: {p}">
           <span class="text-sm underline decoration-dotted">{p}</span>
         </Tooltip>
@@ -66,7 +69,7 @@
 </Story>
 
 <Story name="Rich content" play={hover}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
         {#snippet content()}
@@ -82,7 +85,7 @@
 </Story>
 
 <Story name="Interactive panel" args={{ interactive: true, bare: true }} play={hover}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
         {#snippet content()}
@@ -106,7 +109,7 @@
   }}
   play={hover}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
         <span data-testid="tip-trigger" class="text-sm underline decoration-dotted">Long label</span
@@ -132,7 +135,7 @@
   name="Tap to open (touch)"
   args={{ tapToOpen: true, label: 'Tap toggles on coarse pointers' }}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
         <span class="text-sm underline decoration-dotted">Tap me</span>
@@ -142,7 +145,7 @@
 </Story>
 
 <Story name="Disabled" args={{ disabled: true }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="p-16 flex justify-center">
       <Tooltip {...args}>
         <span class="text-sm text-muted-foreground">No tooltip here</span>

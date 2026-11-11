@@ -1,14 +1,15 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiOrbFace from '$lib/components/ai/AiOrbFace.svelte';
-  import { EXPRESSIONS } from '$lib/components/ai/orb-face';
+  import { EXPRESSIONS, type ExpressionName } from '$lib/components/ai/orb-face';
 
-  const STATES = ['idle', 'listening', 'thinking', 'streaming', 'done', 'error'];
+  const STATES = ['idle', 'listening', 'thinking', 'streaming', 'done', 'error'] as const;
+  const EXPRESSION_NAMES = Object.keys(EXPRESSIONS) as ExpressionName[];
   // Fake microphone level: a slow pulse so "speaking"/"listening" visibly stir the orb.
   const pulse = () => 0.5 + 0.5 * Math.sin(Date.now() / 180);
 
   const { Story } = defineMeta({
-    title: 'AI/AiOrbFace',
+    title: 'Components/AI/AiOrbFace',
     component: AiOrbFace,
     tags: ['autodocs'],
     argTypes: {
@@ -46,7 +47,7 @@
 <Story name="All expressions">
   {#snippet template(args)}
     <div class="flex flex-wrap items-end gap-6">
-      {#each Object.keys(EXPRESSIONS) as expression (expression)}
+      {#each EXPRESSION_NAMES as expression (expression)}
         <div class="flex flex-col items-center gap-2">
           <AiOrbFace {...args} {expression} diameter={72} gaze={false} />
           <span class="t-caption text-muted-foreground">{expression}</span>

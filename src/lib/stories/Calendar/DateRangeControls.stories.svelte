@@ -5,7 +5,7 @@
 
   // Controlled: the page owns from/to. Bounds are INCLUSIVE calendar days.
   const { Story } = defineMeta({
-    title: 'Calendar/DateRangeControls',
+    title: 'Components/Calendar/DateRangeControls',
     component: DateRangeControls,
     tags: ['autodocs'],
     argTypes: {

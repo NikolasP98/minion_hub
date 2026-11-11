@@ -41,7 +41,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Calendar/MemberCalendarStrip',
+    title: 'Components/Calendar/MemberCalendarStrip',
     component: MemberCalendarStrip,
     tags: ['autodocs'],
     argTypes: { compact: { control: 'boolean' } },

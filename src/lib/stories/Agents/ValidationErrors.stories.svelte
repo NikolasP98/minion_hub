@@ -1,8 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { SectionViolation } from '@minion-stack/shared';
   import ValidationErrors from '$lib/components/prompt/ValidationErrors.svelte';
 
-  const errors = [
+  const errors: SectionViolation[] = [
     { rule: 'no-secrets', match: 'sk-live-4f8a…', severity: 'block' },
     { rule: 'no-customer-pii', match: 'DNI 72345678', severity: 'block' },
     { rule: 'prefer-second-person', match: 'the assistant should', severity: 'warn' },
@@ -10,7 +11,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Agents/ValidationErrors',
+    title: 'Components/Agents/ValidationErrors',
     component: ValidationErrors,
     tags: ['autodocs'],
     args: { errors },

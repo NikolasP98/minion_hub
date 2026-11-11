@@ -1,12 +1,19 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import StatusBadge from '$lib/components/agents/StatusBadge.svelte';
 
-  const statuses = ['running', 'thinking', 'idle', 'error', 'paused'];
-  const sizes = ['sm', 'md', 'lg'];
+  const statuses: ComponentProps<typeof StatusBadge>['status'][] = [
+    'running',
+    'thinking',
+    'idle',
+    'error',
+    'paused',
+  ];
+  const sizes: NonNullable<ComponentProps<typeof StatusBadge>['size']>[] = ['sm', 'md', 'lg'];
 
   const { Story } = defineMeta({
-    title: 'Agents/StatusBadge',
+    title: 'Components/Agents/StatusBadge',
     component: StatusBadge,
     tags: ['autodocs'],
     argTypes: {

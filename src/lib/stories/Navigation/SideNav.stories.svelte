@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import {
@@ -52,7 +52,7 @@
   }));
 
   const { Story } = defineMeta({
-    title: 'Navigation/SideNav',
+    title: 'Atoms/Layout/SideNav',
     component: SideNav,
     tags: ['autodocs'],
     argTypes: { dividers: { control: 'boolean' }, leftBorder: { control: 'boolean' } },

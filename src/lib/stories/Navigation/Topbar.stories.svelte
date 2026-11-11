@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Topbar from '$lib/components/layout/Topbar.svelte';
 
@@ -19,7 +19,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Navigation/Topbar',
+    title: 'Components/Navigation/Topbar',
     component: Topbar,
     tags: ['autodocs'],
     parameters: { sveltekit_experimental: { state: { page: { data: pageData } } } },

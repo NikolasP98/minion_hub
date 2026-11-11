@@ -10,7 +10,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/FilterRuleEditor',
+    title: 'Components/Data/FilterRuleEditor',
     component: FilterRuleEditor,
     tags: ['autodocs'],
     argTypes: {

@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Card } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Card',
+    title: 'Atoms/Layout/Card',
     component: Card,
     tags: ['autodocs'],
     argTypes: {
@@ -14,6 +14,8 @@
     },
     args: { elevation: 1, ['padding']: 'md', interactive: false },
   });
+
+  const elevations = [1, 2, 3, 4] as const;
 </script>
 
 <Story name="Default">
@@ -25,7 +27,7 @@
 <Story name="Elevations">
   {#snippet template()}
     <div class="grid grid-cols-2 gap-4">
-      {#each [1, 2, 3, 4] as e (e)}
+      {#each elevations as e (e)}
         <Card elevation={e} padding="md"><p>Elevation {e}</p></Card>
       {/each}
     </div>

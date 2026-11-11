@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { HelloOk } from '@minion-stack/shared';
   import ConnectionStatusIndicator from '$lib/components/layout/ConnectionStatusIndicator.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -15,21 +16,36 @@
     lastConnectedAt: Date.now() - 5 * 60000,
     channel: 'prd',
   };
-  const seed = (state) => async () => {
-    hostsState.activeHostId = 'gw-1';
-    conn.connected = false;
-    conn.connecting = false;
-    conn.connectedAt = null;
-    conn.connectError = null;
-    restartState.phase = 'idle';
-    gw.hello = null;
-    Object.assign(conn, state.conn ?? {});
-    if (state.hello) gw.hello = state.hello;
-    if (state.restart) restartState.phase = state.restart;
-  };
+  // Only uptime and version vary per story; the rest is inert dummy handshake data.
+  const hello = (uptimeMs: number, version = '2026.11.1'): HelloOk => ({
+    type: 'hello-ok',
+    protocol: 3,
+    server: { version, connId: 'conn-1' },
+    features: { methods: [], events: [] },
+    snapshot: { presence: [], health: null, stateVersion: { presence: 0, health: 0 }, uptimeMs },
+    policy: { maxPayload: 1_048_576, maxBufferedBytes: 4_194_304, tickIntervalMs: 15_000 },
+  });
+  const seed =
+    (state: {
+      conn?: Partial<typeof conn>;
+      hello?: HelloOk;
+      restart?: typeof restartState.phase;
+    }) =>
+    async () => {
+      hostsState.activeHostId = 'gw-1';
+      conn.connected = false;
+      conn.connecting = false;
+      conn.connectedAt = null;
+      conn.connectError = null;
+      restartState.phase = 'idle';
+      gw.hello = null;
+      Object.assign(conn, state.conn ?? {});
+      if (state.hello) gw.hello = state.hello;
+      if (state.restart) restartState.phase = state.restart;
+    };
 
   const { Story } = defineMeta({
-    title: 'Navigation/ConnectionStatusIndicator',
+    title: 'Components/Navigation/ConnectionStatusIndicator',
     component: ConnectionStatusIndicator,
     tags: ['autodocs'],
     parameters: {
@@ -52,7 +68,7 @@
   name="Connected"
   play={seed({
     conn: { connected: true, connectedAt: Date.now() - 3600000 },
-    hello: { snapshot: { uptimeMs: 86400000 * 3 }, server: { version: '2026.11.1' } },
+    hello: hello(86400000 * 3),
   })}
 >
   {#snippet template(args)}
@@ -91,7 +107,7 @@
   args={{ panel: 'above' }}
   play={seed({
     conn: { connected: true, connectedAt: Date.now() - 120000 },
-    hello: { snapshot: { uptimeMs: 3600000 } },
+    hello: hello(3600000),
   })}
 >
   {#snippet template(args)}

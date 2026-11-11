@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import Modal from '$lib/components/ui/Modal.svelte';
   import { Button } from '$lib/components/ui';
 
   const { Story } = defineMeta({
-    title: 'Overlays/Modal',
+    title: 'Atoms/Overlays/Modal',
     component: Modal,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '420px' } } },
@@ -29,7 +29,7 @@
   });
 </script>
 
-<script>
+<script lang="ts">
   let triggerOpen = $state(false);
 </script>
 

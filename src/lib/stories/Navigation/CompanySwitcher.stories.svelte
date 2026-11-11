@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import CompanySwitcher from '$lib/components/layout/CompanySwitcher.svelte';
 
@@ -9,12 +9,12 @@
     { companyId: 'c-2', role: 'member', name: 'Norte Barber EIRL' },
     { companyId: 'c-3', role: 'member', name: 'A workspace with a rather long display name' },
   ];
-  const data = (ws) => ({
+  const data = (ws: typeof workspaces) => ({
     sveltekit_experimental: { state: { page: { data: { workspaces: ws } } } },
   });
 
   const { Story } = defineMeta({
-    title: 'Navigation/CompanySwitcher',
+    title: 'Components/Navigation/CompanySwitcher',
     component: CompanySwitcher,
     tags: ['autodocs'],
     parameters: data(workspaces),

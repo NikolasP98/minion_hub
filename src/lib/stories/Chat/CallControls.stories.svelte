@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import CallControls from '$lib/components/my-agent/CallControls.svelte';
 
   const { Story } = defineMeta({
-    title: 'Chat/CallControls',
+    title: 'Components/Chat/CallControls',
     component: CallControls,
     tags: ['autodocs'],
     argTypes: {

@@ -49,7 +49,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Calendar/UtilizationHeatmap',
+    title: 'Components/Calendar/UtilizationHeatmap',
     component: UtilizationHeatmap,
     tags: ['autodocs'],
     args: { utilization },

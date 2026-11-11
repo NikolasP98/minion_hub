@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import InlineTagsCell from '$lib/components/tags/InlineTagsCell.svelte';
@@ -16,7 +16,7 @@
     'promo-2026',
     'lapsed',
   ];
-  const tags = (n) =>
+  const tags = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       id: `t${i}`,
       name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
@@ -27,7 +27,7 @@
   // Saves PUT `/api/tags/<kind>/<id>`, which fails in Storybook — pick a tag to
   // see the failed/retry state.
   const { Story } = defineMeta({
-    title: 'Tags/InlineTagsCell',
+    title: 'Components/Tags/InlineTagsCell',
     component: InlineTagsCell,
     tags: ['autodocs'],
     argTypes: {

@@ -79,7 +79,7 @@
   const customValues = createBookingCustomValues();
 
   const { Story } = defineMeta({
-    title: 'Calendar/BookingBoard',
+    title: 'Components/Calendar/BookingBoard',
     component: BookingBoard,
     tags: ['autodocs'],
     argTypes: { axis: { control: 'select', options: ['status', 'staff'] } },

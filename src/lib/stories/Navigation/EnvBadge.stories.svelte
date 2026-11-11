@@ -1,11 +1,12 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import EnvBadge from '$lib/components/layout/EnvBadge.svelte';
 
-  const env = (e) => ({ sveltekit_experimental: { state: { page: { data: { env: e } } } } });
+  type Env = { backend?: 'dev' | 'prd'; local?: boolean };
+  const env = (e: Env) => ({ sveltekit_experimental: { state: { page: { data: { env: e } } } } });
 
   const { Story } = defineMeta({
-    title: 'Navigation/EnvBadge',
+    title: 'Components/Navigation/EnvBadge',
     component: EnvBadge,
     tags: ['autodocs'],
     parameters: env({ backend: 'dev', local: true }),

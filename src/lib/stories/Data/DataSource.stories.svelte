@@ -5,8 +5,8 @@
   const rows = ['Alpha', 'Beta', 'Gamma'];
 
   const { Story } = defineMeta({
-    title: 'Data/DataSource',
-    component: DataSource,
+    title: 'Atoms/Feedback/DataSource',
+    component: DataSource<string[]>,
     tags: ['autodocs'],
     argTypes: {
       module: { control: 'select', options: ['overview', 'crm', 'finance', 'sales', 'scheduling', 'support'] },

@@ -1,16 +1,18 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { Agent } from '@minion-stack/shared';
+  import type { PlayFunction } from 'storybook/internal/types';
   import LiveRunWidget from '$lib/components/sessions/LiveRunWidget.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { agentActivity, ensureAgentActivity } from '$lib/state/chat/chat.svelte';
 
   // The widget lists agents whose gateway status is running/thinking; nothing renders when idle.
-  const agent = (id, name, status, agoMs) => {
+  const agent = (id: string, name: string, status: string, agoMs: number): Agent => {
     ensureAgentActivity(id).lastEventAt = Date.now() - agoMs;
     return { id, name, status };
   };
-  const seed = (make) => async () => {
+  const seed = (make?: () => Agent[]) => async () => {
     for (const k of Object.keys(agentActivity)) delete agentActivity[k];
     gw.agents = [];
     Object.assign(conn, { connected: false, connecting: false });
@@ -27,13 +29,13 @@
     agent('bookkeeper', 'Bookkeeper with a very long display name', 'thinking', 125 * 60_000),
     agent('triage', 'Triage', 'running', 1_000),
   ];
-  const collapse = async (ctx) => {
+  const collapse: PlayFunction = async (ctx) => {
     await seed(many)();
     await ctx.userEvent.click(ctx.canvas.getAllByRole('button')[0]);
   };
 
   const { Story } = defineMeta({
-    title: 'Sessions/LiveRunWidget',
+    title: 'Components/Sessions/LiveRunWidget',
     component: LiveRunWidget,
     tags: ['autodocs'],
     parameters: {

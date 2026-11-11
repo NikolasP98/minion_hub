@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
   import { Button } from '$lib/components/ui';
@@ -12,7 +12,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Overlays/CommandPalette',
+    title: 'Components/Overlays/CommandPalette',
     component: CommandPalette,
     tags: ['autodocs'],
     parameters: {
@@ -21,7 +21,7 @@
     },
   });
 
-  const openWith = (query) => async () => {
+  const openWith = (query: string) => async () => {
     palette.open = true;
     palette.query = query;
     palette.selectedIndex = 0;

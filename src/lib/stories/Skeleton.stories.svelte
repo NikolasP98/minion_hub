@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Skeleton from '$lib/components/ui/Skeleton.svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/Skeleton',
+    title: 'Atoms/Feedback/Skeleton',
     component: Skeleton,
     tags: ['autodocs'],
     argTypes: {

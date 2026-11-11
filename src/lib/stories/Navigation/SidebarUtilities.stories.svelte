@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SidebarUtilities from '$lib/components/layout/SidebarUtilities.svelte';
 
@@ -11,7 +11,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Navigation/SidebarUtilities',
+    title: 'Components/Navigation/SidebarUtilities',
     component: SidebarUtilities,
     tags: ['autodocs'],
     parameters: { sveltekit_experimental: { state: { page: { data: pageData } } } },

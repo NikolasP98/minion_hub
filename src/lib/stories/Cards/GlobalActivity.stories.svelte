@@ -1,10 +1,16 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import GlobalActivity from '$lib/components/layout/GlobalActivity.svelte';
+  import type { ActionRecord, ActionRuntime } from '$lib/services/actions/runtime.svelte';
 
-  // Plain-object stand-in for the ActionRuntime getters the component reads.
-  const record = (id, definitionId, status, over = {}) => ({
+  // Plain-object stand-in for the ActionRuntime the component reads; mutating methods are inert.
+  const record = (
+    id: number,
+    definitionId: string,
+    status: ActionRecord['status'],
+    over: Partial<ActionRecord> = {},
+  ): ActionRecord => ({
     id,
     definitionId,
     policy: 'read',
@@ -14,17 +20,40 @@
     attempts: [],
     ...over,
   });
-  const runtime = ({ jobs = [], attention = [], indicatorVisible = false } = {}) => ({
+  const unavailable = (): never => {
+    throw new Error('Not available in the story runtime');
+  };
+  const runtime = ({
+    jobs = [],
+    attention = [],
+    indicatorVisible = false,
+  }: {
+    jobs?: ActionRecord[];
+    attention?: ActionRecord[];
+    indicatorVisible?: boolean;
+  } = {}): ActionRuntime => ({
+    scopeVersion: 0,
+    foregroundPending: 0,
+    backgroundPending: jobs.length,
     indicatorVisible,
     backgroundJobs: jobs.length,
     attentionRequired: attention.length,
     jobs,
     attention,
+    size: jobs.length + attention.length,
+    get: () => undefined,
+    start: unavailable,
+    run: unavailable,
+    runCommand: async () => unavailable(),
     dismiss: fn(),
+    reconcile: fn(),
+    subscribe: () => () => {},
+    setScope: () => {},
+    dispose: () => {},
   });
 
   const { Story } = defineMeta({
-    title: 'Cards/GlobalActivity',
+    title: 'Components/Cards/GlobalActivity',
     component: GlobalActivity,
     tags: ['autodocs'],
     argTypes: { connecting: { control: 'boolean' } },
@@ -50,8 +79,8 @@
   args={{
     actions: runtime({
       jobs: [
-        record(1, 'table.export', 'running', { progress: { completed: 40, total: 100 } }),
-        record(2, 'finance.sync', 'running'),
+        record(1, 'table.export', 'job-running', { progress: { completed: 40, total: 100 } }),
+        record(2, 'finance.sync', 'job-running'),
       ],
     }),
   }}
@@ -81,7 +110,7 @@
   args={{
     actions: runtime({
       indicatorVisible: true,
-      jobs: [record(1, 'table.export', 'running', { progress: { completed: 9, total: 12 } })],
+      jobs: [record(1, 'table.export', 'job-running', { progress: { completed: 9, total: 12 } })],
       attention: [record(3, 'finance.emit', 'failed')],
     }),
   }}
@@ -95,8 +124,8 @@
   args={{
     actions: runtime({
       jobs: [
-        record(1, 'table.export', 'running', { progress: { completed: 40, total: 100 } }),
-        record(2, 'finance.sync', 'running'),
+        record(1, 'table.export', 'job-running', { progress: { completed: 40, total: 100 } }),
+        record(2, 'finance.sync', 'job-running'),
       ],
     }),
   }}
@@ -110,7 +139,7 @@
   args={{
     actions: runtime({
       indicatorVisible: true,
-      jobs: [record(1, 'table.export', 'running', { progress: { completed: 9, total: 12 } })],
+      jobs: [record(1, 'table.export', 'job-running', { progress: { completed: 9, total: 12 } })],
       attention: [record(3, 'finance.emit', 'failed')],
     }),
   }}

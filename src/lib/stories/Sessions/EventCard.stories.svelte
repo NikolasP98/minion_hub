@@ -1,13 +1,18 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import EventCard from '$lib/components/my-agent/EventCard.svelte';
+  import type { CalendarItem } from '$lib/services/my-agent-rpc';
 
   // One shared "now" so every story's proximity tier is deterministic relative to it.
   const nowMs = Date.now();
-  const at = (minutes) => new Date(nowMs + minutes * 60_000).toISOString();
-  const dayAt = (days) => new Date(nowMs + days * 86_400_000).toISOString().slice(0, 10);
-  const item = (startMin, durationMin, extra = {}) => ({
+  const at = (minutes: number) => new Date(nowMs + minutes * 60_000).toISOString();
+  const dayAt = (days: number) => new Date(nowMs + days * 86_400_000).toISOString().slice(0, 10);
+  const item = (
+    startMin: number,
+    durationMin: number,
+    extra: Partial<CalendarItem> = {},
+  ): CalendarItem => ({
     id: `ev-${startMin}`,
     sourceEmail: 'nikolas@example.com',
     title: 'Cleaning · Ana Torres',
@@ -20,7 +25,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Sessions/EventCard',
+    title: 'Components/Sessions/EventCard',
     component: EventCard,
     tags: ['autodocs'],
     args: { item: item(180, 45), nowMs, onopen: fn() },

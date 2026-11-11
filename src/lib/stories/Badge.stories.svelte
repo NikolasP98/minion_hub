@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Badge } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Badge',
+    title: 'Atoms/Display/Badge',
     component: Badge,
     tags: ['autodocs'],
     argTypes: {
@@ -30,8 +30,8 @@
     args: { variant: 'semantic', value: 'success', size: 'md', dot: false, pulse: false },
   });
 
-  const semantic = ['success', 'error', 'warning', 'info', 'accent', 'brand'];
-  const status = ['running', 'thinking', 'idle', 'aborted'];
+  const semantic = ['success', 'error', 'warning', 'info', 'accent', 'brand'] as const;
+  const status = ['running', 'thinking', 'idle', 'aborted'] as const;
 </script>
 
 <Story name="Default">

@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import { Button } from '@minion-stack/ui';
   import { Inbox } from 'lucide-svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/EmptyState',
+    title: 'Atoms/Feedback/EmptyState',
     component: EmptyState,
     tags: ['autodocs'],
     argTypes: {

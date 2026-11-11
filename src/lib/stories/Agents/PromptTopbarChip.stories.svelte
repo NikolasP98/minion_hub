@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { PromptMode } from '@minion-stack/shared';
   import PromptTopbarChip from '$lib/components/prompt/PromptTopbarChip.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { promptSections } from '$lib/state/features/prompt-sections.svelte';
@@ -10,7 +11,7 @@
   ];
   // Agent options come from the gateway list; agent + mode from the prompt-sections store.
   const seed =
-    (agentId, mode = 'full') =>
+    (agentId: string | null, mode: PromptMode = 'full') =>
     async () => {
       gw.agents = agents;
       promptSections.agentId = agentId;
@@ -18,7 +19,7 @@
     };
 
   const { Story } = defineMeta({
-    title: 'Agents/PromptTopbarChip',
+    title: 'Components/Agents/PromptTopbarChip',
     component: PromptTopbarChip,
     tags: ['autodocs'],
     parameters: {

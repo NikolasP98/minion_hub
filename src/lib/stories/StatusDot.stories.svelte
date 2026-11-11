@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import StatusDot from '$lib/components/ui/StatusDot.svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/StatusDot',
+    title: 'Atoms/Feedback/StatusDot',
     component: StatusDot,
     tags: ['autodocs'],
     argTypes: {
@@ -14,6 +14,8 @@
     },
     args: { status: 'running', size: 'md' },
   });
+
+  const statuses = ['running', 'thinking', 'idle', 'aborted'] as const;
 </script>
 
 <Story name="Dot">
@@ -25,10 +27,7 @@
 <Story name="All dots">
   {#snippet template()}
     <div class="flex items-center gap-4">
-      {#each ['running', 'thinking', 'idle', 'aborted'] as s (s)}<StatusDot
-          status={s}
-          size="lg"
-        />{/each}
+      {#each statuses as s (s)}<StatusDot status={s} size="lg" />{/each}
     </div>
   {/snippet}
 </Story>

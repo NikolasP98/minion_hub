@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import TagsField from '$lib/components/tags/TagsField.svelte';
@@ -16,16 +16,16 @@
     'promo-2026',
     'lapsed',
   ];
-  const tags = (n) =>
+  const tags = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       id: `t${i}`,
       name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
       color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
     }));
-  const ids = (n) => Array.from({ length: n }, (_, i) => `t${i}`);
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `t${i}`);
 
   const { Story } = defineMeta({
-    title: 'Tags/TagsField',
+    title: 'Components/Tags/TagsField',
     component: TagsField,
     tags: ['autodocs'],
     argTypes: {

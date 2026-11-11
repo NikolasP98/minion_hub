@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentGreeting from '$lib/components/my-agent/AgentGreeting.svelte';
 
   // `userName` is declared in Props but unused by the component today.
   const { Story } = defineMeta({
-    title: 'Chat/AgentGreeting',
+    title: 'Components/Chat/AgentGreeting',
     component: AgentGreeting,
     tags: ['autodocs'],
     args: { greeting: 'Good morning, Ana. Three bookings today and one invoice overdue.' },

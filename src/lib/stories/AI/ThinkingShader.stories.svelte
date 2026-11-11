@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   // Canvas edge in px, not an icon size.
   const SHADER_PX = 48;
@@ -7,7 +7,7 @@
 
   // `style` pins a material; without it the shader follows the user's saved preference.
   const { Story } = defineMeta({
-    title: 'AI/ThinkingShader',
+    title: 'Components/AI/ThinkingShader',
     component: ThinkingShader,
     tags: ['autodocs'],
     argTypes: {

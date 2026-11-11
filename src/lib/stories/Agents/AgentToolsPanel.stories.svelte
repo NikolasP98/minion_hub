@@ -1,9 +1,15 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentToolsPanel from '$lib/components/agents/AgentToolsPanel.svelte';
   import { agentToolsState } from '$lib/state/agents/agent-tools.svelte';
+  import type { ToolStatusEntry } from '$lib/types/tools';
 
-  const tool = (id, groups, enabled, extra = {}) => ({ id, groups, enabled, ...extra });
+  const tool = (
+    id: string,
+    groups: string[],
+    enabled: boolean,
+    extra: Partial<ToolStatusEntry> = {},
+  ): ToolStatusEntry => ({ id, groups, enabled, ...extra });
   const tools = [
     tool('bash', ['group:runtime'], true, { display: { emoji: '⚡', title: 'Shell' } }),
     tool('read_file', ['group:fs'], true, { display: { title: 'Read file' } }),
@@ -20,7 +26,7 @@
   ];
 
   // The panel loads via the gateway on mount (which fails here); each story seeds the store afterwards.
-  const seed = (patch) => async () => {
+  const seed = (patch?: Partial<typeof agentToolsState>) => async () => {
     Object.assign(
       agentToolsState,
       { tools: [], groups: {}, profile: 'full', loading: false, error: null },
@@ -29,7 +35,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentToolsPanel',
+    title: 'Components/Agents/AgentToolsPanel',
     component: AgentToolsPanel,
     tags: ['autodocs'],
     // user.role=admin opens the `tools.update` gate so the drag affordance renders.

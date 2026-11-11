@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import ResourcePickerField from '$lib/components/scheduling/ResourcePickerField.svelte';
 
@@ -17,7 +17,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Forms/ResourcePickerField',
+    title: 'Components/Forms/ResourcePickerField',
     component: ResourcePickerField,
     tags: ['autodocs'],
     args: { resources, value: [] },

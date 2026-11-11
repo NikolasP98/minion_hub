@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import { Copy, Pencil, RotateCcw, ThumbsDown, ThumbsUp, Trash2, Volume2 } from 'lucide-svelte';
@@ -18,7 +18,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Chat/MessageActions',
+    title: 'Components/Chat/MessageActions',
     component: MessageActions,
     tags: ['autodocs'],
     argTypes: {

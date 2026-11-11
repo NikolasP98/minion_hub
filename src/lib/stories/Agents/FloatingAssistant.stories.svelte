@@ -1,8 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import FloatingAssistant from '$lib/components/layout/FloatingAssistant.svelte';
   import { closeAssistant, openAssistant } from '$lib/state/features/assistant.svelte';
   import { agentChat, ensureAgentChat } from '$lib/state/chat/chat.svelte';
+  import type { AgentChatState, ChatMessage } from '$lib/types/chat';
   import { conn } from '$lib/state/gateway/connection.svelte';
 
   // The personal agent id and the viewer come from page.data (server load in the app).
@@ -12,7 +13,7 @@
     user: { displayName: 'Nikolas Perez', role: 'admin' },
   };
   const t0 = Date.now() - 5 * 60_000;
-  const thread = [
+  const thread: ChatMessage[] = [
     { role: 'user', content: 'How many bookings do I have tomorrow morning?', timestamp: t0 },
     {
       role: 'assistant',
@@ -38,7 +39,7 @@
   ];
 
   // Chat/connection state is global; every story resets it and then seeds its own.
-  const seed = (patch) => async () => {
+  const seed = (patch?: () => void) => async () => {
     closeAssistant();
     Object.assign(conn, { connected: false, connecting: false });
     delete agentChat[ID];
@@ -50,7 +51,7 @@
     patch?.();
   };
   const open =
-    (chatPatch, connected = true) =>
+    (chatPatch?: Partial<AgentChatState>, connected = true) =>
     () => {
       Object.assign(ensureAgentChat(ID), { messages: thread }, chatPatch);
       conn.connected = connected;
@@ -58,7 +59,7 @@
     };
 
   const { Story } = defineMeta({
-    title: 'Agents/FloatingAssistant',
+    title: 'Components/Agents/FloatingAssistant',
     component: FloatingAssistant,
     tags: ['autodocs'],
     parameters: {

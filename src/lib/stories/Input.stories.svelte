@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Input } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Input',
+    title: 'Atoms/Inputs/Input',
     component: Input,
     tags: ['autodocs'],
     argTypes: {
@@ -16,6 +16,8 @@
     },
     args: { label: 'Name', placeholder: 'Jane Doe', size: 'md', disabled: false, required: false },
   });
+
+  const sizes = ['sm', 'md', 'lg', 'touch'] as const;
 </script>
 
 <Story name="Default">
@@ -45,11 +47,7 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex flex-col gap-3">
-      {#each ['sm', 'md', 'lg', 'touch'] as s (s)}<Input
-          label={s}
-          size={s}
-          placeholder={s}
-        />{/each}
+      {#each sizes as s (s)}<Input label={s} size={s} placeholder={s} />{/each}
     </div>
   {/snippet}
 </Story>

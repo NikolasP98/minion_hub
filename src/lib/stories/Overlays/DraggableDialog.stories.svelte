@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import DraggableDialog from '$lib/components/ui/DraggableDialog.svelte';
   import { Button } from '$lib/components/ui';
 
   const { Story } = defineMeta({
-    title: 'Overlays/DraggableDialog',
+    title: 'Atoms/Overlays/DraggableDialog',
     component: DraggableDialog,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '480px' } } },
@@ -27,13 +27,13 @@
   });
 </script>
 
-<script>
+<script lang="ts">
   // Interactive window: the host owns position/fullscreen, the dialog reports.
   let win = $state({ open: false, x: 48, y: 48, fullscreen: false });
 </script>
 
 <Story name="Open">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <DraggableDialog {...args}>
       <div class="p-4 text-sm text-muted-foreground">Drag me by the title bar.</div>
     </DraggableDialog>
@@ -41,7 +41,7 @@
 </Story>
 
 <Story name="Fullscreen" args={{ fullscreen: true }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <DraggableDialog {...args}>
       <div class="p-4 text-sm text-muted-foreground">Fills the viewport; no drag.</div>
     </DraggableDialog>
@@ -49,7 +49,7 @@
 </Story>
 
 <Story name="Resizable" args={{ resizable: true, title: 'Flow canvas' }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <DraggableDialog {...args}>
       <div class="p-4 text-sm text-muted-foreground">Native corner grip resizes this window.</div>
     </DraggableDialog>
@@ -60,7 +60,7 @@
   name="Long title"
   args={{ title: 'A very long window title that truncates once it runs out of room in the bar' }}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <DraggableDialog {...args}>
       <div class="p-4 text-sm">Title truncates.</div>
     </DraggableDialog>
@@ -68,7 +68,7 @@
 </Story>
 
 <Story name="Stacked windows">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <DraggableDialog {...args} title="Window A" z={1} x={24} y={24}>
       <div class="p-4 text-sm">Behind</div>
     </DraggableDialog>
@@ -104,7 +104,7 @@
 
 <!-- Responsive: the default width is min(760px, 92vw), so the window shrinks to 92vw on a phone. -->
 <Story name="Open · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <DraggableDialog {...args}>
       <div class="p-4 text-sm text-muted-foreground">92vw wide on a phone.</div>
     </DraggableDialog>

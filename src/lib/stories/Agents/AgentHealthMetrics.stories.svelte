@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentHealthMetrics from '$lib/components/agents/AgentHealthMetrics.svelte';
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentHealthMetrics',
+    title: 'Components/Agents/AgentHealthMetrics',
     component: AgentHealthMetrics,
     tags: ['autodocs'],
     args: {

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import TagFilter from '$lib/components/tags/TagFilter.svelte';
@@ -16,7 +16,7 @@
     'promo-2026',
     'lapsed',
   ];
-  const tags = (n) =>
+  const tags = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       id: `t${i}`,
       name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
@@ -25,7 +25,7 @@
 
   // The popover's open state is internal: click the trigger to see the list.
   const { Story } = defineMeta({
-    title: 'Tags/TagFilter',
+    title: 'Components/Tags/TagFilter',
     component: TagFilter,
     tags: ['autodocs'],
     argTypes: {
@@ -35,7 +35,7 @@
     args: {
       scope: 'event',
       tags: tags(6),
-      selected: new Set(),
+      selected: new Set<string>(),
       onselect: fn(),
       ontagschange: fn(),
     },

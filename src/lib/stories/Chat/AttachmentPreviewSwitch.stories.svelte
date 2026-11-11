@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AttachmentPreviewSwitch from '$lib/components/attachments/AttachmentPreviewSwitch.svelte';
   import AttachmentTile from '$lib/components/attachments/AttachmentTile.svelte';
@@ -8,7 +8,7 @@
   const svg = `data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="hsl(210 60% 55%)"/></svg>')}`;
 
   const { Story } = defineMeta({
-    title: 'Chat/AttachmentPreviewSwitch',
+    title: 'Components/Chat/AttachmentPreviewSwitch',
     component: AttachmentPreviewSwitch,
     tags: ['autodocs'],
   });

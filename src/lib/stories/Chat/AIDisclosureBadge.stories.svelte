@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AIDisclosureBadge from '$lib/components/chat/AIDisclosureBadge.svelte';
 
   // Collapse state is remembered in sessionStorage; clear it to see the expanded badge again.
   const { Story } = defineMeta({
-    title: 'Chat/AIDisclosureBadge',
+    title: 'Components/Chat/AIDisclosureBadge',
     component: AIDisclosureBadge,
     tags: ['autodocs'],
   });

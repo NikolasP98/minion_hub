@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import AiApproval from '$lib/components/ai/AiApproval.svelte';
@@ -12,7 +12,7 @@
     'The agent found 14 bookings next week whose contacts have no confirmation on record. It wants to send each of them a WhatsApp reminder from the clinic number, in Spanish, using the standard template with the practitioner name and arrival time. Two of the contacts opted out of marketing messages but not of appointment notices. How should it proceed?';
 
   const { Story } = defineMeta({
-    title: 'AI/AiApproval',
+    title: 'Components/AI/AiApproval',
     component: AiApproval,
     tags: ['autodocs'],
     args: { question: 'Send 14 appointment reminders?', options, onDecide: fn() },

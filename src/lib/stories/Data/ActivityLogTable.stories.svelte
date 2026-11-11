@@ -36,7 +36,7 @@
   const events = makeEvents(40);
 
   const { Story } = defineMeta({
-    title: 'Data/ActivityLogTable',
+    title: 'Components/Data/ActivityLogTable',
     component: ActivityLogTable,
     tags: ['autodocs'],
     argTypes: { searchable: { control: 'boolean' }, showTimeline: { control: 'boolean' } },

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
@@ -17,7 +17,7 @@
   }));
 
   const { Story } = defineMeta({
-    title: 'Cards/EditableGrid',
+    title: 'Components/Cards/EditableGrid',
     component: EditableGrid,
     tags: ['autodocs'],
     argTypes: {
@@ -29,7 +29,7 @@
   });
 </script>
 
-{#snippet cell(id)}
+{#snippet cell(id: string)}
   <article
     class="h-full p-3 border border-border rounded-[var(--radius-md)] bg-surface-1 text-foreground"
   >

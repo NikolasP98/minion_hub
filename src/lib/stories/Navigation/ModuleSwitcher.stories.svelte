@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import { fn } from 'storybook/test';
   import ModuleSwitcher from '$lib/components/layout/ModuleSwitcher.svelte';
 
@@ -11,7 +12,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Navigation/ModuleSwitcher',
+    title: 'Components/Navigation/ModuleSwitcher',
     component: ModuleSwitcher,
     tags: ['autodocs'],
     parameters: {
@@ -22,7 +23,7 @@
     args: { collapsed: false, busy: false, onExpand: fn() },
   });
 
-  const open = async ({ canvas, userEvent }) => {
+  const open: NonNullable<ComponentProps<typeof Story>['play']> = async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getAllByRole('button')[0]);
   };
 </script>

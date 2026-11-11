@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   // Shared primitive from @minion-stack/ui — the variants the hub actually ships.
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Button } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Shared/Button',
+    title: 'Atoms/Actions/Button',
     component: Button,
     tags: ['autodocs'],
     argTypes: {

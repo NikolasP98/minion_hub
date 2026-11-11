@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
   import AgentMemoryPanel from '$lib/components/agents/AgentMemoryPanel.svelte';
@@ -8,7 +8,7 @@
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentMemoryPanel',
+    title: 'Components/Agents/AgentMemoryPanel',
     component: AgentMemoryPanel,
     tags: ['autodocs'],
     args: { agentId: 'panik' },

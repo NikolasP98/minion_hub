@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { PlayFunction } from 'storybook/internal/types';
   import ShortcutsOverlay from '$lib/components/layout/ShortcutsOverlay.svelte';
   import CommandPalette from '$lib/components/layout/CommandPalette.svelte';
   import GNav from '$lib/components/layout/GNav.svelte';
@@ -7,7 +8,7 @@
   // No `open` prop: the cheat-sheet toggles on `?`. Live rows come from whatever
   // hotkeys are registered, so the palette + g-nav are mounted alongside.
   const { Story } = defineMeta({
-    title: 'Overlays/ShortcutsOverlay',
+    title: 'Components/Overlays/ShortcutsOverlay',
     component: ShortcutsOverlay,
     tags: ['autodocs'],
     parameters: {
@@ -26,7 +27,7 @@
     },
   });
 
-  const pressQuestionMark = async ({ userEvent }) => {
+  const pressQuestionMark: PlayFunction = async ({ userEvent }) => {
     await userEvent.keyboard('{Shift>}?{/Shift}');
   };
 </script>

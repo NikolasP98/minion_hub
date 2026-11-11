@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import CustomerPicker from '$lib/components/pos/CustomerPicker.svelte';
 
   // Search inside the picker hits `/api/crm/...` (unavailable here); the rail
   // states below are prop-driven.
   const { Story } = defineMeta({
-    title: 'Forms/CustomerPicker',
+    title: 'Components/Forms/CustomerPicker',
     component: CustomerPicker,
     tags: ['autodocs'],
     argTypes: { required: { control: 'boolean' }, label: { control: 'text' } },

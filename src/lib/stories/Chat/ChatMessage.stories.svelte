@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import ChatMessage from '$lib/components/chat/ChatMessage.svelte';
 
   const ts = Date.parse('2026-11-08T10:42:00');
-  const user = (text) => ({ role: 'user', content: text, timestamp: ts });
-  const assistant = (content) => ({ role: 'assistant', content, timestamp: ts + 60_000 });
+  const user = (content: unknown) => ({ role: 'user', content, timestamp: ts });
+  const assistant = (content: unknown) => ({ role: 'assistant', content, timestamp: ts + 60_000 });
   const markdown =
     '## Next week\n\n| Day | Time | Contact |\n|---|---|---|\n| Tue | 10:00 | Ana Torres |\n| Wed | 15:30 | Luis Paredes |\n\n- Friday moved to **Monday**\n- Nothing cancelled\n\nSee [the calendar](/scheduling) for details.';
   const withTools = [
@@ -24,7 +24,7 @@
   const long = 'A long assistant reply. '.repeat(80);
 
   const { Story } = defineMeta({
-    title: 'Chat/ChatMessage',
+    title: 'Components/Chat/ChatMessage',
     component: ChatMessage,
     tags: ['autodocs'],
     argTypes: { streaming: { control: 'boolean' }, error: { control: 'boolean' } },

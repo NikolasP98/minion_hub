@@ -1,6 +1,7 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiSources from '$lib/components/ai/AiSources.svelte';
+  import type { AISource } from '$lib/components/ai/sources';
 
   const HOSTS = [
     'sunat.gob.pe',
@@ -11,16 +12,16 @@
     'gob.pe',
     'who.int',
   ];
-  const source = (i, title) => ({
+  const source = (i: number, title?: string): AISource => ({
     url: `https://${HOSTS[i % HOSTS.length]}/articles/${i + 1}`,
     host: HOSTS[i % HOSTS.length],
     title: title ?? `Reference article ${i + 1}`,
     snippet: i % 2 ? `A short excerpt that the model relied on for claim ${i + 1}.` : undefined,
   });
-  const sources = (n) => Array.from({ length: n }, (_, i) => source(i));
+  const sources = (n: number) => Array.from({ length: n }, (_, i) => source(i));
 
   const { Story } = defineMeta({
-    title: 'AI/AiSources',
+    title: 'Components/AI/AiSources',
     component: AiSources,
     tags: ['autodocs'],
     args: { sources: sources(3) },

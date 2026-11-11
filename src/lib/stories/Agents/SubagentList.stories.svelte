@@ -1,12 +1,13 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import SubagentList from '$lib/components/agents/SubagentList.svelte';
-  import { subagentState } from '$lib/state/features/subagent-data.svelte';
+  import { subagentState, type SubagentSession } from '$lib/state/features/subagent-data.svelte';
   import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
   import { AGENT_ID, running, nested, many, piEntries, orchestration } from './subagent-fixtures';
 
   // The list reads the subagent store (no data props); each story seeds it.
-  const seed = (sessions, patch) => async () => {
+  const seed = (sessions: SubagentSession[], patch?: Partial<typeof subagentState>) => async () => {
     Object.assign(
       subagentState,
       { agentId: AGENT_ID, sessions, selectedKey: null, loading: false, error: null },
@@ -15,18 +16,21 @@
     piAgentState.subagents = [];
     piAgentState.orchestrations = [];
   };
-  const view = (sessions, label) => async (ctx) => {
-    await seed(sessions)();
-    piAgentState.subagents = piEntries;
-    piAgentState.orchestrations = [orchestration];
-    await ctx.userEvent.click(ctx.canvas.getByRole('button', { name: label }));
-  };
+  const view =
+    (sessions: SubagentSession[], label: string): Play =>
+    async (ctx) => {
+      await seed(sessions)();
+      piAgentState.subagents = piEntries;
+      piAgentState.orchestrations = [orchestration];
+      await ctx.userEvent.click(ctx.canvas.getByRole('button', { name: label }));
+    };
 
   const { Story } = defineMeta({
-    title: 'Agents/SubagentList',
+    title: 'Components/Agents/SubagentList',
     component: SubagentList,
     tags: ['autodocs'],
   });
+  type Play = NonNullable<ComponentProps<typeof Story>['play']>;
 </script>
 
 <Story name="Zero subagents" play={seed([])}>

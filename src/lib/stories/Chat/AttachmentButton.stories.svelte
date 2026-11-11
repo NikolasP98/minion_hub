@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import AttachmentButton from '$lib/components/attachments/AttachmentButton.svelte';
@@ -6,7 +6,7 @@
   // Pick-only mode (`onpick`, no `objectId`): files are validated and handed back,
   // never uploaded. The upload progress/failed states need a live API — not shown here.
   const { Story } = defineMeta({
-    title: 'Chat/AttachmentButton',
+    title: 'Components/Chat/AttachmentButton',
     component: AttachmentButton,
     tags: ['autodocs'],
     argTypes: {

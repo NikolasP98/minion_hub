@@ -1,17 +1,17 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import EmptyState from '$lib/components/prompt/EmptyState.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
   import { promptSections } from '$lib/state/features/prompt-sections.svelte';
 
   // The embedded AgentSelector reads the gateway agent list + prompt-sections store.
-  const seed = (list) => async () => {
+  const seed = (list: typeof gw.agents) => async () => {
     gw.agents = list;
     promptSections.agentId = null;
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/PromptEmptyState',
+    title: 'Components/Agents/PromptEmptyState',
     component: EmptyState,
     tags: ['autodocs'],
     parameters: {

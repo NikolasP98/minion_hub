@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Sidebar from '$lib/components/layout/Sidebar.svelte';
 
@@ -32,7 +32,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Navigation/Sidebar',
+    title: 'Components/Navigation/Sidebar',
     component: Sidebar,
     tags: ['autodocs'],
     parameters: { sveltekit_experimental: { state: { page: { data: pageData } } } },
@@ -48,7 +48,7 @@
 <Story
   name="Collapsed rail"
   play={async ({ canvasElement }) => {
-    canvasElement.querySelector('.collapse-btn')?.click();
+    canvasElement.querySelector<HTMLElement>('.collapse-btn')?.click();
   }}
 >
   {#snippet template()}

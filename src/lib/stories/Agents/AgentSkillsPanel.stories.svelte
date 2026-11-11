@@ -1,9 +1,15 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentSkillsPanel from '$lib/components/agents/AgentSkillsPanel.svelte';
   import { agentSkillsState } from '$lib/state/agents/agent-skills.svelte';
+  import type { SkillStatusEntry } from '$lib/types/skills';
 
-  const skill = (skillKey, name, description, extra = {}) => ({
+  const skill = (
+    skillKey: string,
+    name: string,
+    description: string,
+    extra: Partial<SkillStatusEntry> = {},
+  ): SkillStatusEntry => ({
     skillKey,
     name,
     description,
@@ -46,7 +52,7 @@
   ];
 
   // The panel loads via the gateway on mount (which fails here); each story seeds the store afterwards.
-  const seed = (patch) => async () => {
+  const seed = (patch?: Partial<typeof agentSkillsState>) => async () => {
     Object.assign(
       agentSkillsState,
       { skills: [], agentFilter: null, loading: false, saving: false, error: null },
@@ -55,7 +61,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentSkillsPanel',
+    title: 'Components/Agents/AgentSkillsPanel',
     component: AgentSkillsPanel,
     tags: ['autodocs'],
     // user.role=admin opens the `agents.skills.set` gate so the toggles render.

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import AssistChoice from '$lib/components/assistant/AssistChoice.svelte';
@@ -10,7 +10,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'AI/AssistChoice',
+    title: 'Components/AI/AssistChoice',
     component: AssistChoice,
     tags: ['autodocs'],
     args: { question: 'Do you want to learn this, or should I do it?', options, onPick: fn() },

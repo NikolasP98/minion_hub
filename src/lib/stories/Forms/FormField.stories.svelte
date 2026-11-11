@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { FormField, Input, Textarea, Select, Checkbox, Toggle } from '@minion-stack/ui';
 
@@ -9,7 +9,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Forms/FormField',
+    title: 'Atoms/Inputs/FormField',
     component: FormField,
     tags: ['autodocs'],
     argTypes: {

@@ -1,15 +1,15 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { untrack } from 'svelte';
   import AssistGuide from '$lib/components/assistant/AssistGuide.svelte';
-  import { startGuide, endGuide } from '$lib/assistant/guide.svelte';
+  import { startGuide, endGuide, type GuideStep } from '$lib/assistant/guide.svelte';
   import { Button, Input } from '$lib/components/ui';
 
   // AssistGuide reads the module-level `guide` state; each story starts a walkthrough
   // against the demo page below (targets are `data-assist` keys) and ends it on unmount.
   // untrack: startGuide reads guide.steps after writing it, so a tracked call would make
   // this attachment depend on the state it sets and restart the guide in a loop.
-  const start = (steps) => () => {
+  const start = (steps: GuideStep[]) => () => {
     untrack(() => startGuide(steps));
     return endGuide;
   };
@@ -23,7 +23,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'AI/AssistGuide',
+    title: 'Components/AI/AssistGuide',
     component: AssistGuide,
     tags: ['autodocs'],
   });

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { Bell } from 'lucide-svelte';
   import NotificationsPopup from '$lib/components/layout/NotificationsPopup.svelte';
@@ -7,7 +7,7 @@
   // The popup fetches /api/join-requests, /api/inbox and pulse itself; there is
   // no API in Storybook, so the open state shows the empty inbox.
   const { Story } = defineMeta({
-    title: 'Overlays/NotificationsPopup',
+    title: 'Components/Overlays/NotificationsPopup',
     component: NotificationsPopup,
     tags: ['autodocs'],
     parameters: {

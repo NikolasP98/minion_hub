@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { PlayFunction } from 'storybook/internal/types';
   import MultiSelectFilter from '$lib/components/ui/MultiSelectFilter.svelte';
 
   const options = [
@@ -12,22 +13,22 @@
   const plain = options.map(({ value, label }) => ({ value, label }));
 
   const { Story } = defineMeta({
-    title: 'Overlays/MultiSelectFilter',
+    title: 'Atoms/Inputs/MultiSelectFilter',
     component: MultiSelectFilter,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '280px' } } },
     args: { label: 'Status', options, allLabel: 'All statuses' },
   });
 
-  const open = async ({ canvas, userEvent }) => {
+  const open: PlayFunction = async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getAllByRole('button')[0]);
   };
 </script>
 
-<script>
+<script lang="ts">
   // Presentational: selection lives in the parent.
   let selected = $state(new Set(['confirmed', 'paid']));
-  function toggle(v) {
+  function toggle(v: string) {
     selected = new Set(selected.has(v) ? [...selected].filter((x) => x !== v) : [...selected, v]);
   }
 </script>

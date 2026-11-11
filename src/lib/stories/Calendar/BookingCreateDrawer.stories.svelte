@@ -36,7 +36,7 @@
   // Opens when `target` is non-null. Submitting posts to `bookEndpoint`, which
   // Storybook does not serve, so the form's request-failed state shows.
   const { Story } = defineMeta({
-    title: 'Calendar/BookingCreateDrawer',
+    title: 'Components/Calendar/BookingCreateDrawer',
     component: BookingCreateDrawer,
     tags: ['autodocs'],
     args: {

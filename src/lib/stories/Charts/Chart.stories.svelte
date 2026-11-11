@@ -1,6 +1,7 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
+  import type { EChartsOption } from 'echarts';
   import Chart from '$lib/components/charts/Chart.svelte';
 
   const months = [
@@ -19,10 +20,13 @@
   ];
   const sales = [120, 200, 150, 80, 70, 110, 130, 180, 210, 160, 140, 190];
   const returns = [20, 35, 18, 12, 9, 22, 25, 30, 41, 28, 19, 33];
-  const axis = { xAxis: { type: 'category', data: months }, yAxis: { type: 'value' } };
+  const axis = {
+    xAxis: { type: 'category', data: months },
+    yAxis: { type: 'value' },
+  } satisfies EChartsOption;
 
   const { Story } = defineMeta({
-    title: 'Charts/Chart',
+    title: 'Components/Charts/Chart',
     component: Chart,
     tags: ['autodocs'],
     argTypes: { height: { control: 'text' } },
@@ -230,7 +234,7 @@
       tooltip: { trigger: 'axis' },
       legend: { type: 'scroll' },
       series: Array.from({ length: 10 }, (_, s) => ({
-        type: 'line',
+        type: 'line' as const,
         name: `Branch ${s + 1}`,
         data: sales.map((v, i) => Math.round(v * (0.4 + ((s * 7 + i * 3) % 10) / 10))),
       })),

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Toaster from '$lib/components/layout/Toaster.svelte';
   import { Button } from '$lib/components/ui';
@@ -14,7 +14,7 @@
   // Toaster reads the global zag store; each story seeds it in `play`.
   // ToastItem is only reachable through Toaster (needs the group service), so it is covered here.
   const { Story } = defineMeta({
-    title: 'Overlays/Toaster',
+    title: 'Components/Overlays/Toaster',
     component: Toaster,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '320px' } } },
@@ -24,7 +24,7 @@
   function reset() {
     for (const t of toaster.getVisibleToasts()) toaster.remove(t.id);
   }
-  const seed = (fn) => async () => {
+  const seed = (fn: () => void) => async () => {
     reset();
     fn();
   };

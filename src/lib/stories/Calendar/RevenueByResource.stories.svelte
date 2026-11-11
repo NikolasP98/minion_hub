@@ -9,7 +9,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Calendar/RevenueByResource',
+    title: 'Components/Calendar/RevenueByResource',
     component: RevenueByResource,
     tags: ['autodocs'],
     args: { revenue },

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SessionViewer from '$lib/components/sessions/SessionViewer.svelte';
 
@@ -16,7 +16,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Sessions/SessionViewer',
+    title: 'Components/Sessions/SessionViewer',
     component: SessionViewer,
     tags: ['autodocs'],
     args: { serverId: null, sessionKey: null, session: null },

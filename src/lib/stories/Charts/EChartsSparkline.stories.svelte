@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import EChartsSparkline from '$lib/components/charts/EChartsSparkline.svelte';
   import { ACCENT_OPTIONS } from '$lib/themes/presets';
@@ -15,7 +15,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Charts/EChartsSparkline',
+    title: 'Components/Charts/EChartsSparkline',
     component: EChartsSparkline,
     tags: ['autodocs'],
     argTypes: {

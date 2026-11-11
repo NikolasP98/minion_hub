@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Sparkline from '$lib/components/charts/Sparkline.svelte';
 
@@ -15,7 +15,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Charts/Sparkline',
+    title: 'Components/Charts/Sparkline',
     component: Sparkline,
     tags: ['autodocs'],
     argTypes: { glow: { control: 'boolean' }, color: { control: 'text' } },

@@ -1,10 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import EditableName from '$lib/components/users/EditableName.svelte';
 
   // Double-click the name (or hover for the pencil) to edit; Enter/blur commits, Escape cancels.
   const { Story } = defineMeta({
-    title: 'Forms/EditableName',
+    title: 'Components/Forms/EditableName',
     component: EditableName,
     tags: ['autodocs'],
     argTypes: { placeholder: { control: 'text' } },

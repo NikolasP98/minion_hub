@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { iconSizes } from '$lib/components/ui';
   import { fn } from 'storybook/test';
   import { Star } from 'lucide-svelte';
-  import TagChip from '$lib/components/tags/TagChip.svelte';
+  import TagChip, { type TagChipOrigin } from '$lib/components/tags/TagChip.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
 
   const names = [
@@ -23,8 +23,10 @@
     color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
   }));
 
+  const origins: TagChipOrigin[] = ['own', 'contact', 'product', 'ingredient'];
+
   const { Story } = defineMeta({
-    title: 'Tags/TagChip',
+    title: 'Components/Tags/TagChip',
     component: TagChip,
     tags: ['autodocs'],
     argTypes: {
@@ -69,11 +71,7 @@
 <Story name="Origins">
   {#snippet template(args)}
     <div class="flex flex-wrap gap-2">
-      {#each ['own', 'contact', 'product', 'ingredient'] as origin (origin)}<TagChip
-          {...args}
-          name={origin}
-          {origin}
-        />{/each}
+      {#each origins as origin (origin)}<TagChip {...args} name={origin} {origin} />{/each}
     </div>
   {/snippet}
 </Story>

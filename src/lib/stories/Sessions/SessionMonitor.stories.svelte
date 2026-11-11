@@ -1,14 +1,24 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SessionMonitor from '$lib/components/sessions/SessionMonitor.svelte';
+  import type { ChatMessage } from '$lib/types/chat';
   import { agentChat, ensureAgentChat } from '$lib/state/chat/chat.svelte';
 
   const AGENT = 'panik';
   const MAIN = `agent:${AGENT}:main`;
   const t0 = Date.now() - 90_000;
-  const use = (id, name, input) => ({ type: 'tool_use', id, name, input });
-  const result = (id, content) => ({ type: 'tool_result', tool_use_id: id, content });
-  const completedRun = [
+  const use = (id: string, name: string, input: Record<string, unknown>) => ({
+    type: 'tool_use',
+    id,
+    name,
+    input,
+  });
+  const result = (id: string, content: string) => ({
+    type: 'tool_result',
+    tool_use_id: id,
+    content,
+  });
+  const completedRun: ChatMessage[] = [
     { role: 'user', content: 'Find last week’s invoices and total them', timestamp: t0 },
     {
       role: 'assistant',
@@ -44,7 +54,7 @@
       timestamp: t0 + 19_000,
     },
   ];
-  const runningRun = [
+  const runningRun: ChatMessage[] = [
     { role: 'user', content: 'Reconcile the cash drawer', timestamp: t0 + 60_000 },
     {
       role: 'assistant',
@@ -54,13 +64,13 @@
   ];
 
   // The main session reads agentChat; any other key is fetched (fails here → error state).
-  const seed = (messages) => async () => {
+  const seed = (messages: ChatMessage[]) => async () => {
     delete agentChat[AGENT];
     ensureAgentChat(AGENT).messages = messages;
   };
 
   const { Story } = defineMeta({
-    title: 'Sessions/SessionMonitor',
+    title: 'Components/Sessions/SessionMonitor',
     component: SessionMonitor,
     tags: ['autodocs'],
     args: { agentId: AGENT, sessionKey: MAIN, serverId: null },

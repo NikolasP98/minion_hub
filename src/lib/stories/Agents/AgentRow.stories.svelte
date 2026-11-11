@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import AgentRow from '$lib/components/agents/AgentRow.svelte';
@@ -19,7 +19,7 @@
   );
 
   // Status is read from the chat/gateway stores, not props — each story seeds them.
-  const seed = (patch) => async () => {
+  const seed = (patch?: () => void) => async () => {
     delete agentActivity[agent.id];
     delete agentChat[agent.id];
     gw.sessions.length = 0;
@@ -44,7 +44,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentRow',
+    title: 'Components/Agents/AgentRow',
     component: AgentRow,
     tags: ['autodocs'],
     argTypes: { selected: { control: 'boolean' }, compact: { control: 'boolean' } },

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import DetailHeader from '$lib/components/layout/DetailHeader.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -11,7 +11,7 @@
   };
 
   // Session counts are read from global state; each story seeds them.
-  const seed = (statuses) => async () => {
+  const seed = (statuses: typeof ui.sessionStatus) => async () => {
     gw.sessions = Object.keys(statuses).map((sessionKey, i) => ({
       sessionKey,
       updatedAt: Date.now() - i * 1000,
@@ -20,7 +20,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Overlays/DetailHeader',
+    title: 'Components/Overlays/DetailHeader',
     component: DetailHeader,
     tags: ['autodocs'],
     args: { agentId: 'panik', agent },

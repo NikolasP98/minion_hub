@@ -14,7 +14,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Calendar/CalendarWindowIssues',
+    title: 'Components/Calendar/CalendarWindowIssues',
     component: CalendarWindowIssues,
     tags: ['autodocs'],
     args: { windows: [w('2026-09-07', 'error')], onretry: fn() },

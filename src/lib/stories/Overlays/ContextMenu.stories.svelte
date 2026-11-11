@@ -1,8 +1,8 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import { CreditCard, Scissors, CalendarX, Palette, Eye, Copy, Trash2 } from 'lucide-svelte';
-  import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+  import ContextMenu, { type ContextMenuItem } from '$lib/components/ui/ContextMenu.svelte';
 
   const items = [
     { id: 'charge', label: 'Charge', icon: CreditCard },
@@ -25,7 +25,7 @@
     { id: 'unschedule', label: 'Unschedule', icon: CalendarX, danger: true },
   ];
 
-  const choices = [
+  const choices: ContextMenuItem[] = [
     {
       id: 'color-service',
       label: 'Colour by service',
@@ -45,7 +45,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Overlays/ContextMenu',
+    title: 'Atoms/Overlays/ContextMenu',
     component: ContextMenu,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '280px' } } },
@@ -53,9 +53,9 @@
   });
 </script>
 
-<script>
+<script lang="ts">
   // The host owns open/closed: it mounts the menu only while a point is set.
-  let at = $state(null);
+  let at = $state<{ x: number; y: number } | null>(null);
 </script>
 
 <Story name="Open">

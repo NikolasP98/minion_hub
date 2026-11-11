@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import ShiftBanner from '$lib/components/pos/ShiftBanner.svelte';
 
@@ -14,8 +14,8 @@
     user: { role: 'user' },
     permissions: { permissions: ['pos:edit', 'pos:view'] },
   };
-  const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString();
-  const open = (h, summary = {}) => ({
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
+  const open = (h: number, summary: Record<string, unknown> = {}) => ({
     shift: { id: 'sh-1', openedAt: hoursAgo(h), openingFloat: { cash: 200 } },
     summary: {
       ticketCount: 14,
@@ -25,7 +25,7 @@
       ...summary,
     },
   });
-  const pageData = (data) => ({
+  const pageData = (data: Record<string, unknown>) => ({
     sveltekit_experimental: {
       state: {
         page: {
@@ -36,7 +36,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Cards/ShiftBanner',
+    title: 'Components/Cards/ShiftBanner',
     component: ShiftBanner,
     tags: ['autodocs'],
   });

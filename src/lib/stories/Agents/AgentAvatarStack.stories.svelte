@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentAvatarStack from '$lib/components/prompt/AgentAvatarStack.svelte';
 
@@ -14,7 +14,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentAvatarStack',
+    title: 'Components/Agents/AgentAvatarStack',
     component: AgentAvatarStack,
     tags: ['autodocs'],
     argTypes: { max: { control: 'number' }, size: { control: 'number' } },

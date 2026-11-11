@@ -15,7 +15,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Calendar/AvailabilityEditor',
+    title: 'Components/Calendar/AvailabilityEditor',
     component: AvailabilityEditor,
     tags: ['autodocs'],
     args: { resourceId: 'r-ana', schedule },

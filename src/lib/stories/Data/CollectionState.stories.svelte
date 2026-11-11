@@ -5,7 +5,7 @@
   import { Button } from '@minion-stack/ui';
 
   const { Story } = defineMeta({
-    title: 'Data/CollectionState',
+    title: 'Components/Data/CollectionState',
     component: CollectionState,
     tags: ['autodocs'],
     argTypes: {

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { iconSizes } from '$lib/components/ui';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -6,7 +6,7 @@
   import { ArrowLeft, Ellipsis } from 'lucide-svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/PageHeader',
+    title: 'Atoms/Layout/PageHeader',
     component: PageHeader,
     tags: ['autodocs'],
     argTypes: { sticky: { control: 'boolean' } },

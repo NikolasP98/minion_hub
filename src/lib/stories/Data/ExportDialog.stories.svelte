@@ -15,7 +15,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/ExportDialog',
+    title: 'Components/Data/ExportDialog',
     component: ExportDialog,
     tags: ['autodocs'],
     argTypes: { count: { control: 'number' } },

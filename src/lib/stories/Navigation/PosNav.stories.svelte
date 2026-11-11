@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import PosNav from '$lib/components/pos/PosNav.svelte';
 
@@ -14,14 +14,14 @@
     openShifts: [],
     openerName: null,
   };
-  const data = (d) => ({
+  const data = (d: Partial<typeof base>) => ({
     sveltekit_experimental: {
       state: { page: { data: { ...base, ...d }, url: new URL('http://localhost/pos/sell') } },
     },
   });
 
   const { Story } = defineMeta({
-    title: 'Navigation/PosNav',
+    title: 'Components/Navigation/PosNav',
     component: PosNav,
     tags: ['autodocs'],
     parameters: data({}),

@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import CustomerQuickAdd from '$lib/components/pos/CustomerQuickAdd.svelte';
 
   // Submitting POSTs to `/api/crm/...`, which fails in Storybook and shows the inline error.
   const { Story } = defineMeta({
-    title: 'Forms/CustomerQuickAdd',
+    title: 'Components/Forms/CustomerQuickAdd',
     component: CustomerQuickAdd,
     tags: ['autodocs'],
     argTypes: { initialQuery: { control: 'text' } },

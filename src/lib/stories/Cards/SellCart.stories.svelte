@@ -1,8 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import SellCart from '$lib/components/pos/SellCart.svelte';
+  import SellCart, {
+    type CartLine,
+    type SellCartSellable,
+  } from '$lib/components/pos/SellCart.svelte';
 
-  const sellable = (i, over = {}) => ({
+  const sellable = (i: number, over: Partial<SellCartSellable> = {}): SellCartSellable => ({
     productId: `p${i}`,
     code: `SKU-${100 + i}`,
     name: [
@@ -21,17 +24,17 @@
     hasMapping: true,
     ...over,
   });
-  const line = (i, over = {}) => ({
+  const line = (i: number, over: Partial<CartLine> = {}): CartLine => ({
     sellable: sellable(i),
     qty: '1',
     unitPrice: String(sellable(i).unitPrice),
     discount: '0',
     ...over,
   });
-  const lines = (n) => Array.from({ length: n }, (_, i) => line(i));
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => line(i));
 
   const { Story } = defineMeta({
-    title: 'Cards/SellCart',
+    title: 'Components/Cards/SellCart',
     component: SellCart,
     tags: ['autodocs'],
     argTypes: { readOnly: { control: 'boolean' } },

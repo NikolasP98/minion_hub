@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiConversation from '$lib/components/ai/AiConversation.svelte';
   import AiMessage from '$lib/components/ai/AiMessage.svelte';
@@ -12,15 +12,15 @@
     'Any invoices pending for those contacts?',
     'Two: INV-0412 (S/ 1,250.00, 12 days overdue) and INV-0419 (S/ 380.00, due Friday).',
   ];
-  const turn = (i) => ({
+  const turn = (i: number) => ({
     i,
     user: i % 2 === 0,
     text: `${LINES[i % LINES.length]}${i > 5 ? ` (turn ${i + 1})` : ''}`,
   });
-  const turns = (n) => Array.from({ length: n }, (_, i) => turn(i));
+  const turns = (n: number) => Array.from({ length: n }, (_, i) => turn(i));
 
   const { Story } = defineMeta({
-    title: 'AI/AiConversation',
+    title: 'Components/AI/AiConversation',
     component: AiConversation,
     tags: ['autodocs'],
     args: {
@@ -30,7 +30,7 @@
   });
 </script>
 
-<script>
+<script lang="ts">
   // "Streaming last" grows the thread on demand so the follow/pill behaviour can be seen.
   let live = $state(turns(8));
   let partial = $state('');
@@ -43,7 +43,7 @@
   };
 </script>
 
-{#snippet bubble(t, streaming = false, error = false)}
+{#snippet bubble(t: { i: number; user: boolean; text: string }, streaming = false, error = false)}
   <AiMessage
     from={t.user ? 'user' : 'assistant'}
     timestamp={`10:${String(40 + (t.i % 20)).padStart(2, '0')}`}
@@ -61,7 +61,7 @@
 {/snippet}
 
 <Story name="Empty">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <AiConversation {...args} contentKey={0}>
       <p class="m-auto t-caption text-muted-foreground">No messages yet.</p>
     </AiConversation>
@@ -69,7 +69,7 @@
 </Story>
 
 <Story name="Short 3 turns">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <AiConversation {...args} contentKey={3}>
       {#each turns(3) as t (t.i)}{@render bubble(t)}{/each}
     </AiConversation>
@@ -77,7 +77,7 @@
 </Story>
 
 <Story name="Long 40 turns scroll up for the pill">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <AiConversation {...args} contentKey={40}>
       {#each turns(40) as t (t.i)}{@render bubble(t)}{/each}
     </AiConversation>
@@ -85,7 +85,7 @@
 </Story>
 
 <Story name="Streaming last click Grow">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <div class="flex flex-col gap-2">
       <div><Button size="sm" onclick={grow}>Grow</Button></div>
       <AiConversation {...args} contentKey={`${live.length}:${partial.length}`}>
@@ -97,7 +97,7 @@
 </Story>
 
 <Story name="Error last">
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <AiConversation {...args} contentKey={6}>
       {#each turns(5) as t (t.i)}{@render bubble(t)}{/each}
       {@render bubble(
@@ -113,7 +113,7 @@
   name="Short host 160 px"
   args={{ class: 'h-40 w-full rounded-lg border border-border-default bg-canvas' }}
 >
-  {#snippet template(args)}
+  {#snippet template({ children: _children, ...args })}
     <AiConversation {...args} contentKey={12}>
       {#each turns(12) as t (t.i)}{@render bubble(t)}{/each}
     </AiConversation>

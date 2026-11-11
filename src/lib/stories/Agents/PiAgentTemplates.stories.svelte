@@ -1,10 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import PiAgentTemplates from '$lib/components/agents/PiAgentTemplates.svelte';
-  import { piAgentState } from '$lib/state/features/pi-agent-state.svelte';
+  import { piAgentState, type TemplateEntry } from '$lib/state/features/pi-agent-state.svelte';
 
   const now = Date.now();
-  const templates = [
+  const templates: TemplateEntry[] = [
     {
       name: 'researcher',
       description: 'Reads the web and the docs, returns a sourced brief.',
@@ -36,20 +37,21 @@
   ];
 
   // No loader in the component; each story seeds the pi-agent store directly.
-  const seed = (list) => async () => {
+  const seed = (list: TemplateEntry[]) => async () => {
     piAgentState.templates = list;
   };
   // Expanding fetches `templates.get` (fails here) and then renders without detail.
-  const expand = async (ctx) => {
+  const expand: Play = async (ctx) => {
     await seed(templates)();
     await ctx.userEvent.click(ctx.canvas.getByText('researcher'));
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/PiAgentTemplates',
+    title: 'Components/Agents/PiAgentTemplates',
     component: PiAgentTemplates,
     tags: ['autodocs'],
   });
+  type Play = NonNullable<ComponentProps<typeof Story>['play']>;
 </script>
 
 <Story name="Populated" play={seed(templates)}>

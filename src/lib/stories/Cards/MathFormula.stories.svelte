@@ -1,9 +1,9 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import MathFormula from '$lib/components/ui/MathFormula.svelte';
 
   const { Story } = defineMeta({
-    title: 'Cards/MathFormula',
+    title: 'Atoms/Display/MathFormula',
     component: MathFormula,
     tags: ['autodocs'],
     argTypes: { displayMode: { control: 'boolean' }, tex: { control: 'text' } },

@@ -1,13 +1,23 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import TodoChecklist from '$lib/components/my-agent/TodoChecklist.svelte';
-  import { notesState } from '$lib/state/features/agent-notes.svelte';
+  import {
+    notesState,
+    type AgentNote,
+    type NoteBlock,
+    type TodoItem,
+  } from '$lib/state/features/agent-notes.svelte';
 
   // Item edits go through the notes store by note id, so the fixtures live in the store
   // and the stories render the store's own (reactive) copies.
   const now = Date.now();
-  const todo = (id, text, done = false) => ({ id, text, done });
-  const note = (id, title, items, blocks = []) => ({
+  const todo = (id: string, text: string, done = false): TodoItem => ({ id, text, done });
+  const note = (
+    id: string,
+    title: string,
+    items: TodoItem[],
+    blocks: NoteBlock[] = [],
+  ): AgentNote => ({
     id,
     kind: blocks.length ? 'note' : 'todo',
     title,
@@ -21,7 +31,7 @@
     createdAt: now,
     updatedAt: now,
   });
-  const block = {
+  const block: Extract<NoteBlock, { type: 'todo' }> = {
     id: 'blk-1',
     type: 'todo',
     title: 'Before opening',
@@ -47,10 +57,14 @@
   ];
   for (const n of fixtures)
     if (!notesState.notes.some((x) => x.id === n.id)) notesState.notes.push(n);
-  const byId = (id) => notesState.notes.find((n) => n.id === id);
+  const byId = (id: string): AgentNote => {
+    const n = notesState.notes.find((x) => x.id === id);
+    if (!n) throw new Error(`Missing note fixture ${id}`);
+    return n;
+  };
 
   const { Story } = defineMeta({
-    title: 'Sessions/TodoChecklist',
+    title: 'Components/Sessions/TodoChecklist',
     component: TodoChecklist,
     tags: ['autodocs'],
     argTypes: { large: { control: 'boolean' } },
@@ -85,6 +99,9 @@
 <Story name="Embedded block">
   {#snippet template(args)}
     {@const n = byId('sb-todo-block')}
-    <div class="w-80"><TodoChecklist {...args} note={n} block={n.blocks[0]} /></div>
+    {@const b = n.blocks[0]}
+    <div class="w-80">
+      {#if b?.type === 'todo'}<TodoChecklist {...args} note={n} block={b} />{/if}
+    </div>
   {/snippet}
 </Story>

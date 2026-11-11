@@ -1,13 +1,20 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import { SvelteFlow } from '@xyflow/svelte';
+  import type { ComponentProps } from 'svelte';
+  import { SvelteFlow, type Edge, type Node } from '@xyflow/svelte';
   import '@xyflow/svelte/dist/style.css';
   import OrgChartNode from '$lib/components/workforce/OrgChartNode.svelte';
 
   // `Handle` needs a SvelteFlow instance in context, so every story renders a tiny flow.
   const nodeTypes = { org: OrgChartNode };
-  const node = (id, data, x = 0, y = 0) => ({ id, type: 'org', position: { x, y }, data });
-  const flow = (nodes, edges = []) => ({ nodes, edges });
+  type OrgNodeData = ComponentProps<typeof OrgChartNode>['data'];
+  const node = (id: string, data: OrgNodeData, x = 0, y = 0): Node => ({
+    id,
+    type: 'org',
+    position: { x, y },
+    data,
+  });
+  const flow = (nodes: Node[], edges: Edge[] = []) => ({ nodes, edges });
 
   const root = {
     name: 'Nikolas Petrov',
@@ -24,7 +31,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Cards/OrgChartNode',
+    title: 'Components/Cards/OrgChartNode',
     component: OrgChartNode,
     tags: ['autodocs'],
   });

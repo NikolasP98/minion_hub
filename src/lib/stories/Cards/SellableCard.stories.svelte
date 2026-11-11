@@ -1,10 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import SellableCard from '$lib/components/pos/SellableCard.svelte';
   import { SELLABLE_CARD_FIELDS } from '$lib/pos/sellable-card-fields';
 
   const allFields = SELLABLE_CARD_FIELDS.map((f) => f.key);
-  const product = {
+  const product: ComponentProps<typeof SellableCard>['row'] = {
     name: 'Hyaluronic acid filler 1 ml',
     code: 'HA-1ML',
     unitPrice: 890,
@@ -18,7 +19,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Cards/SellableCard',
+    title: 'Components/Cards/SellableCard',
     component: SellableCard,
     tags: ['autodocs'],
     argTypes: { hideEmpty: { control: 'boolean' } },

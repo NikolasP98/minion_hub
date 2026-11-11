@@ -1,9 +1,10 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import AgentSettingsNav from '$lib/components/agents/AgentSettingsNav.svelte';
+  import type { ResolvedField, ResolvedGroup } from '$lib/utils/agent-settings-schema';
 
-  const field = (key, label, isOverridden = false, help = '') => ({
+  const field = (key: string, label: string, isOverridden = false, help = ''): ResolvedField => ({
     key,
     path: `agents.list[0].${key}`,
     schema: { type: 'string' },
@@ -12,7 +13,7 @@
     defaultValue: '',
     isOverridden,
   });
-  const g = (id, label, order, fields) => ({
+  const g = (id: string, label: string, order: number, fields: ResolvedField[]): ResolvedGroup => ({
     group: { id, label, description: '', order },
     fields,
     hasValues: true,
@@ -35,7 +36,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentSettingsNav',
+    title: 'Components/Agents/AgentSettingsNav',
     component: AgentSettingsNav,
     tags: ['autodocs'],
     args: {

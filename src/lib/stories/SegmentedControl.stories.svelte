@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import { Calendar, List, LayoutGrid } from 'lucide-svelte';
@@ -15,7 +15,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Hub/SegmentedControl',
+    title: 'Atoms/Inputs/SegmentedControl',
     component: SegmentedControl,
     tags: ['autodocs'],
     argTypes: {

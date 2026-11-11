@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { iconSizes } from '$lib/components/ui';
   import { IconButton } from '@minion-stack/ui';
   import { Plus } from 'lucide-svelte';
 
   const { Story } = defineMeta({
-    title: 'Shared/IconButton',
+    title: 'Atoms/Actions/IconButton',
     component: IconButton,
     tags: ['autodocs'],
     argTypes: {
@@ -16,6 +16,8 @@
     },
     args: { label: 'Add item', variant: 'secondary', size: 'md', loading: false, disabled: false },
   });
+
+  const variants = ['primary', 'secondary', 'ghost', 'danger'] as const;
 </script>
 
 <Story name="Default">
@@ -27,7 +29,7 @@
 <Story name="Variants">
   {#snippet template()}
     <div class="flex gap-2">
-      {#each ['primary', 'secondary', 'ghost', 'danger'] as v (v)}
+      {#each variants as v (v)}
         <IconButton label={v} variant={v}
           >{#snippet icon()}<Plus size={iconSizes.md} />{/snippet}</IconButton
         >

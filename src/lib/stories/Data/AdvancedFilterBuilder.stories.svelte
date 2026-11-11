@@ -56,7 +56,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Data/AdvancedFilterBuilder',
+    title: 'Components/Data/AdvancedFilterBuilder',
     component: AdvancedFilterBuilder,
     tags: ['autodocs'],
     args: { columns, onChange: fn(), onDelete: fn() },

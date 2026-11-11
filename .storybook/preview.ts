@@ -41,6 +41,11 @@ const preview: Preview = {
     },
   },
   parameters: {
+    // Three layers: Atoms (ui primitives) → Components → Layouts (pages).
+    // Titles sort alphabetically inside each root; story order stays as written.
+    options: {
+      storySort: { method: 'alphabetical', order: ['Atoms', 'Components', 'Layouts'] },
+    },
     // Docs pages paint their own light page; the canvas option keeps inline
     // stories on the hub canvas so theme text tokens stay readable.
     backgrounds: {

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiReasoning from '$lib/components/ai/AiReasoning.svelte';
 
@@ -11,7 +11,7 @@
   ).join('\n\n');
 
   const { Story } = defineMeta({
-    title: 'AI/AiReasoning',
+    title: 'Components/AI/AiReasoning',
     component: AiReasoning,
     tags: ['autodocs'],
     argTypes: { active: { control: 'boolean' }, compact: { control: 'boolean' } },

@@ -1,9 +1,15 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import BreakdownTree from '$lib/components/prompt/BreakdownTree.svelte';
   import { promptSections } from '$lib/state/features/prompt-sections.svelte';
+  import type { SectionBreakdown, SectionLayer, SectionMeta } from '@minion-stack/shared';
 
-  const section = (id, layer, order, extra = {}) => ({
+  const section = (
+    id: string,
+    layer: SectionLayer,
+    order: number,
+    extra: Partial<SectionMeta> = {},
+  ): SectionMeta => ({
     id,
     layer,
     order,
@@ -26,7 +32,7 @@
     section('user.preferences', 'user', 0),
     section('session.context', 'session', 0, { cacheable: false, modes: ['full'] }),
   ];
-  const breakdown = sections.map((s, i) => ({
+  const breakdown: SectionBreakdown[] = sections.map((s, i) => ({
     id: s.id,
     layer: s.layer,
     order: s.order,
@@ -46,7 +52,7 @@
 
   // Reads the prompt-sections store (no data props). agentId stays null so the component
   // does not try to reload the list through the gateway on mount.
-  const seed = (patch) => async () => {
+  const seed = (patch?: Partial<typeof promptSections>) => async () => {
     Object.assign(
       promptSections,
       {
@@ -64,7 +70,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/BreakdownTree',
+    title: 'Components/Agents/BreakdownTree',
     component: BreakdownTree,
     tags: ['autodocs'],
   });

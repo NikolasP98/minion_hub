@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
   import AgentSidebar from '$lib/components/agents/AgentSidebar.svelte';
@@ -18,7 +18,7 @@
       status: 'idle',
     },
   ];
-  const seed = (patch) => async () => {
+  const seed = (patch?: () => void) => async () => {
     Object.assign(conn, { connected: false, connecting: false });
     gw.agents = [];
     ui.selectedAgentId = null;
@@ -31,7 +31,7 @@
   };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentSidebar',
+    title: 'Components/Agents/AgentSidebar',
     component: AgentSidebar,
     tags: ['autodocs'],
     parameters: {

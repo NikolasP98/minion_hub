@@ -1,10 +1,18 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import { fn } from 'storybook/test';
   import DocTimeline from '$lib/components/shared/DocTimeline.svelte';
 
-  const ago = (min) => new Date(Date.now() - min * 60_000).toISOString();
-  const comment = (id, body, actorName = 'Lucía Fernández', min = 5) => ({
+  type TimelineItem = ComponentProps<typeof DocTimeline>['items'][number];
+
+  const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  const comment = (
+    id: string,
+    body: string,
+    actorName: string | null = 'Lucía Fernández',
+    min = 5,
+  ): TimelineItem => ({
     id,
     ts: ago(min),
     src: 'comment',
@@ -13,14 +21,19 @@
     actorName,
     changes: null,
   });
-  const audit = (id, changes, actorName = 'Marco Quispe', min = 30) => ({
+  const audit = (
+    id: string,
+    changes: { label: string; old: string | null; new: string }[],
+    actorName: string | null = 'Marco Quispe',
+    min = 30,
+  ): TimelineItem => ({
     id,
     ts: ago(min),
     src: 'audit',
     kind: 'update',
     body: null,
     actorName,
-    changes,
+    changes: changes.map((c) => ({ field: c.label.toLowerCase(), ...c })),
   });
 
   const comments = [
@@ -53,7 +66,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Cards/DocTimeline',
+    title: 'Components/Cards/DocTimeline',
     component: DocTimeline,
     tags: ['autodocs'],
     args: { onComment: fn() },

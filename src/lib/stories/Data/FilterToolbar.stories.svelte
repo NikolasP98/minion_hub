@@ -25,7 +25,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Data/FilterToolbar',
+    title: 'Components/Data/FilterToolbar',
     component: FilterToolbar,
     tags: ['autodocs'],
     args: { columns },

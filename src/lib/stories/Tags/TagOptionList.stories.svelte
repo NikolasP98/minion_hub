@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import { fn } from 'storybook/test';
   import TagOptionList from '$lib/components/tags/TagOptionList.svelte';
   import { CRM_TAG_COLORS } from '$lib/components/crm/tag-colors';
@@ -16,18 +17,23 @@
     'promo-2026',
     'lapsed',
   ];
-  const tag = (i, over = {}) => ({
+  const tag = (
+    i: number,
+    over: Partial<
+      Pick<ComponentProps<typeof TagOptionList>['tags'][number], 'name' | 'color' | 'origin'>
+    > = {},
+  ) => ({
     id: `t${i}`,
     name: names[i % names.length] + (i >= names.length ? ` ${i}` : ''),
     color: CRM_TAG_COLORS[i % CRM_TAG_COLORS.length],
     ...over,
   });
-  const tags = (n) => Array.from({ length: n }, (_, i) => tag(i));
+  const tags = (n: number) => Array.from({ length: n }, (_, i) => tag(i));
 
   // Mutations POST/PATCH/DELETE `/api/tags*` — in Storybook those fail and the
   // list shows its inline error, which is itself a state worth seeing.
   const { Story } = defineMeta({
-    title: 'Tags/TagOptionList',
+    title: 'Components/Tags/TagOptionList',
     component: TagOptionList,
     tags: ['autodocs'],
     argTypes: {
@@ -39,7 +45,7 @@
     args: {
       scope: 'crm',
       tags: tags(6),
-      selected: new Set(),
+      selected: new Set<string>(),
       ontoggle: fn(),
       oncreate: fn(),
       onupdate: fn(),

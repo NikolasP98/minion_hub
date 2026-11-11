@@ -1,18 +1,29 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import ChatTurn from '$lib/components/my-agent/ChatTurn.svelte';
+  import type { ChatMessage } from '$lib/types/chat';
+  import type { ToolResult } from '$lib/chat/blocks';
 
   const ts = Date.parse('2026-11-08T10:42:00');
-  const tool = (id, name, input) => ({ type: 'tool_use', id, name, input });
-  const message = (content) => ({ role: 'assistant', content, timestamp: ts });
+  const tool = (id: string, name: string, input: Record<string, unknown>) => ({
+    type: 'tool_use',
+    id,
+    name,
+    input,
+  });
+  const message = (content: ChatMessage['content']): ChatMessage => ({
+    role: 'assistant',
+    content,
+    timestamp: ts,
+  });
   const blocks = [
     { type: 'thinking', thinking: 'Search next week, then the contacts, then summarise.' },
     tool('tu-1', 'bookings.search', { from: '2026-11-10', to: '2026-11-16' }),
     tool('tu-2', 'crm.contact.get', { id: 'ct-42' }),
     { type: 'text', text: 'Three bookings next week: **Tue 10:00**, Wed 15:30 and Fri 09:00.' },
   ];
-  const toolResults = {
+  const toolResults: Record<string, ToolResult> = {
     'tu-1': { content: '{ "count": 3, "rows": [ … ] }', isError: false },
     'tu-2': { content: '{ "name": "Ana Torres", "phone": "+51 9** *** 123" }', isError: false },
   };
@@ -28,7 +39,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Chat/ChatTurn',
+    title: 'Components/Chat/ChatTurn',
     component: ChatTurn,
     tags: ['autodocs'],
     argTypes: { streaming: { control: 'boolean' } },

@@ -1,6 +1,7 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
+  import type { PlayFunction } from 'storybook/internal/types';
   import PickerCombobox from '$lib/components/ui/PickerCombobox.svelte';
 
   const items = [
@@ -11,8 +12,10 @@
     { id: 'u5', name: 'Elena Rojas', role: 'Manager' },
   ];
 
+  type Person = (typeof items)[number];
+
   const { Story } = defineMeta({
-    title: 'Overlays/PickerCombobox',
+    title: 'Atoms/Inputs/PickerCombobox',
     component: PickerCombobox,
     tags: ['autodocs'],
     parameters: { docs: { story: { inline: false, height: '360px' } } },
@@ -20,8 +23,9 @@
     args: {
       id: 'sb-picker-combobox',
       items,
-      itemToValue: (i) => i.id,
-      itemToString: (i) => i.name,
+      // PickerCombobox is generic; props are inferred with T = unknown here.
+      itemToValue: (i) => (i as Person).id,
+      itemToString: (i) => (i as Person).name,
       label: 'Assignee',
       placeholder: 'Type a name',
       pickerTitle: 'Pick a team member',
@@ -35,7 +39,7 @@
     },
   });
 
-  const openPicker = async ({ canvas, userEvent }) => {
+  const openPicker: PlayFunction = async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Open the full picker' }));
   };
 </script>

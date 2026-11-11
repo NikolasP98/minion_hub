@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Tabs from '$lib/components/ui/Tabs.svelte';
 
@@ -10,7 +10,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Hub/Tabs',
+    title: 'Atoms/Layout/Tabs',
     component: Tabs,
     tags: ['autodocs'],
     argTypes: {

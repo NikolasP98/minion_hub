@@ -1,10 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import EmailCard from '$lib/components/my-agent/EmailCard.svelte';
+  import type { EmailItem } from '$lib/services/my-agent-rpc';
 
   const nowMs = Date.now();
-  const item = (minutesAgo, extra = {}) => ({
+  const item = (minutesAgo: number, extra: Partial<EmailItem> = {}): EmailItem => ({
     id: `em-${minutesAgo}`,
     sourceEmail: 'nikolas@example.com',
     from: 'Compras Proveedor <compras@proveedor-ejemplo.pe>',
@@ -20,7 +21,7 @@
   });
 
   const { Story } = defineMeta({
-    title: 'Sessions/EmailCard',
+    title: 'Components/Sessions/EmailCard',
     component: EmailCard,
     tags: ['autodocs'],
     argTypes: { isNew: { control: 'boolean' }, opened: { control: 'boolean' } },

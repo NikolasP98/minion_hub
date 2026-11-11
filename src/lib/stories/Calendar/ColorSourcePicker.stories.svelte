@@ -41,7 +41,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Calendar/ColorSourcePicker',
+    title: 'Components/Calendar/ColorSourcePicker',
     component: ColorSourcePicker,
     tags: ['autodocs'],
     argTypes: { value: { control: 'select', options: options.map((o) => o.value) } },

@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import ProcedurePickerField from '$lib/components/scheduling/ProcedurePickerField.svelte';
 
@@ -12,7 +12,7 @@
   const many = Array.from({ length: 60 }, (_, i) => ({ id: `m${i}`, name: `Procedure ${i + 1}` }));
 
   const { Story } = defineMeta({
-    title: 'Forms/ProcedurePickerField',
+    title: 'Components/Forms/ProcedurePickerField',
     component: ProcedurePickerField,
     tags: ['autodocs'],
     args: { products, value: null },

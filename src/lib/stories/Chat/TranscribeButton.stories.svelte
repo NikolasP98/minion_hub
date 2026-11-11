@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import TranscribeButton from '$lib/components/my-agent/TranscribeButton.svelte';
 
   // Clicking the mic starts the browser's Web Speech API (or shows "not supported").
   const { Story } = defineMeta({
-    title: 'Chat/TranscribeButton',
+    title: 'Components/Chat/TranscribeButton',
     component: TranscribeButton,
     tags: ['autodocs'],
     argTypes: { compact: { control: 'boolean' }, allowTab: { control: 'boolean' } },

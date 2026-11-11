@@ -1,11 +1,11 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AiToolStatusRing from '$lib/components/ai/AiToolStatusRing.svelte';
 
-  const STATUSES = ['idle', 'pending', 'running', 'success', 'error'];
+  const STATUSES = ['idle', 'pending', 'running', 'success', 'error'] as const;
 
   const { Story } = defineMeta({
-    title: 'AI/AiToolStatusRing',
+    title: 'Components/AI/AiToolStatusRing',
     component: AiToolStatusRing,
     tags: ['autodocs'],
     argTypes: {

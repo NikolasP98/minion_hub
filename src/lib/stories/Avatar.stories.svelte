@@ -1,14 +1,16 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import Avatar from '$lib/components/ui/Avatar.svelte';
 
   const { Story } = defineMeta({
-    title: 'Hub/Avatar',
+    title: 'Atoms/Display/Avatar',
     component: Avatar,
     tags: ['autodocs'],
     argTypes: { size: { control: 'select', options: ['xs', 'sm', 'md', 'lg', 'touch'] } },
     args: { name: 'Tenancy Owner', size: 'md' },
   });
+
+  const sizes = ['xs', 'sm', 'md', 'lg', 'touch'] as const;
 </script>
 
 <Story name="Initials">
@@ -32,10 +34,7 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex items-center gap-3">
-      {#each ['xs', 'sm', 'md', 'lg', 'touch'] as s (s)}<Avatar
-          name="Tenancy Owner"
-          size={s}
-        />{/each}
+      {#each sizes as s (s)}<Avatar name="Tenancy Owner" size={s} />{/each}
     </div>
   {/snippet}
 </Story>

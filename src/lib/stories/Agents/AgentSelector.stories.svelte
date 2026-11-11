@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import AgentSelector from '$lib/components/prompt/AgentSelector.svelte';
   import { gw } from '$lib/state/gateway/gateway-data.svelte';
@@ -11,14 +11,14 @@
   ];
   // Options come from the gateway agent list and the selection from the prompt-sections store.
   const seed =
-    (list, agentId = null) =>
+    (list: typeof gw.agents, agentId: string | null = null) =>
     async () => {
       gw.agents = list;
       promptSections.agentId = agentId;
     };
 
   const { Story } = defineMeta({
-    title: 'Agents/AgentSelector',
+    title: 'Components/Agents/AgentSelector',
     component: AgentSelector,
     tags: ['autodocs'],
     parameters: {

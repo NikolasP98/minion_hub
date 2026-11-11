@@ -1,10 +1,13 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import MinionLogo from '$lib/components/layout/MinionLogo.svelte';
   import { LOGO_PRESETS } from '$lib/state/ui/logo.svelte';
 
+  const sizes: NonNullable<ComponentProps<typeof MinionLogo>['size']>[] = ['sm', 'md', 'lg'];
+
   const { Story } = defineMeta({
-    title: 'Navigation/MinionLogo',
+    title: 'Components/Navigation/MinionLogo',
     component: MinionLogo,
     tags: ['autodocs'],
     argTypes: {
@@ -32,7 +35,7 @@
 <Story name="Sizes">
   {#snippet template()}
     <div class="flex items-end gap-6">
-      {#each ['sm', 'md', 'lg'] as s (s)}
+      {#each sizes as s (s)}
         <MinionLogo size={s} showText />
       {/each}
     </div>

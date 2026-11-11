@@ -1,5 +1,6 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import type { ComponentProps } from 'svelte';
   import ProfileMenu from '$lib/components/layout/ProfileMenu.svelte';
 
   const user = {
@@ -13,10 +14,12 @@
     { channel: 'dev', serverId: 'gw-dev', healthy: true },
     { channel: 'prd', serverId: 'gw-prd', healthy: true },
   ];
-  const data = (d) => ({ sveltekit_experimental: { state: { page: { data: d } } } });
+  const data = (d: Record<string, unknown>) => ({
+    sveltekit_experimental: { state: { page: { data: d } } },
+  });
 
   const { Story } = defineMeta({
-    title: 'Navigation/ProfileMenu',
+    title: 'Components/Navigation/ProfileMenu',
     component: ProfileMenu,
     tags: ['autodocs'],
     parameters: {
@@ -27,7 +30,7 @@
     args: { placement: 'bottom' },
   });
 
-  const open = async ({ canvas, userEvent }) => {
+  const open: NonNullable<ComponentProps<typeof Story>['play']> = async ({ canvas, userEvent }) => {
     await userEvent.click(canvas.getAllByRole('button')[0]);
   };
 </script>

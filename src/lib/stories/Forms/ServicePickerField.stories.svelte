@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import ServicePickerField from '$lib/components/scheduling/ServicePickerField.svelte';
@@ -17,7 +17,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Forms/ServicePickerField',
+    title: 'Components/Forms/ServicePickerField',
     component: ServicePickerField,
     tags: ['autodocs'],
     args: { services, value: '', onchange: fn() },

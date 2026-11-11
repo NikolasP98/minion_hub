@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
@@ -24,7 +24,7 @@
     '```minion-ui\n{"tool":"fill_booking_form","input":{"contact":"Ana"}}\n```\n\n```minion-ui\n{"tool":"ui.guide","input":{"steps":[]}}\n```';
 
   const { Story } = defineMeta({
-    title: 'Chat/MarkdownMessage',
+    title: 'Components/Chat/MarkdownMessage',
     component: MarkdownMessage,
     tags: ['autodocs'],
     argTypes: { tone: { control: 'select', options: ['assistant', 'user'] } },

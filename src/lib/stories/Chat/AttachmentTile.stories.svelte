@@ -1,4 +1,4 @@
-<script module>
+<script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { iconSizes } from '$lib/components/ui';
   import { fn } from 'storybook/test';
@@ -7,7 +7,7 @@
   import AttachmentTile from '$lib/components/attachments/AttachmentTile.svelte';
 
   // An inline SVG stands in for the presigned image URL.
-  const svg = (hue) =>
+  const svg = (hue: number) =>
     `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="240"><rect width="320" height="240" fill="hsl(${hue} 60% 55%)"/><circle cx="160" cy="120" r="70" fill="hsl(${hue} 60% 85%)"/></svg>`)}`;
   const files = [
     {
@@ -34,7 +34,7 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Chat/AttachmentTile',
+    title: 'Components/Chat/AttachmentTile',
     component: AttachmentTile,
     tags: ['autodocs'],
     argTypes: {
