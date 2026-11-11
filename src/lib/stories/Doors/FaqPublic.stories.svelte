@@ -20,7 +20,7 @@
   ).join('\n');
 
   const { Story } = defineMeta({
-    title: 'Doors/FaqPublic',
+    title: 'Components/Doors/FaqPublic',
     component: FaqPublic,
     tags: ['autodocs'],
     args: { door, attribution },
