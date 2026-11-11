@@ -79,7 +79,9 @@ export async function submitFormDoor(
           source: `door:${door.slug}`,
           firstTouch: attribution,
         });
-    if (contact && Object.keys(profile).length)
+    // Anonymous input never edits an existing contact: a matched contact's DNI/handles stay in
+    // the submission payload for staff to review; only a contact this submission created gets them.
+    if (contact?.created && Object.keys(profile).length)
       await fillContactProfile(tx, ctx.tenantId, contact.id, profile);
     await tx.insert(crmDoorSubmissions).values({
       id: submissionId,
@@ -115,22 +117,31 @@ export async function submitFormDoor(
   return { status: 'ok', message: config.successMessage ?? null };
 }
 
-/** Live contact whose DNI (custom field or linked party document) is `dni`; oldest wins. */
+/**
+ * Live contact whose DNI is `dni`, from TRUSTED sources only: the linked party's document
+ * (finance / registry / staff) or a contact that did not come from a public door. A DNI
+ * typed into a door is never a match key, so a form cannot plant one to capture later
+ * submissions. Oldest wins.
+ * TODO(handoff): reconcileParties mints parties from custom_fields->>'dni' without checking
+ * source, so a door-created contact's DNI can become a party document after a reconcile run.
+ * Pointer: proposals/2026-11-11-hub-door-dni-trust.md.
+ */
 async function contactIdByDni(tx: CoreTx, orgId: string, dni: string): Promise<string | null> {
   // shortcut: unindexed custom_fields scan, fine at clinic scale; add an expression index if one org passes ~50k contacts.
   const rows = (await tx.execute(sql`
     select c.id from crm_contacts c
     left join parties p on p.id = c.party_id and p.org_id = c.org_id
     where c.org_id = ${orgId} and c.deleted_at is null
-      and (upper(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')) = ${dni}
-           or upper(p.doc_number) = ${dni})
+      and (upper(p.doc_number) = ${dni}
+           or (c.source not like 'door:%'
+               and upper(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')) = ${dni}))
     order by c.created_at
     limit 1
   `)) as unknown as Array<{ id: string }>;
   return rows[0]?.id ?? null;
 }
 
-/** Adds DNI / social handles to the contact's custom fields. Values already there win: a form never overwrites the CRM. */
+/** Adds DNI / social handles to a contact this submission just created. */
 async function fillContactProfile(
   tx: CoreTx,
   orgId: string,

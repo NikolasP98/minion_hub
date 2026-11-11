@@ -84,7 +84,7 @@ describe('submitFormDoor', () => {
     ],
   };
 
-  it('a DNI already in the CRM reuses that contact even with a new phone, and fills only missing fields', async () => {
+  it('a trusted DNI already in the CRM reuses that contact even with a new phone, and never edits it', async () => {
     mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
     execute.mockResolvedValueOnce([{ id: 'dni-match' }]);
     const r = await submitFormDoor(
@@ -98,20 +98,32 @@ describe('submitFormDoor', () => {
     expect(r.status).toBe('ok');
     expect(mocks.ensureCrmContact).not.toHaveBeenCalled();
     expect(inserted().contactId).toBe('dni-match');
-    const [lookup, fill] = executed();
-    expect(lookup.sql).toContain("custom_fields->>'dni'");
+    // Only the lookup ran: anonymous input never writes to an existing contact.
+    expect(executed()).toHaveLength(1);
+    const [lookup] = executed();
     expect(lookup.sql).toContain('p.doc_number');
+    // A DNI planted by an earlier door submission is not a key.
+    expect(lookup.sql).toMatch(
+      /c\.source not like 'door:%'\s+and upper\(coalesce\(c\.custom_fields->>'dni'/,
+    );
     expect(lookup.params).toEqual(['org-1', '45678901', '45678901']);
-    // `new || existing`: keys the contact already has win, so the CRM is never overwritten.
-    expect(fill.sql).toMatch(/set custom_fields = \$1::jsonb \|\| coalesce\(custom_fields/);
-    expect(fill.params).toEqual([
-      JSON.stringify({ dni: '45678901', instagram: 'ana.prueba' }),
-      'dni-match',
-      'org-1',
-    ]);
+    // The proposed DNI/handle stay in the submission for staff.
+    expect(inserted().payload).toMatchObject({ dni: '4567-8901' });
   });
 
-  it('an unknown DNI falls back to the phone/email match and stores the DNI on that contact', async () => {
+  it('a phone/email-matched existing contact is not edited either', async () => {
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
+    mocks.ensureCrmContact.mockResolvedValueOnce({ id: CONTACT, created: false });
+    await submitFormDoor(
+      'qa-intake',
+      { values: { ...values, instagram: '@ana' }, consent: true },
+      NOW,
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(inserted().contactId).toBe(CONTACT);
+  });
+
+  it('an unknown DNI falls back to phone/email; a NEW contact gets the DNI and handles', async () => {
     mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
     await submitFormDoor(
       'qa-intake',
@@ -121,6 +133,8 @@ describe('submitFormDoor', () => {
     expect(mocks.ensureCrmContact).toHaveBeenCalledOnce();
     expect(inserted().contactId).toBe(CONTACT);
     const [, fill] = executed();
+    // `new || existing`: keys already on the row win.
+    expect(fill.sql).toMatch(/set custom_fields = \$1::jsonb \|\| coalesce\(custom_fields/);
     expect(fill.params).toEqual([JSON.stringify({ dni: '45678901' }), CONTACT, 'org-1']);
   });
 
