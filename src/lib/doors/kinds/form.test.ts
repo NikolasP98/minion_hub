@@ -4,6 +4,7 @@ import {
   configSchema,
   contactFromValues,
   defaultConfig,
+  profileFromValues,
   validateSubmission,
   type FormConfig,
 } from './form';
@@ -69,7 +70,7 @@ describe('form configSchema', () => {
     );
   });
 
-  it('rejects bad keys, too many fields, unknown types and extra props', () => {
+  it('rejects bad keys, unknown types and extra props', () => {
     const field = (over: object) => ({ ...intake, fields: [intake.fields[1], over] });
     expect(
       configSchema.safeParse(field({ key: 'Bad Key', label: 'x', type: 'text', required: false }))
@@ -80,13 +81,16 @@ describe('form configSchema', () => {
         .success,
     ).toBe(false);
     expect(configSchema.safeParse({ ...intake, extra: 1 }).success).toBe(false);
-    const many = Array.from({ length: 21 }, (_, i) => ({
+  });
+
+  it('has no field cap: a 30-field clinical history is valid', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({
       key: `f${i}`,
       label: 'x',
       type: 'phone' as const,
       required: false,
     }));
-    expect(configSchema.safeParse({ ...intake, fields: many }).success).toBe(false);
+    expect(configSchema.safeParse({ ...intake, fields: many }).success).toBe(true);
   });
 });
 
@@ -173,6 +177,27 @@ describe('validateSubmission', () => {
       other: 'x',
     });
     expect(parsed).toEqual({ telefono: '900000041' });
+  });
+});
+
+describe('profileFromValues', () => {
+  const fields = [
+    { key: 'dni', label: 'DNI', type: 'text' as const, required: false },
+    { key: 'instagram', label: 'IG', type: 'text' as const, required: false },
+    { key: 'tiktok', label: 'TikTok', type: 'text' as const, required: false },
+    { key: 'facebook', label: 'FB', type: 'textarea' as const, required: false },
+  ];
+  it('normalizes DNI and handles, and ignores placeholders, blanks and non-text fields', () => {
+    expect(
+      profileFromValues(fields, {
+        dni: ' 4567.8901 ',
+        instagram: '@Ana.Prueba',
+        tiktok: 'https://www.tiktok.com/@ana?lang=es',
+        facebook: 'ana',
+      }),
+    ).toEqual({ dni: '45678901', instagram: 'ana.prueba', tiktok: 'ana' });
+    expect(profileFromValues(fields, { dni: '11111111', instagram: ' ' })).toEqual({});
+    expect(profileFromValues(fields, { dni: '1234567' })).toEqual({});
   });
 });
 

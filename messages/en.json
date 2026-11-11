@@ -1528,7 +1528,6 @@
   "doors_form_move_down": "Move {label} down",
   "doors_form_remove": "Remove {label}",
   "doors_form_untitled": "Untitled field",
-  "doors_form_max_fields": "Up to {max} fields.",
   "doors_form_consent_text": "Consent text",
   "doors_form_consent_hint": "A copy of this text is stored with every submission.",
   "doors_form_consent_required": "Ask for consent before sending",
