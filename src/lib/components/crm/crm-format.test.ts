@@ -25,9 +25,9 @@ describe('temperatureOf', () => {
 
 describe('scoreColor', () => {
   it('ramps from cold to hot', () => {
-    expect(scoreColor(10)).toContain('muted');
-    expect(scoreColor(40)).toContain('warning');
-    expect(scoreColor(60)).toContain('emerald');
+    expect(scoreColor(10)).toContain('tertiary');
+    expect(scoreColor(40)).toContain('secondary');
+    expect(scoreColor(60)).toContain('primary');
     expect(scoreColor(90)).toContain('success');
   });
 });

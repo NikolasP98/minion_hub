@@ -21,7 +21,7 @@
 
 {#if spec}
   {@const Icon = spec.icon}
-  <Badge variant="semantic" value={spec.value}>
+  <Badge variant="neutral">
     <Icon size={iconSizes.sm} aria-hidden="true" />
     {label}
   </Badge>

@@ -91,7 +91,7 @@
   const DOT_CLASS: Record<DotState, string> = {
     connected: 'bg-success text-success shadow-[var(--shadow-status-glow)]',
     connecting: 'bg-warning text-warning shadow-[var(--shadow-status-glow)] animate-pulse',
-    error: 'bg-destructive text-destructive shadow-[var(--shadow-status-glow)] animate-pulse',
+    error: 'bg-destructive text-destructive shadow-[var(--shadow-status-glow)]',
   };
   const STATUS_LABEL: Record<DotState, () => string> = {
     connected: () => 'Connected',
