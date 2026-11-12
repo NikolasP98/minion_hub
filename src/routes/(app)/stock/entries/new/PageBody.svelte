@@ -379,6 +379,8 @@
           item: l?.itemId,
           qty: l?.qty,
           rate: l?.rate,
+          currency,
+          rateMode,
           warehouse: l?.toWarehouseId || l?.fromWarehouseId,
           note,
         };
@@ -387,6 +389,41 @@
         if (!isEffectCurrent(ctx)) return { rejected: [] };
         const rejected: Array<{ key: string; reason: string }> = [];
         const notes: string[] = [];
+        const rejectInput = (reason: string) => ({
+          rejected: Object.keys(v).map((key) => ({ key, reason })),
+        });
+        if (v.currency !== undefined && v.currency !== 'PEN' && v.currency !== 'USD')
+          return rejectInput('currency must be PEN or USD');
+        if (v.rateMode !== undefined && v.rateMode !== 'unit' && v.rateMode !== 'total')
+          return rejectInput('rateMode must be unit or total');
+        if (v.qty != null && (typeof v.qty !== 'number' || !Number.isFinite(v.qty) || v.qty <= 0))
+          return rejectInput('quantity must be a positive finite number');
+        if (
+          v.rate != null &&
+          (typeof v.rate !== 'number' || !Number.isFinite(v.rate) || v.rate < 0)
+        )
+          return rejectInput('rate must be a nonnegative finite number');
+        const inputCurrency = v.currency === undefined ? currency : v.currency;
+        const inputRateMode: RateMode = v.rateMode === 'total' ? 'total' : 'unit';
+        if (inputCurrency !== currency && lines.some((line) => line.rate !== ''))
+          return rejectInput(
+            'the draft already has costs; use a separate entry for another currency',
+          );
+        const monetaryFill = v.rate != null || v.currency !== undefined || v.rateMode !== undefined;
+        if (
+          monetaryFill &&
+          inputCurrency !== data.fx.currency &&
+          (inputCurrency !== data.fx.base ||
+            data.fx.currency !== data.fx.quote ||
+            data.fx.rate == null ||
+            !Number.isFinite(data.fx.rate) ||
+            data.fx.rate <= 0)
+        )
+          return rejectInput('no positive finite exchange rate is configured for this currency');
+        // Currency is receipt-wide. Validate before any field/item mutation so
+        // adding a line cannot reinterpret costs already typed on earlier rows.
+        if (v.currency !== undefined) currency = inputCurrency;
+        if (v.rateMode !== undefined) setRateMode(inputRateMode);
         const matched = (typed: string, label: string) => {
           if (typed.trim().toLowerCase() !== label.trim().toLowerCase())
             notes.push(`matched "${typed}" → "${label}"`);
@@ -435,15 +472,38 @@
             rowChanged = !!line && !lines.includes(line);
             if (rowChanged) line = undefined;
             matched(v.item, match.name);
-          } else
+          } else {
+            // A failed new-item lookup must not redirect its amounts into the
+            // last row that happened to be on screen.
+            line = undefined;
             rejected.push({
               key: 'item',
               reason: `no stock item matches "${v.item}"; did you mean: ${candidates.map((it) => `${it.code} — ${it.name}`).join(', ') || 'none'}`,
             });
+          }
+        }
+
+        // Supplier resolution can yield to a human currency/basis change. Keep
+        // that choice; never land a late amount under another denomination.
+        if (monetaryFill && currency !== inputCurrency) {
+          for (const key of ['currency', 'rateMode', 'qty', 'rate'])
+            if (v[key] !== undefined)
+              rejected.push({
+                key,
+                reason:
+                  'the draft currency changed while resolving the item; review and fill again',
+              });
+        } else if (v.rateMode !== undefined && rateMode !== inputRateMode) {
+          rejected.push({
+            key: 'rateMode',
+            reason:
+              'the displayed cost basis changed while resolving the item; the amount follows the current display',
+          });
         }
 
         for (const key of ['qty', 'rate', 'warehouse'] as const) {
           if (v[key] == null) continue;
+          if (rejected.some((field) => field.key === key)) continue;
           if (!line) {
             rejected.push({
               key,
@@ -466,7 +526,30 @@
               if (needsTo && type !== 'transfer') line.toWarehouseId = w.id;
               else line.fromWarehouseId = w.id;
             }
-          } else line[key] = String(v[key]);
+          } else if (key === 'qty') line.qty = String(v.qty);
+          else {
+            const qty = Number(line.qty);
+            if (!Number.isFinite(qty) || qty <= 0) {
+              rejected.push({ key, reason: 'add a positive quantity before filling cost' });
+              continue;
+            }
+            const value = Number(v.rate);
+            const displayed =
+              inputRateMode === rateMode
+                ? value
+                : Math.round((rateMode === 'total' ? value * qty : value / qty) * 10_000) / 10_000;
+            if (!Number.isFinite(displayed)) {
+              rejected.push({
+                key,
+                reason: 'cost cannot be represented in the current displayed basis',
+              });
+              continue;
+            }
+            line.rate = String(displayed);
+            notes.push(
+              `cost filled in ${currency}; displayed ${rateMode === 'total' ? 'as a line total' : 'per unit'}`,
+            );
+          }
         }
         return { rejected, note: notes.join('; ') || undefined };
       },

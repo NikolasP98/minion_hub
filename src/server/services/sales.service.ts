@@ -1,3 +1,5 @@
+import { assertStatusChangeInTx, type Actor as WorkflowActor } from './workflow.service';
+import { error } from '@sveltejs/kit';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import { salesOrders, type SalesOrder } from '$server/db/pg-sales-schema';
@@ -7,6 +9,10 @@ import { nextSerialId } from './naming-series';
 import { docAuditLog } from '$server/db/pg-activity-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { StaleWriteError, staleGuard } from './errors';
+import {
+  simulatedMutationOwner,
+  simulatedMutationPredicate,
+} from '$server/auth/simulated-record-scope';
 
 export type OrderStatus = 'draft' | 'confirmed' | 'invoiced' | 'cancelled';
 export const ORDER_STATUSES: OrderStatus[] = ['draft', 'confirmed', 'invoiced', 'cancelled'];
@@ -23,13 +29,17 @@ const OPEN_ORDER = sql`status in ('draft','confirmed')`;
  * named function when it's needed.
  */
 export async function createOrderFromBooking(ctx: CoreCtx, bookingId: string): Promise<SalesOrder> {
+  const ownerId = simulatedMutationOwner(ctx, 'sales', 'create');
   return withOrgCore(ctx, async (tx) => {
     const [existing] = await tx
       .select()
       .from(salesOrders)
       .where(and(eq(salesOrders.orgId, ctx.tenantId), eq(salesOrders.sourceBookingId, bookingId)))
       .limit(1);
-    if (existing) return existing;
+    if (existing) {
+      if (ownerId && existing.ownerId !== ownerId) throw error(404, 'Order not found');
+      return existing;
+    }
 
     const [b] = await tx
       .select()
@@ -66,6 +76,7 @@ export async function createOrderFromBooking(ctx: CoreCtx, bookingId: string): P
         orgId: ctx.tenantId,
         humanId,
         sourceBookingId: b.id,
+        ownerId,
         partyId: b.partyId ?? null,
         crmContactId: b.crmContactId ?? null,
         customerName: b.attendeeName ?? null,
@@ -159,6 +170,8 @@ export async function orderCountForContact(ctx: CoreCtx, contactId: string): Pro
  * event-type products → SUSII product codes.
  */
 export async function reconcileOrdersToInvoices(ctx: CoreCtx): Promise<void> {
+  const ownerId = simulatedMutationOwner(ctx, 'sales', 'edit');
+  const ownership = ownerId ? sql`and so.owner_id=${ownerId}::uuid` : sql``;
   await withOrgCore(ctx, async (tx) => {
     await tx.execute(sql`
       with match as (
@@ -167,6 +180,7 @@ export async function reconcileOrdersToInvoices(ctx: CoreCtx): Promise<void> {
         join fin_clients fc on fc.org_id = so.org_id and fc.party_id = so.party_id
         join fin_invoices fi on fi.org_id = so.org_id and fi.client_id = fc.id
         where so.org_id = current_setting('app.current_org_id', true)
+          ${ownership}
           and so.status in ('draft','confirmed') and so.party_id is not null
           and fi.provider in ('susii', 'sunat-sire')
           and fi.shadowed = false
@@ -183,7 +197,7 @@ export async function reconcileOrdersToInvoices(ctx: CoreCtx): Promise<void> {
       update sales_orders so
       set status = 'invoiced', invoice_provider_ref = match.provider_ref, updated_at = now()
       from match
-      where so.id = match.order_id
+      where so.id = match.order_id ${ownership}
     `);
   });
 }
@@ -194,14 +208,19 @@ export async function setOrderStatus(
   status: OrderStatus,
   actor: { id: string | null; name: string | null } = { id: null, name: null },
   expectedUpdatedAt?: Date,
+  workflowActor?: WorkflowActor,
 ): Promise<SalesOrder | null> {
+  const ownership = simulatedMutationPredicate(ctx, 'sales', 'edit', salesOrders.ownerId);
   return withOrgCore(ctx, async (tx) => {
     const [cur] = await tx
       .select()
       .from(salesOrders)
-      .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId)))
+      .where(and(eq(salesOrders.id, id), eq(salesOrders.orgId, ctx.tenantId), ownership))
+      .for('update')
       .limit(1);
     if (!cur) return null;
+    if (workflowActor)
+      await assertStatusChangeInTx(tx, ctx, 'sales_order', cur, status, workflowActor);
     const [row] = await tx
       .update(salesOrders)
       .set({ status, updatedAt: new Date() })
@@ -210,6 +229,7 @@ export async function setOrderStatus(
           eq(salesOrders.id, id),
           eq(salesOrders.orgId, ctx.tenantId),
           staleGuard(salesOrders.updatedAt, expectedUpdatedAt),
+          ownership,
         ),
       )
       .returning();

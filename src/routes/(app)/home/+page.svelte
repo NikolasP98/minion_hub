@@ -28,6 +28,13 @@
   } from '$lib/components/my-agent/MessageActions.svelte';
   import MarkdownMessage from '$lib/components/chat/MarkdownMessage.svelte';
   import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
+  import InterruptedEffectsNotice from '$lib/components/assistant/InterruptedEffectsNotice.svelte';
+  import { getActiveHost } from '$lib/state/features/hosts.svelte';
+  import {
+    discardInterruptedOwner,
+    sameInterruptionOwner,
+    type InterruptionOwner,
+  } from '$lib/assistant/interrupted-effects';
   import type { ChatMessage } from '$lib/types/chat';
   import {
     activityVerb,
@@ -698,6 +705,17 @@
       handleSubmit('', 'ask', false, { origin: 'ui_followup', parent, results }),
   });
   const acceptedActivity = acceptedSurface.activity;
+  const interruptionOwner = $derived.by(() => {
+    const host = getActiveHost();
+    return { ...readSubmissionScope(), hostId: host?.id ?? '', hostUrl: host?.url ?? '' };
+  });
+  let previousInterruptionOwner: InterruptionOwner | undefined;
+  $effect(() => {
+    const next = interruptionOwner;
+    if (previousInterruptionOwner && !sameInterruptionOwner(previousInterruptionOwner, next))
+      discardInterruptedOwner(previousInterruptionOwner);
+    previousInterruptionOwner = { ...next };
+  });
   function updateSubmissionScope() {
     pendingSubmissions.setScope(readSubmissionScope());
     acceptedSurface.updateScope();
@@ -1140,6 +1158,7 @@
       <!-- Chat section: typed messages AND the live call transcript land here.
 			     Grows to fill the space between the agenda and the input. -->
       <section class="chat-section" aria-label={m.feed_conversationAria()}>
+        <InterruptedEffectsNotice owner={interruptionOwner} />
         {#if visibleMessages.length > 0 || streamMessage || stream || sending}
           <div class="thread">
             <AiConversation

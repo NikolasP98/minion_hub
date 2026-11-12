@@ -1,4 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
+const policyDelete = vi.hoisted(() => vi.fn());
+vi.mock('./section-access.service', () => ({ deleteRoleAccessCatalog: policyDelete }));
 
 /**
  * Minimal fake Supabase postgrest client — only the query shapes rbac.service
@@ -759,21 +761,24 @@ describe('createCustomRole — clone-copies-rules', () => {
   });
 });
 
-describe('deleteCustomRole — in-use guard', () => {
-  test('refuses to delete while a member still holds the role', async () => {
-    await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true);
-    db.member_roles = [{ org_id: 'org1', profile_id: 'p1', role_key: 'custom-senior-support' }];
-    await expect(deleteCustomRole('org1', 'custom-senior-support')).rejects.toThrow();
-    expect(db.org_roles.some((r) => r.key === 'custom-senior-support')).toBe(true);
+describe('deleteCustomRole — transactional writer admission', () => {
+  test('does not infer a trusted actor from a missing HTTP identity', async () => {
+    await expect(deleteCustomRole('org1', 'custom-senior-support')).rejects.toMatchObject({
+      status: 403,
+    });
   });
-  test('deletes the role + its permission_rules once unassigned', async () => {
-    await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true);
-    await deleteCustomRole('org1', 'custom-senior-support');
-    expect(db.org_roles.some((r) => r.key === 'custom-senior-support')).toBe(false);
-    expect(db.permission_rules.some((r) => r.role_key === 'custom-senior-support')).toBe(false);
+  test('rejects a cross-organization actor before reaching the writer', async () => {
+    await expect(
+      deleteCustomRole('org1', 'custom-senior-support', {
+        user: { supabaseId: 'actor' },
+        tenantCtx: { tenantId: 'org2' },
+      } as App.Locals),
+    ).rejects.toMatchObject({ status: 403 });
   });
-  test('404s for a key this org never created', async () => {
-    await expect(deleteCustomRole('org1', 'custom-ghost')).rejects.toThrow();
+  test('delegates the exact authenticated org actor to the shared atomic writer', async () => {
+    const locals = { user: { supabaseId: 'actor' }, tenantCtx: { tenantId: 'org1' } } as App.Locals;
+    await deleteCustomRole('org1', 'custom-senior-support', locals);
+    expect(policyDelete).toHaveBeenCalledWith(locals, 'custom-senior-support');
   });
 });
 

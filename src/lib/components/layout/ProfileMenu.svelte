@@ -6,11 +6,34 @@
   import { locale } from '$lib/state/ui/locale.svelte';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
-  import { LogOut, Globe, GitBranch, User, Users, Settings } from 'lucide-svelte';
+  import {
+    LogOut,
+    Globe,
+    GitBranch,
+    User,
+    Settings,
+    Eye,
+    ChevronRight,
+    Undo2,
+    KeyRound,
+  } from 'lucide-svelte';
   import UserAvatar from '$lib/components/users/UserAvatar.svelte';
   import { iconSizes, Dropdown } from '$lib/components/ui';
   import type { DropdownItem } from '$lib/components/ui';
-  import DevUserSwitcher from './DevUserSwitcher.svelte';
+  import RoleSimulationDialog, {
+    simulationErrorMessage,
+  } from '$lib/components/users/RoleSimulationDialog.svelte';
+  import { inactiveSimulation, type RoleSimulationState } from '$lib/role-simulation';
+  import { transitionRoleSimulation } from '$lib/services/role-simulation-client';
+  import { tryUseActions } from '$lib/services/actions/context';
+  import { toastError } from '$lib/state/ui/toast.svelte';
+
+  const actions = tryUseActions();
+  const simulation = $derived(
+    (page.data as { roleSimulation?: RoleSimulationState }).roleSimulation ?? inactiveSimulation(),
+  );
+  let simulationOpen = $state(false);
+  let simulationBusy = $state(false);
 
   const displayName = $derived(userState.user?.displayName ?? userState.user?.email ?? '');
   const email = $derived(userState.user?.email ?? '');
@@ -18,15 +41,7 @@
   const role = $derived(userState.role ?? '');
   const channels = $derived(hostsState.channels);
   const activeChannel = $derived(hostsState.activeChannel ?? channels[0]?.channel ?? null);
-  const showBuildChannel = $derived(isAdmin.value && channels.length > 0);
-  // DEV-only: /api/dev/* 404s outside a loopback Supabase backend (spec
-  // 2026-09-16-hub-minion-run-dev-switcher §2.3), so this item — and the
-  // switcher it opens — never render against a hosted/deployed backend.
-  const showDevSwitcher = $derived(
-    (page.data as { env?: { backend?: 'dev' | 'prd' } }).env?.backend === 'dev',
-  );
-
-  let devSwitcherOpen = $state(false);
+  const showBuildChannel = $derived(!simulation.active && isAdmin.value && channels.length > 0);
 
   // Account header + account link + preference toggles + logout. Language and
   // build channel stay open so their live badges update in place. Gateway
@@ -35,6 +50,35 @@
     { value: 'header', label: displayName, href: '/account' },
     { value: 'account', label: m.nav_account(), icon: User, href: '/account' },
     { value: 'settings', label: m.nav_settings(), icon: Settings, href: '/settings/appearance' },
+    ...(simulation.active
+      ? [
+          { value: 'simulation-start-divider', label: '', divider: true },
+          {
+            value: 'simulation-edit',
+            label: m.roleSimulation_change(),
+            ariaLabel: m.roleSimulation_changeAria({
+              role: simulation.roleName ?? simulation.roleKey ?? '',
+            }),
+            disabled: simulationBusy || !simulation.eligible || simulation.invalid,
+          },
+          {
+            value: 'simulation',
+            label: m.roleSimulation_finish(),
+            icon: Undo2,
+            disabled: simulationBusy,
+          },
+          { value: 'simulation-end-divider', label: '', divider: true },
+        ]
+      : simulation.eligible
+        ? [
+            {
+              value: 'simulation',
+              label: m.roleSimulation_open(),
+              icon: Eye,
+              disabled: simulationBusy,
+            },
+          ]
+        : []),
     { value: 'language', label: m.settings_language(), icon: Globe, closeOnSelect: false },
     ...(showBuildChannel
       ? [
@@ -47,18 +91,36 @@
           },
         ]
       : []),
-    ...(showDevSwitcher
-      ? [{ value: 'switch-user', label: m.profile_switch_user(), icon: Users }]
-      : []),
     { value: 'logout', label: m.profile_logout(), icon: LogOut, danger: true },
   ]);
 
   function onSelect(value: string) {
     if (value === 'language') locale.toggle();
     else if (value === 'build-channel') switchBuildChannel();
-    else if (value === 'switch-user') devSwitcherOpen = true;
     else if (value === 'logout') logout();
+    else if (value === 'simulation-edit') {
+      if (!simulationBusy && simulation.eligible && !simulation.invalid) simulationOpen = true;
+    } else if (value === 'simulation') {
+      if (simulation.active) void finishSimulation();
+      else simulationOpen = true;
+    }
     // 'header' / 'account' navigate via their href.
+  }
+
+  async function finishSimulation() {
+    if (simulationBusy) return;
+    simulationBusy = true;
+    try {
+      await transitionRoleSimulation({
+        state: simulation,
+        returnTo: page.url.pathname + page.url.search + page.url.hash,
+        actions,
+      });
+    } catch (failure) {
+      toastError(simulationErrorMessage(failure));
+    } finally {
+      simulationBusy = false;
+    }
   }
 
   function switchBuildChannel() {
@@ -74,10 +136,24 @@
 <Dropdown {items} {onSelect} {placement} class="w-56 {placement === 'bottom' ? 'right-0' : ''}">
   {#snippet trigger()}
     <span
-      class="flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"
-      aria-label="Profile menu"
+      class="account-trigger flex items-center justify-center rounded-full hover:opacity-90 transition-opacity duration-[var(--duration-fast)] leading-none"
+      aria-label={simulation.active
+        ? m.roleSimulation_profile({ role: simulation.roleName ?? simulation.roleKey ?? '' })
+        : m.roleSimulation_profileDefault()}
     >
-      <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
+      <span class="sr-only"
+        >{simulation.active
+          ? m.roleSimulation_profile({ role: simulation.roleName ?? simulation.roleKey ?? '' })
+          : m.roleSimulation_profileDefault()}</span
+      >
+      <span class="account-avatar" aria-hidden="true">
+        <UserAvatar name={displayName} {email} src={avatarUrl} size={28} />
+        {#if simulation.active}
+          <span class="simulation-badge" data-role-simulation-badge>
+            <KeyRound size={iconSizes.xs} />
+          </span>
+        {/if}
+      </span>
     </span>
   {/snippet}
 
@@ -96,6 +172,22 @@
             {role}
           </span>
         {/if}
+      </span>
+    {:else if it.value === 'simulation-edit'}
+      <span class="simulation-current">
+        <span class="simulation-dot" aria-hidden="true"></span>
+        <span class="min-w-0 flex-1">
+          <span class="block t-caption simulation-caption">{m.roleSimulation_as()}</span>
+          <span class="block t-body font-medium simulation-role"
+            >{simulation.roleName ?? simulation.roleKey}</span
+          >
+        </span>
+        <ChevronRight size={iconSizes.sm} class="simulation-chevron" aria-hidden="true" />
+      </span>
+    {:else if it.value === 'simulation' && simulation.active}
+      <span class="simulation-finish">
+        <Undo2 size={iconSizes.sm} aria-hidden="true" />
+        <span>{m.roleSimulation_finish()}</span>
       </span>
     {:else if it.value === 'language' || it.value === 'build-channel'}
       {@const Icon = it.icon}
@@ -117,6 +209,73 @@
   {/snippet}
 </Dropdown>
 
-{#if showDevSwitcher}
-  <DevUserSwitcher bind:open={devSwitcherOpen} currentUserId={userState.user?.id ?? null} />
+{#if simulation.eligible && !simulation.invalid}
+  <RoleSimulationDialog bind:open={simulationOpen} state={simulation} />
 {/if}
+
+<style>
+  .account-trigger {
+    min-width: var(--control-height-md);
+    min-height: var(--control-height-md);
+  }
+  .account-avatar {
+    position: relative;
+    display: inline-flex;
+  }
+  .simulation-badge {
+    position: absolute;
+    inset-block-start: calc(-1 * var(--space-1));
+    inset-inline-end: calc(-1 * var(--space-1));
+    display: grid;
+    place-items: center;
+    width: var(--space-4);
+    height: var(--space-4);
+    padding: var(--space-0-5);
+    border: calc(var(--space-0-5) / 2) solid var(--color-canvas);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-warning-fg) 45%, var(--color-canvas));
+    color: var(--color-text-primary);
+    pointer-events: none;
+  }
+  .simulation-badge :global(svg) {
+    width: 100%;
+    height: 100%;
+  }
+  @media (pointer: coarse) {
+    .account-trigger {
+      min-width: var(--control-height-touch);
+      min-height: var(--control-height-touch);
+    }
+  }
+  .simulation-current {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    min-height: var(--control-height-touch);
+  }
+  .simulation-dot {
+    width: var(--space-1);
+    height: var(--space-1);
+    flex: none;
+    border-radius: var(--radius-full);
+    background: var(--color-warning-fg);
+  }
+  .simulation-caption,
+  .simulation-current :global(.simulation-chevron) {
+    color: var(--color-text-tertiary);
+  }
+  .simulation-role {
+    overflow-wrap: anywhere;
+    color: var(--color-text-primary);
+  }
+  .simulation-finish {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    color: var(--color-warning-fg);
+  }
+</style>

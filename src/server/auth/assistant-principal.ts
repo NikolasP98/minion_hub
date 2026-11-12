@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { error } from '@sveltejs/kit';
 import { and, eq, or, sql } from 'drizzle-orm';
 import { gateway, personalAgents } from '@minion-stack/db/pg';
@@ -223,6 +224,7 @@ export async function resolveAssistantPrincipal(
   locals: App.Locals,
   url: URL,
 ): Promise<AssistantPrincipal> {
+  rejectSimulatedDelegation();
   const agentId = url.searchParams.get('agentId');
   const userId = url.searchParams.get('userId');
   const requestedOrg = url.searchParams.get('orgId');

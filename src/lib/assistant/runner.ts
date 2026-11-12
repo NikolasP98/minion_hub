@@ -10,6 +10,7 @@ import { bindEffectLease } from './effect-lease';
 import { executeTool, hasTool, isReadOnly, waitForTool } from './model-context';
 import { parseUiBlocks, type UiCall } from './ui-blocks';
 import { guide } from './guide.svelte';
+import { beginEffectReceipt, beginEffectRun, settleEffectReceipt } from './interrupted-effects';
 import {
   beginInvocation,
   isRunCurrent,
@@ -66,6 +67,7 @@ export async function runUiCalls(
   const selected = calls.some((c) => c.tool === 'hub.navigate')
     ? calls.filter((c) => c.tool === 'hub.navigate')
     : calls;
+  if (binding && selected.length && current()) beginEffectRun(binding);
   for (const call of selected) {
     if (!current()) break;
     if (call.tool.startsWith('fill_') && !hasTool(call.tool)) {
@@ -74,6 +76,9 @@ export async function runUiCalls(
     }
     if (!current()) break;
     const capability = binding ? beginInvocation(binding, call.tool) : undefined;
+    const receipt = binding
+      ? beginEffectReceipt(binding, call.tool, isReadOnly(call.tool))
+      : undefined;
     const result = await executeTool(call.tool, call.input, {
       signal: binding?.controller.signal,
       capability,
@@ -84,6 +89,9 @@ export async function runUiCalls(
           )
         : undefined,
     });
+    // Retain only bounded receipt certainty even when the execution lease died
+    // during the await. This cannot restore authority or dispatch a follow-up.
+    settleEffectReceipt(receipt, result);
     const handoff = settleInvocation(capability);
     if (!current()) break;
     outcomes.push({

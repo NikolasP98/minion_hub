@@ -91,7 +91,11 @@ export function readApiBaseline() {
 // Heuristic by design (name match after comment stripping): it measures the unguarded-read surface so
 // it can only shrink; it does not prove a handler is safe or unsafe.
 const API_DIR = 'src/routes/api';
-const GUARD = /\b(?:requireOrgCapability|requireAuth|requireAdmin|requireServerToken)\b/;
+// Assistant routes authenticate an assigned principal, then (for business
+// datasets) requireAssistantCapability enforces the module action. These are
+// real guards, not baseline exceptions; route/native tests qualify authority.
+const GUARD =
+  /\b(?:requireOrgCapability|requireAuth|requireAdmin|requireServerToken|requireAssistantCapability|resolveAssistantPrincipal)\b/;
 const EXPORTS_GET =
   /export\s+(?:const|async\s+function|function)\s+GET\b|export\s*\{[^}]*\bGET\b[^}]*\}/;
 function walkApi(dir, out) {

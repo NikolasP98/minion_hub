@@ -1,3 +1,4 @@
+import { currentEffectiveAuthority } from '$server/auth/effective-authority';
 import { getPgClient } from '$server/db/pg-pool';
 import {
   buildCapabilities,
@@ -183,6 +184,12 @@ export async function resolveFreshOrgMemberWithCapability(
             from ${tx(tables.permissionRules)}
             where org_id=${orgId}::uuid and role_key in ${tx(roleKeys)}
           `;
+    const effective = currentEffectiveAuthority(orgId, profileId);
+    if (effective) {
+      return rows.length > 0 && effective.capabilities.can(module, action)
+        ? { profileId, verifiedEmail: verifiedEmail(rows[0]!) }
+        : null;
+    }
     return buildFreshOrgAuthorizedMembers(rows, rules, module, action, 1)[0] ?? null;
   });
 }

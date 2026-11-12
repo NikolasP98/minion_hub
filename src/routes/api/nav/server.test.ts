@@ -13,7 +13,6 @@ const invalidateRbac = vi.fn();
 const getCoreCtx = vi.fn();
 const readNavConfig = vi.fn();
 const writeNavConfig = vi.fn();
-const deleteOrphanPageRules = vi.fn();
 const loadPermissionsForUser = vi.fn();
 
 vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability, invalidateRbac }));
@@ -21,7 +20,6 @@ vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx }));
 vi.mock('$server/services/nav-config.service', () => ({
   readNavConfig,
   writeNavConfig,
-  deleteOrphanPageRules,
 }));
 vi.mock('$server/services/permissions.service', () => ({ loadPermissionsForUser }));
 
@@ -131,12 +129,15 @@ describe('PUT /api/nav/config', () => {
     const res = await put(doc());
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(doc());
-    expect(deleteOrphanPageRules).toHaveBeenCalledWith('org-a', ['page:k3x9q2', 'section:st4ff1']);
+    expect(writeNavConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: 'org-a' }),
+      doc(),
+    );
     expect(invalidateRbac).toHaveBeenCalledWith('org-a');
   });
 
-  it('still answers 200 for a saved document when the orphan prune fails', async () => {
-    deleteOrphanPageRules.mockRejectedValueOnce(new Error('db down'));
+  it('still answers 200 for a committed document when permission invalidation fails', async () => {
+    invalidateRbac.mockRejectedValueOnce(new Error('cache down'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const res = await put(doc());
     expect(res.status).toBe(200);

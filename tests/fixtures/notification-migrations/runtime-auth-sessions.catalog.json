@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "kind": "derived-test-runtime-prerequisite",
+  "capturedOn": "2026-11-08",
+  "source": {
+    "authImage": "public.ecr.aws/supabase/gotrue:v2.188.1",
+    "databaseImage": "public.ecr.aws/supabase/postgres:17.6.1.106",
+    "boundary": "Read-only catalog queries against the loopback QA GoTrue database; no user/session rows captured."
+  },
+  "scope": "Minimal session shape required by current Hub migrations and live-session checks; not a historical baseline or a complete GoTrue auth schema.",
+  "columnQuery": "select column_name,data_type,udt_name,is_nullable,column_default from information_schema.columns where table_schema='auth' and table_name='sessions' order by ordinal_position",
+  "constraintQuery": "select conname,pg_get_constraintdef(oid) as definition from pg_constraint where conrelid='auth.sessions'::regclass and contype <> 'n' order by conname",
+  "columns": [
+    {
+      "column_name": "id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "udt_name": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "column_name": "not_after",
+      "data_type": "timestamp with time zone",
+      "udt_name": "timestamptz",
+      "is_nullable": "YES",
+      "column_default": null
+    }
+  ],
+  "constraints": [
+    {
+      "conname": "sessions_pkey",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "conname": "sessions_user_id_fkey",
+      "definition": "FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE"
+    }
+  ],
+  "migrationActorReferences": {
+    "role": "postgres",
+    "privilege": "REFERENCES",
+    "sourceHasPrivilege": true,
+    "sourceOwner": "supabase_auth_admin",
+    "sourceQuery": "select pg_get_userbyid(relowner) as owner,has_table_privilege('postgres',oid,'REFERENCES') as postgres_references from pg_class where oid='auth.sessions'::regclass"
+  }
+}

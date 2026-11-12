@@ -1,5 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json, error, isHttpError } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
@@ -15,6 +15,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   try {
     await applyTag(ctx, params.id!, tagId, locals.user?.supabaseId ?? null);
   } catch (e) {
+    if (isHttpError(e)) throw e;
     // Scope violation (a stock/catalog/event tag on a contact) or unknown id.
     throw error(400, e instanceof Error ? e.message : 'invalid tag');
   }

@@ -52,9 +52,32 @@ export const STOCK_ENTRY_FORM: FormDef = {
     },
     {
       key: 'rate',
-      label: 'Unit cost',
+      label: 'Cost',
       type: 'number',
-      description: 'Cost per unit; required for receipts (used for inventory valuation).',
+      description:
+        'Cost in currency, using rateMode when supplied; otherwise per-unit, even if the page displays totals. Required for receipts.',
+    },
+    {
+      key: 'currency',
+      label: 'Cost currency',
+      type: 'select',
+      options: [
+        { value: 'PEN', label: 'PEN' },
+        { value: 'USD', label: 'USD' },
+      ],
+      description:
+        'Currency of the rates. Omit to keep the draft currency. Changing currency is rejected once any row has a cost; use a separate entry instead.',
+    },
+    {
+      key: 'rateMode',
+      label: 'Cost basis',
+      type: 'select',
+      options: [
+        { value: 'unit', label: 'Per unit' },
+        { value: 'total', label: 'Whole line total' },
+      ],
+      description:
+        'Meaning of rate: unit = each unit; total = all qty units. Omit for per-unit input. Changing this view preserves earlier row amounts.',
     },
     {
       key: 'warehouse',

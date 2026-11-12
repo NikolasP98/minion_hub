@@ -18,7 +18,7 @@ import { MATRIX, matrixById } from './matrix';
 import { matrixUuid } from './ids';
 import { GRANT_HALF_USED, GRANT_EXHAUSTED } from './pos';
 import { CHAIN_INVOICE_ID } from './stock';
-import { ORG_BUSINESS, userId } from './tenancy';
+import { ORG_BUSINESS, ORG_PERSONAL, SIMULATION_OWNER_TWO_ORGS, userId } from './tenancy';
 
 const dbUrl = testDatabaseUrl();
 const MATRIX_BY_ID = matrixById();
@@ -27,6 +27,19 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
   let sql: ReturnType<typeof postgres>;
   let libsql: LibsqlClient;
   let registered: ReadonlyMap<string, RowRef>;
+
+  it('role-simulation fixtures keep access management separate from settings and preserve CRM limits', async () => {
+    const rows = await sql<
+      { module: string; can_manage: boolean; if_owner: boolean; field_level: number }[]
+    >`
+      select module,can_manage,if_owner,field_level from permission_rules where org_id=${ORG_BUSINESS}::uuid and role_key='custom-qa-access'`;
+    expect(rows.find((r) => r.module === 'users')?.can_manage).toBe(true);
+    expect(rows.find((r) => r.module === 'settings')).toBeUndefined();
+    expect(rows.find((r) => r.module === 'crm')).toMatchObject({ if_owner: true, field_level: 0 });
+    const foreign =
+      await sql`select key from org_roles where org_id<>${ORG_BUSINESS} and key in ('custom-qa-access','custom-qa-empty')`;
+    expect(foreign).toHaveLength(0);
+  });
 
   beforeAll(async () => {
     process.env.SUPABASE_DB_URL ??= dbUrl;
@@ -123,6 +136,26 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
     expect(row.live).toBe(row.total);
   });
 
+  it('simulation org-switch owner is a separate ordinary profile with owner membership in both orgs', async () => {
+    const profileId = userId(SIMULATION_OWNER_TWO_ORGS);
+    expect(profileId).not.toBe(userId('tenancy.user.owner'));
+    expect(await sql`select role from profiles where id=${profileId}::uuid`).toEqual([
+      { role: 'user' },
+    ]);
+    const memberships = await sql<{ org_id: string; role: string; role_key: string }[]>`
+      select m.organization_id::text as org_id,m.role,r.role_key from organization_members m
+      join member_roles r on r.org_id=m.organization_id and r.profile_id=m.profile_id
+      where m.profile_id=${profileId}::uuid order by m.organization_id`;
+    expect(memberships).toEqual(
+      [ORG_BUSINESS, ORG_PERSONAL]
+        .sort()
+        .map((org_id) => ({ org_id, role: 'owner', role_key: 'owner' })),
+    );
+    expect(
+      await sql`select organization_id from organization_members where profile_id=${userId('tenancy.user.owner')}::uuid`,
+    ).toEqual([{ organization_id: ORG_BUSINESS }]);
+  });
+
   it('tenancy.user.legacy-member has organization_members but no member_roles row', async () => {
     const legacyMemberId = userId('tenancy.user.legacy-member');
     const [membership] = await sql<{ n: number }[]>`
@@ -147,6 +180,7 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
       'tenancy.user.platform-admin@qa.minion.test',
       'tenancy.user.service-account@qa.minion.test',
       'tenancy.user.two-orgs@qa.minion.test',
+      'tenancy.user.simulation-owner-two-orgs@qa.minion.test',
       'formula.persona.finance-masked@qa.minion.test',
       'presentation.persona.finance-masked-manager@qa.minion.test',
       'ui-audit-owner@minion.test',

@@ -8,10 +8,10 @@ import { deleteCustomRole, requireOrgCapability } from '$server/services/rbac.se
  * role keys) and 409s while any member still holds it.
  */
 export const DELETE: RequestHandler = async ({ locals, params }) => {
-	await requireOrgCapability(locals, 'users', 'manage');
-	if (!locals.tenantCtx) throw error(401);
-	const key = params.key;
-	if (!key) throw error(400, 'role key required');
-	await deleteCustomRole(locals.tenantCtx.tenantId, key);
-	return json({ ok: true });
+  await requireOrgCapability(locals, 'users', 'manage');
+  if (!locals.tenantCtx) throw error(401);
+  const key = params.key;
+  if (!key) throw error(400, 'role key required');
+  await deleteCustomRole(locals.tenantCtx.tenantId, key, locals);
+  return json({ ok: true });
 };

@@ -6,7 +6,7 @@ import '$server/env-hoist';
 import { sequence } from '@sveltejs/kit/hooks';
 import * as Sentry from '@sentry/sveltekit';
 import { redactGatewayCredential } from '$server/observability/redact-gateway-credential';
-import { error, type Handle } from '@sveltejs/kit';
+import { error, isHttpError, redirect, json, type Handle } from '@sveltejs/kit';
 import { planOperationCacheHandle } from '$server/http/plan-operation-cache';
 import { i18n } from '$lib/i18n';
 import { canonicalPath } from '$lib/canonical-path';
@@ -21,6 +21,18 @@ import {
 import { createServerTimingHandle } from '$lib/server/server-timing';
 import { building } from '$app/environment';
 import { resolveIdentity } from '$server/auth/resolve-identity';
+import {
+  runWithEffectiveAuthority,
+  runWithRequestCapabilities,
+  rejectSimulatedDelegation,
+} from '$server/auth/effective-authority';
+import {
+  admitRoleSimulation,
+  enforceSimulationGeneration,
+  roleSimulationLocation,
+  SimulationGenerationConflict,
+} from '$server/services/role-simulation.service';
+import { SIMULATION_GENERATION_HEADER } from '$lib/role-simulation';
 import { isDevBackend } from '$server/dev-backend';
 import { env } from '$env/dynamic/private';
 import { mintWorkforceIdentity } from '$lib/server/workforce-identity';
@@ -37,6 +49,7 @@ import { getCachedLanding, setCachedLanding } from '$server/landing-cache';
 import { availableLanguageTags } from '$lib/paraglide/runtime';
 import {
   apiWriteCapability,
+  apiReadCapability,
   hasOrgCapability,
   type Module,
   resolveCapabilities,
@@ -247,6 +260,60 @@ const appHandle: Handle = async ({ event, resolve }) => {
   // /api/metrics bearer path resolve directly, as before).
   const { locals, bypassGate } = await resolveIdentity(event);
   Object.assign(event.locals, locals);
+  try {
+    const effective = await admitRoleSimulation(event);
+    return await runWithRequestCapabilities(event.locals.requestCapabilities, () =>
+      runWithEffectiveAuthority(effective, async () => {
+        await enforceSimulationGeneration(event);
+        if (
+          effective?.invalid &&
+          event.route.id?.startsWith('/(app)') &&
+          canonicalPath(event.url.pathname) !== '/account/home'
+        )
+          throw redirect(303, '/account/home');
+        try {
+          return await runAppHandle(event, resolve, bypassGate);
+        } catch (cause) {
+          if (
+            effective &&
+            event.route.id?.startsWith('/(app)') &&
+            canonicalPath(event.url.pathname) !== '/account/home' &&
+            isHttpError(cause) &&
+            [403, 404].includes(cause.status)
+          ) {
+            let location = await roleSimulationLocation(
+              event.locals,
+              event.url.pathname + event.url.search,
+            );
+            if (canonicalPath(location.split(/[?#]/)[0]) === canonicalPath(event.url.pathname))
+              location = '/account/home';
+            throw redirect(303, location);
+          }
+          throw cause;
+        }
+      }),
+    );
+  } catch (cause) {
+    if (cause instanceof SimulationGenerationConflict)
+      return json(
+        { code: 'ROLE_SIMULATION_GENERATION_CONFLICT', message: cause.message },
+        {
+          status: 409,
+          headers: {
+            [SIMULATION_GENERATION_HEADER]: cause.generation,
+            'Cache-Control': 'private, no-store',
+          },
+        },
+      );
+    throw cause;
+  }
+};
+
+async function runAppHandle(
+  event: Parameters<Handle>[0]['event'],
+  resolve: Parameters<Handle>[0]['resolve'],
+  bypassGate: boolean,
+): Promise<Response> {
   // Spec 043: the model-call backstop needs the org even on routes that never call getTenantCtx.
   if (event.locals.tenantCtx?.tenantId) setAiUsageOrg(event.locals.tenantCtx.tenantId);
   if (event.locals.user) markAiUsageAuthenticated();
@@ -266,7 +333,7 @@ const appHandle: Handle = async ({ event, resolve }) => {
     return resolve(event);
   }
   return finishApp({ event, resolve });
-};
+}
 
 interface RouteGuard {
   /** The path the module + route policies evaluate (the TARGET for a nav instance). */
@@ -452,6 +519,7 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // exact handler owns the canonical membership check, not its descendants.
     const handlerOwnsAuth =
       path === '/api/active-org' ||
+      path === '/api/me/role-simulation' ||
       API_HANDLER_AUTH_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
     if (handlerOwnsAuth) {
       return resolve(event);
@@ -514,7 +582,9 @@ const finishApp: Handle = async ({ event, resolve }) => {
   // /home). The destination is user-configurable via the sidebar right-click
   // "Set as home page" action (stored in the `landingPage` preference).
   if (event.locals.user && path === '/') {
-    let location = await resolveLandingPage(event.locals.user.supabaseId);
+    let location = event.locals.roleSimulation?.active
+      ? await roleSimulationLocation(event.locals, event.url.pathname)
+      : await resolveLandingPage(event.locals.user.supabaseId);
     // Spec 043: a landing page the org's plan does not grant would 404 right after login.
     const landing = canonicalPath(location.split(/[?#]/, 1)[0]);
     const feature = featureForPath(landing);
@@ -537,13 +607,15 @@ const finishApp: Handle = async ({ event, resolve }) => {
 
   // Central RBAC write guard: business-data + org-config mutating API calls
   // (/api/crm|finances|sales|scheduling|support|memberships|projects|work|
-  // workforce|modules|plugins) require the matching capability. Reads aren't
-  // gated here (pages gate their own view); only POST/PUT/PATCH/DELETE. The
+  // workforce|modules|plugins) require the matching capability. Direct GET/HEAD
+  // data reads also need view; a page guard cannot authorize a separate API request. The
   // gateway server-token + cron-tick traffic targets other prefixes, and the
   // anonymous /api/scheduling/public/* booking path is excluded — so only
   // user-driven writes reach this. 403 (JSON) when the role lacks the cap.
   if (event.locals.user) {
-    const need = apiWriteCapability(path, event.request.method);
+    const need = /^(GET|HEAD)$/.test(event.request.method)
+      ? apiReadCapability(path)
+      : apiWriteCapability(path, event.request.method);
     if (need && !(await hasAnyCapability(event.locals, [need, ...(need.anyOf ?? [])]))) {
       return new Response(
         JSON.stringify({ error: 'You do not have permission to perform this action.' }),
@@ -617,6 +689,7 @@ const workforceIdentityHandle: Handle = async ({ event, resolve }) => {
     const path = canonicalPath(event.url.pathname);
     const needsCompany = needsWorkforceIdentity(path);
     if (!needsCompany) return resolve(event);
+    rejectSimulatedDelegation();
     const orgId = event.locals.orgId ?? event.locals.tenantCtx?.tenantId ?? null;
     // Native single-id model: the Workforce company id IS the active org id
     // (company.id === organizations.id). No mapping lookup, no cookie carrier.

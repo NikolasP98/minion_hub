@@ -163,6 +163,14 @@ create table if not exists public.doc_audit_log (
   occurred_at timestamptz not null default now()
 );
 
+-- Keep this derived audit shape aligned with the role-simulation migration.
+-- Nullable GUC defaults preserve ordinary writes in the bare concurrency lane.
+alter table public.doc_audit_log
+  add column if not exists simulation_role_key text
+    default nullif(current_setting('app.simulation_role_key', true), ''),
+  add column if not exists simulation_generation uuid
+    default nullif(current_setting('app.simulation_generation', true), '')::uuid;
+
 create index if not exists doc_audit_log_ref_idx
   on public.doc_audit_log (org_id, ref_type, ref_id, occurred_at);
 
@@ -408,7 +416,9 @@ begin
         ('actor_name',        'text',                             'YES',       null),
         ('op',                'text',                             'NO',        '''update''::text'),
         ('changes',           'jsonb',                            'NO',        '''[]''::jsonb'),
-        ('occurred_at',       'timestamp with time zone',         'NO',        'now()')
+        ('occurred_at',       'timestamp with time zone',         'NO',        'now()'),
+        ('simulation_role_key','text',                           'YES',       'NULLIF(current_setting(''app.simulation_role_key''::text, true), ''''::text)'),
+        ('simulation_generation','uuid',                         'YES',       '(NULLIF(current_setting(''app.simulation_generation''::text, true), ''''::text))::uuid')
     )
     select e.col,
            e.data_type   as want_type,

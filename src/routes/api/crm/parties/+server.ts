@@ -1,3 +1,4 @@
+import { partyReadScope } from '$server/auth/party-read-scope';
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
@@ -48,7 +49,15 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     verifiedParam === 'only' || verifiedParam === 'first' ? verifiedParam : undefined;
   const docParam = url.searchParams.get('doc');
   const doc = docParam === 'dni' || docParam === 'ruc' ? docParam : undefined;
-  return json(await searchParties(ctx, q, { types, verifiedOnly, verified, doc }));
+  return json(
+    await searchParties(ctx, q, {
+      types,
+      verifiedOnly,
+      verified,
+      doc,
+      ...(await partyReadScope(locals)),
+    }),
+  );
 };
 
 const postSchema = z.object({
@@ -119,7 +128,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       throw error(409, { message: cause.message, code: 'document_type_conflict' });
     throw cause;
   }
-  if (company?.status === 'found') await applyRucRegistry(ctx, party.id, company.company);
+  if (company?.status === 'found') await applyRucRegistry(ctx, party.id, company.company, true);
   const customFields = Object.fromEntries(
     Object.entries(b.customFields ?? {}).filter(([key]) => !key.startsWith('_')),
   );

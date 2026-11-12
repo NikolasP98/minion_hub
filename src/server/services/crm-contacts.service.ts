@@ -1,3 +1,4 @@
+import { error } from '@sveltejs/kit';
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
@@ -39,6 +40,15 @@ import {
 import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import { StaleWriteError, staleGuard } from './errors';
 import { tokenizedIlike } from './search-terms';
+import {
+  simulatedMutationOwner,
+  simulatedMutationPredicate,
+  simulatedOrgMutationPredicate,
+  simulatedOwnerAssignment,
+  assertSimulatedRecordAccess,
+  assertSimulatedPartyAccess,
+  requireUnscopedSimulationMutation,
+} from '$server/auth/simulated-record-scope';
 
 /**
  * CRM service (spec §4–8). Contacts = inbound senders to the org's registered
@@ -69,6 +79,7 @@ export async function syncContactsFromLedger(ctx: CoreCtx): Promise<SyncResult> 
   // Harvest gate: only accounts the user has added to the CRM scope (and not
   // paused) create new contacts. `all` = legacy/unconfigured → harvest every
   // account; an explicit but empty scope harvests nothing.
+  requireUnscopedSimulationMutation(ctx, 'crm', 'create');
   const scope = await getHarvestScope(ctx);
   const accountGate = scope.all
     ? sql``
@@ -1270,7 +1281,12 @@ export async function setContactCustomField(
       updatedAt: new Date(),
     })
     .where(
-      and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, orgId), ...(guard ? [guard] : [])),
+      and(
+        eq(crmContacts.id, contactId),
+        eq(crmContacts.orgId, orgId),
+        ...(guard ? [guard] : []),
+        simulatedOrgMutationPredicate(orgId, 'crm', 'edit', crmContacts.ownerId),
+      ),
     )
     .returning({ id: crmContacts.id });
   return rows.length > 0;
@@ -1467,26 +1483,43 @@ export async function getContact(
 export async function getContactPrefill(
   ctx: CoreCtx,
   id: string,
+  ownerId?: string,
+  maskSensitive = false,
 ): Promise<{ name: string | null; phone: string | null; email: string | null } | null> {
   return withOrgCore(ctx, async (tx) => {
     const [c] = await tx
       .select({ name: crmContacts.displayName, customFields: crmContacts.customFields })
       .from(crmContacts)
-      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(crmContacts.id, id),
+          eq(crmContacts.orgId, ctx.tenantId),
+          isNull(crmContacts.deletedAt),
+          ownerId ? eq(crmContacts.ownerId, ownerId) : undefined,
+        ),
+      )
       .limit(1);
     if (!c) return null;
     const [wa] = await tx
       .select({ externalId: crmContactIdentities.externalId })
       .from(crmContactIdentities)
       .where(
-        and(eq(crmContactIdentities.contactId, id), eq(crmContactIdentities.channel, 'whatsapp')),
+        and(
+          eq(crmContactIdentities.orgId, ctx.tenantId),
+          eq(crmContactIdentities.contactId, id),
+          eq(crmContactIdentities.channel, 'whatsapp'),
+        ),
       )
       .limit(1);
     // WhatsApp external_id is the phone (often `51999...@s.whatsapp.net`) — keep digits.
     const phone = wa?.externalId ? wa.externalId.replace(/\D/g, '') || null : null;
     const cf = (c.customFields ?? {}) as Record<string, unknown>;
     const email = (cf.email ?? cf.correo ?? null) as string | null;
-    return { name: c.name ?? null, phone, email };
+    return {
+      name: c.name ?? null,
+      phone: maskSensitive && phone ? maskPii(phone) : phone,
+      email: maskSensitive && email ? maskPii(email) : email,
+    };
   });
 }
 
@@ -1509,6 +1542,7 @@ export async function createContact(
   ctx: CoreCtx,
   data: { displayName?: string | null; customFields?: Record<string, unknown> },
 ) {
+  const ownerId = simulatedMutationOwner(ctx, 'crm', 'create');
   const row = await withOrgCore(ctx, async (tx) => {
     const [r] = await tx
       .insert(crmContacts)
@@ -1516,6 +1550,7 @@ export async function createContact(
         orgId: ctx.tenantId,
         displayName: data.displayName ?? null,
         source: 'manual',
+        ownerId,
         customFields: data.customFields ?? {},
       })
       .returning();
@@ -1609,6 +1644,8 @@ export async function updateContact(
   },
   expectedUpdatedAt?: Date,
 ) {
+  simulatedOwnerAssignment(ctx, 'crm', 'edit', data.ownerId);
+  const ownership = simulatedMutationPredicate(ctx, 'crm', 'edit', crmContacts.ownerId);
   const set: Record<string, unknown> = { updatedAt: new Date() };
   if (data.displayName !== undefined) set.displayName = data.displayName;
   if (data.ownerId !== undefined) set.ownerId = data.ownerId;
@@ -1641,6 +1678,7 @@ export async function updateContact(
           eq(crmContacts.id, id),
           eq(crmContacts.orgId, ctx.tenantId),
           staleGuard(crmContacts.updatedAt, expectedUpdatedAt),
+          ownership,
         ),
       )
       .returning();
@@ -1649,7 +1687,7 @@ export async function updateContact(
         const [existing] = await tx
           .select()
           .from(crmContacts)
-          .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId)))
+          .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId), ownership))
           .limit(1);
         if (existing) throw new StaleWriteError(existing);
       }
@@ -1658,6 +1696,7 @@ export async function updateContact(
     if (data.dob !== undefined) {
       if (!r.partyId)
         throw new Error('Contact must be linked to a party before setting date of birth');
+      await assertSimulatedPartyAccess(tx, ctx, r.partyId);
       // The DB trigger also enforces this across every writer and every CRM
       // facet sharing the party; keeping the contact + DOB write in this same
       // transaction prevents a partial contact update when eligibility fails.
@@ -1716,6 +1755,7 @@ export async function updateContact(
 
 /** Soft-delete (right-to-erasure first step). */
 export async function softDeleteContact(ctx: CoreCtx, id: string) {
+  const ownership = simulatedMutationPredicate(ctx, 'crm', 'delete', crmContacts.ownerId);
   await withOrgCore(ctx, async (tx) => {
     const deleted = await tx
       .update(crmContacts)
@@ -1725,9 +1765,11 @@ export async function softDeleteContact(ctx: CoreCtx, id: string) {
           eq(crmContacts.id, id),
           eq(crmContacts.orgId, ctx.tenantId),
           isNull(crmContacts.deletedAt),
+          ownership,
         ),
       )
       .returning({ id: crmContacts.id });
+    if (ownership && !deleted.length) throw error(404, 'Contact not found');
     if (deleted.length > 0)
       await recordAuditInTx(tx, ctx, {
         refType: 'crm_contact',
@@ -1749,6 +1791,7 @@ export async function softDeleteContacts(
   ids: string[],
   ownerId?: string,
 ): Promise<number> {
+  const ownership = simulatedMutationPredicate(ctx, 'crm', 'delete', crmContacts.ownerId);
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0) return 0;
   const count = await withOrgCore(ctx, async (tx) => {
@@ -1760,6 +1803,7 @@ export async function softDeleteContacts(
           eq(crmContacts.orgId, ctx.tenantId),
           inArray(crmContacts.id, uniqueIds),
           isNull(crmContacts.deletedAt),
+          ownership,
           ...(ownerId ? [eq(crmContacts.ownerId, ownerId)] : []),
         ),
       )
@@ -1784,9 +1828,14 @@ export async function softDeleteContacts(
 /** Hard-delete ("Forget this contact" — removes contact + identities + activities
  *  via FK cascade). The underlying ledger rows are a separate retention domain. */
 export async function hardDeleteContact(ctx: CoreCtx, id: string) {
-  await withOrgCore(ctx, (tx) =>
-    tx.delete(crmContacts).where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId))),
-  );
+  const ownership = simulatedMutationPredicate(ctx, 'crm', 'delete', crmContacts.ownerId);
+  await withOrgCore(ctx, async (tx) => {
+    const deleted = await tx
+      .delete(crmContacts)
+      .where(and(eq(crmContacts.id, id), eq(crmContacts.orgId, ctx.tenantId), ownership))
+      .returning({ id: crmContacts.id });
+    if (ownership && !deleted.length) throw error(404, 'Contact not found');
+  });
   await bustCrmList(ctx.tenantId);
 }
 
@@ -1797,6 +1846,7 @@ export async function addNote(
   actorId: string | null,
 ) {
   return withOrgCore(ctx, async (tx) => {
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     const [row] = await tx
       .insert(crmActivities)
       .values({ orgId: ctx.tenantId, contactId, kind: 'note', body, actorId })
@@ -1836,6 +1886,7 @@ export async function setFunnelStage(
   stage: string,
   opts: { by: 'user' | 'auto' | 'agent'; reason?: string; confidence?: number },
 ): Promise<{ applied: boolean; stage: string }> {
+  const ownership = simulatedMutationPredicate(ctx, 'crm', 'edit', crmContacts.ownerId);
   if (!isFunnelStage(stage)) throw new Error(`invalid funnel stage: ${stage}`);
   const nowIso = new Date().toISOString();
 
@@ -1843,7 +1894,7 @@ export async function setFunnelStage(
     const [row] = await tx
       .select({ customFields: crmContacts.customFields })
       .from(crmContacts)
-      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId)))
+      .where(and(eq(crmContacts.id, contactId), eq(crmContacts.orgId, ctx.tenantId), ownership))
       .for('update')
       .limit(1);
     if (!row) return null;
@@ -1926,6 +1977,7 @@ export async function createTag(
   },
   createdBy: string | null,
 ) {
+  simulatedMutationOwner(ctx, 'crm', 'create');
   // Reject an auto-tag whose rule won't compile (fail fast, not silently).
   if (data.kind === 'auto' && tryCompileTagRule(data.rule) == null) {
     throw new Error('Invalid auto-tag rule');
@@ -1966,6 +2018,7 @@ export async function updateTag(
   tagId: string,
   patch: { name?: string; color?: string | null },
 ) {
+  requireUnscopedSimulationMutation(ctx, 'crm', 'edit');
   const [row] = await withOrgCore(ctx, (tx) =>
     tx
       .update(crmTags)
@@ -1981,6 +2034,7 @@ export async function updateTag(
 }
 
 export async function deleteTag(ctx: CoreCtx, tagId: string) {
+  requireUnscopedSimulationMutation(ctx, 'crm', 'delete');
   await withOrgCore(ctx, (tx) =>
     tx.delete(crmTags).where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId))),
   );
@@ -1994,6 +2048,7 @@ export async function applyTag(
   appliedBy: string | null,
 ) {
   await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     // Only customer-scoped tags may land on a contact (stock/catalog/event tags never).
     const [t] = await tx
       .select({ scope: crmTags.scope, kind: crmTags.kind })
@@ -2013,11 +2068,18 @@ export async function applyTag(
 }
 
 export async function removeTag(ctx: CoreCtx, contactId: string, tagId: string) {
-  await withOrgCore(ctx, (tx) =>
-    tx
+  await withOrgCore(ctx, async (tx) => {
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
+    await tx
       .delete(crmContactTags)
-      .where(and(eq(crmContactTags.contactId, contactId), eq(crmContactTags.tagId, tagId))),
-  );
+      .where(
+        and(
+          eq(crmContactTags.orgId, ctx.tenantId),
+          eq(crmContactTags.contactId, contactId),
+          eq(crmContactTags.tagId, tagId),
+        ),
+      );
+  });
   await bustCrmList(ctx.tenantId);
 }
 
@@ -2097,6 +2159,8 @@ export async function applyTagBulk(
 ): Promise<number> {
   if (contactIds.length === 0) return 0;
   const inserted = await withOrgCore(ctx, async (tx) => {
+    for (const contactId of [...new Set(contactIds)].sort())
+      await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     const rows = await tx
       .insert(crmContactTags)
       .values(

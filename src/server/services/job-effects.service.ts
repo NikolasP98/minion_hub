@@ -1,3 +1,4 @@
+import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { getOrgTransactionDb } from '$server/db/pg-client';
@@ -509,6 +510,7 @@ export async function createJobRequest<T>(
   input: NewJob,
   mutate: (tx: CoreTx, request: JobRequest) => Promise<T>,
 ) {
+  rejectSimulatedDelegation();
   scope = { ...scope };
   identity = { ...identity };
   input = { ...input };

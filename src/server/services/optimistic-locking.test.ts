@@ -16,7 +16,12 @@ const CUR_ROW = {
  *  branch on the DB's 0-vs-1-row outcome, which is what §C's logic hinges on. */
 function buildTx(updateMatches: boolean) {
   const select = vi.fn(() => ({
-    from: () => ({ where: () => ({ limit: () => Promise.resolve([CUR_ROW]) }) }),
+    from: () => ({
+      where: () => ({
+        limit: () => Promise.resolve([CUR_ROW]),
+        for: () => ({ limit: () => Promise.resolve([CUR_ROW]) }),
+      }),
+    }),
   }));
   const update = vi.fn(() => ({
     set: () => ({

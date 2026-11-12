@@ -3,6 +3,7 @@ import { PERMISSIONS, ALL_SUBRESOURCES, BUSINESS_ACTION_MODULES } from '$lib/per
 import { resolveCapabilities, type Capabilities } from './rbac.service';
 import { readNavConfig } from './nav-config.service';
 import { getCoreDb } from '$server/db/pg-client';
+import { SCREEN_DESIGN_MANIFEST } from '$lib/routes/route-design-manifest';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { EMPTY_NAV_CONFIG, navPageKeys, sectionViewKey } from '$lib/nav/custom-sections';
 import type { LoadCtx } from './types';
@@ -15,6 +16,8 @@ export interface PermissionsLoadResult {
    * module) — NOT for access decisions, which stay on `permissions`.
    */
   roles: string[];
+  /** Explicit native-screen decisions; absence means use the route registry. */
+  pageRules?: Record<string, boolean>;
 }
 
 /**
@@ -163,7 +166,17 @@ export async function loadPermissionsForUser(
       }).allowed;
     if (allowed) out.push(`${key}:view`);
   }
-  return { permissions: out, roles: caps.roles };
+  const pageRules: Record<string, boolean> = {};
+  for (const screen of SCREEN_DESIGN_MANIFEST) {
+    if (screen.pattern.includes('[')) continue;
+    const rule = caps.explicitView(`page:${screen.pattern}`);
+    if (rule !== undefined) pageRules[screen.pattern] = rule;
+  }
+  return {
+    permissions: out,
+    roles: caps.roles,
+    ...(Object.keys(pageRules).length ? { pageRules } : {}),
+  };
 }
 
 /** Fail soft: a nav-config hiccup must never lock a member out of the app. */

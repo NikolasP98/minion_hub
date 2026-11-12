@@ -1,3 +1,8 @@
+import {
+  simulatedMutationOwner,
+  simulatedOwnerAssignment,
+  assertSimulatedRecordAccess,
+} from '$server/auth/simulated-record-scope';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { getCoreDb } from '$server/db/pg-client';
@@ -106,6 +111,11 @@ export async function autoAssign(
   doc: { id: string } & Record<string, unknown>,
 ): Promise<string | null> {
   if (!isDocTypeAllowed(docType)) return null;
+  const module =
+    docType === 'crm_contact' ? 'crm' : docType === 'sales_order' ? 'sales' : 'support';
+  // Scoped creates already bind owner before insert; never let an assignment rule
+  // send their record to another person or mutate the global round-robin cursor.
+  if (simulatedMutationOwner(ctx, module, 'create')) return null;
   return withOrgCore(ctx, async (tx) => {
     const rules = await tx
       .select()
@@ -161,6 +171,14 @@ export async function reassign(
   actor: { id: string | null; name: string | null; isAdmin: boolean },
 ): Promise<'ok' | 'not_found' | 'forbidden'> {
   if (!isDocTypeAllowed(docType)) return 'not_found';
+  const module =
+    docType === 'crm_contact' ? 'crm' : docType === 'sales_order' ? 'sales' : 'support';
+  simulatedOwnerAssignment(ctx, module, 'edit', newOwner);
+  const scopedOwner = simulatedMutationOwner(ctx, module, 'edit');
+  if (scopedOwner) {
+    await withOrgCore(ctx, (tx) => assertSimulatedRecordAccess(tx, ctx, module, docId, 'edit'));
+    return 'ok'; // reassignment to self is a no-op; all other destinations were refused
+  }
   // newOwner (when set) must be a real member of the caller's org.
   if (newOwner) {
     const members = await listUsers({ tenantId: ctx.tenantId }).catch(() => []);

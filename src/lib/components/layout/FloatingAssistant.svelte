@@ -28,6 +28,13 @@
   import { AttachmentUploadError } from '$lib/attachments/upload';
   import { ATTACHMENT_LIMITS } from '$lib/attachments/limits';
   import ThinkingShader from '$lib/components/assistant/ThinkingShader.svelte';
+  import InterruptedEffectsNotice from '$lib/components/assistant/InterruptedEffectsNotice.svelte';
+  import { getActiveHost } from '$lib/state/features/hosts.svelte';
+  import {
+    discardInterruptedOwner,
+    sameInterruptionOwner,
+    type InterruptionOwner,
+  } from '$lib/assistant/interrupted-effects';
   import { canonicalPath } from '$lib/canonical-path';
   import { appLocale } from '$lib/utils/format';
   import { Button, iconSizes } from '$lib/components/ui';
@@ -103,6 +110,18 @@
     type FactoryIntakeView,
   } from '$lib/workforce/factory-intake';
   import { onDestroy } from 'svelte';
+  import {
+    authorityDialogOpen,
+    ownAssistantModalSurface,
+    assistantModalHotkeyOptions,
+    runAssistantModalHotkey,
+  } from './floating-assistant-modal';
+
+  let modalOwnership: ReturnType<typeof ownAssistantModalSurface> | undefined;
+  let assistantSuspended = $state(false);
+  function modalSuspended() {
+    return modalOwnership?.isSuspended() ?? authorityDialogOpen(document);
+  }
 
   let inputEl: HTMLTextAreaElement | null = $state(null);
   let conversation: AiConversation | undefined = $state();
@@ -119,21 +138,27 @@
   // ⌘J / Ctrl+J — ⌘K is owned by the command palette (CommandPalette.svelte).
   createHotkey(
     'Mod+J',
-    () => {
-      toggleAssistant();
-      if (assistant.open) requestAnimationFrame(() => inputEl?.focus());
-    },
-    { meta: { name: m.shortcuts_assistantName(), description: m.shortcuts_assistantDesc() } },
+    (event) =>
+      runAssistantModalHotkey(event, modalSuspended, () => {
+        toggleAssistant();
+        if (assistant.open)
+          requestAnimationFrame(() => {
+            if (!modalSuspended()) inputEl?.focus();
+          });
+      }),
+    () => ({
+      ...assistantModalHotkeyOptions(assistantSuspended),
+      meta: { name: m.shortcuts_assistantName(), description: m.shortcuts_assistantDesc() },
+    }),
   );
 
   // Escape closes only while open; keep it propagating to other overlays
   // (`allow` = shared ownership is intended; see ShortcutsOverlay).
   createHotkey(
     'Escape',
-    () => closeAssistant(),
+    (event) => runAssistantModalHotkey(event, modalSuspended, closeAssistant),
     () => ({
-      enabled: assistant.open,
-      stopPropagation: false,
+      ...assistantModalHotkeyOptions(assistantSuspended, assistant.open),
       conflictBehavior: 'allow',
     }),
   );
@@ -315,6 +340,17 @@
     followUp: async (parent, results) => sendCallback('', 'ui_followup', parent, results),
   });
   const acceptedActivity = acceptedSurface.activity;
+  const interruptionOwner = $derived.by(() => {
+    const host = getActiveHost();
+    return { ...readSubmissionScope(), hostId: host?.id ?? '', hostUrl: host?.url ?? '' };
+  });
+  let previousInterruptionOwner: InterruptionOwner | undefined;
+  $effect(() => {
+    const next = interruptionOwner;
+    if (previousInterruptionOwner && !sameInterruptionOwner(previousInterruptionOwner, next))
+      discardInterruptedOwner(previousInterruptionOwner);
+    previousInterruptionOwner = { ...next };
+  });
   function updateSubmissionScope() {
     pendingSubmissions.setScope(readSubmissionScope());
     acceptedSurface.updateScope();
@@ -776,6 +812,7 @@
     dragMoved = false;
   }
   function onLauncherClick() {
+    if (modalSuspended()) return;
     if (suppressClick) {
       suppressClick = false;
       return;
@@ -847,30 +884,23 @@
 
   // Hub dialogs are native <dialog>.showModal() (top layer + inert outside), so
   // z-index alone can never paint the panel over them and it goes unclickable.
-  // The whole surface is a manual popover (top layer) re-parented INTO the open
-  // dialog while one is open, and back to <body> once it closes (a closed dialog
-  // may be removed from the DOM, taking the node with it).
+  // Ordinary dialogs keep the manual popover inside their top layer. Authority
+  // dialogs instead suspend the entire surface so it cannot cover their CTA.
   let root = $state<HTMLDivElement | null>(null);
   $effect(() => {
     if (!root) return;
     const el = root;
-    const place = () => {
-      const host = document.querySelector<HTMLElement>('dialog[open]') ?? document.body;
-      if (!el.isConnected || el.parentElement !== host) host.appendChild(el);
-      try {
-        if (!el.matches(':popover-open')) el.showPopover();
-      } catch {
-        /* already open or unsupported — z-index fallback still applies */
-      }
-    };
-    place();
-    const poll = setInterval(place, 400);
+    const ownership = ownAssistantModalSurface(el, (suspended) => {
+      assistantSuspended = suspended;
+    });
+    modalOwnership = ownership;
     // Teardown removes the node ourselves: once re-parented out of the
     // component's own DOM range, Svelte's unmount no longer reaches it, and the
     // app shell is re-keyed per module (root +layout `{#key}`), so every module
     // switch would otherwise leave an orphan pill behind (shipped: two ⌘J pills).
     return () => {
-      clearInterval(poll);
+      ownership.destroy();
+      if (modalOwnership === ownership) modalOwnership = undefined;
       el.remove();
     };
   });
@@ -1121,6 +1151,9 @@
         contentKey={threadKey}
       >
         <div class="flex-1 flex flex-col gap-2">
+          {#if composerMode === 'chat'}
+            <InterruptedEffectsNotice owner={interruptionOwner} />
+          {/if}
           {#if composerMode === 'factory'}
             <div
               class="flex-1 flex flex-col items-center justify-center text-center px-7 factory-welcome"
@@ -1309,6 +1342,9 @@
 </div>
 
 <style>
+  .fa-root:global([hidden]) {
+    display: none;
+  }
   /* Manual popover = top layer. Reset the UA popover box to a transparent,
      click-through viewport overlay; the pill/panel inside keep their own
      `position: fixed` coordinates (top-layer boxes are viewport-relative). */

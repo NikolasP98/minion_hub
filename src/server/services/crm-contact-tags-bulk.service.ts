@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { simulatedMutationOwner } from '$server/auth/simulated-record-scope';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CrmTagBulkOperation } from '$lib/tags/crm-bulk-contract';
 
@@ -43,6 +44,9 @@ export async function mutateCrmContactTagsBulk(
   operations: readonly CrmTagBulkOperation[],
   appliedBy: string | null,
 ): Promise<CrmContactTagBulkMutation> {
+  const owner = simulatedMutationOwner(ctx, 'crm', 'edit');
+  const owned = owner ? sql`and contact.owner_id=${owner}::uuid` : sql``;
+  const lockOwned = owner ? sql`for update of contact` : sql``;
   const payload = operations.map((operation, ord) => ({
     ord,
     target_id: operation.targetId,
@@ -64,12 +68,13 @@ export async function mutateCrmContactTagsBulk(
         join crm_contacts contact
           on contact.id = operation.target_id
          and contact.org_id = current_setting('app.current_org_id', true)
-         and contact.deleted_at is null
+         and contact.deleted_at is null ${owned}
         join crm_tags tag
           on tag.id = operation.tag_id
          and tag.org_id = current_setting('app.current_org_id', true)
          and tag.scope = 'crm'
          and tag.kind = 'manual'
+        ${lockOwned}
       ),
       inserted as (
         insert into crm_contact_tags (org_id, contact_id, tag_id, applied_by)

@@ -1,9 +1,15 @@
 <script lang="ts">
   import { dev } from '$app/environment';
   import type { Snippet } from 'svelte';
+  import { page } from '$app/state';
+  import { navConfig } from '$lib/nav/nav-config.svelte';
+  import { inferMainPageAccessTarget } from '$lib/nav/section-access-context';
+  import SectionAccessButton from '$lib/components/navigation/SectionAccessButton.svelte';
 
   interface Props {
     title: string;
+    /** Explicit organization-policy target; null disables static main-page inference. */
+    accessTarget?: string | null;
     subtitle?: string;
     /** Sticky to the top of the scroll container (content scrolls underneath). */
     sticky?: boolean;
@@ -36,6 +42,7 @@
 
   let {
     title,
+    accessTarget,
     subtitle,
     sticky = true,
     class: cls = '',
@@ -51,6 +58,14 @@
   const uid = $props.id();
   const headingId = $derived(titleId ?? `${uid}-title`);
 
+  let headerElement = $state<HTMLElement | null>(null);
+  const inferredAccess = $derived.by(() => {
+    if (accessTarget !== undefined) return accessTarget;
+    if (!headerElement || headerElement.closest('dialog') || !page.url) return null;
+    const shell = headerElement.closest('[data-component="page-shell"]');
+    if (shell && shell.querySelector('[data-page-header]') !== headerElement) return null;
+    return inferMainPageAccessTarget(page.url.pathname, navConfig());
+  });
   let primaryRegion = $state<HTMLElement | null>(null);
   $effect(() => {
     const count = primaryRegion?.children.length ?? 0;
@@ -66,6 +81,7 @@
   Sticky title bar.
 -->
 <header
+  bind:this={headerElement}
   data-page-header
   data-component="page-header"
   data-part="page-header"
@@ -96,6 +112,9 @@
         {#if secondaryActions}{@render secondaryActions()}{/if}
         {#if actions}{@render actions()}{/if}
       </div>
+    {/if}
+    {#if inferredAccess}
+      <SectionAccessButton target={inferredAccess} label={title} compact />
     {/if}
     {#if overflowActions}
       <div data-part="overflow-actions">{@render overflowActions()}</div>

@@ -354,6 +354,9 @@ export async function resolveIdentity(event: RequestEvent): Promise<IdentityReso
     path.startsWith('/api/gateway/actions/') ||
     path.startsWith('/api/gateway/query/') ||
     path === '/api/gateway/pages' ||
+    // CRM conversation tools retain trusted-principal and CRM scope checks.
+    path === '/api/gateway/crm-conversation-themes' ||
+    path === '/api/gateway/search-crm-conversations' ||
     // AI-Brains agent surface (P4): same trusted-principal + per-brain access checks.
     path === '/api/gateway/brains' ||
     path === '/api/gateway/brain-search' ||

@@ -377,6 +377,7 @@ export async function restoreSupportedBaseline(child: { url: URL; adminUrl: URL;
     REVOKE ALL ON SCHEMA auth FROM PUBLIC;
     GRANT USAGE ON SCHEMA auth TO postgres;
     CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY, email text);
+    ${readFileSync(join(FIXTURES, 'runtime-auth-sessions.sql'), 'utf8')}
     CREATE OR REPLACE FUNCTION auth.email() RETURNS text LANGUAGE sql STABLE AS
       'SELECT NULL::text';
     CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS
@@ -400,6 +401,37 @@ export async function restoreSupportedBaseline(child: { url: URL; adminUrl: URL;
     CREATE EXTENSION IF NOT EXISTS vector;
     CREATE EXTENSION IF NOT EXISTS pg_trgm;
     `);
+    // The runtime fixture is independently catalog-derived; frozen baseline hashes stay unchanged.
+    const sessionCatalog = JSON.parse(
+      readFileSync(join(FIXTURES, 'runtime-auth-sessions.catalog.json'), 'utf8'),
+    ) as {
+      columns: Array<{
+        column_name: string;
+        data_type: string;
+        udt_name: string;
+        is_nullable: string;
+        column_default: string | null;
+      }>;
+      constraints: Array<{ conname: string; definition: string }>;
+    };
+    expect(
+      await fixtureAdmin`
+      select column_name,data_type,udt_name,is_nullable,column_default from information_schema.columns
+      where table_schema='auth' and table_name='sessions' order by ordinal_position
+    `,
+    ).toEqual(sessionCatalog.columns);
+    // PG18 also records column NOT NULL constraints here; information_schema above proves those.
+    expect(
+      await fixtureAdmin`
+      select conname,pg_get_constraintdef(oid) as definition from pg_constraint
+      where conrelid='auth.sessions'::regclass and contype <> 'n' order by conname
+    `,
+    ).toEqual(sessionCatalog.constraints);
+    expect(
+      await fixtureAdmin`
+      select has_table_privilege('postgres','auth.sessions','REFERENCES') as allowed
+    `,
+    ).toEqual([{ allowed: true }]);
   } finally {
     await fixtureAdmin.end({ timeout: 5 });
   }

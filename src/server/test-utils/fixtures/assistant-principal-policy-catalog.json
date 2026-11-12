@@ -1,0 +1,288 @@
+{
+  "provenance": {
+    "observedAt": "2026-11-09T04:13:47.381Z",
+    "scope": "schema-only; no application rows; additive canonical role-writer prerequisite for the historical principal fixture",
+    "sourceFile": "loopback-qa-policy-catalog",
+    "sourceSha256": "e8af03e2734c651946a415da9fb2f209b4e412df7033d158d06009aede40e482",
+    "sourceServerVersion": "17.6"
+  },
+  "catalog": {
+    "relations": [
+      {
+        "relname": "app_nav_config",
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true
+      },
+      {
+        "relname": "org_roles",
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=arwd/postgres}",
+        "relrowsecurity": true,
+        "relforcerowsecurity": true
+      },
+      {
+        "relname": "permission_roles",
+        "owner": "postgres",
+        "acl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres,app_ledger=r/postgres}",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false
+      }
+    ],
+    "columns": [
+      {
+        "relname": "app_nav_config",
+        "attnum": 1,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "app_nav_config",
+        "attnum": 2,
+        "attname": "value",
+        "type": "jsonb",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "'{}'::jsonb"
+      },
+      {
+        "relname": "app_nav_config",
+        "attnum": 3,
+        "attname": "updated_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 10,
+        "attname": "simulation_role_key",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "NULLIF(current_setting('app.simulation_role_key'::text, true), ''::text)"
+      },
+      {
+        "relname": "doc_audit_log",
+        "attnum": 11,
+        "attname": "simulation_generation",
+        "type": "uuid",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "(NULLIF(current_setting('app.simulation_generation'::text, true), ''::text))::uuid"
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 1,
+        "attname": "org_id",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 2,
+        "attname": "key",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 3,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 4,
+        "attname": "rank",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 5,
+        "attname": "source_role_key",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 6,
+        "attname": "created_by",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "org_roles",
+        "attnum": 7,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      },
+      {
+        "relname": "permission_roles",
+        "attnum": 1,
+        "attname": "key",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_roles",
+        "attnum": 2,
+        "attname": "name",
+        "type": "text",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_roles",
+        "attnum": 3,
+        "attname": "rank",
+        "type": "integer",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_roles",
+        "attnum": 4,
+        "attname": "description",
+        "type": "text",
+        "attnotnull": false,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": null
+      },
+      {
+        "relname": "permission_roles",
+        "attnum": 5,
+        "attname": "is_system",
+        "type": "boolean",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "true"
+      },
+      {
+        "relname": "permission_roles",
+        "attnum": 6,
+        "attname": "created_at",
+        "type": "timestamp with time zone",
+        "attnotnull": true,
+        "attidentity": "",
+        "attgenerated": "",
+        "default_expression": "now()"
+      }
+    ],
+    "constraints": [
+      {
+        "relname": "app_nav_config",
+        "conname": "app_nav_config_pkey",
+        "contype": "p",
+        "definition": "PRIMARY KEY (org_id)"
+      },
+      {
+        "relname": "org_roles",
+        "conname": "org_roles_pkey",
+        "contype": "p",
+        "definition": "PRIMARY KEY (org_id, key)"
+      },
+      {
+        "relname": "permission_roles",
+        "conname": "permission_roles_pkey",
+        "contype": "p",
+        "definition": "PRIMARY KEY (key)"
+      }
+    ],
+    "indexes": [
+      {
+        "relname": "app_nav_config",
+        "indexname": "app_nav_config_pkey",
+        "definition": "CREATE UNIQUE INDEX app_nav_config_pkey ON public.app_nav_config USING btree (org_id)"
+      },
+      {
+        "relname": "org_roles",
+        "indexname": "org_roles_org_idx",
+        "definition": "CREATE INDEX org_roles_org_idx ON public.org_roles USING btree (org_id)"
+      },
+      {
+        "relname": "org_roles",
+        "indexname": "org_roles_pkey",
+        "definition": "CREATE UNIQUE INDEX org_roles_pkey ON public.org_roles USING btree (org_id, key)"
+      },
+      {
+        "relname": "permission_roles",
+        "indexname": "permission_roles_pkey",
+        "definition": "CREATE UNIQUE INDEX permission_roles_pkey ON public.permission_roles USING btree (key)"
+      }
+    ],
+    "policies": [
+      {
+        "tablename": "app_nav_config",
+        "policyname": "app_nav_config_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "tablename": "org_roles",
+        "policyname": "org_roles_org_guc",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "ALL",
+        "qual": "(org_id = current_setting('app.current_org_id'::text, true))",
+        "with_check": "(org_id = current_setting('app.current_org_id'::text, true))"
+      },
+      {
+        "tablename": "permission_roles",
+        "policyname": "permission_roles_read_all",
+        "permissive": "PERMISSIVE",
+        "roles": ["public"],
+        "cmd": "SELECT",
+        "qual": "true",
+        "with_check": null
+      }
+    ],
+    "triggers": []
+  }
+}

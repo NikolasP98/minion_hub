@@ -1,4 +1,8 @@
 import {
+  assertSimulatedRegistrationContactAccess,
+  assertSimulatedRegistrationPartyAccess,
+} from '$server/auth/simulated-record-scope';
+import {
   and,
   eq,
   ne,
@@ -189,6 +193,7 @@ async function loadBusyInTx(
   resourceIds: string[],
   from: Date,
   to: Date,
+  excludeIds: string[] = [],
 ): Promise<BusyInterval[]> {
   if (!resourceIds.length) return [];
   const rows = await tx
@@ -205,6 +210,7 @@ async function loadBusyInTx(
         inArray(schedBookings.status, [...ACTIVE_STATUSES]),
         lte(schedBookings.startTime, to),
         gte(schedBookings.endTime, from),
+        excludeIds.length ? notInArray(schedBookings.id, excludeIds) : undefined,
       ),
     );
   return rows.map((r) => ({ resourceId: r.resourceId, start: r.start, end: r.end }));
@@ -268,6 +274,8 @@ export interface CreateBookingInput {
 /** Where one occurrence lands, plus the series bookkeeping it carries. */
 interface OccurrenceOpts {
   start: Date;
+  /** An in-place assistant move must not conflict with the row it is moving. */
+  excludeBookingIds?: string[];
   /** Shared by every occurrence of one series; null for a standalone booking. */
   seriesId?: string | null;
   seriesIndex?: number | null;
@@ -371,6 +379,7 @@ async function prepareOccurrenceInTx(
       candidateIds,
       new Date(start.getTime() - pad),
       new Date(end.getTime() + pad),
+      occ.excludeBookingIds,
     );
 
     const slots = computeSlots({
@@ -441,6 +450,7 @@ async function bookOccurrenceInTx(
   // references must instead identify a live contact in this org or fail closed.
   let crmContactId: string | null = null;
   if (input.crmContactId) {
+    await assertSimulatedRegistrationContactAccess(tx, ctx, input.crmContactId);
     const [hit] = await tx
       .select({ id: crmContacts.id })
       .from(crmContacts)
@@ -462,6 +472,7 @@ async function bookOccurrenceInTx(
   // Validated in-org like the contact id above.
   let partyId: string | null = null;
   if (input.partyId) {
+    await assertSimulatedRegistrationPartyAccess(tx, ctx, input.partyId);
     const [p] = await tx
       .select({ id: parties.id })
       .from(parties)
@@ -475,7 +486,10 @@ async function bookOccurrenceInTx(
       .from(crmContacts)
       .where(and(eq(crmContacts.partyId, partyId), eq(crmContacts.orgId, ctx.tenantId)))
       .limit(1);
-    if (hit) crmContactId = hit.id;
+    if (hit) {
+      await assertSimulatedRegistrationContactAccess(tx, ctx, hit.id);
+      crmContactId = hit.id;
+    }
   }
   if (!crmContactId)
     crmContactId =
@@ -923,9 +937,23 @@ export async function queryAssistantBookings(
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 500), 1), 500);
   return withOrgCore(ctx, async (tx) => {
     const where = and(...bookingListConditions(ctx, opts));
+    const statusCounts = sql<Record<string, number>>`(
+      select coalesce(jsonb_object_agg(status_name, amount), '{}'::jsonb)
+      from (
+        select coalesce(${schedBookings.status}, 'unknown') status_name, count(*)::int amount
+        from ${schedBookings} where ${where}
+        group by ${schedBookings.status}
+      ) booking_status_counts
+    )`;
+    const summary = {
+      source: 'booking_ids',
+      coverage: 'complete_filtered_population',
+      people: 'not_computed',
+      snapshot: 'same_statement',
+    } as const;
     if (opts.countOnly) {
       const [row] = await tx
-        .select({ total: sql<number>`count(*)`.mapWith(Number) })
+        .select({ total: sql<number>`count(*)`.mapWith(Number), statusCounts })
         .from(schedBookings)
         .where(where);
       return {
@@ -935,19 +963,22 @@ export async function queryAssistantBookings(
         truncated: false,
         limit,
         mode: 'count',
+        statusCounts: row?.statusCounts ?? {},
+        summary,
       };
     }
     const rows = await tx
       .select({
         ...getTableColumns(schedBookings),
         total: sql<number>`count(*) over()`.mapWith(Number),
+        statusCounts,
       })
       .from(schedBookings)
       .where(where)
       .orderBy(desc(schedBookings.startTime), desc(schedBookings.id))
       .limit(limit);
     const total = rows[0]?.total ?? 0;
-    const bookings = rows.map(({ total: _total, ...b }) =>
+    const bookings = rows.map(({ total: _total, statusCounts: _counts, ...b }) =>
       opts.maskAttendeePii
         ? {
             ...b,
@@ -963,6 +994,8 @@ export async function queryAssistantBookings(
       truncated: total > bookings.length,
       limit,
       mode: 'list',
+      statusCounts: rows[0]?.statusCounts ?? {},
+      summary,
     };
   });
 }
@@ -1001,16 +1034,8 @@ export interface StatusChangeOpts {
 }
 
 /** Hand every live session this booking drew back to the client. Idempotent —
- *  `reverseRedemptionInTx` returns an already-reversed row untouched.
- *
- *  TODO(handoff): RESCHEDULE currently loses the package link. The only
- *  reschedule path (`src/routes/api/gateway/actions/booking-reschedule`) books a
- *  NEW booking and cancels the old one, so this reversal hands the session back
- *  (correct — the client keeps it) but the replacement booking carries no
- *  `package_grant_id` and redeems nothing. The client is never short a session,
- *  the new appointment just isn't shown as package-funded. Fix belongs with the
- *  reschedule path, which has no scheduling-service entry point yet. See
- *  proposals/2026-09-13-pos-packages-plans-s1-followups.md. */
+ *  `reverseRedemptionInTx` returns an already-reversed row untouched. In-place
+ *  reschedules retain the booking and its funding, so they never call this. */
 async function reverseBookingRedemptionsInTx(
   tx: CoreTx,
   orgId: string,
@@ -1390,11 +1415,10 @@ function conflictMessage(conflicts: BookingConflict[]): string {
 /**
  * Drag/drop or resize a booking (spec §3.2b). Org-scoped; rejects a
  * cancelled/rejected booking, a zero/negative-length move, or an inactive/
- * foreign target resource. Conflict check reuses the same buffer-padded
- * overlap test the slot engine uses (`intervalsOverlap` in slots.ts) against
- * every other non-cancelled booking on the target resource, padded by the
- * booking's own event type buffers (mirrors how `createBooking` pads busy
- * intervals by the booked event type's buffers before slotting).
+ * foreign target resource. Overlap policy is owned by `findBookingConflicts`;
+ * the human caller may explicitly override conflicts and working hours.
+ * Assistant moves instead enter through `rescheduleAssistantBooking` for strict
+ * availability preflight before this shared in-place write.
  */
 export async function rescheduleBooking(
   ctx: CoreCtx,
@@ -1409,6 +1433,7 @@ async function rescheduleBookingInTx(
   ctx: CoreCtx,
   id: string,
   input: RescheduleBookingInput,
+  minimumUpdatedAt?: Date,
 ): Promise<SchedBooking> {
   if (!(input.end.getTime() > input.start.getTime())) throw new Error('end must be after start');
   const [existing] = await tx
@@ -1450,17 +1475,227 @@ async function rescheduleBookingInTx(
   if (conflicts.length && !input.overrideConflicts)
     throw new BookingConflictError(conflictMessage(conflicts), conflicts);
 
-  // TODO(handoff): spec §3.2b allows a reschedule outside working hours /
-  // on a holiday / during staff leave (a human scheduler decides) — this
-  // never blocks on it, but no warnings payload surfaces it either. Add a
+  // TODO(handoff): spec §3.2b allows a human reschedule outside working hours /
+  // on a holiday / during staff leave. This shared write does not check those
+  // rules (the assistant preflight does), nor return human warnings. Add a
   // `{ warnings: string[] }` return (checked against schedAvailability /
   // the org holiday+leave tables) when the calendar UI wants to show one.
   const [row] = await tx
     .update(schedBookings)
-    .set({ startTime: input.start, endTime: input.end, resourceId, updatedAt: new Date() })
+    .set({
+      startTime: input.start,
+      endTime: input.end,
+      resourceId,
+      updatedAt: minimumUpdatedAt
+        ? new Date(Math.max(Date.now(), minimumUpdatedAt.getTime() + 1))
+        : new Date(),
+    })
     .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
     .returning();
   return row;
+}
+
+/** A rejected assistant move has no partial booking, status or funding effect. */
+export class AssistantRescheduleError extends Error {
+  constructor(
+    public readonly status: 400 | 404 | 409,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'AssistantRescheduleError';
+  }
+}
+
+export interface AssistantRescheduleInput {
+  start: Date;
+  resourceId?: string | null;
+  expectedUpdatedAt?: Date;
+  /** Legacy fields may identify the existing record, never replace its facts. */
+  eventTypeId?: string;
+  crmContactId?: string | null;
+  attendeeName?: string | null;
+  attendeeEmail?: string | null;
+  attendeePhone?: string | null;
+  notes?: string | null;
+}
+
+async function prepareAssistantRescheduleInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  input: AssistantRescheduleInput,
+  commit: boolean,
+) {
+  if (!Number.isFinite(input.start.getTime()))
+    throw new AssistantRescheduleError(400, 'start: invalid date');
+  const query = tx
+    .select()
+    .from(schedBookings)
+    .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
+    .limit(1);
+  // Serializes cancellation and concurrent moves of THIS booking. A preview
+  // takes no row lock and ends without reserving the target slot.
+  const [existing] = await (commit ? query.for('update') : query);
+  if (!existing) throw new AssistantRescheduleError(404, 'booking not found');
+  if (existing.status === 'cancelled' || existing.status === 'rejected')
+    throw new AssistantRescheduleError(409, `cannot reschedule a ${existing.status} booking`);
+  if (groupIdOf(existing.metadata))
+    throw new AssistantRescheduleError(
+      409,
+      'This booking belongs to a group; use the group move flow.',
+    );
+
+  for (const field of [
+    'eventTypeId',
+    'crmContactId',
+    'attendeeName',
+    'attendeeEmail',
+    'attendeePhone',
+    'notes',
+  ] as const) {
+    if (input[field] !== undefined && (input[field] ?? null) !== (existing[field] ?? null))
+      throw new AssistantRescheduleError(
+        409,
+        `${field}: reschedule cannot change this booking field; edit it separately.`,
+      );
+  }
+  const duration = existing.endTime.getTime() - existing.startTime.getTime();
+  if (!(duration > 0)) throw new AssistantRescheduleError(409, 'booking has an invalid duration');
+  const resourceId = input.resourceId ?? existing.resourceId;
+  const sameTarget =
+    existing.startTime.getTime() === input.start.getTime() && existing.resourceId === resourceId;
+  if (commit && !sameTarget && existing.updatedAt.getTime() !== input.expectedUpdatedAt?.getTime())
+    throw new AssistantRescheduleError(409, 'booking changed; preview it again before confirming');
+
+  let contact: { id: string; name: string | null } | null = null;
+  if (existing.crmContactId) {
+    const [hit] = await tx
+      .select({ id: crmContacts.id, name: crmContacts.displayName })
+      .from(crmContacts)
+      .where(
+        and(
+          eq(crmContacts.id, existing.crmContactId),
+          eq(crmContacts.orgId, ctx.tenantId),
+          isNull(crmContacts.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!hit && !sameTarget)
+      throw new AssistantRescheduleError(409, 'booking contact is unavailable');
+    contact = hit ?? null;
+  }
+  const resourceQuery = tx
+    .select({
+      id: schedResources.id,
+      name: schedResources.name,
+      timezone: schedResources.timezone,
+      active: schedResources.active,
+    })
+    .from(schedResources)
+    .where(and(eq(schedResources.id, resourceId), eq(schedResources.orgId, ctx.tenantId)))
+    .limit(1);
+  // Assistant moves to the same resource serialize before reading availability.
+  // A same-target replay needs no resource lock and never writes again.
+  // TODO(handoff): legacy create/group/human writers do not share this exclusion;
+  // a global calendar-lock policy must preserve explicit human overlap overrides.
+  // See proposals/2026-11-06-agent-transcript-evals-and-runtime-improvements.md.
+  const [resource] = await (commit && !sameTarget ? resourceQuery.for('update') : resourceQuery);
+  if (!resource || (!sameTarget && !resource.active)) throw new SlotUnavailableError();
+
+  const end = new Date(input.start.getTime() + duration);
+  let serviceTitle: string | null;
+  if (sameTarget) {
+    // The stored target itself is a durable receipt. Replaying it must not
+    // become a new write or fail because availability rules changed afterward.
+    const [et] = await tx
+      .select({ title: schedEventTypes.title })
+      .from(schedEventTypes)
+      .where(
+        and(eq(schedEventTypes.id, existing.eventTypeId), eq(schedEventTypes.orgId, ctx.tenantId)),
+      )
+      .limit(1);
+    if (!et) throw new SlotUnavailableError();
+    serviceTitle = et.title;
+  } else {
+    const prepared = await prepareOccurrenceInTx(
+      tx,
+      ctx,
+      {
+        eventTypeId: existing.eventTypeId,
+        start: input.start,
+        preferredResourceId: resourceId,
+        bypassRules: true,
+      },
+      { start: input.start, windowLength: duration / MS_PER_MIN, excludeBookingIds: [id] },
+    );
+    serviceTitle = prepared.et.title;
+    const conflicts = await findBookingConflicts(tx, ctx, {
+      resourceId,
+      start: input.start,
+      end,
+      excludeIds: [id],
+    });
+    if (conflicts.length) throw new BookingConflictError(conflictMessage(conflicts), conflicts);
+  }
+  return { existing, start: input.start, end, resource, contact, serviceTitle, sameTarget };
+}
+
+/** Read-only strict assistant preview. Human drag/resize override policy stays unchanged. */
+export async function previewAssistantReschedule(
+  ctx: CoreCtx,
+  id: string,
+  input: AssistantRescheduleInput,
+) {
+  return withOrgCore(ctx, async (tx) => {
+    const target = await prepareAssistantRescheduleInTx(tx, ctx, id, input, false);
+    const row = target.existing;
+    return {
+      bookingId: row.id,
+      eventTypeId: row.eventTypeId,
+      serviceTitle: target.serviceTitle,
+      oldStart: row.startTime.toISOString(),
+      oldEnd: row.endTime.toISOString(),
+      start: target.start.toISOString(),
+      end: target.end.toISOString(),
+      resourceId: target.resource.id,
+      resourceName: target.resource.name,
+      timezone: target.resource.timezone,
+      crmContactId: row.crmContactId,
+      contactName: target.contact?.name ?? null,
+      attendeeName: row.attendeeName,
+      attendeeEmail: row.attendeeEmail,
+      attendeePhone: row.attendeePhone,
+      expectedUpdatedAt: row.updatedAt.toISOString(),
+      availability: target.sameTarget ? 'already-at-target' : 'available-at-preview',
+      reservesSlot: false,
+    };
+  });
+}
+
+/** Move and funding/link preservation commit together; retries never create replacements. */
+export async function rescheduleAssistantBooking(
+  ctx: CoreCtx,
+  id: string,
+  input: AssistantRescheduleInput & { expectedUpdatedAt: Date },
+): Promise<{ booking: SchedBooking; outcome: 'moved' | 'already-at-target' }> {
+  if (!input.expectedUpdatedAt || !Number.isFinite(input.expectedUpdatedAt.getTime()))
+    throw new AssistantRescheduleError(400, 'expectedUpdatedAt is required from a booking preview');
+  return withOrgCore(ctx, async (tx) => {
+    const target = await prepareAssistantRescheduleInTx(tx, ctx, id, input, true);
+    if (target.sameTarget) return { booking: target.existing, outcome: 'already-at-target' };
+    const booking = await rescheduleBookingInTx(
+      tx,
+      ctx,
+      id,
+      {
+        start: target.start,
+        end: target.end,
+        resourceId: target.resource.id,
+      },
+      target.existing.updatedAt,
+    );
+    return { booking, outcome: 'moved' };
+  });
 }
 
 /** `metadata.groupId` of a booking row, or null. The one reader of the shape. */
@@ -2695,8 +2930,8 @@ export interface UpdateBookingInput {
 /**
  * General edit of an existing booking (spec S5): title/notes/contact/service/
  * product/resource/kind/attendee fields. A `resourceId` change is delegated to
- * `rescheduleBooking` (same start/end) so the buffer-padded conflict check
- * never gets a second implementation; the calendar's own drag/resize keeps
+ * `rescheduleBooking` (same start/end) so the conflict policy owned by
+ * `findBookingConflicts` has one implementation; the calendar's drag/resize keeps
  * going through `rescheduleBooking` directly when the time changes too.
  */
 export async function updateBooking(

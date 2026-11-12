@@ -14,6 +14,12 @@ import {
 import { toolRegistration } from './model-context';
 import { writable, type Readable } from 'svelte/store';
 import type { REASONS } from './decision-lineage';
+import {
+  clearInterruptedEffects,
+  discardInterruptedScope,
+  finishEffectRun,
+  interruptEffectRun,
+} from './interrupted-effects';
 
 export type TurnOrigin = 'user' | 'ui_choice' | 'artifact' | 'ui_followup';
 export type TransportStatus = 'submitted' | 'accepted' | 'rejected' | 'unknown';
@@ -107,6 +113,7 @@ function revoke(
   state: 'canceled' | 'invalidated' = 'invalidated',
   reason: (typeof REASONS)[number] = state === 'canceled' ? 'user_stop' : 'context_changed',
 ) {
+  if (binding.state === 'claimed') interruptEffectRun(binding.runId);
   if (!binding.controller.signal.aborted)
     emitDecision('task_terminal', binding.submissionId, {
       runId: binding.runId,
@@ -132,6 +139,7 @@ export function resetAcceptedRuns() {
   for (const binding of runs.values()) revoke(binding, 'invalidated', 'owner_changed');
   runs.clear();
   owner = '';
+  clearInterruptedEffects();
 }
 export function createAcceptedSurface(options: {
   readScope: () => SubmissionScope;
@@ -164,6 +172,7 @@ export function createAcceptedSurface(options: {
       decisionEvents.setOwner(next);
       if (!equalScope(scope, next)) {
         invalidate();
+        discardInterruptedScope(scope);
         scope = { ...next };
       }
     },
@@ -360,6 +369,7 @@ export function claimRunFinal(
   return binding;
 }
 export function finishRun(binding: AcceptedBinding) {
+  finishEffectRun(binding.runId);
   if (binding.state === 'claimed') {
     binding.state = 'finished';
     activityPublishers.get(binding.surface)?.();

@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from './$types';
-import { redirect } from '@sveltejs/kit';
+import { redirect, isHttpError } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { loadPermissionsForUser } from '$server/services/permissions.service';
 import { loadWorkspacesForUser } from '$server/services/workspaces.service';
@@ -8,7 +8,7 @@ import { requiresOnboarding } from '$lib/onboarding/gate';
 import { loadPersonalAgentForUser } from '$server/services/personal-agent.service';
 import { ensureActivePersonalAgent } from '$server/services/personal-agent-provisioner';
 import { getTenant } from '$server/services/tenant.service';
-import { loadHostsForUser } from '$server/services/hosts.service';
+import { loadHostsForUser, type HostsLoadResult } from '$server/services/hosts.service';
 import { loadUserPreferences } from '$server/services/preferences.service';
 import { getDb } from '$server/db/client';
 import { resolveSupabaseTenant } from '$server/auth/supabase-bridge.runtime';
@@ -23,6 +23,8 @@ import { withCoreDbRecovery, withCriticalCoreDb } from '$server/db/pg-client';
 import { shareInflight } from '$server/utils/inflight-singleflight';
 import { captureServerEvent } from '$lib/server/posthog';
 import { requestIdentity, distinctIdFor } from '$lib/server/observability-context';
+import { inactiveSimulation } from '$lib/role-simulation';
+import { loadRoleSimulationState } from '$server/services/role-simulation.service';
 import { ALL_FEATURE_KEYS } from '$server/entitlements/evaluate';
 
 const SLOW_LOAD_WARNING_MS = 3_000;
@@ -91,6 +93,42 @@ export const load: LayoutServerLoad = async ({
   );
 
   const user = requireAuth(locals);
+  const roleSimulation = locals.roleSimulation?.active
+    ? locals.roleSimulation
+    : await loadRoleSimulationState(locals).catch((cause: unknown) => {
+        if (!isHttpError(cause) || cause.status !== 503) throw cause;
+        return { ...(locals.roleSimulation ?? inactiveSimulation()), eligible: false, roles: [] };
+      });
+  const emptyHosts: HostsLoadResult = {
+    servers: [],
+    authoritative: true,
+    orgAssignedHostId: null,
+    channels: [],
+    defaultChannel: null,
+  };
+  if (roleSimulation.active && !locals.tenantCtx) {
+    // Membership can disappear mid-session. Keep only the account escape shell;
+    // no tenant handle is fabricated and no revoked organization data is loaded.
+    return {
+      user,
+      roleSimulation,
+      permissions: { permissions: [] as string[], roles: [roleSimulation.roleKey ?? ''] },
+      schedulingEnabled: false,
+      stockEnabled: false,
+      moduleStates: {},
+      workspaces: [],
+      organizations: [],
+      activeOrgId: null,
+      activeOrgKind: 'business' as const,
+      personalAgent: { agent: null },
+      hosts: emptyHosts,
+      preferences: { preferences: {} as Record<string, unknown> },
+      brainAgentIds: [],
+      tableConfig: {} as TableConfig,
+      navConfig: EMPTY_NAV_CONFIG,
+      entitlements: { plan: 'base', features: [] as string[] },
+    };
+  }
 
   // Defensive org-activation: hooks.server.ts seeds locals.tenantCtx + orgId
   // whenever the user has a resolvable org. Only when it COULDN'T (no tenantCtx)
@@ -123,6 +161,9 @@ export const load: LayoutServerLoad = async ({
     user.supabaseId ?? '',
     user.role ?? '',
     locals.orgId ?? locals.tenantCtx?.tenantId ?? '',
+    roleSimulation.generation,
+    roleSimulation.roleKey ?? '',
+    roleSimulation.invalid ? 'invalid' : '',
   ].join(':');
 
   const [permissions, organizations, coreBundle] = await Promise.all([
@@ -134,12 +175,24 @@ export const load: LayoutServerLoad = async ({
           coreLoadKey,
           () =>
             Promise.all([
-              traceLayoutLoad('workspaces', loadWorkspacesForUser(locals, user.supabaseId)),
+              traceLayoutLoad(
+                'workspaces',
+                roleSimulation.active
+                  ? Promise.resolve([])
+                  : loadWorkspacesForUser(locals, user.supabaseId),
+              ),
               traceLayoutLoad(
                 'personal-agent',
-                loadPersonalAgentForUser(locals, user.id, user.supabaseId),
+                roleSimulation.active
+                  ? Promise.resolve({ agent: null })
+                  : loadPersonalAgentForUser(locals, user.id, user.supabaseId),
               ),
-              traceLayoutLoad('hosts', loadHostsForUser(locals, user.id, user.role)),
+              traceLayoutLoad(
+                'hosts',
+                roleSimulation.active
+                  ? Promise.resolve(emptyHosts)
+                  : loadHostsForUser(locals, user.id, user.role),
+              ),
               traceLayoutLoad('preferences', loadUserPreferences(locals, user.supabaseId)),
               // Provisioned brain agents (brain-<uuid>) don't have org-shaped names, so
               // the client-side agent-org partition (agent-org.ts) can't place them by
@@ -210,9 +263,10 @@ export const load: LayoutServerLoad = async ({
   // redirect to the /onboarding wizard — that wizard is gone.)
   let personalAgentBundle = personalAgent;
   if (
-    !personalAgent.agent ||
-    personalAgent.agent.provisioningStatus !== 'active' ||
-    !personalAgent.agent.serverId
+    !roleSimulation.active &&
+    (!personalAgent.agent ||
+      personalAgent.agent.provisioningStatus !== 'active' ||
+      !personalAgent.agent.serverId)
   ) {
     const coreCtx = await shellCtx(locals);
     const healed = coreCtx
@@ -234,6 +288,7 @@ export const load: LayoutServerLoad = async ({
   // each marked done by its own nullable timestamp; the org flow runs first.
   // `requiresOnboarding` is pure so the decision is unit-tested without a DB.
   if (
+    !roleSimulation.active &&
     requiresOnboarding({
       userOnboardedAt: user.onboardedAt ?? null,
       activeOrg: organizations.organizations.find((org) => org.id === activeOrgId) ?? null,
@@ -264,6 +319,7 @@ export const load: LayoutServerLoad = async ({
 
   return {
     user,
+    roleSimulation,
     permissions,
     // Module states shape the SIDEBAR, which renders on every authenticated
     // page — not just inside the module's own subtree. They used to come from

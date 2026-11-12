@@ -13,13 +13,19 @@
   import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import type { DialogCloseReason } from '$lib/components/ui/foundations/Dialog.svelte';
   import { resolvePeekPage } from './peek-registry';
-  import { closePeek, expandPeek, providePeekContext, peekSaveStatus } from './peek.svelte';
+  import {
+    closePeek,
+    expandPeek,
+    providePeekContext,
+    peekSaveStatus,
+    isCurrentPeek,
+  } from './peek.svelte';
   import SaveIndicator from './SaveIndicator.svelte';
 
   providePeekContext();
   const saveStatus = peekSaveStatus();
 
-  const peek = $derived(page.state.peek);
+  const peek = $derived(isCurrentPeek(page.state.peek) ? page.state.peek : undefined);
   const loader = $derived(peek ? resolvePeekPage(peek.href) : null);
   // Bindable mirror of "a peek exists" so the Dialog's own close paths
   // (Escape, backdrop, ✕) flip it and we pop the history entry in `onclose`.
