@@ -71,7 +71,9 @@ export async function submitFormDoor(
   await withOrgCore(ctx, async (tx) => {
     // DNI is the strongest identity: a returning patient with a new phone is still the same contact.
     const byDni =
-      profile.dni && !simulated ? await contactIdByDni(tx, ctx.tenantId, profile.dni) : null;
+      profile.dni && !simulated
+        ? await contactIdByDni(tx, ctx.tenantId, profile.dni, who.name)
+        : null;
     const contact = byDni
       ? { id: byDni, created: false }
       : await ensureCrmContact(tx, ctx.tenantId, {
@@ -79,10 +81,12 @@ export async function submitFormDoor(
           source: `door:${door.slug}`,
           firstTouch: attribution,
         });
-    // Anonymous input never edits an existing contact: a matched contact's DNI/handles stay in
-    // the submission payload for staff to review; only a contact this submission created gets them.
-    if (contact?.created && Object.keys(profile).length)
-      await fillContactProfile(tx, ctx.tenantId, contact.id, profile);
+    // A new contact gets the DNI and handles. An existing one only gets handles it lacks: a DNI
+    // written onto a matched contact would become a trusted match key (it stays in the payload).
+    const { dni: _dni, ...handles } = profile;
+    const fill = contact?.created ? profile : handles;
+    if (contact && Object.keys(fill).length)
+      await fillContactProfile(tx, ctx.tenantId, contact.id, fill);
     await tx.insert(crmDoorSubmissions).values({
       id: submissionId,
       orgId: ctx.tenantId,
@@ -118,30 +122,55 @@ export async function submitFormDoor(
 }
 
 /**
- * Live contact whose DNI is `dni`, from TRUSTED sources only: the linked party's document
- * (finance / registry / staff) or a contact that did not come from a public door. A DNI
- * typed into a door is never a match key, so a form cannot plant one to capture later
- * submissions. Oldest wins.
+ * Live contact whose DNI is `dni`. A trusted DNI (the linked party's document, or a contact
+ * that did not come from a public door) matches on its own. A DNI typed into an earlier door
+ * submission matches only when the name agrees too, so a stranger needs the DNI AND the name
+ * to attach a submission to someone, no weaker than the phone match bookings already use.
+ * Trusted first, then oldest.
  * TODO(handoff): reconcileParties mints parties from custom_fields->>'dni' without checking
  * source, so a door-created contact's DNI can become a party document after a reconcile run.
  * Pointer: proposals/2026-11-11-hub-door-dni-trust.md.
  */
-async function contactIdByDni(tx: CoreTx, orgId: string, dni: string): Promise<string | null> {
+async function contactIdByDni(
+  tx: CoreTx,
+  orgId: string,
+  dni: string,
+  name: string | null,
+): Promise<string | null> {
   // shortcut: unindexed custom_fields scan, fine at clinic scale; add an expression index if one org passes ~50k contacts.
   const rows = (await tx.execute(sql`
-    select c.id from crm_contacts c
+    select c.id, c.display_name as name,
+           (coalesce(upper(p.doc_number) = ${dni}, false)
+            or coalesce(c.source, '') not like 'door:%') as trusted
+    from crm_contacts c
     left join parties p on p.id = c.party_id and p.org_id = c.org_id
     where c.org_id = ${orgId} and c.deleted_at is null
       and (upper(p.doc_number) = ${dni}
-           or (c.source not like 'door:%'
-               and upper(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')) = ${dni}))
+           or upper(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')) = ${dni})
     order by c.created_at
-    limit 1
-  `)) as unknown as Array<{ id: string }>;
-  return rows[0]?.id ?? null;
+    limit 20
+  `)) as unknown as Array<{ id: string; name: string | null; trusted: boolean }>;
+  const hit = rows.find((r) => r.trusted) ?? rows.find((r) => sameName(r.name, name));
+  return hit?.id ?? null;
 }
 
-/** Adds DNI / social handles to a contact this submission just created. */
+const nameTokens = (s: string | null) =>
+  (s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((t) => t.length > 1);
+
+/** 'Ana Prueba' ~ 'ANA MARÍA PRUEBA GÓMEZ': shares two words (one if either name is a single word). */
+export function sameName(a: string | null, b: string | null): boolean {
+  const x = nameTokens(a);
+  const y = new Set(nameTokens(b));
+  if (!x.length || !y.size) return false;
+  return x.filter((t) => y.has(t)).length >= Math.min(2, x.length, y.size);
+}
+
+/** Adds DNI / social handles to a contact; keys already on the row win. */
 async function fillContactProfile(
   tx: CoreTx,
   orgId: string,
