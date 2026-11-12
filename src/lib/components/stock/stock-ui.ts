@@ -12,7 +12,7 @@ export function entryStatusVariant(status: string): {
   variant: BadgeVariant;
   value: SemanticValue;
 } {
-  if (status === 'submitted') return { variant: 'semantic', value: 'success' };
+  if (status === 'submitted') return { variant: 'neutral', value: 'success' };
   if (status === 'cancelled') return { variant: 'semantic', value: 'error' };
   return { variant: 'semantic', value: 'info' }; // draft
 }

@@ -49,7 +49,7 @@
   }
   .num {
     font-variant-numeric: tabular-nums;
-    font-weight: 700;
+    font-weight: var(--font-weight-semibold);
     font-size: var(--font-size-page-title);
     min-width: 1.6ch;
     text-align: right;

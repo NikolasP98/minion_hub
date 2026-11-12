@@ -1147,23 +1147,25 @@
   :global(.crm-customers-surface .res-toggle) {
     display: inline-flex;
     align-items: center;
-    height: var(--control-height-xs);
-    padding: 0 var(--space-2);
+    height: var(--control-height-sm);
+    padding: 0 var(--space-3);
     font-size: var(--font-size-caption, 12px);
-    font-weight: 600;
+    font-weight: var(--font-weight-medium);
     border-radius: var(--radius-full);
-    border: 1px solid var(--color-warning);
-    color: var(--color-warning);
-    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-2);
     cursor: pointer;
     white-space: nowrap;
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
   :global(.crm-customers-surface .res-toggle:hover) {
-    background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    background: var(--color-surface-3);
   }
   :global(.crm-customers-surface .res-toggle.active) {
-    background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
   .res-pill {
     display: inline-flex;
@@ -1183,40 +1185,37 @@
     gap: var(--space-1, 4px);
     padding: var(--space-0-5, 2px) var(--space-2, 8px);
     font-size: var(--font-size-caption, 12px);
-    font-weight: 600;
-    border-radius: var(--radius-full);
+    font-weight: var(--font-weight-regular);
     white-space: nowrap;
   }
   .origin-ad {
-    color: var(--color-info-fg);
-    background: var(--color-info-surface);
-    border: 1px solid var(--color-info-border);
+    color: var(--color-text-secondary);
   }
   .origin-organic {
-    color: var(--color-success-fg);
-    background: var(--color-success-surface);
-    border: 1px solid var(--color-success-border);
+    color: var(--color-text-tertiary);
   }
   :global(.crm-customers-surface .await-toggle) {
     display: inline-flex;
     align-items: center;
-    height: var(--control-height-xs);
-    padding: 0 var(--space-2);
+    height: var(--control-height-sm);
+    padding: 0 var(--space-3);
     font-size: var(--font-size-caption, 12px);
-    font-weight: 600;
+    font-weight: var(--font-weight-medium);
     border-radius: var(--radius-full);
-    border: 1px solid var(--color-accent);
-    color: var(--color-accent);
-    background: transparent;
+    border: 1px solid var(--hairline);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-2);
     cursor: pointer;
     white-space: nowrap;
     transition: background-color var(--duration-fast) var(--ease-standard);
   }
   :global(.crm-customers-surface .await-toggle:hover) {
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    background: var(--color-surface-3);
   }
   :global(.crm-customers-surface .await-toggle.active) {
-    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
   .await-dot {
     width: 0.45rem;
@@ -1224,7 +1223,6 @@
     border-radius: var(--radius-full);
     flex-shrink: 0;
     background: var(--color-accent);
-    box-shadow: var(--shadow-overlay);
   }
   .msgs {
     display: flex;

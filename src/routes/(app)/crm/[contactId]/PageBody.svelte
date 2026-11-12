@@ -1573,20 +1573,12 @@
     width: 1.5rem;
     height: 1.5rem;
     border-radius: var(--radius-full);
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-2);
   }
   .jms[data-type='purchase'] .jms-ic {
-    color: var(--color-success);
-    background: color-mix(in srgb, var(--color-success) 14%, transparent);
-  }
-  .jms[data-type='booking'] .jms-ic {
-    color: var(--color-warning);
-    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-  }
-  .jms[data-type='ai'] .jms-ic {
-    color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    color: var(--color-success-fg);
+    background: var(--color-success-surface);
   }
   .jms-label {
     font-size: var(--font-size-caption, 12px);

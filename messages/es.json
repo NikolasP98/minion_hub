@@ -4935,7 +4935,7 @@
   "stock_entries_empty": "Aún no hay movimientos de stock.",
   "stock_entries_empty_filtered_hint": "Ningún movimiento coincide con este filtro.",
   "stock_entries_empty_hint": "Registra una entrada, salida, transferencia o ajuste para verlo aquí.",
-  "stock_entries_subtitle": "Entradas, salidas, transferencias y ajustes.",
+  "stock_entries_subtitle": "Entradas, salidas, transferencias y ajustes",
   "stock_entries_title": "Movimientos de stock",
   "stock_entry_lines_title": "Líneas",
   "stock_field_code": "Código",

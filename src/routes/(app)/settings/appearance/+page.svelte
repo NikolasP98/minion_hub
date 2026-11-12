@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { iconSizes, Button, Card } from '$lib/components/ui';
+  import { iconSizes, Button, Card, SegmentedControl } from '$lib/components/ui';
   import { theme } from '$lib/state/ui/theme.svelte';
   import type { ThemePreset } from '$lib/themes/presets';
   import { logoState } from '$lib/state/ui/logo.svelte';
@@ -31,19 +31,19 @@
           {m.settings_language()}
         </span>
       </h2>
-      <div class="inline-flex p-0.5 gap-0.5 rounded-lg border border-border bg-bg">
-        {#each locale.available as tag (tag)}
-          <Button
-            variant={locale.current === tag ? 'primary' : 'ghost'}
-            size="sm"
-            type="button"
-            aria-pressed={locale.current === tag}
-            onclick={() => locale.set(tag)}
-          >
-            {tag === 'en' ? 'English' : tag === 'es' ? 'Español' : tag}
-          </Button>
-        {/each}
-      </div>
+      <SegmentedControl
+        size="sm"
+        aria-label={m.settings_language()}
+        value={locale.current}
+        items={locale.available.map((tag) => ({
+          value: tag,
+          label: tag === 'en' ? 'English' : tag === 'es' ? 'Español' : tag,
+        }))}
+        onValueChange={(v) => {
+          const tag = locale.available.find((t) => t === v);
+          if (tag) locale.set(tag);
+        }}
+      />
     </Card>
 
     <!-- Density (spec 013 A) -->
