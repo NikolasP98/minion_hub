@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 const generateText = vi.fn<() => Promise<{ text: string }>>();
 vi.mock('ai', () => ({
@@ -31,6 +31,11 @@ function call(body: unknown, auth = true) {
   );
 }
 
+// Keep cold SDK/module transformation out of behavior-test deadlines; an
+// unfinished import could otherwise call a mock after the next test clears it.
+beforeAll(async () => {
+  await import('./+server');
+}, 30_000);
 beforeEach(() => vi.clearAllMocks());
 
 describe('POST /api/notes/polish', () => {

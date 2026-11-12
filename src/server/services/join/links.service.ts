@@ -1,7 +1,5 @@
 import { supabaseAdmin } from '$server/supabase';
-import { createMembership, type MembershipUser } from './membership';
-import { generateOpaqueToken, isLinkUsable } from './helpers';
-import { loadOrganizationRolePolicy } from '../organization-role-policy';
+import type { MembershipUser } from './membership';
 
 export interface JoinLinkRow {
   id: string;
@@ -24,28 +22,9 @@ export async function createLink(opts: {
   expiresAt?: string | null;
   maxUses?: number | null;
 }): Promise<{ id: string; token: string }> {
-  const policy = await loadOrganizationRolePolicy(opts.organizationId);
-  if (policy.roleModel === 'organization') {
-    if (!opts.grantorProfileId) throw new Error('Authenticated grantor profile required');
-    const { mintOrganizationInvite } = await import('./organization-admission');
-    return mintOrganizationInvite({ ...opts, grantorProfileId: opts.grantorProfileId });
-  }
-  if (!opts.role) throw new Error('role required');
-  const token = generateOpaqueToken();
-  const { data, error } = await supabaseAdmin()
-    .from('join_link')
-    .insert({
-      token,
-      organization_id: opts.organizationId,
-      role: opts.role,
-      created_by: opts.createdBy,
-      expires_at: opts.expiresAt ?? null,
-      max_uses: opts.maxUses ?? null,
-    })
-    .select()
-    .single();
-  if (error) throw new Error(error.message);
-  return { id: (data as { id: string }).id, token };
+  if (!opts.grantorProfileId) throw new Error('Authenticated grantor profile required');
+  const { mintOrganizationInvite } = await import('./organization-admission');
+  return mintOrganizationInvite({ ...opts, grantorProfileId: opts.grantorProfileId });
 }
 
 export async function resolveLink(token: string): Promise<JoinLinkRow | null> {
@@ -57,42 +36,8 @@ export async function consumeLink(
   token: string,
   u: MembershipUser,
 ): Promise<{ organizationId: string }> {
-  const link = await resolveLink(token);
-  if (!link) throw new Error('link not found');
-  const policy = await loadOrganizationRolePolicy(link.organization_id);
-  if (policy.roleModel === 'organization') {
-    const { consumeOrganizationInvite } = await import('./organization-admission');
-    return consumeOrganizationInvite(token, u);
-  }
-  const usable = isLinkUsable(
-    {
-      revoked: link.revoked,
-      expiresAt: link.expires_at ? new Date(link.expires_at) : null,
-      maxUses: link.max_uses,
-      usesCount: link.uses_count,
-    },
-    new Date(),
-  );
-  if (!usable) throw new Error('link not usable');
-
-  const sb = supabaseAdmin();
-  if (link.max_uses != null) {
-    const { data: bumped } = await sb
-      .from('join_link')
-      .update({ uses_count: link.uses_count + 1 })
-      .eq('token', token)
-      .lt('uses_count', link.max_uses)
-      .select();
-    if (!bumped || bumped.length === 0) throw new Error('link no longer available');
-  } else {
-    await sb
-      .from('join_link')
-      .update({ uses_count: link.uses_count + 1 })
-      .eq('token', token);
-  }
-
-  await createMembership(u, link.organization_id, link.role);
-  return { organizationId: link.organization_id };
+  const { consumeOrganizationInvite } = await import('./organization-admission');
+  return consumeOrganizationInvite(token, u);
 }
 
 /** Active join links, optionally scoped to one org (callers should always pass

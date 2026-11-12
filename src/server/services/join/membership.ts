@@ -31,23 +31,25 @@ export async function hasAnyMembership(supabaseId: string): Promise<boolean> {
 }
 
 /**
- * Legacy admission retains the legacy membership-column mapping and additive
- * role assignment. Its two writes share one native transaction and profile
+ * Legacy admission retains the legacy membership-column mapping and exact
+ * selected role. Its writes share one native transaction and profile
  * lifecycle lock; new-model callers must use their transactional admission path.
  */
 export async function createMembership(
   u: MembershipUser,
   orgId: string,
   roleKey: string,
+  grantorProfileId?: string,
 ): Promise<void> {
   if (!u.supabaseId) {
     throw new Error('createMembership: supabaseId is required (Supabase is the sole auth store)');
   }
+  if (!grantorProfileId) throw new Error('Authenticated grantor profile required');
   const profileId = u.supabaseId;
   const policy = await loadOrganizationRolePolicy(orgId);
   if (policy.roleModel === 'organization') {
     throw new Error('Organization-model membership requires transactional admission');
   }
-  await admitLegacyMembership(orgId, profileId, roleKey);
+  await admitLegacyMembership(orgId, profileId, roleKey, grantorProfileId);
   await invalidateRbac(orgId);
 }

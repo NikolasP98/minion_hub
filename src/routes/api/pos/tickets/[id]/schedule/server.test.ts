@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 /**
  * `POST /api/pos/tickets/:id/schedule` — the ONE write the sell flow's schedule
@@ -48,6 +48,10 @@ async function call() {
   } as unknown as Parameters<typeof POST>[0]);
 }
 
+// Transform the route once before applying the behavior-test time budget.
+beforeAll(async () => {
+  await import('./+server');
+}, 30_000);
 beforeEach(() => vi.clearAllMocks());
 
 describe('POST /api/pos/tickets/[id]/schedule', () => {

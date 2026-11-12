@@ -16,14 +16,7 @@ vi.mock('$server/supabase', () => ({
   },
 }));
 vi.mock('$lib/plugins/icon-map', () => ({ PLUGIN_ICON_MAP: {} }));
-// This fixture has no custom navigation and qualifies the real capability/grant
-// containment plus PostgreSQL transactions. Native/custom page containment has
-// its dedicated role-simulation-policy tests and browser qualification.
-vi.mock('../simulation-navigation', () => ({
-  simulationRouteAllowed: () => true,
-  simulationPageAllowed: () => true,
-}));
-import { MODULES, buildCapabilities } from '../rbac.service';
+import { MODULES, buildCapabilities, type CapabilityOverrideRow } from '../rbac.service';
 import { runWithEffectiveAuthority } from '$server/auth/effective-authority';
 import { admitLegacyMembership } from './profile-admission';
 import {
@@ -38,6 +31,7 @@ const tables: AdmissionTables = Object.fromEntries(
   Object.entries({
     organizations: 'organizations',
     roles: 'org_roles',
+    systemRoles: 'permission_roles',
     members: 'organization_members',
     assignments: 'member_roles',
     rules: 'permission_rules',
@@ -46,6 +40,9 @@ const tables: AdmissionTables = Object.fromEntries(
     links: 'join_link',
     requests: 'join_request',
     audit: 'doc_audit_log',
+    brains: 'brains',
+    brainAccess: 'brain_access',
+    personalAgents: 'personal_agents',
   }).map(([key, value]) => [key, `${schema}.${value}`]),
 ) as unknown as AdmissionTables;
 const org = randomUUID(),
@@ -78,6 +75,7 @@ beforeAll(async () => {
     prepare: false,
     fetch_types: false,
     types: ARRAY_TYPES as unknown as Record<string, postgres.PostgresType>,
+    connection: { application_name: schema },
   });
   // Match the real shared production client after Drizzle changes JSON serializers.
   drizzle(db);
@@ -85,6 +83,7 @@ beforeAll(async () => {
   await db`create schema ${db(schema)}`;
   await db`create table ${db(tables.organizations)} (id uuid primary key,status text,role_model text,default_role_key text)`;
   await db`create table ${db(tables.roles)} (org_id text,key text,rank int,primary key(org_id,key))`;
+  await db`create table ${db(tables.systemRoles)} (key text primary key,rank int)`;
   await db`create table ${db(tables.profiles)} (id uuid primary key,role text,deletion_pending boolean default false)`;
   await db`create table ${db(tables.members)} (organization_id uuid,profile_id uuid,role text,primary key(organization_id,profile_id))`;
   await db`create table ${db(tables.assignments)} (org_id uuid,profile_id uuid,role_key text,granted_by uuid,primary key(org_id,profile_id,role_key))`;
@@ -99,6 +98,9 @@ beforeAll(async () => {
     organization_id text,reviewed_by text,reviewed_at timestamptz)`;
   await db`create table ${db(tables.audit)} (id uuid primary key,org_id text,ref_type text,ref_id uuid,
     actor_id uuid,op text,changes jsonb)`;
+  await db`create table ${db(tables.brains)} (id uuid primary key,org_id text,created_by text,visibility text)`;
+  await db`create table ${db(tables.brainAccess)} (brain_id uuid,org_id text,principal_type text,principal_id text,level text,primary key(brain_id,principal_type,principal_id))`;
+  await db`create table ${db(tables.personalAgents)} (profile_id uuid,agent_id text)`;
 });
 beforeEach(async () => {
   boundary.pool.mockReturnValue(db);
@@ -109,6 +111,7 @@ beforeEach(async () => {
   await db`insert into ${db(tables.roles)} values(${org},${admin},80),(${org},${reader},10),
     (${otherOrg},'custom-foreign',80)`;
   await db`insert into ${db(tables.members)} values(${org},${grantor},'owner')`;
+  await db`insert into ${db(tables.systemRoles)} values('owner',100),('admin',80),('manager',60),('staff',40),('viewer',20)`;
   await db`insert into ${db(tables.assignments)} values(${org},${grantor},${admin},${grantor})`;
   for (const role of [admin, reader])
     for (const module of MODULES) {
@@ -126,25 +129,505 @@ afterAll(async () => {
 });
 
 describe('organization-model transactional admission on PostgreSQL', () => {
-  it('completes legacy profile-fenced admission with a one-connection pool and retains legacy role semantics', async () => {
+  it('rejects reactivation of private Brain read through the recipient persisted personal agent', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true where role_key=${reader} and module='brains'`;
+    await db`insert into ${db(tables.personalAgents)} values(${profile},'recipient-agent')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'agent','recipient-agent','read')`;
+    const link = await mint(reader, 1);
+    await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 0 },
+    ]);
+  });
+  it('allows verified owned-agent private Brain read only when the grantor holds matching asset access', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true where role_key=${reader} and module='brains'`;
+    await db`insert into ${db(tables.personalAgents)} values(${profile},'Recipient-Agent')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'agent','recipient-agent','read'),(${brain},${org},'user',${grantor},'read')`;
+    const link = await mint(reader, 1);
+    await consumeOrganizationInvite(link.token, user(), tables);
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: reader }]);
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 1 },
+    ]);
+  });
+  it('does not attribute unknown or foreign-owned personal-agent ACLs to an unrelated admission recipient', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true where role_key=${reader} and module='brains'`;
+    await db`insert into ${db(tables.personalAgents)} values(${grantor},'foreign-owned-agent')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'agent','foreign-owned-agent','read'),(${brain},${org},'agent','unknown-agent','read')`;
+    const link = await mint(reader, 1);
+    await consumeOrganizationInvite(link.token, user(), tables);
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: reader }]);
+  });
+  it('rejects ambiguous case-folded persisted personal-agent ownership before minting', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`insert into ${db(tables.personalAgents)} values(${profile},'Recipient-Agent'),(${grantor},'recipient-agent')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'agent','recipient-agent','read')`;
+    await expect(mint(reader)).rejects.toMatchObject({ status: 503 });
+    expect(await db`select * from ${db(tables.links)}`).toHaveLength(0);
+  });
+  it('does not widen grantor authority using the grantor own personal-agent Brain ACL', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true where role_key=${reader} and module='brains'`;
+    await db`insert into ${db(tables.personalAgents)} values(${profile},'recipient-agent'),(${grantor},'grantor-agent')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'agent','recipient-agent','read'),(${brain},${org},'agent','grantor-agent','read')`;
+    const link = await mint(reader, 1);
+    await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 0 },
+    ]);
+  });
+  it('rejects private Brain role ACL grants beyond the actor in both role models', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    for (const [model, selected] of [
+      ['organization', reader],
+      ['legacy', 'staff'],
+    ] as const) {
+      await db`update ${db(tables.organizations)} set role_model=${model},default_role_key=${model === 'legacy' ? null : admin} where id=${org}`;
+      await db`insert into ${db(tables.rules)} values(${org},${selected},'brains',true,false,true,false,false,false,false,1)
+        on conflict(org_id,role_key,module) do update set can_view=true,can_edit=true,can_manage=false,field_level=1`;
+      await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'role',${selected},'write')`;
+      await expect(mint(selected)).rejects.toMatchObject({ status: 403 });
+    }
+    expect(await db`select * from ${db(tables.links)}`).toHaveLength(0);
+  });
+  it('rejects legacy Admin private-Brain bypass even for an equal-rank full-module grantor', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    // No existing assets: the legacy role name also grants future private Brains.
+    await expect(mint('admin')).rejects.toMatchObject({ status: 403 });
+    expect(await db`select * from ${db(tables.links)}`).toHaveLength(0);
+  });
+  it('rejects private Brain user ACLs reactivated by admission in both role models', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'user',${profile},'write')`;
+    for (const [model, selected] of [
+      ['organization', reader],
+      ['legacy', 'staff'],
+    ] as const) {
+      await db`update ${db(tables.organizations)} set role_model=${model},default_role_key=${model === 'legacy' ? null : admin} where id=${org}`;
+      await db`insert into ${db(tables.rules)} values(${org},${selected},'brains',true,false,true,false,false,false,false,1)
+        on conflict(org_id,role_key,module) do update set can_view=true,can_edit=true,can_manage=false,field_level=1`;
+      const link = await mint(selected, 1);
+      await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+        status: 403,
+      });
+      expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+        { uses_count: 0 },
+      ]);
+    }
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+  });
+  it('rejects private Brain creator rights reactivated by approval or direct legacy admission without grantor access', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},${profile},'private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    for (const [model, selected] of [
+      ['organization', reader],
+      ['legacy', 'staff'],
+    ] as const) {
+      await db`update ${db(tables.organizations)} set role_model=${model},default_role_key=${model === 'legacy' ? null : admin} where id=${org}`;
+      await db`insert into ${db(tables.rules)} values(${org},${selected},'brains',true,false,true,false,false,false,false,1)
+        on conflict(org_id,role_key,module) do update set can_view=true,can_edit=true,can_manage=false,field_level=1`;
+      const id = randomUUID();
+      await db`insert into ${db(tables.requests)} values(${id},${profile},'pending',${org},null,null)`;
+      await expect(
+        approveOrganizationRequest(
+          id,
+          {
+            organizationId: org,
+            role: selected,
+            reviewerId: 'reviewer',
+            reviewerProfileId: grantor,
+          },
+          tables,
+        ),
+      ).rejects.toMatchObject({ status: 403 });
+      if (model === 'legacy')
+        await expect(
+          admitLegacyMembership(org, profile, selected, grantor, tables),
+        ).rejects.toMatchObject({ status: 403 });
+      expect(await db`select status from ${db(tables.requests)} where id=${id}`).toEqual([
+        { status: 'pending' },
+      ]);
+    }
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(await db`select * from ${db(tables.audit)}`).toHaveLength(0);
+  });
+  it('allows recipient-specific private Brain read rights when the grantor holds the same asset access', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true where role_key=${reader} and module='brains'`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'user',${profile},'read'),(${brain},${org},'user',${grantor},'read')`;
+    const link = await mint(reader, 1);
+    await consumeOrganizationInvite(link.token, user(), tables);
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: reader }]);
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 1 },
+    ]);
+  });
+  it('replaces inactive legacy Admin assignments with exactly the verified Viewer role on re-admission', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    await db`update ${db(tables.assignments)} set role_key='admin' where profile_id=${grantor}`;
+    await db`insert into ${db(tables.assignments)} values(${org},${profile},'admin',${grantor})`;
+    const link = await mint('viewer', 1);
+    await consumeOrganizationInvite(link.token, user(), tables);
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: 'viewer' }]);
+    expect(await db`select role from ${db(tables.members)} where profile_id=${profile}`).toEqual([
+      { role: 'member' },
+    ]);
+    const [audit] = await db`select changes from ${db(tables.audit)}`;
+    expect(audit.changes).toContainEqual({
+      field: 'inactive_role_assignments',
+      old: ['admin'],
+      new: [],
+    });
+  });
+  it('allows private Brain role grants from the asset creator in both role models', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},${grantor},'private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    for (const [model, selected] of [
+      ['organization', reader],
+      ['legacy', 'staff'],
+    ] as const) {
+      await db`delete from ${db(tables.members)} where profile_id=${profile}`;
+      await db`delete from ${db(tables.assignments)} where profile_id=${profile}`;
+      await db`update ${db(tables.organizations)} set role_model=${model},default_role_key=${model === 'legacy' ? null : admin} where id=${org}`;
+      await db`insert into ${db(tables.rules)} values(${org},${selected},'brains',true,false,true,false,false,false,false,1)
+        on conflict(org_id,role_key,module) do update set can_view=true,can_edit=true,can_manage=false,field_level=1`;
+      await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'role',${selected},'write')`;
+      const link = await mint(selected, 1);
+      await consumeOrganizationInvite(link.token, user(), tables);
+      expect(
+        await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+      ).toEqual([{ role_key: selected }]);
+      expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+        { uses_count: 1 },
+      ]);
+    }
+  });
+  it('rejects selected private Brain ACL expansion after minting even when the grantor owns the new asset', async () => {
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true,can_edit=true where role_key=${reader} and module='brains'`;
+    const link = await mint(reader, 1);
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},${grantor},'private')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'role',${reader},'write')`;
+    await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+      status: 409,
+    });
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 0 },
+    ]);
+  });
+  it('intersects private Brain grants with the current simulated object authority', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    await db`update ${db(tables.assignments)} set role_key='admin' where profile_id=${grantor}`;
+    await db`insert into ${db(tables.rules)} values(${org},'staff','brains',true,false,true,false,false,false,false,1)`;
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'role','staff','write')`;
+    const rules = await db<CapabilityOverrideRow[]>`select * from ${db(tables.rules)}`;
+    await expect(
+      runWithEffectiveAuthority(
+        {
+          orgId: org,
+          profileId: grantor,
+          roleKey: admin,
+          generation: randomUUID(),
+          rank: 80,
+          invalid: false,
+          capabilities: buildCapabilities([admin], rules),
+        },
+        () => mint('staff'),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(await db`select * from ${db(tables.links)}`).toHaveLength(0);
+  });
+  it('serializes private Brain access revocation before redemption and keeps use and approval unchanged', async () => {
+    const brain = randomUUID();
+    await db`insert into ${db(tables.brains)} values(${brain},${org},'other-owner','private')`;
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='brains'`;
+    await db`update ${db(tables.rules)} set can_view=true,can_edit=true where role_key=${reader} and module='brains'`;
+    await db`insert into ${db(tables.brainAccess)} values(${brain},${org},'user',${grantor},'write'),(${brain},${org},'role',${reader},'write')`;
+    const link = await mint(reader, 1);
+    const id = randomUUID();
+    await db`insert into ${db(tables.requests)} values(${id},${profile},'pending',${org},null,null)`;
+    let beginRedemption!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      beginRedemption = resolve;
+    });
+    let releaseRevocation!: () => void;
+    const release = new Promise<void>((resolve) => {
+      releaseRevocation = resolve;
+    });
+    const revoke = db.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(hashtextextended(${org},112))`;
+      await tx`delete from ${tx(tables.brainAccess)} where principal_type='user' and principal_id=${grantor}`;
+      beginRedemption();
+      await release;
+    });
+    await gate;
+    const redemption = Promise.allSettled([consumeOrganizationInvite(link.token, user(), tables)]);
+    try {
+      let waiting = false;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const [activity] = await db<{ waiting: boolean }[]>`select exists(
+          select 1 from pg_stat_activity where application_name=${schema} and wait_event='advisory'
+        ) as waiting`;
+        if (activity.waiting) {
+          waiting = true;
+          break;
+        }
+        await db`select pg_sleep(0.01)`;
+      }
+      expect(waiting).toBe(true);
+    } finally {
+      releaseRevocation();
+      await revoke;
+    }
+    expect(await redemption).toMatchObject([{ status: 'rejected', reason: { status: 403 } }]);
+    await expect(
+      approveOrganizationRequest(
+        id,
+        { organizationId: org, role: reader, reviewerId: 'reviewer', reviewerProfileId: grantor },
+        tables,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 0 },
+    ]);
+    expect(await db`select status from ${db(tables.requests)} where id=${id}`).toEqual([
+      { status: 'pending' },
+    ]);
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(await db`select * from ${db(tables.audit)}`).toHaveLength(0);
+  });
+  it('admits a permitted legacy built-in role with verified grantor provenance and one atomic use', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    await db`update ${db(tables.assignments)} set role_key='admin' where profile_id=${grantor}`;
+    const link = await mint('admin', 1);
+    const [minted] =
+      await db`select grantor_profile_id,role_revision from ${db(tables.links)} where id=${link.id}`;
+    expect(minted.grantor_profile_id).toBe(grantor);
+    expect(minted.role_revision).toMatch(/^[a-f0-9]{64}$/);
+    await consumeOrganizationInvite(link.token, user(), tables);
+    expect(await db`select role from ${db(tables.members)} where profile_id=${profile}`).toEqual([
+      { role: 'admin' },
+    ]);
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: 'admin' }]);
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 1 },
+    ]);
+  });
+  it('rejects a legacy invitation without recorded grantor authority while preserving existing-member replay', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    await db`insert into ${db(tables.links)} (token,organization_id,role,uses_count) values('legacy-unverified',${org},'admin',0)`;
+    await expect(
+      consumeOrganizationInvite('legacy-unverified', user(), tables),
+    ).rejects.toMatchObject({
+      status: 409,
+      body: { message: expect.stringContaining('create a new link') },
+    });
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(
+      await db`select uses_count from ${db(tables.links)} where token='legacy-unverified'`,
+    ).toEqual([{ uses_count: 0 }]);
+    await db`insert into ${db(tables.members)} values(${org},${profile},'owner')`;
+    await consumeOrganizationInvite('legacy-unverified', user(), tables);
+    expect(await db`select role from ${db(tables.members)} where profile_id=${profile}`).toEqual([
+      { role: 'owner' },
+    ]);
+  });
+  it('rejects a legacy admin invitation beyond the actual grantor page, record or field authority', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    for (const restriction of ['module', 'record', 'field', 'page']) {
+      await db`update ${db(tables.rules)} set can_view=true,if_owner=false,field_level=1 where role_key=${admin} and module='crm'`;
+      await db`delete from ${db(tables.rules)} where role_key=${admin} and module='page:/crm/customers'`;
+      if (restriction === 'module')
+        await db`update ${db(tables.rules)} set can_view=false where role_key=${admin} and module='crm'`;
+      if (restriction === 'record')
+        await db`update ${db(tables.rules)} set if_owner=true where role_key=${admin} and module='crm'`;
+      if (restriction === 'field')
+        await db`update ${db(tables.rules)} set field_level=0 where role_key=${admin} and module='crm'`;
+      if (restriction === 'page')
+        await db`insert into ${db(tables.rules)} values(${org},${admin},'page:/crm/customers',false,false,false,false,false,false,false,0)`;
+      await expect(mint('admin')).rejects.toMatchObject({ status: 403 });
+    }
+    expect(await db`select * from ${db(tables.links)}`).toHaveLength(0);
+  });
+  it('approves an omitted legacy role as Staff only within the fresh reviewer ceiling', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    const id = randomUUID();
+    await db`insert into ${db(tables.requests)} values(${id},${profile},'pending',${org},null,null)`;
+    await approveOrganizationRequest(
+      id,
+      { organizationId: org, reviewerId: 'reviewer', reviewerProfileId: grantor },
+      tables,
+    );
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: 'staff' }]);
+    expect(await db`select status from ${db(tables.requests)} where id=${id}`).toEqual([
+      { status: 'approved' },
+    ]);
+  });
+  it('revalidates legacy grantor membership and capability revocation before redemption without consuming use', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    const link = await mint('staff', 1);
+    await db`update ${db(tables.rules)} set can_manage=false where role_key=${admin} and module='users'`;
+    await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+      status: 403,
+    });
+    await db`update ${db(tables.rules)} set can_manage=true where role_key=${admin} and module='users'`;
+    await db`delete from ${db(tables.members)} where profile_id=${grantor}`;
+    await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 0 },
+    ]);
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+  });
+  it('checks both the admitted and current simulated legacy grantor authority', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    const base = {
+      orgId: org,
+      profileId: grantor,
+      roleKey: 'admin',
+      generation: randomUUID(),
+      rank: 80,
+      invalid: false,
+    };
+    const restricted = buildCapabilities(
+      ['admin'],
+      [
+        {
+          role_key: 'admin',
+          module: 'crm',
+          can_view: false,
+          can_create: false,
+          can_edit: false,
+          can_delete: false,
+          can_export: false,
+          can_manage: false,
+        },
+      ],
+    );
+    await expect(
+      runWithEffectiveAuthority({ ...base, capabilities: restricted }, () => mint('admin')),
+    ).rejects.toMatchObject({ status: 403 });
+    const admitted = buildCapabilities(['admin'], []);
+    await db`insert into ${db(tables.rules)} values(${org},'admin','users',true,false,false,false,false,false,false,0)`;
+    await expect(
+      runWithEffectiveAuthority({ ...base, capabilities: admitted }, () => mint('staff')),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(await db`select * from ${db(tables.links)}`).toHaveLength(0);
+  });
+  it('rejects legacy role expansion after minting and leaves the request pending after a denied approval', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    const link = await mint('staff', 1);
+    await db`insert into ${db(tables.rules)} values(${org},'staff','brains',true,false,false,false,false,false,false,0)`;
+    await expect(consumeOrganizationInvite(link.token, user(), tables)).rejects.toMatchObject({
+      status: 409,
+    });
+    const id = randomUUID();
+    await db`insert into ${db(tables.requests)} values(${id},${profile},'pending',${org},null,null)`;
+    await db`update ${db(tables.rules)} set if_owner=true where role_key=${admin} and module='crm'`;
+    await expect(
+      approveOrganizationRequest(
+        id,
+        { organizationId: org, role: 'admin', reviewerId: 'reviewer', reviewerProfileId: grantor },
+        tables,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(await db`select status from ${db(tables.requests)} where id=${id}`).toEqual([
+      { status: 'pending' },
+    ]);
+    expect(await db`select uses_count from ${db(tables.links)} where id=${link.id}`).toEqual([
+      { uses_count: 0 },
+    ]);
+    expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(
+      0,
+    );
+    expect(await db`select * from ${db(tables.audit)}`).toHaveLength(0);
+  });
+  it('retains the legacy membership-role fallback when a verified grantor has no explicit assignments', async () => {
+    await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
+    await db`delete from ${db(tables.assignments)} where profile_id=${grantor}`;
+    await db`update ${db(tables.members)} set role='admin' where profile_id=${grantor}`;
+    const link = await mint('staff');
+    await consumeOrganizationInvite(link.token, user(), tables);
+    expect(
+      await db`select role_key from ${db(tables.assignments)} where profile_id=${profile}`,
+    ).toEqual([{ role_key: 'staff' }]);
+  });
+  it('completes verified legacy admission with a one-connection pool and never changes an existing member', async () => {
     const url = process.env.HUB_TEST_DB_URL!;
     const single = postgres(url, { max: 1, prepare: false, connect_timeout: 3 });
     boundary.pool.mockReturnValue(single);
     try {
       await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
-      await admitLegacyMembership(org, profile, 'staff', tables);
+      await db`update ${db(tables.assignments)} set role_key='admin' where profile_id=${grantor}`;
+      await admitLegacyMembership(org, profile, 'staff', grantor, tables);
       const [member] = await db`select role from ${db(tables.members)} where profile_id=${profile}`;
       expect(member.role).toBe('member');
-      await admitLegacyMembership(org, profile, 'admin', tables);
+      await admitLegacyMembership(org, profile, 'admin', grantor, tables);
       const [updated] =
         await db`select role from ${db(tables.members)} where profile_id=${profile}`;
-      expect(updated.role).toBe('admin');
+      expect(updated.role).toBe('member');
       expect(
         await db`select role_key from ${db(tables.assignments)} where profile_id=${profile} order by role_key`,
-      ).toEqual([
-        expect.objectContaining({ role_key: 'admin' }),
-        expect.objectContaining({ role_key: 'staff' }),
-      ]);
+      ).toEqual([expect.objectContaining({ role_key: 'staff' })]);
     } finally {
       boundary.pool.mockReturnValue(db);
       await single.end({ timeout: 2 });
@@ -153,7 +636,9 @@ describe('organization-model transactional admission on PostgreSQL', () => {
   it('rejects a pending-deletion legacy admission before either membership write', async () => {
     await db`update ${db(tables.organizations)} set role_model='legacy',default_role_key=null where id=${org}`;
     await db`update ${db(tables.profiles)} set deletion_pending=true where id=${profile}`;
-    await expect(admitLegacyMembership(org, profile, 'staff', tables)).rejects.toMatchObject({
+    await expect(
+      admitLegacyMembership(org, profile, 'staff', grantor, tables),
+    ).rejects.toMatchObject({
       status: 403,
     });
     expect(await db`select * from ${db(tables.members)} where profile_id=${profile}`).toHaveLength(

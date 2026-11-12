@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { error } from '@sveltejs/kit';
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   membership: vi.fn(),
@@ -57,6 +58,51 @@ beforeEach(() => {
   mocks.pending.mockResolvedValue(null);
   mocks.member.mockResolvedValue(false);
   mocks.target.mockResolvedValue({ id: 'configured-org', name: 'Current workspace' });
+});
+
+describe('verified invite consumption feedback', () => {
+  const consumeEvent = (token = 'old-link') =>
+    ({
+      locals: {},
+      request: new Request('http://localhost/join?/consume', {
+        method: 'POST',
+        body: new URLSearchParams({ token }),
+      }),
+    }) as never;
+  it.each([
+    [
+      409,
+      'This invitation predates grant verification. Ask an administrator to create a new link.',
+    ],
+    [409, 'Invite role changed; reissue the invite'],
+    [403, 'Role exceeds the grantor authority'],
+  ] as const)(
+    'preserves admission status %s and the actionable policy message',
+    async (status, message) => {
+      mocks.consume.mockImplementationOnce(async () => {
+        throw error(status, message);
+      });
+      expect(await actions.consume!(consumeEvent())).toMatchObject({
+        status,
+        data: { error: message },
+      });
+      expect(mocks.consume).toHaveBeenCalledWith('old-link', actor);
+    },
+  );
+  it('does not expose unexpected storage errors or claim admission success', async () => {
+    mocks.consume.mockRejectedValueOnce(new Error('private storage detail'));
+    expect(await actions.consume!(consumeEvent())).toMatchObject({
+      status: 400,
+      data: { error: 'This invite link is invalid or expired.' },
+    });
+  });
+  it('redirects only after the atomic admission helper succeeds', async () => {
+    mocks.consume.mockResolvedValueOnce({ organizationId: 'configured-org' });
+    await expect(actions.consume!(consumeEvent('verified-link'))).rejects.toMatchObject({
+      status: 303,
+      location: '/',
+    });
+  });
 });
 describe('generic join request flow', () => {
   it('shows a form only after an explicit empty own pending state', async () => {

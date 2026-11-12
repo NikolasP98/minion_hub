@@ -4,21 +4,35 @@ import type postgres from 'postgres';
 import { getPgClient } from '$server/db/pg-pool';
 import {
   buildCapabilities,
+  MODULES,
+  ACTIONS,
+  JOINABLE_ROLE_KEY,
   invalidateRbac,
   resolveMemberRoleKeys,
   type CapabilityOverrideRow,
 } from '../rbac.service';
 import { roleFitsActualAuthority } from '../role-simulation-policy';
 import { normalizeNavConfig } from '$lib/nav/custom-sections';
+import { ALL_SUBRESOURCES } from '$lib/permissions';
 import { generateOpaqueToken, isLinkUsable } from './helpers';
 import type { MembershipUser } from './membership';
-import { currentEffectiveAuthority } from '$server/auth/effective-authority';
+import {
+  currentEffectiveAuthority,
+  narrowAdmittedCapabilities,
+} from '$server/auth/effective-authority';
+import { parseOrganizationRolePolicy } from '../organization-role-policy';
+import {
+  readRoleBrainGrants,
+  assertRoleBrainGrantCeiling,
+  assertRecipientBrainGrantCeiling,
+} from '../brain-role-grants';
 import { lockAdmissionProfiles } from './profile-admission';
 
 type Tx = postgres.TransactionSql;
 export interface AdmissionTables {
   organizations: string;
   roles: string;
+  systemRoles: string;
   members: string;
   assignments: string;
   rules: string;
@@ -27,10 +41,14 @@ export interface AdmissionTables {
   links: string;
   requests: string;
   audit: string;
+  brains: string;
+  brainAccess: string;
+  personalAgents: string;
 }
 export const ADMISSION_TABLES: Readonly<AdmissionTables> = {
   organizations: 'public.organizations',
   roles: 'public.org_roles',
+  systemRoles: 'public.permission_roles',
   members: 'public.organization_members',
   assignments: 'public.member_roles',
   rules: 'public.permission_rules',
@@ -39,6 +57,9 @@ export const ADMISSION_TABLES: Readonly<AdmissionTables> = {
   links: 'public.join_link',
   requests: 'public.join_request',
   audit: 'public.doc_audit_log',
+  brains: 'public.brains',
+  brainAccess: 'public.brain_access',
+  personalAgents: 'public.personal_agents',
 };
 interface RoleRow {
   key: string;
@@ -66,12 +87,33 @@ interface RequestRow {
 }
 
 /** Stable-key rename does not invalidate an invite; authority changes do. */
-export function admissionRoleRevision(role: RoleRow, rules: CapabilityOverrideRow[]): string {
+export function admissionRoleRevision(
+  role: RoleRow,
+  rules: CapabilityOverrideRow[],
+  nav: unknown = null,
+  objectRevision: string | null = null,
+): string {
+  const capabilities = buildCapabilities([role.key], rules);
+  const targets = [
+    ...new Set([
+      ...MODULES,
+      ...ALL_SUBRESOURCES.map((r) => r.key),
+      ...rules.filter((r) => r.role_key === role.key).map((r) => r.module),
+    ]),
+  ].sort();
   return createHash('sha256')
     .update(
       JSON.stringify({
         key: role.key,
         rank: role.rank,
+        capabilities: targets.map((target) => [
+          target,
+          ...ACTIONS.map((action) => capabilities.can(target, action)),
+          capabilities.ownerScoped(target),
+          capabilities.fieldLevel(target),
+        ]),
+        nav,
+        objectRevision,
         rules: rules
           .filter((r) => r.role_key === role.key)
           .sort((a, b) => (a.module < b.module ? -1 : a.module > b.module ? 1 : 0))
@@ -94,11 +136,11 @@ async function lockOrganization(tx: Tx, orgId: string, tables: AdmissionTables) 
   await tx`set local lock_timeout='5s'`;
   await tx`set local statement_timeout='10s'`;
   await tx`select pg_advisory_xact_lock(hashtextextended(${orgId},112))`;
-  const [org] = await tx<OrganizationRow[]>`select role_model,default_role_key,status
-    from ${tx(tables.organizations)} where id=${orgId}::uuid for share`;
-  if (!org || org.status !== 'active' || org.role_model !== 'organization')
-    throw error(403, 'Organization admission unavailable');
-  return org;
+  const [org] = await tx<OrganizationRow[]>`select to_jsonb(o)->>'role_model' as role_model,
+    to_jsonb(o)->>'default_role_key' as default_role_key,status
+    from ${tx(tables.organizations)} o where id=${orgId}::uuid for share`;
+  if (!org || org.status !== 'active') throw error(403, 'Organization admission unavailable');
+  return parseOrganizationRolePolicy(org);
 }
 async function grantSnapshot(
   tx: Tx,
@@ -107,14 +149,28 @@ async function grantSnapshot(
   requestedRole: string | undefined,
   tables: AdmissionTables,
 ) {
-  const org = await lockOrganization(tx, orgId, tables);
-  const roleKey = requestedRole ?? org.default_role_key;
-  const roles = await tx<
+  const policy = await lockOrganization(tx, orgId, tables);
+  const roleKey =
+    requestedRole ?? (policy.roleModel === 'legacy' ? 'staff' : policy.defaultRoleKey);
+  const localRoles = await tx<
     RoleRow[]
   >`select key,rank from ${tx(tables.roles)} where org_id=${orgId} for share`;
-  const role = roles.find((r) => r.key === roleKey && r.key.startsWith('custom-'));
+  const roles =
+    policy.roleModel === 'legacy'
+      ? [
+          ...(await tx<RoleRow[]>`select key,rank from ${tx(tables.systemRoles)} for share`),
+          ...localRoles,
+        ]
+      : localRoles;
+  if (policy.roleModel === 'legacy' && !JOINABLE_ROLE_KEY.safeParse(roleKey).success)
+    throw error(400, 'role must be one of: admin, manager, staff, viewer');
+  const role = roles.find(
+    (r) => r.key === roleKey && (policy.roleModel === 'legacy' || r.key.startsWith('custom-')),
+  );
   if (!role) throw error(400, 'Role must belong to the target organization');
-  const [actor] = await tx<{ profile_role: string }[]>`select p.role as profile_role
+  const [actor] = await tx<
+    { profile_role: string; membership_role: string }[]
+  >`select p.role as profile_role,m.role as membership_role
     from ${tx(tables.members)} m join ${tx(tables.profiles)} p on p.id=m.profile_id
     where m.organization_id=${orgId}::uuid and m.profile_id=${grantor}::uuid for share of m,p`;
   if (!actor) throw error(403, 'Organization membership required');
@@ -122,8 +178,8 @@ async function grantSnapshot(
     where org_id=${orgId}::uuid and profile_id=${grantor}::uuid for share`;
   const keys = resolveMemberRoleKeys(
     assigned.map((r) => r.role_key),
-    null,
-    'organization',
+    actor.membership_role,
+    policy.roleModel,
     roles.map((r) => r.key),
   );
   const rules = await tx<
@@ -153,21 +209,53 @@ async function grantSnapshot(
   )
     throw error(403, 'Role exceeds the grantor authority');
   const simulation = currentEffectiveAuthority(orgId, grantor);
-  if (
-    simulation &&
-    (simulation.invalid ||
-      !simulation.capabilities.can('users', 'manage') ||
-      role.rank > simulation.rank ||
+  let effectiveActor:
+    { profileId: string; roles: string[]; caps: ReturnType<typeof buildCapabilities> } | undefined;
+  if (simulation) {
+    const simulationRole = roles.find((r) => r.key === simulation.roleKey);
+    const effective = narrowAdmittedCapabilities(
+      buildCapabilities([simulation.roleKey], rules),
+      simulation.capabilities,
+    );
+    effectiveActor = { profileId: grantor, roles: [simulation.roleKey], caps: effective };
+    if (
+      simulation.invalid ||
+      !simulationRole ||
+      !effective.can('users', 'manage') ||
+      role.rank > Math.min(simulation.rank, simulationRole.rank) ||
       !roleFitsActualAuthority({
-        actual: simulation.capabilities,
+        actual: effective,
         selected,
         rules,
         nav: normalizedNav,
         platformAdmin: false,
-      }))
-  )
-    throw error(403, 'Role exceeds the simulated grantor authority');
-  return { role, revision: admissionRoleRevision(role, rules) };
+      })
+    )
+      throw error(403, 'Role exceeds the simulated grantor authority');
+  }
+  const snapshot = await readRoleBrainGrants(tx, orgId, {
+    brains: tables.brains,
+    access: tables.brainAccess,
+    personalAgents: tables.personalAgents,
+  });
+  const { revision: objectRevision } = assertRoleBrainGrantCeiling({
+    roleModel: policy.roleModel,
+    snapshot,
+    actual: { profileId: grantor, roles: keys, caps: actual },
+    effective: effectiveActor,
+    selected: { roles: [role.key], caps: selected },
+  });
+  return {
+    role,
+    policy,
+    revision: admissionRoleRevision(role, rules, normalizedNav, objectRevision),
+    brainAuthority: {
+      snapshot,
+      actual: { profileId: grantor, roles: keys, caps: actual },
+      effective: effectiveActor,
+      selected: { roles: [role.key], caps: selected },
+    },
+  };
 }
 async function memberExists(tx: Tx, orgId: string, profileId: string, tables: AdmissionTables) {
   const rows = await tx`select 1 from ${tx(tables.members)} where organization_id=${orgId}::uuid
@@ -181,17 +269,63 @@ async function admit(
   roleKey: string,
   grantor: string,
   tables: AdmissionTables,
+  roleModel: 'legacy' | 'organization',
+  brainAuthority: Awaited<ReturnType<typeof grantSnapshot>>['brainAuthority'],
 ) {
   // Caller holds the org policy lock. An existing member is never promoted by admission.
   if (await memberExists(tx, orgId, profileId, tables)) return false;
+  assertRecipientBrainGrantCeiling({
+    roleModel,
+    snapshot: brainAuthority.snapshot,
+    actual: brainAuthority.actual,
+    effective: brainAuthority.effective,
+    before: { profileId, active: false, roles: [], caps: buildCapabilities([], []) },
+    after: { profileId, active: true, ...brainAuthority.selected },
+  });
+  // Inactive assignments are not authority: admission installs exactly the verified role.
+  const staleRoles = await tx<{ role_key: string }[]>`delete from ${tx(tables.assignments)}
+    where org_id=${orgId}::uuid and profile_id=${profileId}::uuid returning role_key`;
   await tx`insert into ${tx(tables.members)} (organization_id,profile_id,role)
-    values (${orgId}::uuid,${profileId}::uuid,'member')`;
+    values (${orgId}::uuid,${profileId}::uuid,${roleModel === 'legacy' && roleKey === 'admin' ? 'admin' : 'member'})`;
   await tx`insert into ${tx(tables.assignments)} (org_id,profile_id,role_key,granted_by)
     values (${orgId}::uuid,${profileId}::uuid,${roleKey},${grantor}::uuid)`;
   await tx`insert into ${tx(tables.audit)} (id,org_id,ref_type,ref_id,actor_id,op,changes)
     values (${randomUUID()}::uuid,${orgId},'organization_membership',${profileId}::uuid,
-      ${grantor}::uuid,'create',${JSON.stringify([{ field: 'role', old: null, new: roleKey }])}::text::jsonb)`;
+      ${grantor}::uuid,'create',${JSON.stringify([
+        { field: 'role', old: null, new: roleKey },
+        ...(staleRoles.length
+          ? [
+              {
+                field: 'inactive_role_assignments',
+                old: staleRoles.map((r) => r.role_key).sort(),
+                new: [],
+              },
+            ]
+          : []),
+      ])}::text::jsonb)`;
   return true;
+}
+
+/** The legacy direct adapter shares the same grant check and lifecycle lock as links. */
+export async function admitVerifiedLegacyMember(
+  orgId: string,
+  profileId: string,
+  roleKey: string,
+  grantorProfileId: string,
+  tables: AdmissionTables = ADMISSION_TABLES,
+): Promise<void> {
+  await getPgClient().begin(async (tx) => {
+    await lockAdmissionProfiles(tx, [profileId, grantorProfileId], tables.profiles);
+    const { role, policy, brainAuthority } = await grantSnapshot(
+      tx,
+      orgId,
+      grantorProfileId,
+      roleKey,
+      tables,
+    );
+    if (policy.roleModel !== 'legacy') throw error(409, 'Organization admission model changed');
+    await admit(tx, orgId, profileId, role.key, grantorProfileId, tables, 'legacy', brainAuthority);
+  });
 }
 
 export async function mintOrganizationInvite(
@@ -208,13 +342,14 @@ export async function mintOrganizationInvite(
   const token = generateOpaqueToken();
   return getPgClient().begin(async (tx) => {
     await lockAdmissionProfiles(tx, [opts.grantorProfileId], tables.profiles);
-    const { role, revision } = await grantSnapshot(
+    const { role, revision, policy } = await grantSnapshot(
       tx,
       opts.organizationId,
       opts.grantorProfileId,
       opts.role,
       tables,
     );
+    if (policy.roleModel === 'legacy' && !opts.role) throw error(400, 'role required');
     if (opts.maxUses != null && (!Number.isInteger(opts.maxUses) || opts.maxUses < 1))
       throw error(400, 'maxUses must be a positive integer');
     if (
@@ -275,7 +410,10 @@ export async function consumeOrganizationInvite(
     )
       throw error(400, 'Invite is no longer usable');
     if (!link.grantor_profile_id || !link.role_revision)
-      throw error(409, 'Invite must be reissued');
+      throw error(
+        409,
+        'This invitation predates grant verification. Ask an administrator to create a new link.',
+      );
     const current = await grantSnapshot(
       tx,
       link.organization_id,
@@ -292,6 +430,8 @@ export async function consumeOrganizationInvite(
       current.role.key,
       link.grantor_profile_id,
       tables,
+      current.policy.roleModel,
+      current.brainAuthority,
     );
     await tx`update ${tx(tables.links)} set uses_count=uses_count+1 where id=${link.id}::uuid`;
     return { organizationId: link.organization_id };
@@ -317,7 +457,7 @@ export async function approveOrganizationRequest(
     if (request.supabase_id !== scope.supabase_id)
       throw error(409, 'Request changed; reload before approving');
     if (request.status !== 'pending') return;
-    const { role } = await grantSnapshot(
+    const { role, policy, brainAuthority } = await grantSnapshot(
       tx,
       opts.organizationId,
       opts.reviewerProfileId,
@@ -331,6 +471,8 @@ export async function approveOrganizationRequest(
       role.key,
       opts.reviewerProfileId,
       tables,
+      policy.roleModel,
+      brainAuthority,
     );
     await tx`update ${tx(tables.requests)} set status='approved',reviewed_by=${opts.reviewerId},reviewed_at=now()
       where id=${id}::uuid and organization_id=${opts.organizationId}`;

@@ -66,26 +66,69 @@ does not assign it to anyone. The catalog supports at most 256 local roles per o
 
 The `roles` module has independent view, create, edit, and delete permissions.
 The Manager template grants those four actions within the manager's own permissions.
-Staff and Viewer templates grant none. Existing global Manager permissions stay unchanged.
+Staff and Viewer templates grant none. Existing global Manager data permissions stay unchanged.
 Team membership administration uses `users:manage`; it does not grant role editing.
 Changing the default requires both `users:manage` and `roles:edit`.
+
+Grant ceilings apply to future grants in existing legacy organizations too. Role
+assignment and admission refresh current actual and simulated authority under the
+organization policy lock. Removing the final explicit legacy assignment must not
+expose a membership fallback broader than the actor can grant.
 
 A grantor cannot exceed their current data actions, record scope, field access, page
 access, or rank. Simulation additionally restricts the real actor's current authority.
 Brain sharing and visibility changes recheck current module and object write authority
-inside the mutation transaction. Removing the final owner or recoverable access
+inside the mutation transaction. Role grants also check existing role-linked
+Brain ACLs and legacy Administrator access to current and future private Brains.
+Permission edits recheck newly enabled Brain actions, and invitations freeze the
+selected role's Brain ACL revision. Object checks use both actual and simulated
+authority under the same organization lock as Brain ACL/visibility writers.
+Known recipients are checked against their complete before/after role union.
+Newly activated actions, record scope, read/export field tiers, page access and
+role-management rank must fit the grantor's actual and effective authority.
+Private Brain checks also include
+creator rights, user ACLs and verified personal-agent read/write access. Agent
+IDs supplied by callers do not prove ownership. Grantors use their current
+browser profile authority; owning an agent does not expand that grant authority.
+
+The object-authority snapshot supports at most 4,096 Brains and 65,536 ACL
+rows and matching personal-agent bindings per organization. A permission edit
+also supports at most 4,096 affected members and a one-million-cell evaluation
+budget per data/object plane. Exceeding a bound rejects the grant with 503; results are never truncated
+into a permissive answer.
+
+Removing the final owner or recoverable access
 administrator is rejected. An access administrator must retain the role and Team
 management capabilities and pages required to repair access.
 
 ## Invitations
 
 New-model invitations store the chosen local role, its revision, and the grantor.
-Redemption revalidates that snapshot and the grantor's current authority. A later
+Redemption revalidates that snapshot and the grantor's current authority.
+New legacy invitations also record and verify their grantor and role revision.
+An older legacy invitation without that provenance cannot admit a new member:
+the administrator must issue a new link. Existing-member replay remains a no-op. A later
 change to the default does not change an outstanding invitation. If the role or
 its authority changes, issue a new invitation. Redeeming as an existing member
-does not promote that member or consume another use.
+does not promote that member or consume another use. Re-admission of an inactive
+member replaces stale role assignments with exactly the verified invited role.
+Retained private-object rights are checked before they can become usable again.
 
 ## Qualification
+
+### Shared database client
+
+The application shares a postgres-js pool with Drizzle. Drizzle changes that
+client's JSON serializers and date parsers. Raw audit writes therefore use
+`JSON.stringify(...)::text::jsonb`, and invitation expiry accepts both parsed
+dates and timestamp strings. Role revisions use explicit key/name/rank projections
+so date-parser changes cannot invalidate an unchanged catalog.
+
+The native role, bootstrap and admission fixtures initialize Drizzle on the same
+production-configured raw client. They verify stored audit arrays, dated invites
+and stable revisions across that initialization boundary.
+
+### Required checks
 
 Run the normal `bun run check`, `bun run test`, and `bun run build` gates, plus
 `bun run lint:design` and `bun run lint:tokens`. Native role suites are registered

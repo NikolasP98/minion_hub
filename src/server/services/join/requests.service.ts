@@ -4,10 +4,8 @@ import {
   readOwnPendingRequestForOrganization,
 } from './pending.repository';
 import { supabaseAdmin } from '$server/supabase';
-import { createMembership } from './membership';
 import { sendJoinRequestEmail } from '$server/services/email.service';
 import { prepareJoinReviewRecipients, recheckJoinReviewRecipient } from './notification-audience';
-import { loadOrganizationRolePolicy } from '../organization-role-policy';
 
 export interface Requester {
   id: string;
@@ -92,45 +90,9 @@ export async function approveRequest(
   id: string,
   opts: { reviewerId: string; role?: string; organizationId: string; reviewerProfileId?: string },
 ): Promise<void> {
-  const policy = await loadOrganizationRolePolicy(opts.organizationId);
-  if (policy.roleModel === 'organization') {
-    if (!opts.reviewerProfileId) throw new Error('Authenticated reviewer profile required');
-    const { approveOrganizationRequest } = await import('./organization-admission');
-    return approveOrganizationRequest(id, { ...opts, reviewerProfileId: opts.reviewerProfileId });
-  }
-  if (!opts.role) throw new Error('role required');
-  const sb = supabaseAdmin();
-  // Tenant-scope the read: an admin can only act on a request that belongs to
-  // the org they're approving into (else cross-tenant approve-by-id IDOR).
-  const { data: row, error: readErr } = await sb
-    .from('join_request')
-    .select('*')
-    .eq('id', id)
-    .eq('organization_id', opts.organizationId)
-    .single();
-  if (readErr || !row) throw new Error('request not found');
-  if (row.status !== 'pending') return; // no-op for already-resolved requests
-
-  await createMembership(
-    {
-      id: row.user_id,
-      email: row.email,
-      displayName: row.display_name,
-      supabaseId: row.supabase_id,
-    },
-    opts.organizationId,
-    opts.role,
-  );
-
-  const { error } = await sb
-    .from('join_request')
-    .update({
-      status: 'approved',
-      reviewed_by: opts.reviewerId,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq('id', id);
-  if (error) throw new Error(error.message);
+  if (!opts.reviewerProfileId) throw new Error('Authenticated reviewer profile required');
+  const { approveOrganizationRequest } = await import('./organization-admission');
+  return approveOrganizationRequest(id, { ...opts, reviewerProfileId: opts.reviewerProfileId });
 }
 
 export async function denyRequest(

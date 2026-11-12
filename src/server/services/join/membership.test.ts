@@ -24,8 +24,14 @@ describe('createMembership', () => {
       { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'profile-1' },
       'org-1',
       'admin',
+      'grantor-profile',
     );
-    expect(admitLegacyMembership).toHaveBeenCalledWith('org-1', 'profile-1', 'admin');
+    expect(admitLegacyMembership).toHaveBeenCalledWith(
+      'org-1',
+      'profile-1',
+      'admin',
+      'grantor-profile',
+    );
     expect(invalidateRbac).toHaveBeenCalledWith('org-1');
   });
   it('retains the selected staff role instead of substituting a legacy manager fallback', async () => {
@@ -33,8 +39,14 @@ describe('createMembership', () => {
       { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'profile-1' },
       'org-1',
       'staff',
+      'grantor-profile',
     );
-    expect(admitLegacyMembership).toHaveBeenCalledWith('org-1', 'profile-1', 'staff');
+    expect(admitLegacyMembership).toHaveBeenCalledWith(
+      'org-1',
+      'profile-1',
+      'staff',
+      'grantor-profile',
+    );
   });
   it('does not invalidate a grant that failed to commit', async () => {
     admitLegacyMembership.mockRejectedValueOnce(new Error('commit failed'));
@@ -43,9 +55,20 @@ describe('createMembership', () => {
         { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'profile-1' },
         'org-1',
         'staff',
+        'grantor-profile',
       ),
     ).rejects.toThrow('commit failed');
     expect(invalidateRbac).not.toHaveBeenCalled();
+  });
+  it('refuses direct membership creation without authenticated grantor provenance', async () => {
+    await expect(
+      createMembership(
+        { id: 'u1', email: 'a@b.c', displayName: null, supabaseId: 'profile-1' },
+        'org-1',
+        'admin',
+      ),
+    ).rejects.toThrow('Authenticated grantor profile required');
+    expect(admitLegacyMembership).not.toHaveBeenCalled();
   });
   it('throws before mutation when the Supabase profile identity is missing', async () => {
     await expect(

@@ -1,9 +1,22 @@
-import { roleFitsActualAuthority } from './role-simulation-policy';
+import {
+  readRoleBrainGrants,
+  assertRoleBrainGrantCeiling,
+  assertRecipientBrainGrantCeiling,
+  type BrainRoleSelection,
+} from './brain-role-grants';
+import {
+  roleFitsActualAuthority,
+  recipientGrantFitsActualAuthority,
+} from './role-simulation-policy';
 import { randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import type postgres from 'postgres';
 import { getPgClient } from '$server/db/pg-pool';
-import { currentEffectiveAuthority } from '$server/auth/effective-authority';
+import {
+  currentEffectiveAuthority,
+  narrowAdmittedCapabilities,
+  rejectSimulatedDelegation,
+} from '$server/auth/effective-authority';
 import { normalizeNavConfig, type NavConfig } from '$lib/nav/custom-sections';
 import { decideRouteAccess } from '$lib/routes/route-access-policies';
 import { capsToLegacyPermissions } from './permissions.service';
@@ -14,6 +27,7 @@ import {
   defaultFieldLevel,
   resolveMemberRoleKeys,
   invalidateRbac,
+  wouldRemoveLastOwner,
   type Capabilities,
   type CapabilityOverrideRow,
   type RoleCatalogEntry,
@@ -42,6 +56,7 @@ export interface AdminMember extends Row {
   profile_id: string;
   role: string | null;
   profile_role: string | null;
+  deletion_pending?: boolean;
 }
 export interface AdminAssignment extends Row {
   profile_id: string;
@@ -75,7 +90,7 @@ export async function readOrganizationAdminState(
   >`select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from public.permission_rules where org_id=${orgId}::uuid order by role_key,module for share`;
   const members = await tx<
     AdminMember[]
-  >`select m.profile_id::text,m.role,p.role as profile_role from public.organization_members m join public.profiles p on p.id=m.profile_id where m.organization_id=${orgId}::uuid and (${policy.roleModel}='legacy' or not coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false)) for share of m,p`;
+  >`select m.profile_id::text,m.role,p.role as profile_role,coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false) as deletion_pending from public.organization_members m join public.profiles p on p.id=m.profile_id where m.organization_id=${orgId}::uuid and (${policy.roleModel}='legacy' or not coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false)) for share of m,p`;
   const assignments = await tx<
     AdminAssignment[]
   >`select profile_id::text,role_key from public.member_roles where org_id=${orgId}::uuid for share`;
@@ -177,15 +192,39 @@ function actor(locals: App.Locals): { orgId: string; profileId: string } {
   if (!orgId || !profileId) throw error(401, 'Authenticated organization actor required');
   return { orgId, profileId };
 }
+function freshSimulationAuthority(state: OrganizationAdminState, orgId: string, profileId: string) {
+  const simulation = currentEffectiveAuthority(orgId, profileId);
+  if (!simulation) return null;
+  const role = state.roles.find((role) => role.key === simulation.roleKey);
+  if (
+    simulation.invalid ||
+    !role ||
+    !resolveMemberRoleKeys(
+      [simulation.roleKey],
+      null,
+      state.policy.roleModel,
+      state.roles.map((role) => role.key),
+    ).includes(simulation.roleKey)
+  )
+    throw error(403, 'Access management unavailable');
+  return {
+    capabilities: narrowAdmittedCapabilities(
+      buildCapabilities([role.key], state.rules),
+      simulation.capabilities,
+    ),
+    rank: Math.min(role.rank, simulation.rank),
+  };
+}
 function requireActor(
   state: OrganizationAdminState,
   orgId: string,
   profileId: string,
   operation: 'create' | 'edit' | 'delete' | 'assign' = 'assign',
 ): ReturnType<typeof memberAuthority> {
+  if (state.members.find((member) => member.profile_id === profileId)?.deletion_pending)
+    throw error(403, 'Active grantor required');
   const a = memberAuthority(state, profileId);
-  const simulation = currentEffectiveAuthority(orgId, profileId);
-  if (simulation?.invalid) throw error(403, 'Access management unavailable');
+  const simulation = freshSimulationAuthority(state, orgId, profileId);
   const module = operation === 'assign' ? 'users' : 'roles';
   const action = operation === 'assign' ? 'manage' : operation;
   if (!a.platformAdmin && !a.caps.can(module, action))
@@ -211,7 +250,7 @@ function assertGrant(
   state: OrganizationAdminState,
 ) {
   if (rank > a.rank && !a.platformAdmin) throw error(403, 'Cannot grant a role above your rank');
-  const simulation = currentEffectiveAuthority(orgId, profileId);
+  const simulation = freshSimulationAuthority(state, orgId, profileId);
   for (const authority of [a.platformAdmin ? null : a.caps, simulation?.capabilities ?? null]) {
     if (!authority) continue;
     if (
@@ -240,6 +279,34 @@ function assertGrant(
         throw error(403, 'Cannot grant denied page access');
     }
   }
+}
+async function assertRoleAssetGrant(
+  tx: Tx,
+  state: OrganizationAdminState,
+  orgId: string,
+  profileId: string,
+  selected: BrainRoleSelection,
+  previous?: BrainRoleSelection,
+  recipientProfileId?: string,
+) {
+  const actual = memberAuthority(state, profileId),
+    simulation = freshSimulationAuthority(state, orgId, profileId);
+  const common = {
+    roleModel: state.policy.roleModel,
+    snapshot: await readRoleBrainGrants(tx, orgId),
+    actual: { profileId, roles: actual.caps.roles, caps: actual.caps },
+    effective: simulation
+      ? { profileId, roles: simulation.capabilities.roles, caps: simulation.capabilities }
+      : undefined,
+  };
+  const receipt = assertRoleBrainGrantCeiling({ ...common, selected, previous });
+  if (recipientProfileId && previous)
+    assertRecipientBrainGrantCeiling({
+      ...common,
+      before: { profileId: recipientProfileId, active: true, ...previous },
+      after: { profileId: recipientProfileId, active: true, ...selected },
+    });
+  return receipt;
 }
 type AuditJson = null | boolean | number | string | AuditJson[] | { [key: string]: AuditJson };
 function auditJson(value: unknown): AuditJson {
@@ -342,6 +409,7 @@ export async function createOrganizationRole(
     });
     const planned = buildCapabilities([key], rows as unknown as CapabilityOverrideRow[]);
     assertGrant(a, rank, planned, targets, orgId, profileId, state);
+    await assertRoleAssetGrant(tx, state, orgId, profileId, { roles: [key], caps: planned });
     await tx`insert into public.org_roles(org_id,key,name,rank,source_role_key,created_by,template_id,template_version) values(${orgId},${key},${name},${rank},${source?.key ?? template?.id ?? null},${profileId},${template?.id ?? null},${template?.version ?? null})`;
     await tx`insert into public.permission_rules ${tx(rows)}`;
     await assertOrganizationAccessRecoverable(tx, orgId);
@@ -408,6 +476,10 @@ export async function setDefaultOrganizationRole(
       profileId,
       state,
     );
+    await assertRoleAssetGrant(tx, state, orgId, profileId, {
+      roles: [role.key],
+      caps: buildCapabilities([role.key], state.rules),
+    });
     await tx`update public.organizations set default_role_key=${role.key} where id=${orgId}::uuid`;
     await audit(tx, orgId, profileId, 'default_role_key', state.policy.defaultRoleKey, role.key);
     return {
@@ -418,6 +490,30 @@ export async function setDefaultOrganizationRole(
   await invalidateRbac(orgId);
   return result;
 }
+/** Validate one role grant from a transaction-fresh model-aware authority snapshot. */
+function assertFreshOrganizationRoleGrant(
+  state: OrganizationAdminState,
+  orgId: string,
+  profileId: string,
+  roleKey: string,
+) {
+  const role = state.roles.find((role) => role.key === roleKey);
+  if (!role) throw error(400, 'Unknown organization role');
+  const authority = requireActor(state, orgId, profileId);
+  assertGrant(
+    authority,
+    role.rank,
+    buildCapabilities([role.key], state.rules),
+    [
+      ...MODULES,
+      ...state.rules.filter((rule) => rule.role_key === role.key).map((rule) => rule.module),
+    ],
+    orgId,
+    profileId,
+    state,
+  );
+  return { role, authority };
+}
 export async function mutateOrganizationMemberRoles(
   orgId: string,
   profileId: string,
@@ -425,28 +521,98 @@ export async function mutateOrganizationMemberRoles(
   grantedBy: string | null,
   system = false,
 ) {
+  if (system) rejectSimulatedDelegation();
   if (!grantedBy && !system) throw error(403, 'Role grantor identity required');
   await getPgClient().begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtextextended(${orgId},112))`;
     const state = await readOrganizationAdminState(tx, orgId);
-    if (state.policy.roleModel !== 'organization') throw error(400, 'Local role model required');
-    if (!state.members.some((m) => m.profile_id === profileId))
-      throw error(403, 'Target membership required');
+    const member = state.members.find((member) => member.profile_id === profileId);
+    if (!member || member.deletion_pending) throw error(403, 'Active target membership required');
     const role = state.roles.find((r) => r.key === input.roleKey);
     if (!role) throw error(400, 'Unknown organization role');
-    if (grantedBy) {
-      const a = requireActor(state, orgId, grantedBy);
-      assertGrant(
-        a,
-        role.rank,
-        buildCapabilities([role.key], state.rules),
-        [...MODULES, ...state.rules.filter((r) => r.role_key === role.key).map((r) => r.module)],
-        orgId,
-        grantedBy,
+    const old = state.assignments.filter((r) => r.profile_id === profileId).map((r) => r.role_key);
+    const after =
+      input.mode === 'replace'
+        ? [role.key]
+        : input.mode === 'add'
+          ? [...new Set([...old, role.key])]
+          : old.filter((key) => key !== role.key);
+    const authority = system ? null : requireActor(state, orgId, grantedBy!);
+    if (
+      state.policy.roleModel === 'legacy' &&
+      old.includes('owner') &&
+      !after.includes('owner') &&
+      wouldRemoveLastOwner(
+        state.assignments.filter((row) => row.role_key === 'owner').map((row) => row.profile_id),
+        profileId,
+        'owner',
+      )
+    )
+      throw error(400, "Cannot remove the organization's last owner.");
+    if (authority) {
+      const canonical = (roles: string[]) =>
+        resolveMemberRoleKeys(
+          roles,
+          member.role,
+          state.policy.roleModel,
+          state.roles.map((role) => role.key),
+        );
+      const beforeRoles = canonical(old),
+        afterRoles = canonical(after);
+      const beforeCaps = buildCapabilities(beforeRoles, state.rules),
+        afterCaps = buildCapabilities(afterRoles, state.rules);
+      const rank = (keys: string[]) =>
+        Math.max(
+          0,
+          ...state.roles.filter((role) => keys.includes(role.key)).map((role) => role.rank),
+        );
+      const ranks = { before: rank(beforeRoles), after: rank(afterRoles), actual: authority.rank };
+      if (input.mode !== 'remove')
+        assertFreshOrganizationRoleGrant(state, orgId, grantedBy!, role.key);
+      else {
+        if (
+          rank(afterRoles) > rank(beforeRoles) &&
+          rank(afterRoles) > authority.rank &&
+          !authority.platformAdmin
+        )
+          throw error(403, 'Cannot expose a role above your rank');
+      }
+      const simulation = freshSimulationAuthority(state, orgId, grantedBy!);
+      if (
+        !recipientGrantFitsActualAuthority({
+          before: beforeCaps,
+          after: afterCaps,
+          actual: authority.caps,
+          rules: state.rules,
+          nav: state.nav,
+          platformAdmin: authority.platformAdmin,
+          ranks,
+        }) ||
+        (simulation &&
+          !recipientGrantFitsActualAuthority({
+            before: beforeCaps,
+            after: afterCaps,
+            actual: simulation.capabilities,
+            ranks,
+            rules: state.rules,
+            nav: state.nav,
+          }))
+      )
+        throw error(
+          403,
+          'Cannot grant recipient data or page access beyond your current authority',
+        );
+      // Object identity changes can widen rights even when the role matrices and ranks match.
+      await assertRoleAssetGrant(
+        tx,
         state,
+        orgId,
+        grantedBy!,
+        { roles: afterRoles, caps: afterCaps },
+        { roles: beforeRoles, caps: beforeCaps },
+        profileId,
       );
     }
-    const old = state.assignments.filter((r) => r.profile_id === profileId).map((r) => r.role_key);
     if (input.mode === 'replace')
       await tx`delete from public.member_roles where org_id=${orgId}::uuid and profile_id=${profileId}::uuid`;
     if (input.mode === 'remove')

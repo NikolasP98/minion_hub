@@ -1,6 +1,6 @@
 import type { Actions, PageServerLoad } from './$types';
 import * as m from '$lib/paraglide/messages';
-import { redirect, error, fail } from '@sveltejs/kit';
+import { redirect, error, fail, isHttpError } from '@sveltejs/kit';
 import { requireAuth } from '$server/auth/authorize';
 import { listAllOrganizations } from '$server/services/organizations.service';
 import {
@@ -86,8 +86,9 @@ export const actions: Actions = {
         displayName: user.displayName ?? null,
       });
     } catch (e) {
+      if (isHttpError(e)) return fail(e.status, { error: e.body.message });
       return fail(400, {
-        error: (e as Error).message || 'This invite link is invalid or expired.',
+        error: 'This invite link is invalid or expired.',
       });
     }
     throw redirect(303, '/');

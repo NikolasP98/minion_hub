@@ -611,88 +611,6 @@ export async function isAssignableRoleKey(orgId: string, key: unknown): Promise<
   return !!data;
 }
 
-/** A role's rank, whether it's a system role or this org's custom role. Null if unknown. */
-async function resolveRoleRank(orgId: string, roleKey: string): Promise<number | null> {
-  if (isRoleKey(roleKey)) {
-    if ((await loadOrganizationRolePolicy(orgId)).roleModel !== 'legacy') return null;
-    const { data } = await supabaseAdmin()
-      .from('permission_roles')
-      .select('rank')
-      .eq('key', roleKey)
-      .maybeSingle();
-    return (data as { rank: number } | null)?.rank ?? null;
-  }
-  const { data } = await supabaseAdmin()
-    .from('org_roles')
-    .select('rank')
-    .eq('org_id', orgId)
-    .eq('key', roleKey)
-    .maybeSingle();
-  return (data as { rank: number } | null)?.rank ?? null;
-}
-
-/**
- * The highest role rank the caller may create or grant in this org. Platform
- * admins (profiles.role='admin') and EXPLICIT system callers (system=true) are
- * uncapped; an org member is capped at their own highest role rank. Without this,
- * an org `admin` (whose default matrix already includes `users:manage`) could
- * clone or assign the higher-ranked `owner` role and escalate past owner-only
- * surfaces. Fails closed: a missing callerProfileId is treated as a hard error,
- * NOT as a trusted system caller (an HTTP request that reaches here without an
- * identity is a bug/auth gap, not a seed script).
- */
-async function callerRankCap(
-  orgId: string,
-  callerProfileId: string | null,
-  system = false,
-): Promise<number> {
-  if (system) return Number.MAX_SAFE_INTEGER; // explicit trusted internal/seed path — never inferred from a missing id
-  if (!callerProfileId) throw error(403, 'Caller identity required to grant or clone roles.'); // fail closed
-  const effective = currentEffectiveAuthority(orgId, callerProfileId);
-  if (effective) return effective.rank;
-  const admin = supabaseAdmin();
-  const { data: prof } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', callerProfileId)
-    .maybeSingle();
-  if ((prof as { role: string | null } | null)?.role === 'admin') return Number.MAX_SAFE_INTEGER; // platform superuser
-  const { data: mr } = await admin
-    .from('member_roles')
-    .select('role_key')
-    .eq('org_id', orgId)
-    .eq('profile_id', callerProfileId);
-  let roles = ((mr ?? []) as Array<{ role_key: string }>).map((r) => r.role_key);
-  if (roles.length === 0) {
-    const { data: om } = await admin
-      .from('organization_members')
-      .select('role')
-      .eq('organization_id', orgId)
-      .eq('profile_id', callerProfileId)
-      .maybeSingle();
-    roles = [legacyRoleKey((om as { role: string | null } | null)?.role)];
-  }
-  let cap = 0;
-  for (const rk of roles) {
-    const r = await resolveRoleRank(orgId, rk);
-    if (r != null && r > cap) cap = r;
-  }
-  return cap;
-}
-
-/** Throws 403 when the caller may not create/grant a role of `targetRank`. */
-async function assertMayGrantRank(
-  orgId: string,
-  callerProfileId: string | null,
-  targetRank: number | null,
-  verb: string,
-  system = false,
-): Promise<void> {
-  const cap = await callerRankCap(orgId, callerProfileId, system);
-  if ((targetRank ?? 0) > cap)
-    throw error(403, `You cannot ${verb} a role that outranks your own.`);
-}
-
 /** Compatibility adapter: all role creation uses the authenticated transactional writer. */
 export async function createCustomRole(
   orgId: string,
@@ -756,31 +674,14 @@ export async function setMemberRole(
   grantedBy: string | null = null,
   system = false,
 ): Promise<void> {
-  if ((await loadOrganizationRolePolicy(orgId)).roleModel === 'organization') {
-    const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
-    await mutateOrganizationMemberRoles(
-      orgId,
-      profileId,
-      { mode: 'replace', roleKey },
-      grantedBy,
-      system,
-    );
-    return;
-  }
-  // No self-escalation: can't grant a role that outranks the caller.
-  await assertMayGrantRank(
+  const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
+  await mutateOrganizationMemberRoles(
     orgId,
+    profileId,
+    { mode: 'replace', roleKey },
     grantedBy,
-    await resolveRoleRank(orgId, roleKey),
-    'assign',
     system,
   );
-  const admin = supabaseAdmin();
-  await admin.from('member_roles').delete().eq('org_id', orgId).eq('profile_id', profileId);
-  await admin
-    .from('member_roles')
-    .insert({ org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy });
-  await invalidateRbac(orgId);
 }
 
 /**
@@ -826,32 +727,14 @@ export async function addMemberRole(
   grantedBy: string | null = null,
   system = false,
 ): Promise<void> {
-  if ((await loadOrganizationRolePolicy(orgId)).roleModel === 'organization') {
-    const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
-    await mutateOrganizationMemberRoles(
-      orgId,
-      profileId,
-      { mode: 'add', roleKey },
-      grantedBy,
-      system,
-    );
-    return;
-  }
-  // No self-escalation: can't grant a role that outranks the caller.
-  await assertMayGrantRank(
+  const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
+  await mutateOrganizationMemberRoles(
     orgId,
+    profileId,
+    { mode: 'add', roleKey },
     grantedBy,
-    await resolveRoleRank(orgId, roleKey),
-    'assign',
     system,
   );
-  await supabaseAdmin()
-    .from('member_roles')
-    .upsert(
-      { org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy },
-      { onConflict: 'org_id,profile_id,role_key', ignoreDuplicates: true },
-    );
-  await invalidateRbac(orgId);
 }
 
 /**
@@ -865,34 +748,13 @@ export async function removeMemberRole(
   roleKey: string,
   callerProfileId: string | null = null,
 ): Promise<void> {
-  if ((await loadOrganizationRolePolicy(orgId)).roleModel === 'organization') {
-    const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
-    await mutateOrganizationMemberRoles(
-      orgId,
-      profileId,
-      { mode: 'remove', roleKey },
-      callerProfileId,
-    );
-    return;
-  }
-  if (roleKey === 'owner') {
-    const { data } = await supabaseAdmin()
-      .from('member_roles')
-      .select('profile_id')
-      .eq('org_id', orgId)
-      .eq('role_key', 'owner');
-    const owners = ((data ?? []) as Array<{ profile_id: string }>).map((o) => o.profile_id);
-    if (wouldRemoveLastOwner(owners, profileId, roleKey)) {
-      throw error(400, "Cannot remove the organization's last owner.");
-    }
-  }
-  await supabaseAdmin()
-    .from('member_roles')
-    .delete()
-    .eq('org_id', orgId)
-    .eq('profile_id', profileId)
-    .eq('role_key', roleKey);
-  await invalidateRbac(orgId);
+  const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
+  await mutateOrganizationMemberRoles(
+    orgId,
+    profileId,
+    { mode: 'remove', roleKey },
+    callerProfileId,
+  );
 }
 
 /**

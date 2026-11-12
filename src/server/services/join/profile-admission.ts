@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type postgres from 'postgres';
-import { getPgClient } from '$server/db/pg-pool';
+import type { AdmissionTables } from './organization-admission';
 
 /** Profile lifecycle locks always precede organization policy locks. */
 export async function lockAdmissionProfiles(
@@ -19,29 +19,15 @@ export async function lockAdmissionProfiles(
   }
 }
 
-/** Legacy column mapping and additive role grant, atomically fenced without pool re-entry. */
+/** Legacy direct admission requires the same verified grantor as invitation admission. */
 export async function admitLegacyMembership(
   orgId: string,
   profileId: string,
   roleKey: string,
-  tables = {
-    profiles: 'public.profiles',
-    organizations: 'public.organizations',
-    members: 'public.organization_members',
-    assignments: 'public.member_roles',
-  },
+  grantorProfileId: string,
+  tables?: AdmissionTables,
 ): Promise<void> {
-  await getPgClient().begin(async (tx) => {
-    await lockAdmissionProfiles(tx, [profileId], tables.profiles);
-    const [org] = await tx<{ model: string }[]>`
-      select coalesce(to_jsonb(o)->>'role_model','legacy') as model
-      from ${tx(tables.organizations)} o where id=${orgId}::uuid for share`;
-    if (!org || org.model !== 'legacy') throw error(409, 'Organization admission model changed');
-    await tx`insert into ${tx(tables.members)}(organization_id,profile_id,role)
-      values(${orgId}::uuid,${profileId}::uuid,${roleKey === 'admin' ? 'admin' : 'member'})
-      on conflict(organization_id,profile_id) do update set role=excluded.role`;
-    await tx`insert into ${tx(tables.assignments)}(org_id,profile_id,role_key,granted_by)
-      values(${orgId}::uuid,${profileId}::uuid,${roleKey},null)
-      on conflict(org_id,profile_id,role_key) do nothing`;
-  });
+  if (!grantorProfileId) throw error(403, 'Authenticated grantor profile required');
+  const { admitVerifiedLegacyMember } = await import('./organization-admission');
+  return admitVerifiedLegacyMember(orgId, profileId, roleKey, grantorProfileId, tables);
 }
