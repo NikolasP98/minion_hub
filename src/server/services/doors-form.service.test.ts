@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 import { createMockDb } from '$server/test-utils/mock-db';
 import type { FormConfig } from '$lib/doors/kinds/form';
 
@@ -19,7 +21,12 @@ vi.mock('./doors.service', () => ({
 vi.mock('./inbox/inbox.service', () => ({ upsertNotification: mocks.upsertNotification }));
 vi.mock('./crm-contact-ensure', () => ({ ensureCrmContact: mocks.ensureCrmContact }));
 
-import { listSubmissions, maskSubmissionValues, submitFormDoor } from './doors-form.service';
+import {
+  listSubmissions,
+  maskSubmissionValues,
+  sameName,
+  submitFormDoor,
+} from './doors-form.service';
 
 const DOOR = '11111111-2222-4333-8444-555555555555';
 const CONTACT = '22222222-2222-4333-8444-555555555555';
@@ -45,7 +52,11 @@ const values = {
 let mock: ReturnType<typeof createMockDb>;
 // submitFormDoor's tx only inserts the submission: a two-call fake records it.
 const values$ = vi.fn(async (_row: Record<string, unknown>) => undefined);
-const tx = { insert: vi.fn(() => ({ values: values$ })) };
+const execute = vi.fn(async (_q: SQL): Promise<unknown[]> => []);
+const tx = { insert: vi.fn(() => ({ values: values$ })), execute };
+const dialect = new PgDialect();
+/** The raw statements submitFormDoor ran, rendered: [sql text, params]. */
+const executed = () => execute.mock.calls.map(([q]) => dialect.sqlToQuery(q));
 const door = (over: Record<string, unknown> = {}) => ({
   ctx: { db: tx, tenantId: 'org-1' },
   door: {
@@ -69,6 +80,120 @@ beforeEach(() => {
 });
 
 describe('submitFormDoor', () => {
+  const withProfile = {
+    ...config,
+    fields: [
+      ...config.fields,
+      { key: 'dni', label: 'DNI', type: 'text' as const, required: false },
+      { key: 'instagram', label: 'Instagram', type: 'text' as const, required: false },
+    ],
+  };
+
+  it('a trusted DNI already in the CRM reuses that contact even with a new phone; only missing handles are added', async () => {
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
+    execute.mockResolvedValueOnce([{ id: 'dni-match', name: 'Otra Persona', trusted: true }]);
+    const r = await submitFormDoor(
+      'qa-intake',
+      {
+        values: { ...values, dni: ' 4567-8901 ', instagram: 'https://instagram.com/Ana.Prueba/' },
+        consent: true,
+      },
+      NOW,
+    );
+    expect(r.status).toBe('ok');
+    expect(mocks.ensureCrmContact).not.toHaveBeenCalled();
+    expect(inserted().contactId).toBe('dni-match');
+    const [lookup, fill] = executed();
+    expect(lookup.sql).toContain('p.doc_number');
+    // Trusted rows sort first in SQL, so the limit can never cut them off.
+    expect(lookup.sql).toMatch(/order by trusted desc, c\.created_at\s+limit 20/);
+    // A DNI typed into a door is flagged untrusted, so it needs the name as well.
+    expect(lookup.sql).toMatch(/or coalesce\(c\.source, ''\) not like 'door:%'\) as trusted/);
+    expect(lookup.params).toEqual(['45678901', 'org-1', '45678901', '45678901']);
+    // `new || existing`: the handle fills a gap only, and the DNI is never written onto it.
+    expect(fill.sql).toMatch(/set custom_fields = \$1::jsonb \|\| coalesce\(custom_fields/);
+    expect(fill.params).toEqual([
+      JSON.stringify({ instagram: 'ana.prueba' }),
+      'dni-match',
+      'org-1',
+    ]);
+    expect(inserted().payload).toMatchObject({ dni: '4567-8901' });
+  });
+
+  it('a DNI from an earlier door submission matches only when the name agrees', async () => {
+    const send = () =>
+      submitFormDoor(
+        'qa-intake',
+        { values: { ...values, nombre: 'ana PRUEBA', dni: '45678901' }, consent: true },
+        NOW,
+      );
+    mocks.resolvePublicDoor.mockResolvedValue(door({ config: withProfile }));
+    execute.mockResolvedValueOnce([
+      { id: 'other', name: 'Luis Gómez', trusted: false },
+      { id: 'returning', name: 'Ana María Prueba', trusted: false },
+    ]);
+    await send();
+    expect(mocks.ensureCrmContact).not.toHaveBeenCalled();
+    expect(inserted().contactId).toBe('returning');
+    // Only the lookup ran: a matched contact never receives the DNI.
+    expect(executed()).toHaveLength(1);
+
+    vi.clearAllMocks();
+    mocks.ensureCrmContact.mockResolvedValueOnce({ id: CONTACT, created: true });
+    execute.mockResolvedValueOnce([{ id: 'other', name: 'Luis Gómez', trusted: false }]);
+    await send();
+    expect(mocks.ensureCrmContact).toHaveBeenCalledOnce();
+    expect(inserted().contactId).toBe(CONTACT);
+  });
+
+  it('a phone/email-matched existing contact gets missing handles but never the DNI', async () => {
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
+    mocks.ensureCrmContact.mockResolvedValueOnce({ id: CONTACT, created: false });
+    await submitFormDoor(
+      'qa-intake',
+      { values: { ...values, instagram: '@ana' }, consent: true },
+      NOW,
+    );
+    const [fill] = executed();
+    expect(fill.params).toEqual([JSON.stringify({ instagram: 'ana' }), CONTACT, 'org-1']);
+    expect(inserted().contactId).toBe(CONTACT);
+  });
+
+  it('sameName: two shared words required, accents and case ignored', () => {
+    expect(sameName('María Pérez', 'MARIA PEREZ GOMEZ')).toBe(true);
+    expect(sameName('Ana', 'Ana Prueba')).toBe(false);
+    expect(sameName('Ana Prueba', 'Ana Gómez')).toBe(false);
+    expect(sameName(null, 'Ana')).toBe(false);
+  });
+
+  it('an unknown DNI falls back to phone/email; a NEW contact gets the DNI and handles', async () => {
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
+    await submitFormDoor(
+      'qa-intake',
+      { values: { ...values, dni: '45678901' }, consent: true },
+      NOW,
+    );
+    expect(mocks.ensureCrmContact).toHaveBeenCalledOnce();
+    expect(inserted().contactId).toBe(CONTACT);
+    const [, fill] = executed();
+    // `new || existing`: keys already on the row win.
+    expect(fill.sql).toMatch(/set custom_fields = \$1::jsonb \|\| coalesce\(custom_fields/);
+    expect(fill.params).toEqual([JSON.stringify({ dni: '45678901' }), CONTACT, 'org-1']);
+  });
+
+  it('placeholder DNIs are not keys, and a form without DNI/socials runs no extra query', async () => {
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: withProfile }));
+    await submitFormDoor(
+      'qa-intake',
+      { values: { ...values, dni: '00000000' }, consent: true },
+      NOW,
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(mocks.ensureCrmContact).toHaveBeenCalledOnce();
+    await submitFormDoor('qa-intake', { values, consent: true }, NOW);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('unknown, off and non-form doors are all not_found, and nothing is written', async () => {
     mocks.resolvePublicDoor.mockResolvedValueOnce(null);
     expect(await submitFormDoor('nope', { values, consent: true })).toEqual({

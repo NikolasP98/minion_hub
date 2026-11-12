@@ -20,7 +20,6 @@ export const FORM_FIELD_TYPES = [
 ] as const;
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
 
-export const FORM_MAX_FIELDS = 20;
 export const FORM_MAX_OPTIONS = 20;
 export const FORM_MAX_VALUE = 2000;
 export const FORM_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/;
@@ -44,7 +43,7 @@ export type FormConfigProblem = 'duplicate_key' | 'select_needs_options' | 'need
 
 export const configSchema = z
   .object({
-    fields: z.array(fieldSchema).min(1).max(FORM_MAX_FIELDS),
+    fields: z.array(fieldSchema).min(1),
     consentText: z.string().trim().min(1).max(1000),
     consentRequired: z.boolean().default(true),
     successMessage: z.string().trim().max(500).optional(),
@@ -159,6 +158,40 @@ export function contactFromValues(
     phone: first((f) => f.type === 'phone'),
     email: first((f) => f.type === 'email'),
   };
+}
+
+/** Form keys whose answers also land on the CRM contact (`custom_fields`). Never clinical text. */
+export const PROFILE_KEYS = ['dni', 'instagram', 'tiktok', 'facebook'] as const;
+export type ContactProfile = Partial<Record<(typeof PROFILE_KEYS)[number], string>>;
+
+/** DNI/CE as a dedup key: placeholders ('00000000', < 8 chars) are not keys (same rule as party.service). */
+const cleanDoc = (v: string) => {
+  const d = v
+    .trim()
+    .toUpperCase()
+    .replace(/[\s.-]/g, '');
+  return d.length < 8 || /^(.)\1*$/.test(d) ? null : d;
+};
+/** '@Ana.Prueba', 'instagram.com/ana.prueba/' → 'ana.prueba'. */
+const cleanHandle = (v: string) =>
+  v
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^(www\.)?[a-z]+\.com\//i, '')
+    .replace(/^@/, '')
+    .replace(/[/?#].*$/, '')
+    .toLowerCase() || null;
+
+/** The DNI and social handles a submission carries, normalized for the contact. */
+export function profileFromValues(fields: FormField[], values: SubmissionValues): ContactProfile {
+  const out: ContactProfile = {};
+  for (const key of PROFILE_KEYS) {
+    const v = values[key];
+    if (typeof v !== 'string' || !fields.some((f) => f.key === key && f.type === 'text')) continue;
+    const clean = key === 'dni' ? cleanDoc(v) : cleanHandle(v);
+    if (clean) out[key] = clean;
+  }
+  return out;
 }
 
 /** One submission as the staff panel reads it (`GET /api/crm/doors/[id]/submissions`). */

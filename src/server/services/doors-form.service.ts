@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
-import { withOrgCore } from '$server/db/with-org-core';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmDoorSubmissions } from '$server/db/pg-doors-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
@@ -10,13 +10,16 @@ import { upsertNotification } from './inbox/inbox.service';
 import {
   configSchema,
   contactFromValues,
+  profileFromValues,
   validateSubmission,
+  type ContactProfile,
   type FieldErrorCode,
   type FormConfig,
   type SubmissionRow,
 } from '$lib/doors/kinds/form';
 import type { Attribution, DoorKey } from '$lib/doors/attribution';
 import { maskPii } from '$lib/pii';
+import { simulatedActorForOrg } from '$server/auth/simulated-record-scope';
 
 /**
  * Form doors (spec 041 S2): the public write path and the staff read path.
@@ -60,14 +63,30 @@ export async function submitFormDoor(
       ? input.attribution
       : { door: doorKey, at: now.toISOString() };
   const who = contactFromValues(config.fields, checked.values);
+  const profile = profileFromValues(config.fields, checked.values);
+  // The raw lookup below bypasses simulated-owner scoping, so simulations keep the phone/email path only.
+  const simulated = !!simulatedActorForOrg(ctx.tenantId);
 
   const submissionId = randomUUID();
   await withOrgCore(ctx, async (tx) => {
-    const contact = await ensureCrmContact(tx, ctx.tenantId, {
-      ...who,
-      source: `door:${door.slug}`,
-      firstTouch: attribution,
-    });
+    // DNI is the strongest identity: a returning patient with a new phone is still the same contact.
+    const byDni =
+      profile.dni && !simulated
+        ? await contactIdByDni(tx, ctx.tenantId, profile.dni, who.name)
+        : null;
+    const contact = byDni
+      ? { id: byDni, created: false }
+      : await ensureCrmContact(tx, ctx.tenantId, {
+          ...who,
+          source: `door:${door.slug}`,
+          firstTouch: attribution,
+        });
+    // A new contact gets the DNI and handles. An existing one only gets handles it lacks: a DNI
+    // written onto a matched contact would become a trusted match key (it stays in the payload).
+    const { dni: _dni, ...handles } = profile;
+    const fill = contact?.created ? profile : handles;
+    if (contact && Object.keys(fill).length)
+      await fillContactProfile(tx, ctx.tenantId, contact.id, fill);
     await tx.insert(crmDoorSubmissions).values({
       id: submissionId,
       orgId: ctx.tenantId,
@@ -100,6 +119,69 @@ export async function submitFormDoor(
     console.warn('[doors] submission notification failed', door.slug, (e as Error)?.message);
   }
   return { status: 'ok', message: config.successMessage ?? null };
+}
+
+/**
+ * Live contact whose DNI is `dni`. A trusted DNI (the linked party's document, or a contact
+ * that did not come from a public door) matches on its own. A DNI typed into an earlier door
+ * submission matches only when the name agrees too, so a stranger needs the DNI AND the name
+ * to attach a submission to someone, no weaker than the phone match bookings already use.
+ * Trusted first, then oldest.
+ * TODO(handoff): reconcileParties mints parties from custom_fields->>'dni' without checking
+ * source, so a door-created contact's DNI can become a party document after a reconcile run.
+ * Pointer: proposals/2026-11-11-hub-door-dni-trust.md.
+ */
+async function contactIdByDni(
+  tx: CoreTx,
+  orgId: string,
+  dni: string,
+  name: string | null,
+): Promise<string | null> {
+  // shortcut: unindexed custom_fields scan, fine at clinic scale; add an expression index if one org passes ~50k contacts.
+  const rows = (await tx.execute(sql`
+    select c.id, c.display_name as name,
+           (coalesce(upper(p.doc_number) = ${dni}, false)
+            or coalesce(c.source, '') not like 'door:%') as trusted
+    from crm_contacts c
+    left join parties p on p.id = c.party_id and p.org_id = c.org_id
+    where c.org_id = ${orgId} and c.deleted_at is null
+      and (upper(p.doc_number) = ${dni}
+           or upper(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')) = ${dni})
+    order by trusted desc, c.created_at
+    limit 20
+  `)) as unknown as Array<{ id: string; name: string | null; trusted: boolean }>;
+  const hit = rows.find((r) => r.trusted) ?? rows.find((r) => sameName(r.name, name));
+  return hit?.id ?? null;
+}
+
+const nameTokens = (s: string | null) =>
+  (s ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((t) => t.length > 1);
+
+/** 'Ana Prueba' ~ 'ANA MARÍA PRUEBA GÓMEZ': at least two shared words, so a first name alone never matches. */
+export function sameName(a: string | null, b: string | null): boolean {
+  const x = nameTokens(a);
+  const y = new Set(nameTokens(b));
+  return x.filter((t) => y.has(t)).length >= 2;
+}
+
+/** Adds DNI / social handles to a contact; keys already on the row win. */
+async function fillContactProfile(
+  tx: CoreTx,
+  orgId: string,
+  contactId: string,
+  profile: ContactProfile,
+): Promise<void> {
+  await tx.execute(sql`
+    update crm_contacts
+    set custom_fields = ${JSON.stringify(profile)}::jsonb || coalesce(custom_fields, '{}'::jsonb),
+        updated_at = now()
+    where id = ${contactId} and org_id = ${orgId}
+  `);
 }
 
 /** Field types whose values are never personal (option labels, yes/no). */

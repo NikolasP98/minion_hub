@@ -6,7 +6,6 @@
   import {
     configSchema,
     FORM_FIELD_TYPES,
-    FORM_MAX_FIELDS,
     type FormField as FormFieldDef,
     type FormFieldType,
   } from '$lib/doors/kinds/form';
@@ -123,7 +122,6 @@
 <div class="form-editor">
   <div class="card-h">
     <span>{m.doors_form_fields_title()}</span>
-    <span class="t-caption">{m.doors_form_max_fields({ max: FORM_MAX_FIELDS })}</span>
   </div>
 
   {#if problems.length}
@@ -218,12 +216,7 @@
 
   {#if canManage}
     <div>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={cfg.fields.length >= FORM_MAX_FIELDS}
-        onclick={add}
-      >
+      <Button variant="secondary" size="sm" onclick={add}>
         <Plus size={iconSizes.sm} />{m.doors_form_add_field()}
       </Button>
     </div>
@@ -277,12 +270,6 @@
     font-weight: 600;
     letter-spacing: 0.03em;
     color: var(--color-text-secondary);
-  }
-  .card-h .t-caption {
-    text-transform: none;
-    font-weight: 400;
-    letter-spacing: normal;
-    color: var(--color-text-tertiary);
   }
   .problems {
     margin: 0;

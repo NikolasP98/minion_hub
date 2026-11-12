@@ -1528,7 +1528,6 @@
   "doors_form_move_down": "Bajar {label}",
   "doors_form_remove": "Quitar {label}",
   "doors_form_untitled": "Campo sin pregunta",
-  "doors_form_max_fields": "Hasta {max} campos.",
   "doors_form_consent_text": "Texto de consentimiento",
   "doors_form_consent_hint": "Con cada envío se guarda una copia de este texto.",
   "doors_form_consent_required": "Pedir consentimiento para enviar",
