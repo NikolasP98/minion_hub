@@ -352,7 +352,7 @@ describe('organization roles and templates', () => {
     expect(screen.queryByText('Role templates')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Rename role' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Duplicate as custom role' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Delete custom role' })).toBeNull();
+    expect(screen.queryByLabelText(m.roles_deleteCustom())).toBeNull();
   });
   it('allows Manager role CRUD controls without Team management or default changes', () => {
     state.permissions = state.permissions.filter((permission) => permission !== 'users:manage');
@@ -363,6 +363,52 @@ describe('organization roles and templates', () => {
     expect(screen.getByRole('button', { name: 'Rename role' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Use as the default for new members' })).toBeNull();
   });
+  it('deletes the selected local role from its header with delete permission alone after confirmation', async () => {
+    state.permissions = ['roles:view', 'roles:delete'];
+    const data = props();
+    data.roles[0].memberCount = 0;
+    data.roleSettings.defaultRoleKey = 'custom-other';
+    state.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    render(RbacRolesSection, data);
+    const remove = screen.getByLabelText(m.roles_deleteCustom()) as HTMLButtonElement;
+    expect(remove.closest('aside')).toBeNull();
+    expect(remove.disabled).toBe(false);
+    expect(remove.hasAttribute('title')).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Rename role' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duplicate as custom role' })).toBeNull();
+    vi.mocked(confirm).mockReturnValueOnce(false);
+    await fireEvent.click(remove);
+    expect(state.fetch).not.toHaveBeenCalled();
+    await fireEvent.click(remove);
+    await waitFor(() => expect(authority.commit).toHaveBeenCalledWith('/en/settings/roles'));
+    expect(confirm).toHaveBeenCalledWith(m.roles_confirmDelete());
+    expect(state.fetch).toHaveBeenCalledTimes(1);
+    expect(state.fetch).toHaveBeenCalledWith('/api/roles/custom-administrator', {
+      method: 'DELETE',
+    });
+    expect(state.invalidate).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: 'default', members: 0, defaultKey: 'custom-administrator' },
+    { name: 'assigned', members: 2, defaultKey: 'custom-other' },
+  ])(
+    'disables selected-role header deletion for the $name role with the existing reason',
+    ({ members, defaultKey }) => {
+      state.permissions = ['roles:view', 'roles:delete'];
+      const data = props();
+      data.roles[0].memberCount = members;
+      data.roleSettings.defaultRoleKey = defaultKey;
+      render(RbacRolesSection, data);
+      const remove = screen.getByLabelText(m.roles_deleteCustom()) as HTMLButtonElement;
+      expect(remove.disabled).toBe(true);
+      expect(remove.title).toBe(
+        defaultKey === data.roles[0].key
+          ? m.roles_deleteDefault()
+          : m.roles_deleteInUse({ count: String(members) }),
+      );
+      expect(state.fetch).not.toHaveBeenCalled();
+    },
+  );
   it('keeps templates separate from the active-role selector and explains additive assignments', () => {
     render(RbacRolesSection, props());
     const activePicker = screen.getByRole('combobox', { name: 'Select role' }) as HTMLSelectElement;

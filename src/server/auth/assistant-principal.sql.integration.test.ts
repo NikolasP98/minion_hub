@@ -14,6 +14,13 @@ import {
 const entrypoints = vi.hoisted(() => ({ db: vi.fn(), admin: vi.fn() }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: entrypoints.db }));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: entrypoints.admin }));
+// These captured catalogs predate organization-local roles. Keep their explicit
+// legacy policy boundary while native SQL still proves persisted assignments,
+// membership revocation, permission writes and cache invalidation below.
+vi.mock('$server/services/organization-role-policy', async (original) => ({
+  ...(await original<typeof import('$server/services/organization-role-policy')>()),
+  loadOrganizationRolePolicy: async () => ({ roleModel: 'legacy', defaultRoleKey: null }),
+}));
 import { resolveAssistantPrincipal } from './assistant-principal';
 import { readSectionAccess } from '$server/services/section-access.service';
 import { sectionAccessReceiptSchema } from '$lib/nav/section-access';

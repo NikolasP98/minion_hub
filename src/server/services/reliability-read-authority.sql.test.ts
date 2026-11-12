@@ -46,15 +46,23 @@ describe('reliability authority SQL projection bounds', () => {
     ]);
 
     const result = await db.query<{
+      role_model: string | null;
       legacy_role: string | null;
       profile_role: string | null;
       role_key: string | null;
       field_overflow: boolean;
     }>(RELIABILITY_MEMBER_AUTHORITY_QUERY, [ORG, ACTOR]);
     expect(result.rows).toEqual([
-      { legacy_role: null, profile_role: null, role_key: null, field_overflow: true },
+      {
+        role_model: null,
+        legacy_role: null,
+        profile_role: null,
+        role_key: null,
+        field_overflow: true,
+      },
     ]);
     expect(JSON.stringify(result.rows)).not.toContain('x'.repeat(257));
+    expect(new TextEncoder().encode(JSON.stringify(result.rows)).byteLength).toBeLessThan(256);
   });
 
   it('returns only a field-overflow marker for oversized gateway fields', async () => {

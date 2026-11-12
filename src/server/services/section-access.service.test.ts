@@ -20,7 +20,7 @@ import {
 } from './section-access.service';
 import { runWithEffectiveAuthority } from '$server/auth/effective-authority';
 import { buildCapabilities } from './rbac.service';
-const managerAuthority = () =>
+const managerAuthority = (roleEditing = true) =>
   buildCapabilities(
     ['manager'],
     [
@@ -34,6 +34,20 @@ const managerAuthority = () =>
         can_export: false,
         can_manage: true,
       },
+      ...(roleEditing
+        ? [
+            {
+              role_key: 'manager',
+              module: 'roles',
+              can_view: true,
+              can_create: true,
+              can_edit: true,
+              can_delete: true,
+              can_export: false,
+              can_manage: false,
+            },
+          ]
+        : []),
     ],
   );
 import { writeNavConfig } from './nav-config.service';
@@ -170,7 +184,7 @@ async function write(target: string, mode: 'deny' | 'inherit' | 'override', extr
   });
 }
 describe('contextual/legacy policy shared persistence', () => {
-  it('permits users:manage without settings:manage; canonical Settings carries identical revisions', async () => {
+  it('permits roles:edit without settings:manage; canonical Settings carries identical revisions', async () => {
     const snapshot = await readSectionAccess(locals, 'crm');
     expect(snapshot.roles.find((r) => r.key === 'viewer')?.effective.view).toBe(true);
     const matrix = await listRoleAccessMatrix(org);
@@ -308,13 +322,13 @@ describe('contextual/legacy policy shared persistence', () => {
       await client.exec('alter table doc_audit_log drop constraint audit_failure');
     }
   });
-  it('rejects simulated role without effective users:manage and records selected metadata for allowed writes', async () => {
+  it('rejects simulated Team management without effective roles:edit and records selected metadata for allowed writes', async () => {
     const generation = '30000000-0000-4000-8000-000000000001';
     const base = { orgId: org, profileId: profile, generation, rank: 60, invalid: false };
-    const denied = { ...base, roleKey: 'viewer', capabilities: buildCapabilities(['viewer'], []) };
+    const denied = { ...base, roleKey: 'manager', capabilities: managerAuthority(false) };
     await expect(
       runWithEffectiveAuthority(denied, () => readSectionAccess(locals, 'crm')),
-    ).rejects.toMatchObject({ status: 403 });
+    ).rejects.toMatchObject({ status: 403, body: { message: 'roles: edit required' } });
     const allowed = {
       ...base,
       roleKey: 'manager',
@@ -655,7 +669,7 @@ describe('contextual/legacy policy shared persistence', () => {
     expect(sub.defaults.view).toBe(false);
   });
 
-  it('does not adopt new simulated users:manage grants within an already admitted request', async () => {
+  it('does not adopt new simulated roles:edit grants within an already admitted request', async () => {
     const admitted = {
       orgId: org,
       profileId: profile,

@@ -1242,7 +1242,7 @@
             </span>
           </div>
 
-          {#if (can('roles:edit') || can('roles:create')) && !selected.isSystem && roleSettings}
+          {#if (can('roles:edit') || can('roles:create') || can('roles:delete')) && !selected.isSystem && roleSettings}
             <div class="flex flex-wrap gap-2">
               {#if can('roles:edit')}
                 <Button
@@ -1265,6 +1265,26 @@
                   disabled={policyBusy}
                   onclick={() => openDuplicate(selected)}>{m.roles_duplicate()}</Button
                 >
+              {/if}
+              {#if can('roles:delete')}
+                <Button
+                  variant="danger"
+                  size="sm"
+                  type="button"
+                  aria-label={m.roles_deleteCustom()}
+                  title={roleSettings.defaultRoleKey === selected.key
+                    ? m.roles_deleteDefault()
+                    : selected.memberCount > 0
+                      ? m.roles_deleteInUse({ count: String(selected.memberCount) })
+                      : undefined}
+                  disabled={selected.memberCount > 0 ||
+                    roleSettings.defaultRoleKey === selected.key ||
+                    policyBusy}
+                  loading={deleting === selected.key}
+                  onclick={() => deleteCustomRole(selected)}
+                >
+                  {m.roles_deleteCustom()}
+                </Button>
               {/if}
               {#if can('roles:edit') && can('users:manage') && roleSettings.roleModel === 'organization' && roleSettings.defaultRoleKey !== selected.key}
                 <Button
