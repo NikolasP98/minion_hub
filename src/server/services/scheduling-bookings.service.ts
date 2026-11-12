@@ -3402,6 +3402,11 @@ export interface BookingDetail {
    *  anchor, regardless of which member `booking` is. Empty, never null:
    *  an event with no products is the common case, not an absent facet. */
   products: VisitProductLine[];
+  /** Catalog price of an UNGROUPED booking's service (`visit` is null): its own
+   *  `productId` wins over the event type's, active products only. Null for a
+   *  grouped booking (members carry their own `price`), no product or an
+   *  inactive one. Lets the client's fallback row apply the price-0 rule. */
+  unitPrice: number | null;
 }
 
 export interface BookingTicketRef {
@@ -3901,6 +3906,24 @@ export async function getBookingDetail(
   // the event's product lines, independent of which member was fetched.
   const anchorId = visit?.members[0]?.id ?? id;
   const products = await visitProductsForAnchor(ctx, anchorId);
+  // One PK lookup, ungrouped only: a visit's members already carry their price.
+  const priceProductId = visit ? null : (booking.productId ?? base.eventType?.productId ?? null);
+  const unitPrice = priceProductId
+    ? await withOrgCore(ctx, async (tx) => {
+        const [r] = await tx
+          .select({ unitPrice: finProducts.unitPrice })
+          .from(finProducts)
+          .where(
+            and(
+              eq(finProducts.orgId, ctx.tenantId),
+              eq(finProducts.id, priceProductId),
+              eq(finProducts.active, true),
+            ),
+          )
+          .limit(1);
+        return r ? catalogPrice(r.unitPrice) : null;
+      })
+    : null;
 
   // Who moved the status. `profiles` is the global identity table — outside the
   // org-scoped `withOrgCore` role, so it is read on the plain core handle, and
@@ -3961,5 +3984,6 @@ export async function getBookingDetail(
     tickets,
     visit,
     products,
+    unitPrice,
   };
 }

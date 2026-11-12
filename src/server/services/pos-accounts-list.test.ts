@@ -146,6 +146,18 @@ describe('listClientAccounts — canonical currency projection', () => {
     expect(statement).toContain('union select client_key from unbilled');
   });
 
+  /** `chargeableRows` skips `price === 0`; the client resolves price as
+   *  `coalesce(booking product, event type product)` → ACTIVE `fin_products.unit_price`. */
+  it('never counts a service whose resolved catalog price is exactly 0', async () => {
+    rows = [accountRow()];
+    await listClientAccounts(ctx);
+    const statement = new PgDialect().sqlToQuery(tx.execute.mock.calls[2][0] as SQL).sql;
+    expect(statement).toContain('p.unit_price = 0');
+    expect(statement).toContain('p.active');
+    expect(statement).toContain('coalesce(b.product_id');
+    expect(statement).toContain('public.sched_event_types');
+  });
+
   it('keeps an orphan party visible without inventing a contact or name', async () => {
     rows = [
       accountRow({

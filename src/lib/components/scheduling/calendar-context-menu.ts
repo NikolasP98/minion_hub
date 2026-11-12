@@ -45,6 +45,8 @@ export interface EventMenuDetail {
   tickets: ReadonlyArray<{ status: string; lineTotal: string; currency: string | null }>;
   visit: BookingVisit | null;
   products: VisitProductLine[];
+  /** Catalog price of an ungrouped booking's service (`BookingDetail.unitPrice`). */
+  unitPrice?: number | null;
 }
 
 export type CalendarMenuKind =
@@ -76,6 +78,7 @@ export function eventServiceRows(d: EventMenuDetail): VisitRow[] {
     paid: d.tickets.some((t) => t.status !== 'voided'),
     tickets: d.tickets,
     funding: d.grant ? 'grant' : d.plan ? 'plan' : 'cash',
+    price: d.unitPrice,
   });
 }
 

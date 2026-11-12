@@ -134,6 +134,8 @@ describe('getBookingDetail financial read boundaries', () => {
     const output = await getBookingDetail({ db: db as never, tenantId: 'org1' }, 'b1');
 
     expect(output?.visit?.members.map((m) => m.id)).toEqual(['b1', 'b2']);
+    // A visit's members carry their own price: no ungrouped lookup.
+    expect(output?.unitPrice).toBeNull();
     expect(output?.tickets).toEqual([
       expect.objectContaining({
         ticketId: 't1',
@@ -161,5 +163,25 @@ describe('getBookingDetail financial read boundaries', () => {
         payments: [{ method: 'cash', amount: '20.00' }],
       }),
     ]);
+  });
+  it('serves the catalog price of an UNGROUPED booking (own product wins; free = 0)', async () => {
+    // booking, event type, resource, history, then tickets [], products [], price.
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ ...booking, productId: 'p-own' }],
+      [{ id: 'et1', productId: 'p-type' }],
+      [],
+      [],
+      [],
+      [],
+      [{ unitPrice: '0.00' }],
+    ]);
+    const output = await getBookingDetail({ db: db as never, tenantId: 'org1' }, 'b1');
+    expect(output?.visit).toBeNull();
+    expect(output?.unitPrice).toBe(0);
+  });
+  it('leaves unitPrice null for an ungrouped booking with no product', async () => {
+    const { ctx } = fixture();
+    expect((await getBookingDetail(ctx, 'b1'))?.unitPrice).toBeNull();
   });
 });
