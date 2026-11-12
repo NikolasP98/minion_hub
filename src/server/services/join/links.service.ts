@@ -1,12 +1,15 @@
 import { supabaseAdmin } from '$server/supabase';
 import { createMembership, type MembershipUser } from './membership';
 import { generateOpaqueToken, isLinkUsable } from './helpers';
+import { loadOrganizationRolePolicy } from '../organization-role-policy';
 
 export interface JoinLinkRow {
   id: string;
   token: string;
   organization_id: string;
   role: string;
+  role_revision?: string | null;
+  grantor_profile_id?: string | null;
   revoked: boolean;
   expires_at: string | null;
   max_uses: number | null;
@@ -15,11 +18,19 @@ export interface JoinLinkRow {
 
 export async function createLink(opts: {
   organizationId: string;
-  role: string;
+  role?: string;
   createdBy: string;
+  grantorProfileId?: string;
   expiresAt?: string | null;
   maxUses?: number | null;
 }): Promise<{ id: string; token: string }> {
+  const policy = await loadOrganizationRolePolicy(opts.organizationId);
+  if (policy.roleModel === 'organization') {
+    if (!opts.grantorProfileId) throw new Error('Authenticated grantor profile required');
+    const { mintOrganizationInvite } = await import('./organization-admission');
+    return mintOrganizationInvite({ ...opts, grantorProfileId: opts.grantorProfileId });
+  }
+  if (!opts.role) throw new Error('role required');
   const token = generateOpaqueToken();
   const { data, error } = await supabaseAdmin()
     .from('join_link')
@@ -34,7 +45,7 @@ export async function createLink(opts: {
     .select()
     .single();
   if (error) throw new Error(error.message);
-  return { id: (data as any).id, token };
+  return { id: (data as { id: string }).id, token };
 }
 
 export async function resolveLink(token: string): Promise<JoinLinkRow | null> {
@@ -48,6 +59,11 @@ export async function consumeLink(
 ): Promise<{ organizationId: string }> {
   const link = await resolveLink(token);
   if (!link) throw new Error('link not found');
+  const policy = await loadOrganizationRolePolicy(link.organization_id);
+  if (policy.roleModel === 'organization') {
+    const { consumeOrganizationInvite } = await import('./organization-admission');
+    return consumeOrganizationInvite(token, u);
+  }
   const usable = isLinkUsable(
     {
       revoked: link.revoked,

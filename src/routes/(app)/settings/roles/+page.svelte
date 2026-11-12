@@ -7,6 +7,7 @@
 
 <RbacRolesSection
   roles={data.roles}
+  roleSettings={data.roleSettings}
   actions={data.actions}
   businessModules={data.businessModules}
   adminModules={data.adminModules}

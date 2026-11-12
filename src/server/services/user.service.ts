@@ -205,7 +205,45 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * NOTE: this removes the account globally, including from other orgs. (A future
  * "remove from this org only" action would just delete the org_members row.)
  */
-export async function deleteUser(_ctx: TenantContext, userId: string) {
+async function protectNewModelMembershipRemoval(
+  tx: Parameters<typeof cancelPulseForOwnerTx>[0],
+  userId: string,
+  orgIds: readonly string[],
+  actorProfileId?: string | null,
+) {
+  const { lockNavigationPolicy } = await import('./nav-policy-lock');
+  const legacyIds: string[] = [];
+  const { assertOrganizationAccessRecoverableDrizzle } = await import('./section-access.service');
+  for (const orgId of [...orgIds].sort()) {
+    await lockNavigationPolicy(tx, orgId);
+    const [org] = await tx.execute<{ model: string } & Record<string, unknown>>(pulseSql`
+      select to_jsonb(o)->>'role_model' as model from organizations o where id=${orgId}::uuid for share`);
+    if (org?.model !== 'organization') {
+      legacyIds.push(orgId);
+      continue;
+    }
+    const oldRoles = await tx.execute<{ role_key: string } & Record<string, unknown>>(
+      pulseSql`select role_key from member_roles where org_id=${orgId}::uuid and profile_id=${userId}::uuid`,
+    );
+    await tx.execute(
+      pulseSql`delete from member_roles where org_id=${orgId}::uuid and profile_id=${userId}::uuid`,
+    );
+    await tx.execute(
+      pulseSql`delete from organization_members where organization_id=${orgId}::uuid and profile_id=${userId}::uuid`,
+    );
+    await assertOrganizationAccessRecoverableDrizzle(tx, orgId);
+    await tx.execute(pulseSql`insert into doc_audit_log(org_id,ref_type,ref_id,actor_id,op,changes)
+      values(${orgId},'member',${userId}::uuid,${actorProfileId ?? null}::uuid,'membership_remove',
+      ${JSON.stringify([{ field: 'roles', old: oldRoles.map((r) => r.role_key), new: [] }])}::jsonb)`);
+  }
+  return legacyIds;
+}
+
+export async function deleteUser(
+  _ctx: TenantContext,
+  userId: string,
+  actorProfileId?: string | null,
+) {
   const admin = supabaseAdmin();
   // Defensive: callers pass the profile uuid. Bail on a non-uuid (e.g. a stray
   // legacy Turso id) rather than feeding garbage to the auth admin API.
@@ -214,8 +252,20 @@ export async function deleteUser(_ctx: TenantContext, userId: string) {
     return;
   }
   await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+    await tx.execute(pulseSql`select pg_advisory_xact_lock(hashtextextended(${userId},114))`);
     const memberships = await tx.execute<{ organization_id: string }>(
       pulseSql`select organization_id::text from organization_members where profile_id=${userId}::uuid order by organization_id`,
+    );
+    const { lockNavigationPolicy } = await import('./nav-policy-lock');
+    // Obtain every org policy lock before taking the profile's write lock.
+    // Policy readers hold org112 before FOR SHARE on member profiles.
+    for (const row of memberships) await lockNavigationPolicy(tx, row.organization_id);
+    await tx.execute(pulseSql`update profiles set deletion_pending=true where id=${userId}::uuid`);
+    await protectNewModelMembershipRemoval(
+      tx,
+      userId,
+      memberships.map((r) => r.organization_id),
+      actorProfileId,
     );
     for (const row of memberships)
       await cancelPulseForOwnerTx(tx, { tenantId: row.organization_id, profileId: userId });
@@ -291,6 +341,7 @@ export async function updateUserOrganizations(
   _ctx: TenantContext,
   userId: string,
   orgIds: string[],
+  actorProfileId?: string | null,
 ) {
   const admin = supabaseAdmin();
   const { data: current, error } = await admin
@@ -308,22 +359,76 @@ export async function updateUserOrganizations(
   const toAdd = [...desiredIds].filter((id) => !currentIds.has(id));
 
   if (toRemove.length > 0) {
+    let legacyRemovalIds: string[] = [];
     await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+      await tx.execute(pulseSql`select pg_advisory_xact_lock(hashtextextended(${userId},114))`);
+      legacyRemovalIds = await protectNewModelMembershipRemoval(
+        tx,
+        userId,
+        toRemove,
+        actorProfileId,
+      );
       for (const tenantId of [...toRemove].sort())
         await cancelPulseForOwnerTx(tx, { tenantId, profileId: userId });
     });
-    const { error: delErr } = await admin
-      .from('organization_members')
-      .delete()
-      .eq('profile_id', userId)
-      .in('organization_id', toRemove);
-    if (delErr) throw delErr;
+    if (legacyRemovalIds.length) {
+      const { error: delErr } = await admin
+        .from('organization_members')
+        .delete()
+        .eq('profile_id', userId)
+        .in('organization_id', legacyRemovalIds);
+      if (delErr) throw delErr;
+    }
   }
   if (toAdd.length > 0) {
-    const { error: insErr } = await admin.from('organization_members').upsert(
-      toAdd.map((organization_id) => ({ profile_id: userId, organization_id, role: 'member' })),
-      { onConflict: 'profile_id,organization_id' },
-    );
-    if (insErr) throw insErr;
+    await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
+      for (const profileId of [
+        ...new Set([userId, ...(actorProfileId ? [actorProfileId] : [])]),
+      ].sort())
+        await tx.execute(
+          pulseSql`select pg_advisory_xact_lock(hashtextextended(${profileId},114))`,
+        );
+      const [target] = await tx.execute<{ pending: boolean } & Record<string, unknown>>(
+        pulseSql`select coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false) as pending from profiles p where id=${userId}::uuid for share`,
+      );
+      if (!target || target.pending) throw new Error('Account is being deleted');
+      const { lockNavigationPolicy } = await import('./nav-policy-lock');
+      for (const orgId of [...toAdd].sort()) {
+        await lockNavigationPolicy(tx, orgId);
+        const [org] = await tx.execute<
+          { model: string; default_role_key: string; status: string } & Record<string, unknown>
+        >(pulseSql`
+          select to_jsonb(o)->>'role_model' as model,to_jsonb(o)->>'default_role_key' as default_role_key,status
+          from organizations o where id=${orgId}::uuid for share`);
+        if (org?.model !== 'organization') {
+          await tx.execute(pulseSql`insert into organization_members(organization_id,profile_id,role)
+            values(${orgId}::uuid,${userId}::uuid,'member') on conflict(organization_id,profile_id) do update set role='member'`);
+          continue;
+        }
+        if (!actorProfileId)
+          throw new Error('Platform actor identity required for local organization admission');
+        const [actor] = await tx.execute<{ role: string } & Record<string, unknown>>(
+          pulseSql`select role from profiles p where id=${actorProfileId}::uuid and not coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false) for share`,
+        );
+        if (actor?.role !== 'admin') throw new Error('Platform administrator required');
+        if (org.status !== 'active') throw new Error('Active organization required');
+        const [role] = await tx.execute<{ key: string } & Record<string, unknown>>(
+          pulseSql`select key from org_roles where org_id=${orgId} and key=${org.default_role_key} for share`,
+        );
+        if (!role) throw new Error('Organization default role unavailable');
+        const admitted = await tx.execute<
+          { profile_id: string } & Record<string, unknown>
+        >(pulseSql`
+          insert into organization_members(organization_id,profile_id,role) values(${orgId}::uuid,${userId}::uuid,'member')
+          on conflict(organization_id,profile_id) do nothing returning profile_id`);
+        if (admitted.length) {
+          await tx.execute(pulseSql`insert into member_roles(org_id,profile_id,role_key,granted_by)
+          values(${orgId}::uuid,${userId}::uuid,${role.key},${actorProfileId}::uuid) on conflict do nothing`);
+          await tx.execute(pulseSql`insert into doc_audit_log(org_id,ref_type,ref_id,actor_id,op,changes)
+            values(${orgId},'member',${userId}::uuid,${actorProfileId}::uuid,'membership_add',
+            ${JSON.stringify([{ field: 'roles', old: [], new: [role.key] }])}::jsonb)`);
+        }
+      }
+    });
   }
 }

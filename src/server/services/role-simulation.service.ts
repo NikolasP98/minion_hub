@@ -1,3 +1,4 @@
+import { parseOrganizationRolePolicy } from './organization-role-policy';
 import { randomUUID } from 'node:crypto';
 import { error, isHttpError, type RequestEvent } from '@sveltejs/kit';
 import type postgres from 'postgres';
@@ -84,8 +85,16 @@ async function freshActorCapabilities(
   profileId: string,
 ): Promise<Capabilities> {
   const [row] = await tx<
-    { role: string | null; assigned: { role_key: string }[]; rules: CapabilityOverrideRow[] }[]
-  >`select m.role,
+    {
+      role: string | null;
+      role_model: string | null;
+      default_role_key: string | null;
+      local_roles: string[];
+      assigned: { role_key: string }[];
+      rules: CapabilityOverrideRow[];
+    }[]
+  >`select m.role,to_jsonb(o)->>'role_model' as role_model,to_jsonb(o)->>'default_role_key' as default_role_key,
+    coalesce((select jsonb_agg(key) from public.org_roles where org_id=${orgId}),'[]'::jsonb) as local_roles,
     coalesce((select jsonb_agg(x) from (select role_key from public.member_roles where org_id=${orgId}::uuid and profile_id=${profileId}::uuid) x),'[]'::jsonb) as assigned,
     coalesce((select jsonb_agg(x) from (select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from public.permission_rules
       where org_id=${orgId}::uuid and (role_key in ('owner','admin','manager','staff','viewer') or role_key in (select role_key from public.member_roles where org_id=${orgId}::uuid and profile_id=${profileId}::uuid))) x),'[]'::jsonb) as rules
@@ -96,6 +105,8 @@ async function freshActorCapabilities(
     resolveMemberRoleKeys(
       row.assigned.map((r) => r.role_key),
       row.role,
+      parseOrganizationRolePolicy(row).roleModel,
+      row.local_roles,
     ),
     row.rules,
   );
@@ -105,7 +116,13 @@ async function snapshot(tx: Tx, orgId: string, profileId: string): Promise<Autho
   // essential: the session advisory-lock wait must not pin an older snapshot.
   const [rows] = await tx<
     {
-      members: { role: string | null; profile_role: string | null; name: string }[];
+      members: {
+        role: string | null;
+        profile_role: string | null;
+        name: string;
+        role_model: string | null;
+        default_role_key: string | null;
+      }[];
       assigned: { role_key: string }[];
       catalog: CatalogRole[];
       rules: CapabilityOverrideRow[];
@@ -113,33 +130,39 @@ async function snapshot(tx: Tx, orgId: string, profileId: string): Promise<Autho
     }[]
   >`select
     coalesce((select jsonb_agg(x) from (
-      select m.role,p.role as profile_role,o.name from public.organization_members m
+      select m.role,p.role as profile_role,o.name,to_jsonb(o)->>'role_model' as role_model,to_jsonb(o)->>'default_role_key' as default_role_key from public.organization_members m
       join public.organizations o on o.id=m.organization_id and o.status='active'
       join public.profiles p on p.id=m.profile_id where m.organization_id=${orgId}::uuid and m.profile_id=${profileId}::uuid
     ) x),'[]'::jsonb) as members,
     coalesce((select jsonb_agg(x) from (select role_key from public.member_roles where org_id=${orgId}::uuid and profile_id=${profileId}::uuid) x),'[]'::jsonb) as assigned,
-    coalesce((select jsonb_agg(x order by rank desc,key) from (select key,name,rank from public.permission_roles union all select key,name,rank from public.org_roles where org_id=${orgId}) x),'[]'::jsonb) as catalog,
+    coalesce((select jsonb_agg(x order by rank desc,key) from (select key,name,rank from public.permission_roles where coalesce((select to_jsonb(o)->>'role_model' from public.organizations o where id=${orgId}::uuid),'legacy')='legacy' union all select key,name,rank from public.org_roles where org_id=${orgId}) x),'[]'::jsonb) as catalog,
     coalesce((select jsonb_agg(x) from (select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from public.permission_rules where org_id=${orgId}::uuid) x),'[]'::jsonb) as rules,
     (select value from public.app_nav_config where org_id=${orgId}) as nav`;
   if (!rows) throw error(503, 'Role authority unavailable');
   const { members, assigned, catalog, rules } = rows;
   const member = members.length === 1;
+  const policy = member
+    ? parseOrganizationRolePolicy(members[0])
+    : { roleModel: 'legacy' as const, defaultRoleKey: null };
   const actualRoles = member
     ? resolveMemberRoleKeys(
         assigned.map((r) => r.role_key),
         members[0]!.role,
+        policy.roleModel,
+        catalog.map((r) => r.key),
       )
     : [];
   const platformAdmin = member && members[0]?.profile_role === 'admin';
   if (
-    !['owner', 'admin', 'manager', 'staff', 'viewer'].every((key) =>
-      catalog.some((role) => role.key === key),
-    ) ||
+    (policy.roleModel === 'legacy' &&
+      !['owner', 'admin', 'manager', 'staff', 'viewer'].every((key) =>
+        catalog.some((role) => role.key === key),
+      )) ||
     new Set(catalog.map((r) => r.key)).size !== catalog.length
   )
     throw error(503, 'Role catalog unavailable');
   const rank =
-    platformAdmin && !actualRoles.includes('owner')
+    policy.roleModel === 'legacy' && platformAdmin && !actualRoles.includes('owner')
       ? (catalog.find((r) => r.key === 'admin')?.rank ?? 0)
       : Math.max(0, ...catalog.filter((r) => actualRoles.includes(r.key)).map((r) => r.rank));
   return {
@@ -152,7 +175,12 @@ async function snapshot(tx: Tx, orgId: string, profileId: string): Promise<Autho
     rules,
     actual: buildCapabilities(actualRoles, rules),
     nav: normalizeNavConfig(rows.nav),
-    eligible: member && (platformAdmin || actualRoles.some((r) => r === 'owner' || r === 'admin')),
+    eligible:
+      member &&
+      (platformAdmin ||
+        (policy.roleModel === 'organization'
+          ? buildCapabilities(actualRoles, rules).can('users', 'manage')
+          : actualRoles.some((r) => r === 'owner' || r === 'admin'))),
   };
 }
 const selectionMemo = new WeakMap<AuthoritySnapshot, Map<string, boolean>>();

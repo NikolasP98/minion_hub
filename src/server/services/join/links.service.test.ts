@@ -1,3 +1,6 @@
+vi.mock('$server/services/organization-role-policy', () => ({
+  loadOrganizationRolePolicy: vi.fn(async () => ({ roleModel: 'legacy', defaultRoleKey: null })),
+}));
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 
 const state: any = {};

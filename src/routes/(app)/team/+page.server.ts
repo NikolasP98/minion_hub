@@ -1,3 +1,4 @@
+import { loadOrganizationRolePolicy } from '$server/services/organization-role-policy';
 import type { PageServerLoad } from './$types';
 import type { CustomPropertyBundle } from '$lib/tables/custom-properties';
 import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
@@ -94,11 +95,32 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   }));
   // Join links target the caller's own active org only (D4: this used to be
   // every org in the system via listOrganizations(), which ignored ctx).
-  let organizationRows: Array<{ id: string; name: string }> = [];
+  let organizationRows: Array<{
+    id: string;
+    name: string;
+    roleModel?: 'legacy' | 'organization';
+    defaultRoleKey?: string | null;
+    roles?: typeof rbacRoleRows;
+  }> = [];
   if (manageUsers && tenantCtx) {
     const { organizations: allOrgs, activeOrgId } = await parent();
     const activeOrg = allOrgs.find((o) => o.id === activeOrgId);
-    organizationRows = activeOrg ? [{ id: activeOrg.id, name: activeOrg.name }] : [];
+    const policy = await loadOrganizationRolePolicy(tenantCtx.tenantId);
+    organizationRows = activeOrg
+      ? [
+          {
+            id: activeOrg.id,
+            name: activeOrg.name,
+            roleModel: policy.roleModel,
+            defaultRoleKey: policy.defaultRoleKey,
+            roles: rbacRoleRows.filter(
+              (r) =>
+                policy.roleModel === 'organization' ||
+                ['admin', 'manager', 'staff', 'viewer'].includes(r.key),
+            ),
+          },
+        ]
+      : [];
   }
 
   if (!hrEnabled) {

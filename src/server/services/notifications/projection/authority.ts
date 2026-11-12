@@ -8,6 +8,8 @@ export type AuthorityMemberRow = Readonly<{
   legacyRole: string | null;
   profileRole: string | null;
   roleKey: string | null;
+  roleModel?: 'legacy' | 'organization';
+  localRoleKeys?: readonly string[];
 }>;
 
 export type AuthorityRuleRow = Readonly<{
@@ -40,22 +42,38 @@ export function resolveManagerRecipients(
 ): readonly AuthorizedRecipient[] {
   const roleKeys = new Set(rows.flatMap((row) => (row.roleKey ? [row.roleKey] : [])));
   for (const row of rows) {
-    if (!row.roleKey) roleKeys.add(resolveMemberRoleKeys([], row.legacyRole)[0]!);
+    if (!row.roleKey)
+      for (const key of resolveMemberRoleKeys(
+        [],
+        row.legacyRole,
+        row.roleModel ?? 'legacy',
+        row.localRoleKeys ?? [],
+      ))
+        roleKeys.add(key);
   }
   if (roleKeys.size > PROJECTION_LIMITS.roleKeys || rules.length > PROJECTION_LIMITS.rules)
     throw new RangeError('notification_authority_overflow');
 
   const members = new Map<
     string,
-    { legacyRole: string | null; profileRole: string | null; roles: Set<string> }
+    {
+      legacyRole: string | null;
+      profileRole: string | null;
+      roles: Set<string>;
+      roleModel: 'legacy' | 'organization';
+      localRoleKeys: readonly string[];
+    }
   >();
   let assignments = 0;
   for (const row of rows) {
     const member = members.get(row.profileId) ?? {
       legacyRole: row.legacyRole,
       profileRole: row.profileRole,
+      roleModel: row.roleModel ?? 'legacy',
+      localRoleKeys: row.localRoleKeys ?? [],
       roles: new Set<string>(),
     };
+    member.localRoleKeys = [...new Set([...member.localRoleKeys, ...(row.localRoleKeys ?? [])])];
     if (row.roleKey) {
       member.roles.add(row.roleKey);
       assignments++;
@@ -76,7 +94,12 @@ export function resolveManagerRecipients(
   for (const [profileId, member] of [...members].sort(([left], [right]) =>
     left.localeCompare(right, 'en-US'),
   )) {
-    const roles = resolveMemberRoleKeys([...member.roles].sort(), member.legacyRole);
+    const roles = resolveMemberRoleKeys(
+      [...member.roles].sort(),
+      member.legacyRole,
+      member.roleModel,
+      member.localRoleKeys,
+    );
     const roleSet = new Set(roles);
     const relevantRules = sortedRules.filter((rule) => roleSet.has(rule.role_key));
     const admitted =
@@ -95,6 +118,7 @@ export function resolveManagerRecipients(
     if (!admitted) continue;
     const authority = evidenceBytes({
       legacyRole: member.legacyRole,
+      ...(member.roleModel === 'organization' ? { roleModel: member.roleModel } : {}),
       profileAdmin: member.profileRole === 'admin',
       roles,
       rules: relevantRules.map((rule) => ({

@@ -33,7 +33,7 @@ const resetRegistered = z
 const deleteBody = z.union([base, resetRegistered]);
 const headers = { 'Cache-Control': 'private, no-store' };
 export const POST: RequestHandler = async ({ locals, request }) => {
-  await requireOrgCapability(locals, 'users', 'manage');
+  await requireOrgCapability(locals, 'roles', 'edit');
   const parsed = write.safeParse(await request.json().catch(() => null));
   if (!parsed.success) throw error(400, 'Invalid role override');
   const { module: target, resetSubresources, ...body } = parsed.data;
@@ -43,7 +43,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   );
 };
 export const DELETE: RequestHandler = async ({ locals, request }) => {
-  await requireOrgCapability(locals, 'users', 'manage');
+  await requireOrgCapability(locals, 'roles', 'edit');
   const parsed = deleteBody.safeParse(await request.json().catch(() => null));
   if (!parsed.success) throw error(400, 'Invalid role override');
   if ('resetRegisteredPolicies' in parsed.data)

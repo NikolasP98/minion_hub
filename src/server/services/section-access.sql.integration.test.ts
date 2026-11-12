@@ -10,6 +10,7 @@ import {
   readSectionAccess,
   writeSectionAccess,
   deleteRoleAccessCatalog,
+  listRoleAccessMatrix,
 } from './section-access.service';
 import { writeNavConfig } from './nav-config.service';
 import { lockNavigationPolicy } from './nav-policy-lock';
@@ -57,7 +58,7 @@ beforeAll(async () => {
   await owner.unsafe(`create schema "${schema}"`);
   created = true;
   await owner.unsafe(`
-    create table "${schema}".organizations(id uuid primary key,name text,status text);
+    create table "${schema}".organizations(id uuid primary key,name text,status text,role_model text default 'legacy',default_role_key text);
     create table "${schema}".profiles(id uuid primary key,role text);
     create table "${schema}".organization_members(organization_id uuid,profile_id uuid,role text);
     create table "${schema}".member_roles(org_id uuid,profile_id uuid,role_key text);
@@ -80,7 +81,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await app`truncate organizations,profiles,organization_members,member_roles,permission_roles,org_roles,permission_rules,app_nav_config,doc_audit_log`;
-  await app`insert into organizations values (${org},'Fixture org','active')`;
+  await app`insert into organizations(id,name,status) values (${org},'Fixture org','active')`;
   await app`insert into profiles values (${profile},'user')`;
   await app`insert into organization_members values (${org},${profile},'owner')`;
   await app`insert into member_roles values (${org},${profile},'owner')`;
@@ -235,5 +236,81 @@ describe('section policy against concurrent PostgreSQL transactions', () => {
     }
     await coordinated;
     expect(blocked).toBeGreaterThanOrEqual(1);
+  });
+});
+
+async function useOrganizationModel() {
+  await app`update organizations set role_model='organization',default_role_key='custom-administrator' where id=${org}::uuid`;
+  await app`insert into org_roles(org_id,key,name,rank) values(${org},'custom-administrator','Administrator',80)`;
+  await app`delete from member_roles where org_id=${org}::uuid`;
+  await app`insert into member_roles values(${org}::uuid,${profile}::uuid,'custom-administrator')`;
+  for (const module of [
+    'overview',
+    'crm',
+    'finance',
+    'sales',
+    'scheduling',
+    'support',
+    'projects',
+    'memberships',
+    'comms',
+    'brains',
+    'stock',
+    'ads',
+    'pos',
+    'pulse',
+    'agents',
+    'channels',
+    'flows',
+    'marketplace',
+    'reliability',
+    'workspace',
+    'settings',
+    'users',
+    'roles',
+    'tools',
+  ]) {
+    await app`insert into permission_rules(org_id,role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level)
+      values(${org}::uuid,'custom-administrator',${module},true,true,true,true,true,true,false,1)`;
+  }
+}
+describe('organization-local page and data policy integration', () => {
+  it('lists only organization roles in both policy editors', async () => {
+    await useOrganizationModel();
+    expect((await listRoleAccessMatrix(org)).map((r) => r.key)).toEqual(['custom-administrator']);
+    expect((await readSectionAccess(locals, 'crm')).roles.map((r) => r.key)).toEqual([
+      'custom-administrator',
+    ]);
+  });
+  it('rejects denying the final access administrator its management page and rolls back the policy', async () => {
+    await useOrganizationModel();
+    const snapshot = await readSectionAccess(locals, 'page:/settings/roles');
+    await expect(
+      writeSectionAccess(locals, {
+        target: 'page:/settings/roles',
+        roleKey: 'custom-administrator',
+        mode: 'deny',
+        revision: snapshot.roles[0].revision,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      await app`select * from permission_rules where module='page:/settings/roles'`,
+    ).toHaveLength(0);
+    expect(await app`select * from doc_audit_log`).toHaveLength(0);
+  });
+  it('rejects removing final users manage permission while legacy edits stay unchanged', async () => {
+    await useOrganizationModel();
+    const snapshot = await readSectionAccess(locals, 'users');
+    await expect(
+      writeSectionAccess(locals, {
+        target: 'users',
+        roleKey: 'custom-administrator',
+        mode: 'deny',
+        revision: snapshot.roles[0].revision,
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      await app`select can_manage from permission_rules where role_key='custom-administrator' and module='users'`,
+    ).toMatchObject([{ can_manage: true }]);
   });
 });

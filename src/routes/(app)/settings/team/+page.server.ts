@@ -6,6 +6,7 @@ import {
   getOrgMemberRolesAll,
   requireOrgCapability,
 } from '$server/services/rbac.service';
+import { loadOrganizationRolePolicy } from '$server/services/organization-role-policy';
 import { listPendingRequests } from '$server/services/join/requests.service';
 
 /**
@@ -51,14 +52,29 @@ export const load: PageServerLoad = async ({ locals, depends, parent }) => {
   // the API rejected it anyway since it isn't the caller's active org).
   const { organizations: allOrgs, activeOrgId } = await parent();
   const activeOrg = allOrgs.find((o) => o.id === activeOrgId);
-  const organizations = activeOrg ? [{ id: activeOrg.id, name: activeOrg.name }] : [];
+  const policy = await loadOrganizationRolePolicy(ctx.tenantId);
+  const organizations = activeOrg
+    ? [
+        {
+          id: activeOrg.id,
+          name: activeOrg.name,
+          roleModel: policy.roleModel,
+          defaultRoleKey: policy.defaultRoleKey,
+          roles: rbacRoles.filter(
+            (r) =>
+              policy.roleModel === 'organization' ||
+              ['admin', 'manager', 'staff', 'viewer'].includes(r.key),
+          ),
+        },
+      ]
+    : [];
 
   const users = rawUsers.map((u) => ({
     ...u,
     email: u.email ?? '',
     role: (u.role === 'admin' ? 'admin' : 'user') as 'user' | 'admin',
     // RBAC roles for THIS org (member_roles, multi-role); falls back to viewer if unassigned.
-    memberRoles: memberRoles.get(u.id) ?? ['viewer'],
+    memberRoles: memberRoles.get(u.id) ?? (policy.roleModel === 'legacy' ? ['viewer'] : []),
     displayName: u.displayName ?? null,
     createdAt: u.createdAt ? new Date(u.createdAt).toISOString() : null,
   }));

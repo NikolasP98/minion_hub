@@ -27,9 +27,13 @@
     Trash2,
   } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
+  import { toastError } from '$lib/state/ui/toast.svelte';
   import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
-  import { Button, Select, Tabs, Modal } from '$lib/components/ui';
+  import { Button, Input } from '@minion-stack/ui';
+  import Select from '$lib/components/ui/Select.svelte';
+  import Tabs from '$lib/components/ui/Tabs.svelte';
+  import Modal from '$lib/components/ui/Modal.svelte';
+  import FormField from '$lib/components/ui/foundations/FormField.svelte';
 
   type ActionSet = Record<string, boolean>;
   type SubResourceCaps = {
@@ -60,14 +64,28 @@
     memberCount: number;
     modules: RoleModuleCaps[];
   };
+  type RoleTemplate = {
+    id: 'admin' | 'manager' | 'staff' | 'viewer';
+    name: string;
+    version: number;
+    description: string | null;
+    rank: number;
+  };
+  type RoleSettings = {
+    roleModel: 'legacy' | 'organization';
+    defaultRoleKey: string | null;
+    revision: string;
+    templates: RoleTemplate[];
+  };
 
   interface Props {
     roles: Role[];
     actions: string[];
     businessModules: string[];
     adminModules: string[];
+    roleSettings?: RoleSettings;
   }
-  let { roles, actions, businessModules, adminModules }: Props = $props();
+  let { roles, actions, businessModules, adminModules, roleSettings }: Props = $props();
   const activity = tryUseActions();
   let viewEpoch = 0;
   onDestroy(() => {
@@ -78,7 +96,11 @@
   let confirmedCommit = $state(false);
 
   // svelte-ignore state_referenced_locally
-  let selectedKey = $state<string>(roles[0]?.key ?? '');
+  let selectedKey = $state<string>(
+    roles.find((role) => role.key === page.url.searchParams.get('role'))?.key ??
+      roles[0]?.key ??
+      '',
+  );
   let policyError = $state('');
   let conflicted = $state(false);
   let reloadingPolicy = $state(false);
@@ -93,47 +115,134 @@
   let duplicateSource = $state<Role | null>(null);
   let duplicateName = $state('');
   let duplicating = $state(false);
+  let creationSource = $state<'duplicate' | 'template' | 'blank'>('duplicate');
+  let creationTemplate = $state<RoleTemplate | null>(null);
+  let renameOpen = $state(false);
+  let renameName = $state('');
+  let catalogSaving = $state(false);
   let deleting = $state<string | null>(null); // role key currently deleting
   const policyBusy = $derived(
-    saving !== null || deleting !== null || duplicating || navigationOnly,
+    saving !== null || deleting !== null || duplicating || catalogSaving || navigationOnly,
   );
 
+  const defaultRole = $derived(roles.find((role) => role.key === roleSettings?.defaultRoleKey));
+  function templateName(template: RoleTemplate) {
+    switch (template.id) {
+      case 'admin':
+        return m.roles_templateAdminName();
+      case 'manager':
+        return m.roles_templateManagerName();
+      case 'staff':
+        return m.roles_templateStaffName();
+      case 'viewer':
+        return m.roles_templateViewerName();
+    }
+  }
+  function templateDescription(template: RoleTemplate) {
+    switch (template.id) {
+      case 'admin':
+        return m.roles_templateAdminDescription();
+      case 'manager':
+        return m.roles_templateManagerDescription();
+      case 'staff':
+        return m.roles_templateStaffDescription();
+      case 'viewer':
+        return m.roles_templateViewerDescription();
+    }
+  }
+  function openCreate(template: RoleTemplate | null) {
+    if (!can('roles:create') || policyBusy) return;
+    creationSource = template ? 'template' : 'blank';
+    creationTemplate = template;
+    duplicateSource = null;
+    duplicateName = '';
+    policyError = '';
+    duplicateOpen = true;
+  }
+
   function openDuplicate(role: Role) {
-    if (!can('users:manage') || policyBusy) return;
+    if (!can('roles:create') || policyBusy) return;
     duplicateSource = role;
+    creationSource = 'duplicate';
+    creationTemplate = null;
     duplicateName = '';
     duplicateOpen = true;
   }
 
   async function submitDuplicate() {
-    if (!can('users:manage') || policyBusy || !duplicateSource || !duplicateName.trim()) return;
+    if (!can('roles:create') || policyBusy || !duplicateName.trim()) return;
+    if (creationSource === 'duplicate' && !duplicateSource) return;
+    if (creationSource === 'template' && !creationTemplate) return;
     duplicating = true;
     try {
-      const res = await fetch('/api/roles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceRoleKey: duplicateSource.key, name: duplicateName.trim() }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        toastError(
-          (d as { message?: string }).message ??
-            m.roles_errorDuplicate({ status: String(res.status) }),
-        );
-        return;
-      }
-      const created = (await res.json()) as { key: string };
-      duplicateOpen = false;
-      selectedKey = created.key;
-      toastSuccess(m.roles_duplicateSubmit());
-      void invalidate('settings:roles');
+      const source =
+        creationSource === 'template' && creationTemplate
+          ? {
+              source: 'template',
+              templateId: creationTemplate.id,
+              templateVersion: creationTemplate.version,
+            }
+          : creationSource === 'duplicate' && duplicateSource
+            ? { source: 'duplicate', sourceRoleKey: duplicateSource.key }
+            : { source: 'blank' };
+      await mutateAuthority(
+        '/api/roles',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...source, name: duplicateName.trim() }),
+        },
+        (raw) => {
+          if (!raw || typeof raw !== 'object' || typeof (raw as { key?: unknown }).key !== 'string')
+            throw new Error('Unconfirmed role creation');
+          const destination = new URL(page.url);
+          destination.searchParams.set('role', (raw as { key: string }).key);
+          return {
+            location: destination.pathname + destination.search + destination.hash,
+            apply: () => {
+              duplicateOpen = false;
+            },
+          };
+        },
+      );
     } finally {
       duplicating = false;
     }
   }
 
+  async function saveCatalogChange(url: string, body: Record<string, unknown>) {
+    if (!can('roles:edit') || policyBusy || !roleSettings) return;
+    if (url === '/api/roles/default' && !can('users:manage')) return;
+    catalogSaving = true;
+    try {
+      await mutateAuthority(
+        url,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...body, revision: roleSettings.revision }),
+        },
+        (raw) => {
+          if (
+            !raw ||
+            typeof raw !== 'object' ||
+            typeof (raw as { revision?: unknown }).revision !== 'string'
+          )
+            throw new Error('Unconfirmed role catalog update');
+          return {
+            apply: () => {
+              renameOpen = false;
+            },
+          };
+        },
+      );
+    } finally {
+      catalogSaving = false;
+    }
+  }
+
   async function deleteCustomRole(role: Role) {
-    if (!can('users:manage') || policyBusy) return;
+    if (!can('roles:delete') || policyBusy) return;
     if (!confirm(m.roles_confirmDelete())) return;
     const owner = currentPolicyOwner();
     deleting = role.key;
@@ -162,7 +271,7 @@
   const selected = $derived(roles.find((r) => r.key === selectedKey) ?? roles[0] ?? null);
   // Owner is intentionally not editable — it must always retain full access (no self-lockout).
   const editable = $derived(
-    can('users:manage') && !!selected && selected.key !== 'owner' && !conflicted && !policyBusy,
+    can('roles:edit') && !!selected && selected.key !== 'owner' && !conflicted && !policyBusy,
   );
   const EMPTY: ActionSet = {
     view: false,
@@ -239,7 +348,10 @@
       const rm = capsFor(selected, mod);
       return rm ? effLevel(rm) : 'none';
     });
-    if (levels.every((l) => l === 'full')) return 'Full access';
+    if (
+      levels.every((level, i) => level === 'full' || (mods[i] === 'overview' && level === 'view'))
+    )
+      return 'Full access';
     if (levels.every((l) => l === 'none')) return 'No access';
     if (levels.every((l) => l === 'view')) return 'View only';
     return 'Partial access';
@@ -946,6 +1058,40 @@
     </p>
   </header>
 
+  {#if can('roles:create') && roleSettings}
+    <div class="role-template-panel">
+      {#if roleSettings.roleModel === 'organization' && defaultRole}
+        <p class="t-body">{m.roles_defaultMemberNotice({ role: defaultRole.name })}</p>
+      {/if}
+      <p class="t-caption">{m.roles_unionNotice()}</p>
+      <details>
+        <summary class="t-label">{m.roles_templatesTitle()}</summary>
+        <div class="role-template-content">
+          <p class="t-caption">{m.roles_templatesDescription()}</p>
+          <div class="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+            {#each roleSettings.templates as template (template.id)}
+              <div class="role-template-card">
+                <h3 class="t-label">{templateName(template)}</h3>
+                <p class="t-caption">{templateDescription(template)}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={policyBusy}
+                  onclick={() => openCreate(template)}
+                >
+                  {m.roles_useTemplate({ template: templateName(template) })}
+                </Button>
+              </div>
+            {/each}
+          </div>
+          <Button variant="ghost" size="sm" disabled={policyBusy} onclick={() => openCreate(null)}>
+            {m.roles_createBlank()}
+          </Button>
+        </div>
+      </details>
+    </div>
+  {/if}
+
   <div class="grid grid-cols-1 items-start gap-4 lg:grid-cols-[260px_1fr]">
     <!-- Role list — full list on lg+, compact picker below (keeps the detail full-width on medium screens) -->
     <aside class="hidden overflow-hidden rounded-lg border border-border bg-card lg:block">
@@ -1006,31 +1152,37 @@
                 {r.memberCount}
               </span>
             </Button>
-            {#if can('users:manage')}
+            {#if can('roles:create') || can('roles:delete')}
               <span
                 class="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100"
               >
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  type="button"
-                  class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
-                  title={m.roles_duplicate()}
-                  disabled={policyBusy}
-                  onclick={() => openDuplicate(r)}
-                >
-                  <Copy class="h-3 w-3" />
-                </Button>
-                {#if !r.isSystem}
+                {#if can('roles:create')}
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    type="button"
+                    class="rounded p-1 text-muted hover:bg-muted/20 hover:text-foreground"
+                    title={m.roles_duplicate()}
+                    disabled={policyBusy}
+                    onclick={() => openDuplicate(r)}
+                  >
+                    <Copy class="h-3 w-3" />
+                  </Button>
+                {/if}
+                {#if !r.isSystem && can('roles:delete')}
                   <Button
                     variant="ghost"
                     size="xs"
                     type="button"
                     class="rounded p-1 text-muted hover:bg-destructive/15 hover:text-destructive disabled:pointer-events-none disabled:opacity-40"
-                    title={r.memberCount > 0
-                      ? m.roles_deleteInUse({ count: String(r.memberCount) })
-                      : m.roles_deleteCustom()}
-                    disabled={r.memberCount > 0 || policyBusy}
+                    title={roleSettings?.defaultRoleKey === r.key
+                      ? m.roles_deleteDefault()
+                      : r.memberCount > 0
+                        ? m.roles_deleteInUse({ count: String(r.memberCount) })
+                        : m.roles_deleteCustom()}
+                    disabled={r.memberCount > 0 ||
+                      roleSettings?.defaultRoleKey === r.key ||
+                      policyBusy}
                     loading={deleting === r.key}
                     onclick={() => deleteCustomRole(r)}
                   >
@@ -1061,9 +1213,14 @@
       {#if selected}
         <div class="space-y-4 p-4 sm:p-5">
           <div class="flex flex-wrap items-center gap-2">
-            <h3 class="text-[length:var(--font-size-section-title)] font-semibold text-foreground">
+            <h3
+              class="min-w-0 max-w-full break-words text-[length:var(--font-size-section-title)] font-semibold text-foreground"
+            >
               {selected.name}
             </h3>
+            {#if roleSettings?.defaultRoleKey === selected.key}
+              <span class="t-caption">{m.roles_defaultRoleBadge()}</span>
+            {/if}
             {#if selected.key === 'owner'}
               <span
                 class="inline-flex items-center gap-1 rounded bg-muted/20 px-1.5 py-0.5 text-[length:var(--font-size-telemetry)] text-muted"
@@ -1084,6 +1241,44 @@
               {selected.memberCount} member{selected.memberCount === 1 ? '' : 's'}
             </span>
           </div>
+
+          {#if (can('roles:edit') || can('roles:create')) && !selected.isSystem && roleSettings}
+            <div class="flex flex-wrap gap-2">
+              {#if can('roles:edit')}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={policyBusy}
+                  onclick={() => {
+                    renameName = selected.name;
+                    policyError = '';
+                    renameOpen = true;
+                  }}
+                >
+                  {m.roles_rename()}
+                </Button>
+              {/if}
+              {#if can('roles:create')}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={policyBusy}
+                  onclick={() => openDuplicate(selected)}>{m.roles_duplicate()}</Button
+                >
+              {/if}
+              {#if can('roles:edit') && can('users:manage') && roleSettings.roleModel === 'organization' && roleSettings.defaultRoleKey !== selected.key}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={policyBusy}
+                  loading={catalogSaving}
+                  onclick={() => saveCatalogChange('/api/roles/default', { roleKey: selected.key })}
+                >
+                  {m.roles_setDefault()}
+                </Button>
+              {/if}
+            </div>
+          {/if}
 
           {#if selected.description}
             <p class="-mt-2 text-[length:var(--font-size-label)] text-muted">
@@ -1167,42 +1362,62 @@
   </div>
 </section>
 
-<Modal bind:open={duplicateOpen} title={m.roles_duplicateTitle()} size="sm">
-  {#if duplicateSource}
-    <div class="space-y-3">
-      <p class="text-[length:var(--font-size-label)] text-muted">
+<Modal
+  bind:open={duplicateOpen}
+  title={creationSource === 'template' ? m.roles_createTemplateTitle() : m.roles_duplicateTitle()}
+  size="sm"
+  dismissible={!policyBusy}
+  dirty={!!duplicateName.trim()}
+>
+  <div class="role-template-content">
+    <p class="t-caption">
+      {#if creationSource === 'duplicate' && duplicateSource}
         {m.roles_duplicateDescription({ source: duplicateSource.name })}
-      </p>
-      <label class="block space-y-1">
-        <span class="text-[length:var(--font-size-label)] font-medium text-foreground"
-          >{m.roles_duplicateNameLabel()}</span
-        >
-        <input
+      {:else if creationSource === 'template' && creationTemplate}
+        {m.roles_createTemplateDescription({
+          template: templateName(creationTemplate),
+          version: String(creationTemplate.version),
+        })}
+      {:else}
+        {m.roles_createBlankDescription()}
+      {/if}
+    </p>
+    <FormField label={m.roles_roleName()} required disabled={policyBusy}>
+      {#snippet children(control)}
+        <Input
+          {...control}
           type="text"
-          class="w-full rounded border border-border bg-bg2 px-2.5 py-1.5 text-[length:var(--font-size-body)] text-foreground"
-          placeholder={m.roles_duplicateNamePlaceholder()}
+          maxlength={120}
           bind:value={duplicateName}
-          onkeydown={(e) => e.key === 'Enter' && submitDuplicate()}
+          placeholder={m.roles_duplicateNamePlaceholder()}
+          onkeydown={(e: KeyboardEvent) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void submitDuplicate();
+            }
+          }}
         />
-      </label>
-    </div>
-  {/if}
+      {/snippet}
+    </FormField>
+    <p class="t-caption">{m.roles_noAssignmentsChanged()}</p>
+    {#if policyError}<p class="t-body" role="alert">{policyError}</p>{/if}
+  </div>
   {#snippet footer()}
     <Button
-      variant="primary"
+      variant="ghost"
       size="sm"
       type="button"
-      class="rounded px-3 py-1.5 text-[length:var(--font-size-label)] text-muted hover:bg-muted/20 hover:text-foreground"
+      disabled={policyBusy}
       onclick={() => (duplicateOpen = false)}
     >
       {m.common_cancel()}
     </Button>
     <Button
-      variant="ghost"
-      size="xs"
+      variant="primary"
+      size="sm"
       type="button"
-      class="rounded bg-accent px-3 py-1.5 text-[length:var(--font-size-label)] font-medium text-accent-foreground disabled:opacity-50"
-      disabled={!duplicateName.trim() || duplicating}
+      disabled={!duplicateName.trim() || policyBusy}
+      loading={duplicating}
       onclick={submitDuplicate}
     >
       {duplicating ? m.roles_creating() : m.roles_duplicateSubmit()}
@@ -1210,7 +1425,70 @@
   {/snippet}
 </Modal>
 
+<Modal
+  bind:open={renameOpen}
+  title={m.roles_renameTitle({ role: selected?.name ?? '' })}
+  size="sm"
+  dismissible={!policyBusy}
+  dirty={renameName !== selected?.name}
+>
+  <div class="role-template-content">
+    <p class="t-caption">{m.roles_renameDescription()}</p>
+    <FormField label={m.roles_roleName()} required disabled={policyBusy}>
+      {#snippet children(control)}
+        <Input {...control} type="text" maxlength={120} bind:value={renameName} />
+      {/snippet}
+    </FormField>
+    {#if policyError}<p class="t-body" role="alert">{policyError}</p>{/if}
+  </div>
+  {#snippet footer()}
+    <Button variant="ghost" size="sm" disabled={policyBusy} onclick={() => (renameOpen = false)}>
+      {m.common_cancel()}
+    </Button>
+    <Button
+      variant="primary"
+      size="sm"
+      loading={catalogSaving}
+      disabled={policyBusy || !renameName.trim() || renameName.trim() === selected?.name}
+      onclick={() =>
+        selected &&
+        saveCatalogChange(`/api/roles/${encodeURIComponent(selected.key)}`, {
+          name: renameName.trim(),
+        })}
+    >
+      {m.roles_saveName()}
+    </Button>
+  {/snippet}
+</Modal>
+
 <style>
+  .role-template-panel {
+    display: grid;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    gap: var(--space-3);
+    padding: var(--space-card);
+    margin-bottom: var(--space-4);
+    border: var(--hairline) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    color: var(--color-text-primary);
+  }
+  .role-template-content {
+    display: grid;
+    gap: var(--space-3);
+    padding-top: var(--space-3);
+    min-width: 0;
+  }
+  .role-template-card {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-card-compact);
+    border: var(--hairline) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
+  }
   .policy-error {
     display: flex;
     flex-wrap: wrap;

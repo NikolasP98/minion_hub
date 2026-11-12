@@ -21,6 +21,9 @@ export const RESOURCE_PERMISSIONS = [
   'users:remove',
   'users:manage',
   'roles:view',
+  'roles:create',
+  'roles:edit',
+  'roles:delete',
   'roles:manage',
   'billing:view',
   'billing:manage',
@@ -242,6 +245,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   workspace: 'Cloud Workspaces',
   settings: 'Settings',
   users: 'Users & Team',
+  roles: 'Roles',
   tools: 'Tool Studio',
 };
 

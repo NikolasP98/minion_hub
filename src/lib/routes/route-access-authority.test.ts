@@ -17,6 +17,27 @@ const authenticated = {
 };
 
 describe('route access authority', () => {
+  it('opens the role matrix with roles:view independently from Team management or role CRUD', () => {
+    expect(routeAccessPolicyIdForPath('/settings/roles')).toBe('org-capability:roles:view');
+    expect(
+      decideRouteAccess('/settings/roles', {
+        ...authenticated,
+        permissions: new Set(['users:manage']),
+      }).allowed,
+    ).toBe(false);
+    expect(
+      decideRouteAccess('/settings/roles', {
+        ...authenticated,
+        permissions: new Set(['roles:view']),
+      }).allowed,
+    ).toBe(true);
+    expect(
+      decideRouteAccess('/settings/roles', {
+        ...authenticated,
+        permissions: new Set(['roles:create', 'roles:edit', 'roles:delete']),
+      }).allowed,
+    ).toBe(false);
+  });
   it('preserves exact, prefix, dynamic, and redirect policy semantics', () => {
     expect(routeAccessPolicyIdForPath('/agents/builder')).toBe('permission:agents:view');
     expect(routeAccessPolicyIdForPath('/agents/builder/draft-1?tab=tools')).toBe(

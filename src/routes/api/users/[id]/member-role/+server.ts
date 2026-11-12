@@ -1,11 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import {
-	requireOrgCapability,
-	setMemberRole,
-	addMemberRole,
-	removeMemberRole,
-	isAssignableRoleKey,
+  requireOrgCapability,
+  setMemberRole,
+  addMemberRole,
+  removeMemberRole,
+  isAssignableRoleKey,
 } from '$server/services/rbac.service';
 
 /**
@@ -17,17 +17,23 @@ import {
  * multi-role add/remove used by the chip UI.
  */
 export const PATCH: RequestHandler = async ({ locals, params, request }) => {
-	await requireOrgCapability(locals, 'users', 'manage');
-	if (!locals.tenantCtx) throw error(401, 'tenant context required');
-	const profileId = params.id;
-	if (!profileId) throw error(400, 'user id required');
+  await requireOrgCapability(locals, 'users', 'manage');
+  if (!locals.tenantCtx) throw error(401, 'tenant context required');
+  const profileId = params.id;
+  if (!profileId) throw error(400, 'user id required');
 
-	if (!locals.user?.supabaseId) throw error(401, 'caller identity required');
-	const b = (await request.json().catch(() => ({}))) as { roleKey?: unknown };
-	if (!(await isAssignableRoleKey(locals.tenantCtx.tenantId, b.roleKey))) throw error(400, 'valid roleKey required');
+  if (!locals.user?.supabaseId) throw error(401, 'caller identity required');
+  const b = (await request.json().catch(() => ({}))) as { roleKey?: unknown };
+  if (!(await isAssignableRoleKey(locals.tenantCtx.tenantId, b.roleKey)))
+    throw error(400, 'valid roleKey required');
 
-	await setMemberRole(locals.tenantCtx.tenantId, profileId, b.roleKey as string, locals.user.supabaseId);
-	return json({ ok: true, roleKey: b.roleKey });
+  await setMemberRole(
+    locals.tenantCtx.tenantId,
+    profileId,
+    b.roleKey as string,
+    locals.user.supabaseId,
+  );
+  return json({ ok: true, roleKey: b.roleKey });
 };
 
 /**
@@ -36,17 +42,23 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
  * Add one role to a member without touching their other roles (multi-role).
  */
 export const POST: RequestHandler = async ({ locals, params, request }) => {
-	await requireOrgCapability(locals, 'users', 'manage');
-	if (!locals.tenantCtx) throw error(401, 'tenant context required');
-	const profileId = params.id;
-	if (!profileId) throw error(400, 'user id required');
+  await requireOrgCapability(locals, 'users', 'manage');
+  if (!locals.tenantCtx) throw error(401, 'tenant context required');
+  const profileId = params.id;
+  if (!profileId) throw error(400, 'user id required');
 
-	if (!locals.user?.supabaseId) throw error(401, 'caller identity required');
-	const b = (await request.json().catch(() => ({}))) as { roleKey?: unknown };
-	if (!(await isAssignableRoleKey(locals.tenantCtx.tenantId, b.roleKey))) throw error(400, 'valid roleKey required');
+  if (!locals.user?.supabaseId) throw error(401, 'caller identity required');
+  const b = (await request.json().catch(() => ({}))) as { roleKey?: unknown };
+  if (!(await isAssignableRoleKey(locals.tenantCtx.tenantId, b.roleKey)))
+    throw error(400, 'valid roleKey required');
 
-	await addMemberRole(locals.tenantCtx.tenantId, profileId, b.roleKey as string, locals.user.supabaseId);
-	return json({ ok: true, roleKey: b.roleKey });
+  await addMemberRole(
+    locals.tenantCtx.tenantId,
+    profileId,
+    b.roleKey as string,
+    locals.user.supabaseId,
+  );
+  return json({ ok: true, roleKey: b.roleKey });
 };
 
 /**
@@ -56,14 +68,20 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
  * `owner` role (see removeMemberRole).
  */
 export const DELETE: RequestHandler = async ({ locals, params, request }) => {
-	await requireOrgCapability(locals, 'users', 'manage');
-	if (!locals.tenantCtx) throw error(401, 'tenant context required');
-	const profileId = params.id;
-	if (!profileId) throw error(400, 'user id required');
+  await requireOrgCapability(locals, 'users', 'manage');
+  if (!locals.tenantCtx) throw error(401, 'tenant context required');
+  const profileId = params.id;
+  if (!profileId) throw error(400, 'user id required');
 
-	const b = (await request.json().catch(() => ({}))) as { roleKey?: unknown };
-	if (!(await isAssignableRoleKey(locals.tenantCtx.tenantId, b.roleKey))) throw error(400, 'valid roleKey required');
+  const b = (await request.json().catch(() => ({}))) as { roleKey?: unknown };
+  if (!(await isAssignableRoleKey(locals.tenantCtx.tenantId, b.roleKey)))
+    throw error(400, 'valid roleKey required');
 
-	await removeMemberRole(locals.tenantCtx.tenantId, profileId, b.roleKey as string);
-	return json({ ok: true, roleKey: b.roleKey });
+  await removeMemberRole(
+    locals.tenantCtx.tenantId,
+    profileId,
+    b.roleKey as string,
+    locals.user?.supabaseId ?? null,
+  );
+  return json({ ok: true, roleKey: b.roleKey });
 };

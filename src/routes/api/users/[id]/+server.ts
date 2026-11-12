@@ -69,7 +69,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
 
   if (Array.isArray(b.organizationIds)) {
     const orgIds = b.organizationIds.filter((id): id is string => typeof id === 'string');
-    await updateUserOrganizations(ctx, userId, orgIds);
+    await updateUserOrganizations(ctx, userId, orgIds, locals.user?.supabaseId);
   }
 
   if (Object.keys(patch).length > 0) {
@@ -97,6 +97,6 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   const existing = await getUser(ctx, userId);
   if (!existing) throw error(404, 'user not found');
 
-  await deleteUser(ctx, userId);
+  await deleteUser(ctx, userId, locals.user?.supabaseId);
   return json({ ok: true });
 };

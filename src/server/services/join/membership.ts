@@ -1,6 +1,7 @@
-import { supabaseAdmin } from '$server/supabase';
 import { hasCanonicalMembership } from '$server/services/canonical-directory.service';
-import { addMemberRole } from '$server/services/rbac.service';
+import { invalidateRbac } from '$server/services/rbac.service';
+import { loadOrganizationRolePolicy } from '../organization-role-policy';
+import { admitLegacyMembership } from './profile-admission';
 
 export interface MembershipUser {
   id: string;
@@ -30,20 +31,9 @@ export async function hasAnyMembership(supabaseId: string): Promise<boolean> {
 }
 
 /**
- * Grant `u` membership of `orgId` by upserting a Supabase `organization_members`
- * row (idempotent on (organization_id, profile_id)) AND a `member_roles` row for
- * `roleKey` — the RBAC engine's actual source of truth (see rbac.service.ts).
- * Requires `u.supabaseId`. Without the `member_roles` row, every grant fell
- * through `legacyRoleKey('member') → 'manager'`, handing every join-link or
- * approved invite manager-level access (read/write/export on every business
- * module) regardless of the role the link/approval actually named.
- *
- * `roleKey` must already be validated by the caller (join-link
- * consume/approve endpoints reject anything outside JOINABLE_ROLE_KEY, so
- * `owner` never reaches here). `system=true` on the `addMemberRole` call:
- * both callers already gate the mint/approve step on
- * `requireOrgCapability(locals, 'users', 'manage')`, so there's no caller
- * identity here whose own role rank needs checking.
+ * Legacy admission retains the legacy membership-column mapping and additive
+ * role assignment. Its two writes share one native transaction and profile
+ * lifecycle lock; new-model callers must use their transactional admission path.
  */
 export async function createMembership(
   u: MembershipUser,
@@ -53,18 +43,11 @@ export async function createMembership(
   if (!u.supabaseId) {
     throw new Error('createMembership: supabaseId is required (Supabase is the sole auth store)');
   }
-  const { error } = await supabaseAdmin()
-    .from('organization_members')
-    .upsert(
-      {
-        organization_id: orgId,
-        profile_id: u.supabaseId,
-        role: roleKey === 'admin' ? 'admin' : 'member',
-      },
-      { onConflict: 'organization_id,profile_id' },
-    );
-  if (error) {
-    throw new Error(`createMembership: supabase org_members upsert failed: ${error.message}`);
+  const profileId = u.supabaseId;
+  const policy = await loadOrganizationRolePolicy(orgId);
+  if (policy.roleModel === 'organization') {
+    throw new Error('Organization-model membership requires transactional admission');
   }
-  await addMemberRole(orgId, u.supabaseId, roleKey, null, true);
+  await admitLegacyMembership(orgId, profileId, roleKey);
+  await invalidateRbac(orgId);
 }

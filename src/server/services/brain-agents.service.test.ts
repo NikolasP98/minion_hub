@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { error } from '@sveltejs/kit';
 import { createMockDb } from '$server/test-utils/mock-db';
 
 vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: vi.fn() }));
-vi.mock('./activity.service', () => ({ recordAudit: vi.fn(async () => {}) }));
+vi.mock('./activity.service', () => ({
+  recordAudit: vi.fn(async () => {}),
+  recordAuditInTx: vi.fn(async () => {}),
+}));
+vi.mock('./brain-access-grants.service', () => ({ withBrainWriteAuthority: vi.fn() }));
 
 import { gatewayCall } from '$lib/server/gateway-rpc';
-import { recordAudit } from './activity.service';
+import { withBrainWriteAuthority } from './brain-access-grants.service';
+import { recordAudit, recordAuditInTx } from './activity.service';
 import { brains, brainAccess } from '$server/db/pg-schema/brains';
 import {
   renderTemplate,
@@ -18,11 +24,19 @@ import {
 
 const mockGatewayCall = vi.mocked(gatewayCall);
 const mockRecordAudit = vi.mocked(recordAudit);
+const mockRecordAuditInTx = vi.mocked(recordAuditInTx);
 
-const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
+const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1', profileId: 'user-1' });
 const actor = { id: 'user-1', name: 'Admin' };
 
-const brainRow = (over: Partial<{ id: string; name: string; description: string | null; agentId: string | null }> = {}) => ({
+const brainRow = (
+  over: Partial<{
+    id: string;
+    name: string;
+    description: string | null;
+    agentId: string | null;
+  }> = {},
+) => ({
   id: 'brain-1',
   orgId: 'org-1',
   name: 'Support KB',
@@ -36,7 +50,14 @@ const brainRow = (over: Partial<{ id: string; name: string; description: string 
   ...over,
 });
 
-const templateRow = (over: Partial<{ namePrefix: string; emoji: string | null; model: string | null; instructions: string }> = {}) => ({
+const templateRow = (
+  over: Partial<{
+    namePrefix: string;
+    emoji: string | null;
+    model: string | null;
+    instructions: string;
+  }> = {},
+) => ({
   id: 'tmpl-1',
   orgId: 'org-1',
   namePrefix: 'Brain',
@@ -51,6 +72,19 @@ const templateRow = (over: Partial<{ namePrefix: string; emoji: string | null; m
 beforeEach(() => {
   mockGatewayCall.mockReset();
   mockRecordAudit.mockClear();
+  mockRecordAuditInTx.mockClear();
+  vi.mocked(withBrainWriteAuthority)
+    .mockReset()
+    .mockImplementation(async (ctx, _id, _principal, fn) => {
+      const [brain] = await ctx.db.select().from(brains).limit(1);
+      if (!brain) throw error(404, 'Brain not found');
+      return fn({
+        tx: ctx.db as never,
+        brain,
+        profileId: ctx.profileId!,
+        policy: { roleModel: 'legacy', defaultRoleKey: null },
+      });
+    });
 });
 
 describe('renderTemplate (pure placeholder substitution)', () => {
@@ -63,12 +97,17 @@ describe('renderTemplate (pure placeholder substitution)', () => {
   });
 
   it('substitutes an empty string when the brain has no description', () => {
-    const out = renderTemplate({ instructions: 'Desc: {{brain_description}}' }, { name: 'X', description: null });
+    const out = renderTemplate(
+      { instructions: 'Desc: {{brain_description}}' },
+      { name: 'X', description: null },
+    );
     expect(out).toBe('Desc: ');
   });
 
   it('leaves instructions with no placeholders untouched', () => {
-    expect(renderTemplate({ instructions: 'Static prompt' }, { name: 'X', description: null })).toBe('Static prompt');
+    expect(
+      renderTemplate({ instructions: 'Static prompt' }, { name: 'X', description: null }),
+    ).toBe('Static prompt');
   });
 });
 
@@ -84,6 +123,7 @@ describe('provisionBrainAgent', () => {
     resolveSequence([
       [brainRow({ agentId: null })], // loadBrainRow
       [templateRow()], // getTemplate
+      [brainRow({ agentId: null })], // fresh finalizer
       undefined, // update(brains)
       undefined, // insert(brain_access)
     ]);
@@ -99,10 +139,13 @@ describe('provisionBrainAgent', () => {
       'agents.create',
       expect.objectContaining({ name: 'brain-brain-1' }),
     );
-    expect(mockGatewayCall).toHaveBeenCalledWith('config.patch', expect.objectContaining({ baseHash: 'h1' }));
+    expect(mockGatewayCall).toHaveBeenCalledWith(
+      'config.patch',
+      expect.objectContaining({ baseHash: 'h1' }),
+    );
     expect(db.update).toHaveBeenCalledWith(brains);
     expect(db.insert).toHaveBeenCalledWith(brainAccess);
-    expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+    expect(mockRecordAuditInTx).toHaveBeenCalledTimes(1);
 
     // Gateway-side org scoping (org-scope.ts) — the config.patch payload's agent
     // entry must carry the brain's org id so agents.ts/org-scope.ts and the hub's
@@ -126,12 +169,20 @@ describe('provisionBrainAgent', () => {
   it('404s when the brain does not exist', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([[]]);
-    await expect(provisionBrainAgent(ctx(db), 'missing', actor)).rejects.toMatchObject({ status: 404 });
+    await expect(provisionBrainAgent(ctx(db), 'missing', actor)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 
   it('tolerates an "already exists" agents.create error (partial-attempt retry)', async () => {
     const { db, resolveSequence } = createMockDb();
-    resolveSequence([[brainRow({ agentId: null })], [templateRow()], undefined, undefined]);
+    resolveSequence([
+      [brainRow({ agentId: null })],
+      [templateRow()],
+      [brainRow({ agentId: null })],
+      undefined,
+      undefined,
+    ]);
     mockGatewayCall.mockImplementation(async (method: string) => {
       if (method === 'agents.create') throw new Error('agent already exists');
       if (method === 'config.get') return { hash: 'h1' };
@@ -147,7 +198,8 @@ describe('deprovisionBrainAgent', () => {
   it('deletes the gateway agent, clears agent_id, and removes the access row', async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [brainRow({ agentId: 'brain-brain-1' })], // loadBrainRow
+      [brainRow({ agentId: 'brain-brain-1' })], // preflight
+      [brainRow({ agentId: 'brain-brain-1' })], // fresh finalizer
       undefined, // update(brains)
       undefined, // delete(brain_access)
     ]);
@@ -158,7 +210,7 @@ describe('deprovisionBrainAgent', () => {
     expect(mockGatewayCall).toHaveBeenCalledWith('agents.delete', { agentId: 'brain-brain-1' });
     expect(db.update).toHaveBeenCalledWith(brains);
     expect(db.delete).toHaveBeenCalledWith(brainAccess);
-    expect(mockRecordAudit).toHaveBeenCalledTimes(1);
+    expect(mockRecordAuditInTx).toHaveBeenCalledTimes(1);
   });
 
   it('is a no-op when the brain has no agent', async () => {
@@ -175,7 +227,10 @@ describe('fanOutTemplate (collects per-agent errors without aborting the batch)'
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       [templateRow()], // getTemplate
-      [brainRow({ id: 'brain-1', agentId: 'brain-brain-1' }), brainRow({ id: 'brain-2', agentId: 'brain-brain-2' })], // brains with agent_id
+      [
+        brainRow({ id: 'brain-1', agentId: 'brain-brain-1' }),
+        brainRow({ id: 'brain-2', agentId: 'brain-brain-2' }),
+      ], // brains with agent_id
     ]);
     mockGatewayCall.mockImplementation(async (method: string, params?: Record<string, unknown>) => {
       if (method === 'config.get') return { hash: 'h1' };

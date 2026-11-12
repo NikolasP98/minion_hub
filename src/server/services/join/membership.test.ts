@@ -1,66 +1,57 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// createMembership writes the Supabase `organization_members` row AND grants
-// the real RBAC role via rbac.service's addMemberRole (member_roles row).
-const { upsert, from, hasCanonicalMembership, addMemberRole } = vi.hoisted(() => {
-  const upsert = vi.fn(async () => ({ error: null }));
-  return {
-    upsert,
-    from: vi.fn(() => ({ upsert })),
-    hasCanonicalMembership: vi.fn(async () => false),
-    addMemberRole: vi.fn(async () => undefined),
-  };
-});
-vi.mock('$server/supabase', () => ({ supabaseAdmin: () => ({ from }) }));
+const {
+  hasCanonicalMembership,
+  admitLegacyMembership,
+  invalidateRbac,
+  loadOrganizationRolePolicy,
+} = vi.hoisted(() => ({
+  hasCanonicalMembership: vi.fn(async () => false),
+  admitLegacyMembership: vi.fn(async () => undefined),
+  invalidateRbac: vi.fn(async () => undefined),
+  loadOrganizationRolePolicy: vi.fn(async () => ({ roleModel: 'legacy', defaultRoleKey: null })),
+}));
+vi.mock('$server/services/organization-role-policy', () => ({ loadOrganizationRolePolicy }));
+vi.mock('./profile-admission', () => ({ admitLegacyMembership }));
 vi.mock('$server/services/canonical-directory.service', () => ({ hasCanonicalMembership }));
-vi.mock('$server/services/rbac.service', () => ({ addMemberRole }));
-
+vi.mock('$server/services/rbac.service', () => ({ invalidateRbac }));
 import { createMembership, hasAnyMembership, isOrgMember } from './membership';
-
 beforeEach(() => vi.clearAllMocks());
 
 describe('createMembership', () => {
-  it('upserts organization_members for a user with a supabaseId', async () => {
+  it('admits the exact selected legacy admin role through the atomic membership boundary', async () => {
     await createMembership(
-      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
-      'org1',
+      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'profile-1' },
+      'org-1',
       'admin',
     );
-    expect(from).toHaveBeenCalledWith('organization_members');
-    expect(upsert).toHaveBeenCalledTimes(1);
-    const [row, opts] = upsert.mock.calls[0] as unknown as [
-      Record<string, unknown>,
-      Record<string, unknown>,
-    ];
-    expect(row).toEqual({ organization_id: 'org1', profile_id: 'p-uuid', role: 'admin' });
-    expect(opts).toEqual({ onConflict: 'organization_id,profile_id' });
+    expect(admitLegacyMembership).toHaveBeenCalledWith('org-1', 'profile-1', 'admin');
+    expect(invalidateRbac).toHaveBeenCalledWith('org-1');
   });
-
-  it('maps any non-admin role to the legacy "member" column', async () => {
+  it('retains the selected staff role instead of substituting a legacy manager fallback', async () => {
     await createMembership(
-      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
-      'org1',
+      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'profile-1' },
+      'org-1',
       'staff',
     );
-    const [row] = upsert.mock.calls[0] as unknown as [Record<string, unknown>];
-    expect(row.role).toBe('member');
+    expect(admitLegacyMembership).toHaveBeenCalledWith('org-1', 'profile-1', 'staff');
   });
-
-  it('grants the real member_roles role via addMemberRole (system-trusted, not scored against a caller)', async () => {
-    await createMembership(
-      { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'p-uuid' },
-      'org1',
-      'staff',
-    );
-    expect(addMemberRole).toHaveBeenCalledWith('org1', 'p-uuid', 'staff', null, true);
-  });
-
-  it('throws when supabaseId is missing (Supabase is the sole auth store)', async () => {
+  it('does not invalidate a grant that failed to commit', async () => {
+    admitLegacyMembership.mockRejectedValueOnce(new Error('commit failed'));
     await expect(
-      createMembership({ id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org1', 'staff'),
+      createMembership(
+        { id: 'u1', email: 'a@b.c', displayName: 'A', supabaseId: 'profile-1' },
+        'org-1',
+        'staff',
+      ),
+    ).rejects.toThrow('commit failed');
+    expect(invalidateRbac).not.toHaveBeenCalled();
+  });
+  it('throws before mutation when the Supabase profile identity is missing', async () => {
+    await expect(
+      createMembership({ id: 'u1', email: 'a@b.c', displayName: 'A' }, 'org-1', 'staff'),
     ).rejects.toThrow(/supabaseId is required/);
-    expect(upsert).not.toHaveBeenCalled();
-    expect(addMemberRole).not.toHaveBeenCalled();
+    expect(admitLegacyMembership).not.toHaveBeenCalled();
   });
 });
 

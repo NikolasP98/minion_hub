@@ -16,6 +16,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const RELIABILITY_MEMBER_AUTHORITY_QUERY = `
   select
+    to_jsonb(o)->>'role_model' as role_model,
     case when m.role is null or octet_length(m.role)<=256 then m.role else null end as legacy_role,
     case when p.role is null or octet_length(p.role)<=256 then p.role else null end as profile_role,
     case when mr.role_key is null or octet_length(mr.role_key)<=256 then mr.role_key else null end as role_key,
@@ -64,6 +65,7 @@ export class ReliabilityReadAuthorityError extends Error {
 }
 
 interface MemberRow {
+  role_model?: string | null;
   legacy_role: string | null;
   profile_role: string | null;
   role_key: string | null;
@@ -129,7 +131,21 @@ async function freshMemberAuthority(
   }
   const globalAdmin = rows[0]?.profile_role === 'admin';
   if (globalAdmin) return { globalAdmin: true };
-  const roles = resolveMemberRoleKeys(assigned, rows[0]?.legacy_role ?? null);
+  const model = rows[0]?.role_model ?? 'legacy';
+  if (model !== 'legacy' && model !== 'organization')
+    throw new ReliabilityReadAuthorityError(403, 'authority_projection_invalid');
+  const local =
+    model === 'organization'
+      ? await tx<
+          Array<{ key: string }>
+        >`select key from public.org_roles where org_id=${input.orgId}`
+      : [];
+  const roles = resolveMemberRoleKeys(
+    assigned,
+    rows[0]?.legacy_role ?? null,
+    model,
+    local.map((row) => row.key),
+  );
   const boundedRules =
     roles.length === 0
       ? []

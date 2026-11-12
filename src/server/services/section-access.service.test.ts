@@ -118,6 +118,11 @@ beforeEach(async () => {
     values ($1,'manager','users',true,false,false,false,false,true)`,
     [org],
   );
+  await client.query(
+    `insert into permission_rules(org_id,role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage)
+    values($1,'manager','roles',true,true,true,true,false,false)`,
+    [org],
+  );
   await client.query(`insert into app_nav_config(org_id,value) values ($1,$2::jsonb)`, [
     org,
     JSON.stringify({

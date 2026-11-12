@@ -1,3 +1,4 @@
+import { withOrganizationRoleSources } from './role-model-catalog';
 import { describe, expect, it } from 'vitest';
 import pg17Expected from './catalog-fingerprint.pg17.expected.json';
 import pg17FenceOnceExpected from './catalog-fingerprint.pg17.fence-once.expected.json';
@@ -214,6 +215,53 @@ function mutate(baseline: MutableRecord, mutation: (copy: MutableRecord) => void
   mutation(copy);
   return copy;
 }
+
+describe('organization-role notification source extension', () => {
+  function extended() {
+    const state = withOrganizationRoleSources(snapshot(18, true));
+    state.sourceRelations = (state.sourceRelations as MutableRecord[]).map((row) => ({
+      ...row,
+      owner: state.sessionUser,
+    }));
+    return state;
+  }
+  it('admits the reviewed pre-grant role catalog for a maintenance-window upgrade', () => {
+    for (const major of [17, 18] as const) {
+      const before = withOrganizationRoleSources(snapshot(major, true), false);
+      before.sourceRelations = (before.sourceRelations as MutableRecord[]).map((row) => ({
+        ...row,
+        owner: before.sessionUser,
+      }));
+      expect(notificationProjectionCatalogMatches(before)).toBe(true);
+    }
+  });
+  it('admits only the reviewed column-only grants and restrictive source fence', () => {
+    expect(notificationProjectionCatalogMatches(extended())).toBe(true);
+  });
+  it('rejects extra role catalog fields and removal of the restrictive fence', () => {
+    const extra = extended();
+    (extra.columnAcl as MutableRecord[]).push({
+      relname: 'org_roles',
+      attname: 'name',
+      grantee: 'app_notification_worker',
+      grantor: 'RELATION_OWNER',
+      is_grantable: false,
+      privilege_type: 'SELECT',
+    });
+    expect(notificationProjectionCatalogMatches(extra)).toBe(false);
+    const missing = extended();
+    missing.sourcePolicies = (missing.sourcePolicies as MutableRecord[]).filter(
+      (row) => row.polname !== 'notification_projection_org_roles_fence',
+    );
+    expect(notificationProjectionCatalogMatches(missing)).toBe(false);
+    // Removing both the fence and the model-column grant cannot hide unfenced
+    // org_roles grants: the source catalog always includes the role table.
+    missing.columnAcl = (missing.columnAcl as MutableRecord[]).filter(
+      (row) => !(row.relname === 'organizations' && row.attname === 'role_model'),
+    );
+    expect(notificationProjectionCatalogMatches(missing)).toBe(false);
+  });
+});
 
 describe('notification projection catalog fingerprint', () => {
   it('admits only the exact reviewed PostgreSQL 17 and 18 catalog modes', () => {

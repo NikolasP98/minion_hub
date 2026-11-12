@@ -147,7 +147,7 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/settings/organizations': 'role:admin',
   '/settings/plugins': 'org-capability:settings:manage',
   '/settings/provision': 'org-capability:settings:manage',
-  '/settings/roles': 'org-capability:users:manage',
+  '/settings/roles': 'org-capability:roles:view',
   '/settings/tables': 'org-capability:settings:manage',
   '/settings/team': 'org-capability:users:manage',
   '/settings/workflows': 'org-capability:settings:manage',

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { invalidateAll } from '$app/navigation';
   import { iconSizes, Badge, Button, PageHeader, Select } from '$lib/components/ui';
   import { AsyncBoundary, FormFieldset, PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -14,7 +15,9 @@
   // approve endpoint's default.
   // svelte-ignore state_referenced_locally -- editable choices are seeded from server data once.
   let roleChoices = $state<Record<string, string>>(
-    Object.fromEntries(data.requests.map((request) => [request.id, 'staff'])),
+    Object.fromEntries(
+      data.requests.map((request) => [request.id, data.rolePolicy.defaultRoleKey ?? 'staff']),
+    ),
   );
 
   async function approve(id: string, organizationId: string, role: string) {
@@ -57,7 +60,8 @@
 
   // svelte-ignore state_referenced_locally -- editable choice is seeded from the first server org.
   let linkOrg = $state(data.orgs[0]?.id ?? '');
-  let linkRole = $state('staff');
+  // svelte-ignore state_referenced_locally -- editable selected role is seeded once.
+  let linkRole = $state(data.rolePolicy.defaultRoleKey ?? 'staff');
   let createdUrl = $state<string | null>(null);
 
   async function mintLink() {
@@ -153,10 +157,9 @@
                     bind:value={roleChoices[request.id]}
                     disabled={busy === request.id}
                   >
-                    <option value="admin">Admin</option>
-                    <option value="manager">Manager</option>
-                    <option value="staff">Staff</option>
-                    <option value="viewer">Viewer</option>
+                    {#each data.roleOptions as role (role.key)}
+                      <option value={role.key}>{role.name}</option>
+                    {/each}
                   </Select>
                   <Button
                     variant="primary"
@@ -209,11 +212,17 @@
                   <option value={organization.id}>{organization.name}</option>
                 {/each}
               </Select>
+              {#if data.rolePolicy.roleModel === 'organization'}
+                <p class="t-caption text-text-secondary">
+                  {m.roles_defaultMemberNotice({
+                    role: data.roleOptions.find((r) => r.key === linkRole)?.name ?? linkRole,
+                  })}
+                </p>
+              {/if}
               <Select size="sm" label="Role" bind:value={linkRole}>
-                <option value="admin">Admin</option>
-                <option value="manager">Manager</option>
-                <option value="staff">Staff</option>
-                <option value="viewer">Viewer</option>
+                {#each data.roleOptions as role (role.key)}
+                  <option value={role.key}>{role.name}</option>
+                {/each}
               </Select>
               <Button
                 type="submit"

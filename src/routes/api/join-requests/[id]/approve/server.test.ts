@@ -1,3 +1,6 @@
+vi.mock('$server/services/organization-role-policy', () => ({
+  loadOrganizationRolePolicy: vi.fn(async () => ({ roleModel: 'legacy', defaultRoleKey: null })),
+}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -119,6 +122,30 @@ describe('POST /api/join-requests/[id]/approve', () => {
     expect(approveRequest).toHaveBeenCalledWith(
       'r1',
       expect.objectContaining({ organizationId: 'org-2' }),
+    );
+  });
+});
+
+describe('organization-model request approval', () => {
+  it('resolves the organization default at the approval transaction rather than defaulting to staff', async () => {
+    const { loadOrganizationRolePolicy } =
+      await import('$server/services/organization-role-policy');
+    vi.mocked(loadOrganizationRolePolicy).mockResolvedValueOnce({
+      roleModel: 'organization',
+      defaultRoleKey: 'custom-administrator',
+    });
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    await POST!({
+      locals: {
+        user: { id: 'legacy-user', supabaseId: 'profile-1', role: 'user' },
+        tenantCtx: { tenantId: 'org-1' },
+      },
+      params: { id: 'request-1' },
+      request: req({ organizationId: 'org-1' }),
+    } as never);
+    expect(approveRequest).toHaveBeenCalledWith(
+      'request-1',
+      expect.objectContaining({ role: undefined, reviewerProfileId: 'profile-1' }),
     );
   });
 });
