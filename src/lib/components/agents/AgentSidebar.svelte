@@ -39,7 +39,7 @@
   import { loadPersonalAgentNames } from '$lib/state/features/personal-agent-names.svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { configState, loadConfig, getField } from '$lib/state/config/config.svelte';
+  import { configState, ensureConfigLoaded, getField } from '$lib/state/config/config.svelte';
   import { onMount } from 'svelte';
 
   interface Props {
@@ -63,7 +63,7 @@
   // finishes AFTER mount, so a mount-time `conn.connected` check never fired
   // and every agent fell back to the "copilot" archetype.
   $effect(() => {
-    if (conn.connected && !configState.loaded && !configState.loading) loadConfig();
+    if (conn.connected) ensureConfigLoaded();
   });
 
   // ── Archetype roster filter ───────────────────────────────────────────────

@@ -1,0 +1,6 @@
+/* app.css locks html/body to a non-scrolling shell; Storybook's canvas + docs pages must scroll. */
+html,
+body {
+  height: auto;
+  overflow: auto;
+}

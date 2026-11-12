@@ -192,8 +192,11 @@ const ROOT = path.resolve('src');
 function browserFiles(dir = ROOT): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
+    // `stories`: dev-only Storybook fixtures with mock RPCs, not product call sites.
     if (entry.isDirectory())
-      return ['server', 'paraglide', '__fixtures__'].includes(entry.name) ? [] : browserFiles(full);
+      return ['server', 'paraglide', '__fixtures__', 'stories'].includes(entry.name)
+        ? []
+        : browserFiles(full);
     if (!/\.(ts|svelte)$/.test(entry.name)) return [];
     if (/\.test\.ts$|\.server\.ts$|\+server\.ts$/.test(entry.name)) return [];
     return [full];

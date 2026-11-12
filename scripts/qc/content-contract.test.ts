@@ -108,8 +108,10 @@ const BYPASS =
 function sourceFiles(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) sourceFiles(path, out);
-    else if (/\.(svelte|ts)$/.test(entry.name) && !/\.test\.|\.spec\./.test(entry.name))
+    // Storybook stories are dev-only fixtures, not product code.
+    if (entry.isDirectory()) {
+      if (path !== join(ROOT, 'src/lib/stories')) sourceFiles(path, out);
+    } else if (/\.(svelte|ts)$/.test(entry.name) && !/\.test\.|\.spec\./.test(entry.name))
       out.push(path);
   }
   return out;

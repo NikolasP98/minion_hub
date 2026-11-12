@@ -51,13 +51,17 @@ function walkFiles(directory: string): string[] {
 
 function sourceFiles(projectRoot: string): string[] {
   const root = join(projectRoot, 'src');
-  return walkFiles(root)
-    .filter((file) => SOURCE_EXTENSIONS.has(file.slice(file.lastIndexOf('.'))))
-    .filter((file) => !/\.(?:test|spec)\.[jt]s$/.test(file))
-    .filter((file) => !file.includes(`${sep}paraglide${sep}`))
-    .filter((file) => !file.includes(`${sep}server${sep}`))
-    .filter((file) => !/\+server\.[jt]s$/.test(file))
-    .sort();
+  return (
+    walkFiles(root)
+      .filter((file) => SOURCE_EXTENSIONS.has(file.slice(file.lastIndexOf('.'))))
+      .filter((file) => !/\.(?:test|spec)\.[jt]s$/.test(file))
+      // Storybook stories are dev-only fixtures with mock calls, not product code.
+      .filter((file) => !file.includes(`${sep}stories${sep}`))
+      .filter((file) => !file.includes(`${sep}paraglide${sep}`))
+      .filter((file) => !file.includes(`${sep}server${sep}`))
+      .filter((file) => !/\+server\.[jt]s$/.test(file))
+      .sort()
+  );
 }
 
 function lineAt(source: string, index: number): number {

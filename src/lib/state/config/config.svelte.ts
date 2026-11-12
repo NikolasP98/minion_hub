@@ -187,6 +187,16 @@ export async function loadBaseHash(): Promise<string | null> {
   }
 }
 
+/**
+ * Mount-time guard shared by every surface that needs the config: load once, and
+ * never re-run on a rejection. Without the loadError check an `$effect` using
+ * `!loaded && !loading` re-fired on every failed attempt (a retry storm against a
+ * connected gateway that refuses `config.get`). Explicit retries call loadConfig().
+ */
+export function ensureConfigLoaded(): void {
+  if (!configState.loaded && !configState.loading && !configState.loadError) void loadConfig();
+}
+
 let loadSequence = 0;
 export async function loadConfig(current: () => boolean = () => true): Promise<void> {
   const operation = ++loadSequence;
