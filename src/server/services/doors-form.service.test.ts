@@ -105,6 +105,8 @@ describe('submitFormDoor', () => {
     expect(inserted().contactId).toBe('dni-match');
     const [lookup, fill] = executed();
     expect(lookup.sql).toContain('p.doc_number');
+    // Trusted rows sort first in SQL, so the limit can never cut them off.
+    expect(lookup.sql).toMatch(/order by trusted desc, c\.created_at\s+limit 20/);
     // A DNI typed into a door is flagged untrusted, so it needs the name as well.
     expect(lookup.sql).toMatch(/or coalesce\(c\.source, ''\) not like 'door:%'\) as trusted/);
     expect(lookup.params).toEqual(['45678901', 'org-1', '45678901', '45678901']);
@@ -157,9 +159,9 @@ describe('submitFormDoor', () => {
     expect(inserted().contactId).toBe(CONTACT);
   });
 
-  it('sameName: two shared words, accents and case ignored', () => {
+  it('sameName: two shared words required, accents and case ignored', () => {
     expect(sameName('María Pérez', 'MARIA PEREZ GOMEZ')).toBe(true);
-    expect(sameName('Ana', 'Ana Prueba')).toBe(true);
+    expect(sameName('Ana', 'Ana Prueba')).toBe(false);
     expect(sameName('Ana Prueba', 'Ana Gómez')).toBe(false);
     expect(sameName(null, 'Ana')).toBe(false);
   });

@@ -147,7 +147,7 @@ async function contactIdByDni(
     where c.org_id = ${orgId} and c.deleted_at is null
       and (upper(p.doc_number) = ${dni}
            or upper(coalesce(c.custom_fields->>'dni', c.custom_fields->>'DNI')) = ${dni})
-    order by c.created_at
+    order by trusted desc, c.created_at
     limit 20
   `)) as unknown as Array<{ id: string; name: string | null; trusted: boolean }>;
   const hit = rows.find((r) => r.trusted) ?? rows.find((r) => sameName(r.name, name));
@@ -162,12 +162,11 @@ const nameTokens = (s: string | null) =>
     .split(/[^a-z]+/)
     .filter((t) => t.length > 1);
 
-/** 'Ana Prueba' ~ 'ANA MARÍA PRUEBA GÓMEZ': shares two words (one if either name is a single word). */
+/** 'Ana Prueba' ~ 'ANA MARÍA PRUEBA GÓMEZ': at least two shared words, so a first name alone never matches. */
 export function sameName(a: string | null, b: string | null): boolean {
   const x = nameTokens(a);
   const y = new Set(nameTokens(b));
-  if (!x.length || !y.size) return false;
-  return x.filter((t) => y.has(t)).length >= Math.min(2, x.length, y.size);
+  return x.filter((t) => y.has(t)).length >= 2;
 }
 
 /** Adds DNI / social handles to a contact; keys already on the row win. */
