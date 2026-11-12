@@ -4,6 +4,13 @@
   import { Copy, Pencil, Trash2, ExternalLink, Archive } from 'lucide-svelte';
   import type { PlayFunction } from 'storybook/internal/types';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
+  import Popover from '$lib/components/ui/Popover.svelte';
+  import {
+    dropdownInDialog,
+    dropdownNestedInDialog,
+    dropdownOnTop,
+    showModal,
+  } from './top-layer-play';
 
   const items = [
     { value: 'edit', label: 'Edit', icon: Pencil },
@@ -116,5 +123,60 @@
         {/snippet}
       </Dropdown>
     </div>
+  {/snippet}
+</Story>
+
+<Story name="InsideModalDialog" play={dropdownInDialog}>
+  {#snippet template()}
+    <dialog
+      {@attach showModal}
+      data-testid="clip"
+      class="m-auto surface-3 rounded-[var(--radius-lg)] p-4 text-sm text-foreground"
+    >
+      <p class="mb-2 text-muted-foreground">A modal drawer (top layer).</p>
+      <Dropdown {items}>
+        {#snippet trigger()}<span class={triggerCls}>Actions</span>{/snippet}
+      </Dropdown>
+    </dialog>
+  {/snippet}
+</Story>
+
+<Story name="InsideOverflowHidden" play={dropdownOnTop}>
+  {#snippet template()}
+    <div class="sb-clip-stage">
+      <div
+        data-testid="clip"
+        class="sb-clip-box rounded-[var(--radius-md)] border border-[var(--hairline)]"
+      >
+        <Dropdown {items}>
+          {#snippet trigger()}<span class={triggerCls}>Actions</span>{/snippet}
+        </Dropdown>
+      </div>
+      <div aria-hidden="true" class="sb-clip-cover surface-4 p-2 text-xs text-muted-foreground">
+        A higher z-index sibling over the menu's area.
+      </div>
+    </div>
+  {/snippet}
+</Story>
+
+<Story name="NestedInDialog" play={dropdownNestedInDialog}>
+  {#snippet template()}
+    <dialog
+      {@attach showModal}
+      class="m-auto surface-3 rounded-[var(--radius-lg)] p-4 text-sm text-foreground"
+    >
+      <Popover>
+        {#snippet trigger()}<span class={triggerCls}>Filter</span>{/snippet}
+        <div class="p-2 w-64 h-56 flex flex-col gap-2">
+          <div class="flex items-center gap-2">
+            <Dropdown {items}>
+              {#snippet trigger()}<span class={triggerCls}>More</span>{/snippet}
+            </Dropdown>
+            <span class="font-medium text-foreground">Status is Open</span>
+          </div>
+          <p class="text-muted-foreground">The menu opens over this panel.</p>
+        </div>
+      </Popover>
+    </dialog>
   {/snippet}
 </Story>

@@ -3,6 +3,7 @@
   import { fn } from 'storybook/test';
   import type { PlayFunction } from 'storybook/internal/types';
   import Combobox from '$lib/components/ui/Combobox.svelte';
+  import { comboboxOnTop, showModal } from './top-layer-play';
 
   const items = [
     { id: 'lima', name: 'Lima', region: 'Coast' },
@@ -104,6 +105,45 @@
           </span>
         {/snippet}
       </Combobox>
+    </div>
+  {/snippet}
+</Story>
+
+<Story name="InsideModalDialog" play={comboboxOnTop}>
+  {#snippet template()}
+    <dialog
+      {@attach showModal}
+      data-testid="clip"
+      class="m-auto w-72 surface-3 rounded-[var(--radius-lg)] p-4 text-sm text-foreground"
+    >
+      <Combobox
+        id="sb-combobox-dialog"
+        {items}
+        itemToValue={(i) => i.id}
+        itemToString={(i) => i.name}
+        label="City"
+        placeholder="Search a city"
+      />
+    </dialog>
+  {/snippet}
+</Story>
+
+<Story name="InsideOverflowHidden" play={comboboxOnTop}>
+  {#snippet template()}
+    <div class="sb-clip-stage">
+      <div data-testid="clip" class="sb-clip-box w-64">
+        <Combobox
+          id="sb-combobox-clipped"
+          {items}
+          itemToValue={(i) => i.id}
+          itemToString={(i) => i.name}
+          label="City"
+          placeholder="Search a city"
+        />
+      </div>
+      <div aria-hidden="true" class="sb-clip-cover surface-4 p-2 text-xs text-muted-foreground">
+        A higher z-index sibling over the list's area.
+      </div>
     </div>
   {/snippet}
 </Story>

@@ -1,0 +1,24 @@
+/* Layout for the top-layer stories. Plain CSS, not utilities: the storybook
+   vitest lane runs without the Tailwind plugin, and these boxes must have
+   real geometry there for the play functions' hit tests. */
+.sb-clip-stage {
+  display: grid;
+  justify-items: start;
+  padding: var(--space-6);
+}
+
+/* `contain: layout` makes the box the containing block of fixed-position
+   panels too (as a contained or transformed card is), so `overflow: hidden`
+   clips them as well as absolute ones. */
+.sb-clip-box {
+  overflow: hidden;
+  contain: layout;
+}
+
+/* A sibling above the root's `--layer-modal` panels, right where they open. */
+.sb-clip-cover {
+  position: relative;
+  z-index: var(--layer-toast);
+  justify-self: stretch;
+  block-size: calc(var(--space-12) * 5);
+}

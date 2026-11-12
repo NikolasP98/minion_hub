@@ -89,16 +89,18 @@
   {@render trigger()}
 </button>
 
-<!-- z-index is set by `portalInLayer` itself (not a `style:`/utility class here — a Tailwind
-     `z-[var(--layer-modal)]` class computed to z-index:auto in the app root before, and a
-     `style:` directive on the SAME element raced the action's own z-index write, order
-     undefined): it's the ONE place that also bumps a NESTED panel (a Dropdown opened from
-     inside a Popover, e.g. FilterChip's "…" menu) a tier above its host — see its doc comment.
-     Stays unconditionally mounted (never `{#if api.open}`): an earlier fix tried that and broke
-     `ProfileMenu.test.ts`'s SSR assertions, which expect a closed menu's items present in
-     server-rendered HTML, hidden only by the `hidden` attribute (`getContentProps()`'s
-     `hidden: !open`). -->
-<div bind:this={positionerEl} use:portalInLayer {...api.getPositionerProps()}>
+<!-- `popover="manual"` + `portalInLayer`: portalled out of its host, and shown in the
+     browser top layer while open. A menu opened from inside another panel (FilterChip's
+     "…" menu) is shown later, so it paints above that panel without a z-index tier.
+     Stays unconditionally mounted (never `{#if api.open}`): `ProfileMenu.test.ts`'s SSR
+     assertions expect a closed menu's items in the server HTML, hidden only by the
+     `hidden` attribute (`getContentProps()`'s `hidden: !open`). -->
+<div
+  bind:this={positionerEl}
+  popover="manual"
+  use:portalInLayer={api.open}
+  {...api.getPositionerProps()}
+>
   <div
     {...api.getContentProps()}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"

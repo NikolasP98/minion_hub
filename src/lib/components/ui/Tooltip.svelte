@@ -154,20 +154,14 @@
   {/if}
 
   {#if tip.open && !suppressed}
-    <!-- Portaled to <body>, like Dropdown: rendered inline, the panel is trapped
-         in whatever stacking context its host creates (the sidebar's
-         `z-[var(--layer-navigation)]` aside, a blurred sticky header, a
-         transformed card), and NO z-index on the panel can lift it out — a raw
-         9999 here still painted under the calendar's sticky gutter (owner
-         report 2026-09-22). z-index is set by `portalInLayer` itself (not a
-         `style:`/utility class here — see its doc comment: a Tailwind arbitrary
-         layer utility computes to `auto`, and a `style:` directive on this same
-         element would race the action's own z-index write). `--layer-modal`
-         matches Dropdown/Popover; `portalInLayer` also bumps a NESTED panel a
-         tier above its host so an interactive tooltip raised from inside a
-         dialog OR another portaled panel still sits on top. -->
+    <!-- Portalled to <body>, or to the host dialog, like Dropdown, and shown in the
+         browser top layer (`popover="manual"`). Rendered inline, the panel was
+         trapped in its host's stacking context, so the sidebar, a blurred sticky
+         header or the calendar's sticky gutter painted over it (owner report
+         2026-09-22). Mounted means open, and a manual popover never takes focus. -->
     <div
-      use:portalInLayer
+      popover="manual"
+      use:portalInLayer={true}
       {...tip.getPositionerProps()}
       class={interactive ? '' : 'pointer-events-none'}
     >
