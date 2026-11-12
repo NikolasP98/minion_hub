@@ -3,6 +3,9 @@
   import { fn } from 'storybook/test';
   import ChatInput from '$lib/components/my-agent/ChatInput.svelte';
 
+  const draft = (n: number) =>
+    Array.from({ length: n }, (_, i) => `Draft line ${i + 1}`).join('\n');
+
   // Suggestion popovers (`/skills`, `@mentions`, channel pickers) read gateway state;
   // offline they simply show nothing. Everything else is prop-driven.
   const { Story } = defineMeta({
@@ -27,6 +30,18 @@
 </Story>
 
 <Story name="Multiline" args={{ value: 'First line.\nSecond line.\n\nFourth line after a blank.' }}>
+  {#snippet template(args)}<div class="w-full max-w-xl"><ChatInput {...args} /></div>{/snippet}
+</Story>
+
+<Story name="Grows 1 line" args={{ value: draft(1) }}>
+  {#snippet template(args)}<div class="w-full max-w-xl"><ChatInput {...args} /></div>{/snippet}
+</Story>
+
+<Story name="Grows 6 lines" args={{ value: draft(6) }}>
+  {#snippet template(args)}<div class="w-full max-w-xl"><ChatInput {...args} /></div>{/snippet}
+</Story>
+
+<Story name="Grows 20 lines capped and scrolling" args={{ value: draft(20) }}>
   {#snippet template(args)}<div class="w-full max-w-xl"><ChatInput {...args} /></div>{/snippet}
 </Story>
 
