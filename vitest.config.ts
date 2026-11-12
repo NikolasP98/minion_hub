@@ -57,7 +57,8 @@ const unitTest = {
 };
 
 // Story tests run in a real browser (Playwright Chromium). Opt-in via `bun run test:storybook`.
-const storybookProject = {
+// A function so `storybookTest()` (which scans `.storybook` and logs) only runs under STORYBOOK_TESTS.
+const storybookProject = () => ({
   extends: true,
   plugins: [
     // The plugin will run tests for the stories defined in your Storybook config
@@ -92,7 +93,7 @@ const storybookProject = {
       ],
     },
   },
-};
+});
 
 export default defineConfig({
   plugins: [
@@ -109,6 +110,6 @@ export default defineConfig({
     conditions: ['node', 'module', 'browser', 'development|production'],
   },
   test: process.env.STORYBOOK_TESTS
-    ? { projects: [{ extends: true, test: { name: 'unit', ...unitTest } }, storybookProject] }
+    ? { projects: [{ extends: true, test: { name: 'unit', ...unitTest } }, storybookProject()] }
     : unitTest,
 });
