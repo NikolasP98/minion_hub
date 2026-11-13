@@ -10,6 +10,11 @@ import { sql } from 'drizzle-orm';
  * POS ticket line has charged it yet (`paid`, as `visitForBooking` derives it —
  * legacy `'voided'` included, same as every other paid-to-date read).
  *
+ * A service whose resolved price is exactly 0 is never owed (`r.price !== 0`):
+ * price resolves as the client does — `coalesce(booking product, event type
+ * product)` → ACTIVE `fin_products.unit_price`. No product / inactive product
+ * is price null, which stays owed.
+ *
  * `invoice_id is null` is the one condition `chargeableRows` has no access to:
  * the till only knows ticket lines, while a booking invoiced through the
  * fin_invoices bridge (`linkInvoiceToBookings`) is invoiced by definition and
@@ -23,6 +28,13 @@ export const UNBILLED_BOOKING_WHERE = sql`
   and b.package_grant_id is null
   and b.payment_plan_id is null
   and b.invoice_id is null
+  and not exists (
+    select 1 from public.fin_products p
+    where p.org_id = b.org_id and p.active and p.unit_price = 0
+      and p.id = coalesce(b.product_id,
+        (select et.product_id from public.sched_event_types et
+         where et.org_id = b.org_id and et.id = b.event_type_id))
+  )
   and not exists (
     select 1
     from public.pos_ticket_lines tl

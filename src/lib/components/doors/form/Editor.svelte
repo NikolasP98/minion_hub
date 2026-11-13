@@ -6,11 +6,12 @@
   import {
     configSchema,
     FORM_FIELD_TYPES,
-    FORM_MAX_FIELDS,
     type FormField as FormFieldDef,
     type FormFieldType,
   } from '$lib/doors/kinds/form';
   import type { DoorEditorProps } from '$lib/doors/types';
+  import TagsField from '$lib/components/tags/TagsField.svelte';
+  import type { CalTag } from '$lib/components/scheduling/calendar/types';
 
   let { config, onchange, canManage }: DoorEditorProps = $props();
 
@@ -19,6 +20,7 @@
     consentText: string;
     consentRequired: boolean;
     successMessage?: string;
+    tagIds?: string[];
   };
 
   // Controlled: the page owns the draft; a malformed stored config still opens.
@@ -29,12 +31,14 @@
       consentText: typeof c.consentText === 'string' ? c.consentText : '',
       consentRequired: c.consentRequired !== false,
       ...(c.successMessage ? { successMessage: c.successMessage } : {}),
+      ...(Array.isArray(c.tagIds) && c.tagIds.length ? { tagIds: c.tagIds } : {}),
     };
   });
 
   function emit(next: Partial<Editable>) {
     const out: Editable = { ...cfg, ...next };
     if (!out.successMessage?.trim()) delete out.successMessage;
+    if (!out.tagIds?.length) delete out.tagIds;
     onchange(out);
   }
 
@@ -46,7 +50,19 @@
     select: m.doors_form_type_select,
     date: m.doors_form_type_date,
     checkbox: m.doors_form_type_checkbox,
+    multiselect: m.doors_form_type_multiselect,
+    file: m.doors_form_type_file,
   };
+  const hasOptions = (t: FormFieldType) => t === 'select' || t === 'multiselect';
+
+  // The org's customer tags, for the "tag every contact" picker. A viewer without CRM access sees none.
+  let crmTags = $state<CalTag[]>([]);
+  $effect(() => {
+    fetch('/api/tags?scope=crm')
+      .then((r) => (r.ok ? r.json() : { tags: [] }))
+      .then((b: { tags: CalTag[] }) => (crmTags = b.tags))
+      .catch(() => {});
+  });
   const typeOptions = $derived(FORM_FIELD_TYPES.map((t) => ({ value: t, label: typeLabel[t]() })));
 
   // Keys of fields added in this session follow their label; saved keys never
@@ -83,11 +99,10 @@
   }
 
   function setType(i: number, type: FormFieldType) {
-    const { options: _, ...rest } = cfg.fields[i];
-    const next: FormFieldDef =
-      type === 'select'
-        ? { ...rest, type, options: cfg.fields[i].options ?? [] }
-        : { ...rest, type };
+    const { options: _, accept: _a, maxFiles: _m, ...rest } = cfg.fields[i];
+    const next: FormFieldDef = hasOptions(type)
+      ? { ...rest, type, options: cfg.fields[i].options ?? [] }
+      : { ...rest, type };
     emit({ fields: cfg.fields.map((f, j) => (j === i ? next : f)) });
   }
 
@@ -123,7 +138,6 @@
 <div class="form-editor">
   <div class="card-h">
     <span>{m.doors_form_fields_title()}</span>
-    <span class="t-caption">{m.doors_form_max_fields({ max: FORM_MAX_FIELDS })}</span>
   </div>
 
   {#if problems.length}
@@ -153,7 +167,41 @@
             onchange={(v) => setType(i, v as FormFieldType)}
           />
         </div>
-        {#if field.type === 'select'}
+        {#if field.type === 'file'}
+          <div class="row-main">
+            <Select
+              label={m.doors_form_file_accept()}
+              value={field.accept ?? 'any'}
+              options={[
+                { value: 'any', label: m.doors_form_file_accept_any() },
+                { value: 'image', label: m.doors_form_file_accept_image() },
+              ]}
+              size="sm"
+              disabled={!canManage}
+              onchange={(v) => updateField(i, { accept: v === 'image' ? 'image' : 'any' })}
+            />
+            <Input
+              label={m.doors_form_file_max()}
+              type="number"
+              min={1}
+              max={10}
+              value={String(field.maxFiles ?? 1)}
+              size="sm"
+              disabled={!canManage}
+              onchange={(e: Event) =>
+                updateField(i, {
+                  maxFiles: Math.min(
+                    Math.max(
+                      Math.trunc(Number((e.currentTarget as HTMLInputElement).value)) || 1,
+                      1,
+                    ),
+                    10,
+                  ),
+                })}
+            />
+          </div>
+        {/if}
+        {#if hasOptions(field.type)}
           <FormField label={m.doors_form_field_options()} disabled={!canManage}>
             {#snippet children(p)}
               <textarea
@@ -218,16 +266,24 @@
 
   {#if canManage}
     <div>
-      <Button
-        variant="secondary"
-        size="sm"
-        disabled={cfg.fields.length >= FORM_MAX_FIELDS}
-        onclick={add}
-      >
+      <Button variant="secondary" size="sm" onclick={add}>
         <Plus size={iconSizes.sm} />{m.doors_form_add_field()}
       </Button>
     </div>
   {/if}
+
+  <FormField label={m.doors_form_tags_title()} helper={m.doors_form_tags_hint()}>
+    {#snippet children()}
+      <TagsField
+        scope="crm"
+        allTags={crmTags}
+        value={cfg.tagIds ?? []}
+        disabled={!canManage}
+        onchange={(tagIds) => emit({ tagIds })}
+        onregistrychange={(tags) => (crmTags = tags)}
+      />
+    {/snippet}
+  </FormField>
 
   <FormField
     label={m.doors_form_consent_text()}
@@ -277,12 +333,6 @@
     font-weight: 600;
     letter-spacing: 0.03em;
     color: var(--color-text-secondary);
-  }
-  .card-h .t-caption {
-    text-transform: none;
-    font-weight: 400;
-    letter-spacing: normal;
-    color: var(--color-text-tertiary);
   }
   .problems {
     margin: 0;

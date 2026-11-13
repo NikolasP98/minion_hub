@@ -17,12 +17,25 @@ export const FORM_FIELD_TYPES = [
   'select',
   'date',
   'checkbox',
+  'multiselect',
+  'file',
 ] as const;
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
 
-export const FORM_MAX_FIELDS = 20;
 export const FORM_MAX_OPTIONS = 20;
 export const FORM_MAX_VALUE = 2000;
+export const FORM_MAX_FILES = 10;
+export const FORM_MAX_TAGS = 10;
+/** What a `file` field with `accept: 'image'` takes (a subset of the attachment allowlist). */
+export const FORM_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/gif',
+];
+/** A `files.id` (cuid2) as the upload endpoint returns it. */
+const FILE_ID_RE = /^[a-z0-9]{16,40}$/;
 export const FORM_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/;
 const PHONE_RE = /^[+0-9 ()-]{6,20}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -34,6 +47,10 @@ const fieldSchema = z
     type: z.enum(FORM_FIELD_TYPES),
     required: z.boolean(),
     options: z.array(z.string().trim().min(1).max(100)).max(FORM_MAX_OPTIONS).optional(),
+    /** `file` only: 'image' narrows uploads to FORM_IMAGE_TYPES (default: any allowed attachment). */
+    accept: z.enum(['image', 'any']).optional(),
+    /** `file` only: how many files the answer may hold (default 1). */
+    maxFiles: z.number().int().min(1).max(FORM_MAX_FILES).optional(),
   })
   .strict();
 
@@ -44,10 +61,12 @@ export type FormConfigProblem = 'duplicate_key' | 'select_needs_options' | 'need
 
 export const configSchema = z
   .object({
-    fields: z.array(fieldSchema).min(1).max(FORM_MAX_FIELDS),
+    fields: z.array(fieldSchema).min(1),
     consentText: z.string().trim().min(1).max(1000),
     consentRequired: z.boolean().default(true),
     successMessage: z.string().trim().max(500).optional(),
+    /** Manual customer tags put on the contact of every submission (new or matched). */
+    tagIds: z.array(z.string().uuid()).max(FORM_MAX_TAGS).optional(),
   })
   .strict()
   .superRefine((cfg, ctx) => {
@@ -56,7 +75,7 @@ export const configSchema = z
       if (seen.has(f.key))
         ctx.addIssue({ code: 'custom', path: ['fields', i, 'key'], message: 'duplicate_key' });
       seen.add(f.key);
-      if (f.type === 'select' && !f.options?.length)
+      if ((f.type === 'select' || f.type === 'multiselect') && !f.options?.length)
         ctx.addIssue({
           code: 'custom',
           path: ['fields', i, 'options'],
@@ -104,6 +123,23 @@ function valueSchema(field: FormField): z.ZodType {
       ? box.refine((v) => v, { message: 'required' })
       : z.preprocess((v) => v ?? false, box);
   }
+  if (field.type === 'multiselect' || field.type === 'file') {
+    const options = field.options ?? [];
+    const item =
+      field.type === 'file'
+        ? z.string().regex(FILE_ID_RE)
+        : z.string().refine((v) => options.includes(v));
+    const max = field.type === 'file' ? (field.maxFiles ?? 1) : FORM_MAX_OPTIONS;
+    const list = z
+      .array(item, { error: err })
+      .max(max, 'invalid')
+      .refine((v) => new Set(v).size === v.length, 'invalid');
+    // [] / null mean "not answered", like '' for text.
+    return z.preprocess(
+      (v) => (v === null || (Array.isArray(v) && !v.length) ? undefined : v),
+      field.required ? list : list.optional(),
+    );
+  }
   let s = z.string({ error: err }).trim().min(1, 'required').max(FORM_MAX_VALUE, 'invalid');
   if (field.type === 'phone') s = s.regex(PHONE_RE, 'invalid');
   if (field.type === 'email') s = s.toLowerCase().email('invalid').max(320, 'invalid');
@@ -121,7 +157,16 @@ export function buildSubmissionSchema(config: Pick<FormConfig, 'fields'>) {
   return z.object(Object.fromEntries(config.fields.map((f) => [f.key, valueSchema(f)])));
 }
 
-export type SubmissionValues = Record<string, string | boolean>;
+export type SubmissionValues = Record<string, string | boolean | string[]>;
+
+/** The uploaded file ids a validated submission carries, across every `file` field. */
+export function fileIdsFromValues(fields: FormField[], values: SubmissionValues): string[] {
+  const ids = fields.flatMap((f) => {
+    const v = values[f.key];
+    return f.type === 'file' && Array.isArray(v) ? v : [];
+  });
+  return [...new Set(ids)];
+}
 
 /** Validates values and consent; errors are per-field codes (`consent` for the checkbox). */
 export function validateSubmission(
@@ -159,6 +204,40 @@ export function contactFromValues(
     phone: first((f) => f.type === 'phone'),
     email: first((f) => f.type === 'email'),
   };
+}
+
+/** Form keys whose answers also land on the CRM contact (`custom_fields`). Never clinical text. */
+export const PROFILE_KEYS = ['dni', 'instagram', 'tiktok', 'facebook'] as const;
+export type ContactProfile = Partial<Record<(typeof PROFILE_KEYS)[number], string>>;
+
+/** DNI/CE as a dedup key: placeholders ('00000000', < 8 chars) are not keys (same rule as party.service). */
+const cleanDoc = (v: string) => {
+  const d = v
+    .trim()
+    .toUpperCase()
+    .replace(/[\s.-]/g, '');
+  return d.length < 8 || /^(.)\1*$/.test(d) ? null : d;
+};
+/** '@Ana.Prueba', 'instagram.com/ana.prueba/' → 'ana.prueba'. */
+const cleanHandle = (v: string) =>
+  v
+    .trim()
+    .replace(/^https?:\/\//i, '')
+    .replace(/^(www\.)?[a-z]+\.com\//i, '')
+    .replace(/^@/, '')
+    .replace(/[/?#].*$/, '')
+    .toLowerCase() || null;
+
+/** The DNI and social handles a submission carries, normalized for the contact. */
+export function profileFromValues(fields: FormField[], values: SubmissionValues): ContactProfile {
+  const out: ContactProfile = {};
+  for (const key of PROFILE_KEYS) {
+    const v = values[key];
+    if (typeof v !== 'string' || !fields.some((f) => f.key === key && f.type === 'text')) continue;
+    const clean = key === 'dni' ? cleanDoc(v) : cleanHandle(v);
+    if (clean) out[key] = clean;
+  }
+  return out;
 }
 
 /** One submission as the staff panel reads it (`GET /api/crm/doors/[id]/submissions`). */

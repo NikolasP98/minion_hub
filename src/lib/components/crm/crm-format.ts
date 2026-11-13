@@ -2,10 +2,10 @@
 
 /** Score (0–100) → a semantic color ramp: red (cold) → amber → green (hot). */
 export function scoreColor(score: number): string {
-  if (score >= 75) return 'var(--color-success)';
-  if (score >= 50) return 'var(--color-emerald)';
-  if (score >= 30) return 'var(--color-warning)';
-  return 'var(--color-muted-foreground)';
+  if (score >= 75) return 'var(--color-success-fg)';
+  if (score >= 50) return 'var(--color-text-primary)';
+  if (score >= 30) return 'var(--color-text-secondary)';
+  return 'var(--color-text-tertiary)';
 }
 
 /**
@@ -22,7 +22,11 @@ export function temperatureOf(score: number): Temperature {
 
 /** Temperature → color, sharing the score ramp's palette. */
 export function temperatureColor(t: Temperature): string {
-  return t === 'hot' ? 'var(--color-success)' : t === 'warm' ? 'var(--color-emerald)' : 'var(--color-muted-foreground)';
+  return t === 'hot'
+    ? 'var(--color-success)'
+    : t === 'warm'
+      ? 'var(--color-emerald)'
+      : 'var(--color-muted-foreground)';
 }
 
 /** Lifecycle stage → color, mirroring the journey progression. */
@@ -44,7 +48,10 @@ export function stageColor(stage: string): string {
 }
 
 /** Compact relative time ("just now", "5m", "3h", "2d", "4w", "1y"). */
-export function relativeTime(value: string | Date | null | undefined, now: Date = new Date()): string {
+export function relativeTime(
+  value: string | Date | null | undefined,
+  now: Date = new Date(),
+): string {
   if (!value) return '—';
   const t = value instanceof Date ? value.getTime() : new Date(value).getTime();
   if (!Number.isFinite(t)) return '—';
@@ -83,7 +90,10 @@ export function isRecencyNever(days: number | null | undefined): boolean {
  * name, which is already shown as the contact title. Phone-like ids are spaced
  * for readability ("+51924375271" → "+51 924 375 271").
  */
-export function identityValue(externalId: string | null | undefined, handle?: string | null): string {
+export function identityValue(
+  externalId: string | null | undefined,
+  handle?: string | null,
+): string {
   const id = externalId?.trim();
   if (id && id.length > 0) return formatPhoneLike(id);
   const h = handle?.trim();

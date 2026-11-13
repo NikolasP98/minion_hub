@@ -72,3 +72,6 @@ supabase/.branches/
 
 # Bundled static native update window (no local server)
 /desktop-dist/
+
+*storybook.log
+storybook-static

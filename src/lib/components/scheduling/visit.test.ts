@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canRemoveService,
   nextOrder,
+  chargeableRows,
   visitAnchorId,
   visitHeaderStatus,
   visitHeaderTitle,
@@ -404,5 +405,50 @@ describe('visitSummary money', () => {
 
   it('has no currency when no service knows one', () => {
     expect(visitSummary([row({}), row({})]).currency).toBeNull();
+  });
+});
+
+describe('chargeableRows price', () => {
+  const row = (price: number | null) =>
+    visitRows({
+      visit: { groupId: 'g', members: [mb('m1', 0, 'Control', 'accepted', { price })] },
+      booking: { id: 'm1', eventTypeId: 'et0', status: 'accepted' },
+      eventTypeTitle: 'Control',
+      minutes: 30,
+      paid: false,
+    });
+
+  it('never charges a service whose catalog price is exactly 0', () => {
+    expect(chargeableRows(row(0))).toEqual([]);
+  });
+
+  it('still charges a priced service and one with no catalog product (null)', () => {
+    expect(chargeableRows(row(80))).toHaveLength(1);
+    expect(chargeableRows(row(null))).toHaveLength(1);
+  });
+});
+
+describe('chargeableRows ungrouped fallback price', () => {
+  const booking = { id: 'b1', eventTypeId: 'et1', status: 'accepted' };
+  const rows = (price?: number | null) =>
+    chargeableRows(
+      visitRows({
+        visit: null,
+        booking,
+        eventTypeTitle: 'Control',
+        minutes: 30,
+        paid: false,
+        price,
+      }),
+    );
+
+  it('a free ungrouped booking has no chargeable row', () => {
+    expect(rows(0)).toEqual([]);
+  });
+
+  it('ungrouped bookings priced 80 or with a null/absent price stay chargeable', () => {
+    expect(rows(80)).toHaveLength(1);
+    expect(rows(null)).toHaveLength(1);
+    expect(rows()).toHaveLength(1);
   });
 });

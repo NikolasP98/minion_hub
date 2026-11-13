@@ -11,6 +11,7 @@
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import { formatBytes } from '$lib/utils/format';
+  import { nativeFieldSizing } from '$lib/utils/field-sizing';
   import type { AIState } from './ai-state';
 
   export interface AIPromptAttachment {
@@ -80,7 +81,7 @@
   const dur = $derived(prefersReducedMotion.current ? 0 : 180);
 
   function resize() {
-    if (!textarea) return;
+    if (!textarea || nativeFieldSizing) return; // CSS grows it (see the @supports block)
     // Collapse first, otherwise scrollHeight only ever grows.
     textarea.style.height = 'auto';
     const line = Number.parseFloat(getComputedStyle(textarea).lineHeight) || 20;
@@ -236,6 +237,16 @@
     font-size: var(--font-size-body);
     line-height: 1.5;
     padding: var(--space-3) var(--space-4) var(--space-1);
+  }
+  /* Same cap as the scripted resize: MAX_ROWS (8) lines, border-box. */
+  @supports (field-sizing: content) {
+    textarea {
+      field-sizing: content;
+      box-sizing: border-box;
+      min-height: 1lh;
+      max-height: 8lh;
+      overflow-y: auto;
+    }
   }
   .compact textarea {
     font-size: var(--font-size-label);

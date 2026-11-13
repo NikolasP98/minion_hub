@@ -83,35 +83,21 @@
   {@render trigger()}
 </button>
 
-<!-- The positioner's actual `z-index` is now set directly by `portalInLayer` itself (see its
-     doc comment) — not derived from the content's z-index. Zag ALSO imperatively copies
-     getComputedStyle(contentEl).zIndex onto the positioner's `--z-index` custom property while
-     positioning (get-placement.mjs); that copy still runs but is moot here, since `portalInLayer`
-     sets the actual property directly and an inline style always wins regardless of what a
-     stylesheet does with `--z-index`. `z-[var(--layer-modal)]` stays on the content div below
-     mainly for content-relative stacking, not for the positioner's own level.
+<!-- `use:portal` (same as Dropdown/Tooltip): moves the panel out of its host so
+     clicks inside it do not bubble into the host, or into the host dialog (see
+     `portal-in-layer.ts`). `popover="manual"` + `portalInLayer` show it in the
+     browser top layer while open, above every z-index and outside every overflow
+     clip. Consequence for callers: parent styles that reach the panel through an
+     ancestor selector (`:global(.host .thing)`) do not match. Style the panel's
+     own root/classes instead.
 
-     `use:portal` (same as Dropdown/Tooltip): a layer token only orders siblings
-     INSIDE the nearest stacking context, so an inline panel is capped by its
-     host however high its z-index. On /pos/sell that host is `.catalog`
-     (`isolation: isolate`, and on mobile a sticky `.catalog-head` at
-     --layer-navigation): the panel painted UNDER the next grid column's
-     buttons (the shared Button base is `relative`) and under the sidebar
-     (Sidebar.svelte `z-[var(--layer-navigation)]`) once Zag's shift() pushed it
-     left. At <body> the content's own layer finally applies.
-     Consequence for callers: parent styles that reach the panel through an
-     ancestor selector (`:global(.host .thing)`) no longer match — style the
-     panel's own root/classes instead.
-
-     Nested-panel stacking (a Dropdown/Select opened from inside this Popover's panel, e.g.
-     FilterChip's "…" menu) is handled centrally in `portal-in-layer.ts` (`portalInLayer` bumps a
-     nested panel's own z-index a tier above its host) — not here, and not by conditionally
-     mounting this block: an earlier fix tried `{#if api.open}`, which broke
-     `ProfileMenu.test.ts`'s SSR assertions (server-rendered HTML expects a closed popover's
-     content present, hidden only by the `hidden` attribute). Stays unconditionally mounted. -->
+     Stays unconditionally mounted (never `{#if api.open}`): `ProfileMenu.test.ts`'s
+     SSR assertions expect a closed popover's content in the server HTML, hidden
+     only by the `hidden` attribute. -->
 <div
   bind:this={positionerEl}
-  use:portalInLayer
+  popover="manual"
+  use:portalInLayer={api.open}
   {...api.getPositionerProps()}
   class:viewport-contained={viewportContained}
   style:min-width={viewportContained ? '0' : undefined}
@@ -125,9 +111,7 @@
   <div
     {...api.getContentProps()}
     class:viewport-contained-content={viewportContained}
-    class="outline-none z-[var(--layer-modal)] {bare
-      ? ''
-      : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
+    class="outline-none {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
   >
     {@render children()}
   </div>

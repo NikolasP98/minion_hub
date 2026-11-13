@@ -175,6 +175,8 @@
     /** The event's PRODUCT lines (spec 2026-10-10-hub-catalog-service-unification
      *  §Slice 4) — always keyed by the visit's anchor. Empty, never undefined. */
     products: VisitProductLine[];
+    /** Catalog price of an ungrouped booking's service (`BookingDetail.unitPrice`). */
+    unitPrice?: number | null;
   };
 
   type Props = {
@@ -595,6 +597,7 @@
           paid: detail.tickets.some((t) => t.status !== 'voided'),
           tickets: detail.tickets,
           funding: detail.grant ? 'grant' : detail.plan ? 'plan' : 'cash',
+          price: detail.unitPrice,
         })
       : [],
   );

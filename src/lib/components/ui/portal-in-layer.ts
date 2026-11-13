@@ -1,59 +1,54 @@
 import { portal } from '@zag-js/svelte';
 
 /**
- * Zag's `portal`, with two rules on top:
+ * Shows a `popover="manual"` element in the browser's TOP LAYER while `open`
+ * is true, and hides it otherwise. Zag keeps owning the open state, Escape,
+ * outside-click and focus ("manual" adds no native light dismiss to fight it).
  *
- * 1. A floating panel born inside a native `<dialog>` stays INSIDE that
- *    dialog instead of moving to `<body>`.
+ * The top layer paints above every z-index and escapes every `overflow`
+ * clip, and a popover shown LATER stacks above earlier top-layer elements: a
+ * modal `<dialog>`, a DraggableWindow, or the panel a nested menu was opened
+ * from. That replaces the z-index tiers this module used to hand out.
  *
- *    A modal `<dialog>` (the detail drawers) lives in the browser's top layer,
- *    which paints above every z-index in the document — so a popover portalled
- *    to `<body>` can never appear over it, however high its layer token. Mounting
- *    into the dialog keeps the panel in the same top-layer element, after the
- *    dialog's own content in DOM order, which is all the stacking it needs.
- *    Outside a dialog this is exactly `use:portal` (owner report 2026-09-26: the
- *    drawer's "Add tag" popover opened underneath the drawer).
- *
- * 2. A nested panel gets ONE stacking tier above its host, set directly on
- *    THIS positioner (never relying on Zag's own content→positioner
- *    `--z-index` copy — Dropdown/Tooltip already set an explicit
- *    `style:z-index` here that would just win the tie-break anyway, and
- *    that copy mechanism only fires for content whose OWN class carries a
- *    z-index, which not every consumer's content div does).
- *
- *    Dropdown, Popover and Tooltip all resolve to the SAME `--layer-modal`
- *    token. Two of them are ALWAYS mounted (hidden only by the `hidden`
- *    attribute, never `{#if open}` — Tooltip is the one exception, and
- *    changing that for the other two breaks `ProfileMenu.test.ts`'s SSR
- *    assertions, which expect a closed menu's items present in server HTML).
- *    So when a Dropdown/Select is opened FROM INSIDE another portaled
- *    panel's content (e.g. FilterChip's "…" kebab menu, opened from inside
- *    its own Popover panel), both positioners tie on equal z-index and the
- *    tie falls back to DOM order — which for two always-mounted positioners
- *    reflects component MOUNT order, not which one the user actually opened
- *    last (owner report 2026-09-29: the kebab's "Delete filter" menu painted
- *    UNDER its own popover). Detecting the nesting via `closest()` on the
- *    positioner's ORIGINAL (pre-portal) ancestor chain — which still holds
- *    regardless of which side's portal action has already fired, since
- *    moving a subtree with `appendChild` never breaks its own internal
- *    parent/child relationships — and bumping just the nested one removes
- *    the tie instead of depending on mount-order luck.
+ * Zag defers measuring and focusing to a `raf`, while Svelte flushes this
+ * action in a microtask, so the panel is already visible when Zag measures it
+ * (floating-ui is top-layer aware). Engines without the Popover API (happy-dom
+ * in unit tests) leave the panel in normal flow.
  */
-export function portalInLayer(node: HTMLElement) {
-  // Decided BEFORE the portal moves the node: afterwards the host content is
-  // no longer an ancestor.
-  const nested = node.closest('[data-part="content"]') != null;
-  const layer = nested ? 'calc(var(--layer-modal) + 1)' : 'var(--layer-modal)';
-  // Zag re-applies the positioner's inline `style` on every reposition
-  // (`z-index: var(--z-index)`, with `--z-index` copied from the CONTENT's
-  // computed z-index), so a value written on the positioner alone is wiped on
-  // the first move (shipped: every Dropdown painted under the sticky table
-  // header). The content keeps its inline style, so the level lives THERE
-  // and reaches the positioner through Zag's own copy; the positioner write
-  // only covers the frames before the first reposition.
-  node.style.setProperty('z-index', layer);
-  const content = node.querySelector<HTMLElement>('[data-part="content"]');
-  content?.style.setProperty('z-index', layer);
-  content?.style.setProperty('position', 'relative');
-  return portal(node, { container: node.closest('dialog') ?? undefined });
+export function topLayer(node: HTMLElement, open: boolean) {
+  const sync = (next: boolean) => {
+    if (typeof node.showPopover !== 'function' || !node.isConnected) return;
+    try {
+      const shown = node.matches(':popover-open');
+      if (next && !shown) node.showPopover();
+      else if (!next && shown) node.hidePopover();
+    } catch {
+      /* `:popover-open` unsupported: normal flow */
+    }
+  };
+  sync(open);
+  return { update: sync };
+}
+
+/**
+ * Zag's `portal` plus `topLayer`. The portal is still needed in the top-layer
+ * world:
+ *
+ * - A panel born inside a native `<dialog>` stays INSIDE that dialog. A modal
+ *   dialog makes everything outside its subtree inert, so a panel shown in
+ *   the top layer from `<body>` would paint above the drawer but be dead to
+ *   input. That was the owner report of 2026-09-26: the drawer's "Add tag"
+ *   popover opened underneath the drawer.
+ * - Elsewhere the panel moves to `<body>`. Then clicks inside a menu do not
+ *   bubble into a clickable host row, and the panel does not inherit its
+ *   trigger's text styles. Callers already style the panel through its own
+ *   classes, never through an ancestor selector.
+ *
+ * The portal runs first and the show second, because moving a shown popover
+ * hides it.
+ */
+export function portalInLayer(node: HTMLElement, open: boolean) {
+  const moved = portal(node, { container: node.closest('dialog') ?? undefined });
+  const layer = topLayer(node, open);
+  return { update: layer.update, destroy: moved.destroy };
 }

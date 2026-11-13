@@ -5,6 +5,7 @@
   import { useMachine, normalizeProps } from '@zag-js/svelte';
   import * as m from '$lib/paraglide/messages';
   import { registerLayer } from './floating-layer.svelte';
+  import { topLayer } from './portal-in-layer';
 
   interface Props {
     /** Unique ID for the combobox machine */
@@ -171,7 +172,15 @@
     </button>
   </div>
 
-  <div bind:this={positionerEl} class="cb-positioner" {...api.getPositionerProps()}>
+  <!-- Top layer, not a portal: the list stays inline (event path, scoped styles) but
+       escapes every overflow clip and stacking context, including a host dialog. -->
+  <div
+    bind:this={positionerEl}
+    popover="manual"
+    use:topLayer={api.open}
+    class="cb-positioner"
+    {...api.getPositionerProps()}
+  >
     <div class="cb-content" {...api.getContentProps()}>
       <ul class="cb-list" {...api.getListProps()}>
         {#each filteredItems as listItem (itemToValue(listItem))}
@@ -270,19 +279,11 @@
   }
 
   /* ── Dropdown ─────────────────────────────────────────────────────────── */
-  /* The stacking level lives on the CONTENT, not the positioner: Zag writes an
-     inline `z-index: var(--z-index)` on the positioner and fills `--z-index`
-     from getComputedStyle(contentEl).zIndex (popper/get-placement), so a
-     z-index set on the positioner is overridden to `auto` and any later
-     sibling that forms a stacking context (a disabled control at opacity .55)
-     paints over the open list. Same contract as Popover.svelte. */
   .cb-positioner[data-state='closed'] {
     display: none;
   }
 
   .cb-content {
-    position: relative;
-    z-index: var(--layer-dropdown);
     background: var(--color-bg2, var(--color-bg));
     border: 1px solid var(--color-border);
     border-radius: var(--radius-md);

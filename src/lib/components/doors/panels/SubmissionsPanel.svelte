@@ -65,10 +65,18 @@
   function answers(values: Record<string, unknown>): Array<{ label: string; value: string }> {
     const known = fields.filter((f) => f.key in values);
     const extra = Object.keys(values).filter((k) => !fields.some((f) => f.key === k));
-    const show = (v: unknown) =>
-      v === true ? m.doors_form_yes() : v === false ? m.doors_form_no() : String(v ?? '');
+    const show = (v: unknown, type?: string) =>
+      v === true
+        ? m.doors_form_yes()
+        : v === false
+          ? m.doors_form_no()
+          : Array.isArray(v)
+            ? type === 'file'
+              ? m.doors_form_submission_files({ count: v.length })
+              : v.join(', ')
+            : String(v ?? '');
     return [
-      ...known.map((f) => ({ label: f.label, value: show(values[f.key]) })),
+      ...known.map((f) => ({ label: f.label, value: show(values[f.key], f.type) })),
       ...extra.map((k) => ({ label: k, value: show(values[k]) })),
     ];
   }

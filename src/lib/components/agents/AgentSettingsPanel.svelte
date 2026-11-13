@@ -5,6 +5,7 @@
   import {
     configState,
     loadConfig,
+    ensureConfigLoaded,
     isDirty,
     save,
     discard,
@@ -71,9 +72,7 @@
 
   // ─── Auto-load config on mount ───────────────────────────────────────
   $effect(() => {
-    if (!configState.loaded && !configState.loading) {
-      loadConfig();
-    }
+    ensureConfigLoaded();
   });
 
   // ─── Build grouped fields (re-derives when config changes) ─────────

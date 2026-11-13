@@ -41,11 +41,6 @@
     if (kind === 'bundle') return m.pos_catalog_kind_bundle();
     return kind === 'product' ? m.pos_catalog_kind_product() : m.pos_catalog_kind_service();
   }
-  // 'brand', not a categorical hue — same map as the catalog table cell.
-  function kindTone(kind: typeof row.kind): 'accent' | 'info' | 'brand' {
-    if (kind === 'bundle') return 'brand';
-    return kind === 'product' ? 'accent' : 'info';
-  }
   const tagNames = $derived(
     [...(row.tags ?? []), ...(row.inheritedTags ?? [])].map((t) => t.name).join(', '),
   );
@@ -69,10 +64,7 @@
     {#if field === 'price'}
       <span class="sc-v sc-num">{row.unitPrice != null ? formatMoney(row.unitPrice) : '—'}</span>
     {:else if field === 'kind'}
-      <span class="sc-v"
-        ><Badge variant="semantic" value={kindTone(row.kind)} size="sm">{kindLabel(row.kind)}</Badge
-        ></span
-      >
+      <span class="sc-v"><Badge variant="neutral" size="sm">{kindLabel(row.kind)}</Badge></span>
     {:else if field === 'stock'}
       <span class="sc-v">
         {#if row.stockQty != null}
