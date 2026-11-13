@@ -172,6 +172,15 @@ describe('validateAttachment', () => {
       message: expect.any(String),
     });
   });
+
+  it('takes voice notes and phone video, never a type a browser runs', () => {
+    const check = (contentType: string) =>
+      validateAttachment({ fileName: 'a', contentType, sizeBytes: 10 }).ok;
+    expect(['audio/ogg', 'video/quicktime', 'image/heif'].map(check)).toEqual([true, true, true]);
+    expect(['text/html', 'image/svg+xml', 'text/javascript', 'application/xml'].map(check)).toEqual(
+      [false, false, false, false],
+    );
+  });
 });
 
 describe('assertOrgQuota', () => {
