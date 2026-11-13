@@ -4,12 +4,21 @@ import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { crmDoorSubmissions } from '$server/db/pg-doors-schema';
 import { crmContacts } from '$server/db/pg-crm-schema';
+import { attachmentFileState } from '$server/db/pg-attachments-schema';
+import { files } from '@minion-stack/db/pg';
+import { invalidateTags, tags } from '@minion-stack/cache';
+import { newId } from '$server/db/utils';
+import { getStorage } from '$server/storage/blob';
+import { ATTACHMENT_LIMITS, validateAttachment, assertOrgQuota } from './file.service';
+import { bustCrmList } from './crm-contacts.service';
 import { ensureCrmContact } from './crm-contact-ensure';
 import { bumpDoorStat, resolvePublicDoor } from './doors.service';
 import { upsertNotification } from './inbox/inbox.service';
 import {
   configSchema,
   contactFromValues,
+  fileIdsFromValues,
+  FORM_IMAGE_TYPES,
   profileFromValues,
   validateSubmission,
   type ContactProfile,
@@ -67,8 +76,10 @@ export async function submitFormDoor(
   // The raw lookup below bypasses simulated-owner scoping, so simulations keep the phone/email path only.
   const simulated = !!simulatedActorForOrg(ctx.tenantId);
 
+  const fileIds = fileIdsFromValues(config.fields, checked.values);
+  const tagIds = config.tagIds ?? [];
   const submissionId = randomUUID();
-  await withOrgCore(ctx, async (tx) => {
+  const outcome = await withOrgCore(ctx, async (tx) => {
     // DNI is the strongest identity: a returning patient with a new phone is still the same contact.
     const byDni =
       profile.dni && !simulated
@@ -87,6 +98,13 @@ export async function submitFormDoor(
     const fill = contact?.created ? profile : handles;
     if (contact && Object.keys(fill).length)
       await fillContactProfile(tx, ctx.tenantId, contact.id, fill);
+    if (contact && tagIds.length) await tagContact(tx, ctx.tenantId, contact.id, tagIds);
+    if (fileIds.length) {
+      // Files hang off the contact (its Attachments tab). No contact, or an id that is not a
+      // fresh upload of this org's doors: reject, and the throw rolls the new contact back.
+      const linked = contact ? await claimDoorFiles(tx, ctx.tenantId, contact.id, fileIds) : [];
+      if (linked.length !== fileIds.length) throw new UnclaimedFiles(linked);
+    }
     await tx.insert(crmDoorSubmissions).values({
       id: submissionId,
       orgId: ctx.tenantId,
@@ -97,7 +115,28 @@ export async function submitFormDoor(
       consentText: input.consent ? config.consentText : null,
       attribution,
     });
+    return { contactId: contact?.id ?? null };
+  }).catch((e) => {
+    if (!(e instanceof UnclaimedFiles)) throw e;
+    const ok = new Set(e.linked);
+    const bad = (key: string) =>
+      ((checked.values[key] as string[] | undefined) ?? []).some((id) => !ok.has(id));
+    return {
+      errors: Object.fromEntries(
+        config.fields
+          .filter((f) => f.type === 'file' && bad(f.key))
+          .map((f) => [f.key, 'invalid' as const]),
+      ),
+    };
   });
+  if ('errors' in outcome) return { status: 'invalid', errors: outcome.errors };
+  if (outcome.contactId && (tagIds.length || fileIds.length)) {
+    // Fail-soft: the rows are committed; a stale list heals on its own TTL.
+    await Promise.all([
+      tagIds.length ? bustCrmList(ctx.tenantId) : null,
+      fileIds.length ? invalidateTags(tags.tenantDomain(ctx.tenantId, 'files')) : null,
+    ]).catch(() => {});
+  }
   await bumpDoorStat(ctx, doorKey, 'submissions', now);
   // Owners/admins (crm:manage) hear about it once. Body = door + contact name only: the free-text answers may be clinical.
   // shortcut: fixed Spanish strings, no per-viewer locale (same as the inbox rules).
@@ -184,8 +223,136 @@ async function fillContactProfile(
   `);
 }
 
-/** Field types whose values are never personal (option labels, yes/no). */
-const SAFE_TYPES = new Set(['select', 'checkbox']);
+class UnclaimedFiles extends Error {
+  constructor(public linked: string[]) {
+    super('unclaimed door files');
+  }
+}
+
+/** Puts the door's configured tags on the contact. Ids that are not manual customer tags of this org are skipped. */
+async function tagContact(
+  tx: CoreTx,
+  orgId: string,
+  contactId: string,
+  tagIds: string[],
+): Promise<void> {
+  await tx.execute(sql`
+    insert into crm_contact_tags (org_id, contact_id, tag_id, applied_by)
+    select ${orgId}, ${contactId}::uuid, t.id, null
+    from crm_tags t
+    where t.org_id = ${orgId} and t.scope = 'crm' and t.kind = 'manual'
+      and t.id in (${sql.join(
+        tagIds.map((id) => sql`${id}::uuid`),
+        sql`, `,
+      )})
+    on conflict do nothing
+  `);
+}
+
+/**
+ * Links door uploads to the contact and returns the ids it linked. Only a file `uploadDoorFile`
+ * stored (no uploader, CRM-only, never linked) and younger than the abandoned-upload sweep
+ * qualifies, so a submission cannot attach a file that belongs to anything else.
+ */
+async function claimDoorFiles(
+  tx: CoreTx,
+  orgId: string,
+  contactId: string,
+  fileIds: string[],
+): Promise<string[]> {
+  const rows = (await tx.execute(sql`
+    with claimed as (
+      select f.id
+      from files f
+      join attachment_file_state s on s.file_id = f.id and s.org_id = ${orgId}
+      where f.tenant_id = ${orgId}::uuid
+        and f.id in (${sql.join(
+          fileIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+        and f.uploaded_by is null and f.category = 'attachment'
+        and f.created_at > now() - interval '23 hours'
+        and s.state = 'active' and s.access_modules = array['crm']
+        and not exists (select 1 from attachment_links l where l.file_id = f.id)
+        and not exists (select 1 from attachment_trash t where t.file_id = f.id)
+      for update of f
+    )
+    insert into attachment_links (org_id, file_id, object_type, object_id, linked_by)
+    select ${orgId}, id, 'crm_contact', ${contactId}::uuid, null from claimed
+    on conflict do nothing
+    returning file_id
+  `)) as unknown as Array<{ file_id: string }>;
+  return rows.map((r) => r.file_id);
+}
+
+export type UploadDoorFileResult =
+  | { status: 'ok'; fileId: string }
+  | {
+      status: 'not_found' | 'invalid_field' | 'mime_not_allowed' | 'too_large' | 'quota_exceeded';
+    };
+
+/**
+ * Stores one file a visitor attached to a `file` field, before they submit. The file stays
+ * unlinked (invisible to staff) until a submission claims it; the attachment sweeper deletes
+ * it after 24 h otherwise. Nothing here logs the file name or content.
+ * shortcut: server-proxied, so capped at ATTACHMENT_LIMITS.proxiedMaxBytes (4 MB); add a
+ * presigned intent when doors need bigger files (the bucket must then allow the page's origin).
+ */
+export async function uploadDoorFile(
+  slug: string,
+  input: { field: string; fileName: string; contentType: string; data: Uint8Array },
+): Promise<UploadDoorFileResult> {
+  const resolved = await resolvePublicDoor(slug);
+  if (!resolved || resolved.door.kind !== 'form') return { status: 'not_found' };
+  const { ctx, door } = resolved;
+  const field = configSchema
+    .parse(door.config)
+    .fields.find((f) => f.key === input.field && f.type === 'file');
+  if (!field) return { status: 'invalid_field' };
+
+  const contentType = input.contentType.split(';')[0].trim().toLowerCase();
+  if (field.accept === 'image' && !FORM_IMAGE_TYPES.includes(contentType))
+    return { status: 'mime_not_allowed' };
+  // The name becomes part of the storage key: keep letters, digits and a few separators.
+  const fileName =
+    input.fileName
+      .normalize('NFC')
+      .replace(/[^\p{L}\p{N}._ -]+/gu, '_')
+      .slice(-120) || 'archivo';
+  const sizeBytes = input.data.byteLength;
+  const valid = validateAttachment(
+    { fileName, contentType, sizeBytes },
+    { maxBytes: ATTACHMENT_LIMITS.proxiedMaxBytes },
+  );
+  if (!valid.ok) return { status: valid.code };
+  if (!sizeBytes) return { status: 'invalid_field' };
+  const quota = await assertOrgQuota(ctx, sizeBytes);
+  if (!quota.ok) return { status: 'quota_exceeded' };
+
+  const id = newId();
+  const key = `${ctx.tenantId}/attachments/${id}/${fileName}`;
+  // Row first, like uploadProxiedAttachment: a failed PUT leaves a reservation the sweeper reaps.
+  await withOrgCore(ctx, async (tx) => {
+    await tx.insert(files).values({
+      id,
+      tenantId: ctx.tenantId,
+      uploadedBy: null,
+      b2FileKey: key,
+      fileName,
+      contentType,
+      sizeBytes,
+      category: 'attachment',
+    });
+    await tx
+      .insert(attachmentFileState)
+      .values({ fileId: id, orgId: ctx.tenantId, fileKey: key, accessModules: ['crm'] });
+  });
+  await getStorage().put(key, input.data, contentType);
+  return { status: 'ok', fileId: id };
+}
+
+/** Field types whose values are never personal (option labels, yes/no, file ids). */
+const SAFE_TYPES = new Set(['select', 'checkbox', 'multiselect', 'file']);
 
 /** Masks every value except select/checkbox answers; keys no longer in the config are masked too. */
 export function maskSubmissionValues(

@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   bumpDoorStat: vi.fn(),
   ensureCrmContact: vi.fn(),
   upsertNotification: vi.fn(),
+  put: vi.fn(),
+  assertOrgQuota: vi.fn(),
+  bustCrmList: vi.fn(),
 }));
 
 vi.mock('$server/db/with-org-core', () => ({
@@ -20,12 +23,19 @@ vi.mock('./doors.service', () => ({
 }));
 vi.mock('./inbox/inbox.service', () => ({ upsertNotification: mocks.upsertNotification }));
 vi.mock('./crm-contact-ensure', () => ({ ensureCrmContact: mocks.ensureCrmContact }));
+vi.mock('./crm-contacts.service', () => ({ bustCrmList: mocks.bustCrmList }));
+vi.mock('$server/storage/blob', () => ({ getStorage: () => ({ put: mocks.put }) }));
+vi.mock('./file.service', async () => ({
+  ...(await import('$lib/attachments/limits')),
+  assertOrgQuota: mocks.assertOrgQuota,
+}));
 
 import {
   listSubmissions,
   maskSubmissionValues,
   sameName,
   submitFormDoor,
+  uploadDoorFile,
 } from './doors-form.service';
 
 const DOOR = '11111111-2222-4333-8444-555555555555';
@@ -77,6 +87,118 @@ beforeEach(() => {
   mock = createMockDb();
   mocks.resolvePublicDoor.mockResolvedValue(door());
   mocks.ensureCrmContact.mockResolvedValue({ id: CONTACT, created: true });
+  mocks.assertOrgQuota.mockResolvedValue({ ok: true });
+});
+
+describe('door tags and files', () => {
+  const TAG = '207440ff-2d42-4e5f-adf3-41f8e59f9601';
+  const FILE_A = 'a'.repeat(24);
+  const FILE_B = 'b'.repeat(24);
+  const casting: FormConfig = {
+    fields: [
+      ...config.fields,
+      { key: 'foto', label: 'Foto', type: 'file', required: true, accept: 'image' },
+      { key: 'adjuntos', label: 'Adjuntos', type: 'file', required: false, maxFiles: 3 },
+    ],
+    consentText: 'Acepto.',
+    consentRequired: true,
+    tagIds: [TAG],
+  };
+  const send = (extra: object) =>
+    submitFormDoor('qa-intake', { values: { ...values, ...extra }, consent: true }, NOW);
+
+  beforeEach(() => mocks.resolvePublicDoor.mockResolvedValue(door({ config: casting })));
+
+  it('tags the contact (new or matched) with the door tags, scoped to manual customer tags of the org', async () => {
+    mocks.ensureCrmContact.mockResolvedValue({ id: CONTACT, created: false });
+    execute.mockImplementation(async (q) =>
+      dialect.sqlToQuery(q).sql.includes('attachment_links') ? [{ file_id: FILE_A }] : [],
+    );
+    expect((await send({ foto: [FILE_A] })).status).toBe('ok');
+    const tag = executed().find((q) => q.sql.includes('crm_contact_tags'))!;
+    expect(tag.sql).toMatch(/t\.scope = 'crm' and t\.kind = 'manual'/);
+    expect(tag.params).toEqual(['org-1', CONTACT, 'org-1', TAG]);
+    expect(mocks.bustCrmList).toHaveBeenCalledWith('org-1');
+  });
+
+  it('links uploaded files to the contact; only fresh, unlinked door uploads of this org qualify', async () => {
+    execute.mockImplementation(async (q) =>
+      dialect.sqlToQuery(q).sql.includes('attachment_links')
+        ? [{ file_id: FILE_A }, { file_id: FILE_B }]
+        : [],
+    );
+    expect((await send({ foto: [FILE_A], adjuntos: [FILE_B] })).status).toBe('ok');
+    const claim = executed().find((q) => q.sql.includes('insert into attachment_links'))!;
+    expect(claim.sql).toMatch(/f\.uploaded_by is null/);
+    expect(claim.sql).toMatch(/not exists \(select 1 from attachment_links/);
+    expect(claim.params).toEqual(['org-1', 'org-1', FILE_A, FILE_B, 'org-1', CONTACT]);
+    expect(inserted().payload).toMatchObject({ foto: [FILE_A], adjuntos: [FILE_B] });
+  });
+
+  it('a file id that cannot be claimed rejects the submission and names only that field', async () => {
+    execute.mockImplementation(async (q) =>
+      dialect.sqlToQuery(q).sql.includes('attachment_links') ? [{ file_id: FILE_A }] : [],
+    );
+    const r = await send({ foto: [FILE_A], adjuntos: [FILE_B] });
+    expect(r).toEqual({ status: 'invalid', errors: { adjuntos: 'invalid' } });
+    expect(values$).not.toHaveBeenCalled();
+    expect(mocks.bumpDoorStat).not.toHaveBeenCalled();
+    expect(mocks.upsertNotification).not.toHaveBeenCalled();
+  });
+
+  it('files without a contact to hold them are rejected', async () => {
+    mocks.ensureCrmContact.mockResolvedValue(null);
+    expect(await send({ foto: [FILE_A] })).toEqual({
+      status: 'invalid',
+      errors: { foto: 'invalid' },
+    });
+  });
+
+  describe('uploadDoorFile', () => {
+    const jpeg = new Uint8Array([0xff, 0xd8, 0xff]);
+    const up = (over: object = {}) =>
+      uploadDoorFile('qa-intake', {
+        field: 'foto',
+        fileName: '../../mi foto (1).JPG',
+        contentType: 'image/jpeg; charset=binary',
+        data: jpeg,
+        ...over,
+      });
+
+    it('stores the file under the org with no uploader, CRM-only, and a safe key', async () => {
+      const r = await up();
+      expect(r.status).toBe('ok');
+      const [file, state] = values$.mock.calls.map(([row]) => row);
+      expect(file).toMatchObject({
+        tenantId: 'org-1',
+        uploadedBy: null,
+        category: 'attachment',
+        contentType: 'image/jpeg',
+        sizeBytes: 3,
+        fileName: '.._.._mi foto _1_.JPG',
+      });
+      expect(file.b2FileKey).toBe(`org-1/attachments/${file.id}/.._.._mi foto _1_.JPG`);
+      expect(state).toMatchObject({ fileId: file.id, orgId: 'org-1', accessModules: ['crm'] });
+      expect(mocks.put).toHaveBeenCalledWith(file.b2FileKey, jpeg, 'image/jpeg');
+    });
+
+    it('refuses unknown fields, wrong types, oversized files, a full quota and unknown doors, storing nothing', async () => {
+      expect(await up({ field: 'nombre' })).toEqual({ status: 'invalid_field' });
+      expect(await up({ contentType: 'application/pdf' })).toEqual({ status: 'mime_not_allowed' });
+      expect(await up({ field: 'adjuntos', contentType: 'application/x-msdownload' })).toEqual({
+        status: 'mime_not_allowed',
+      });
+      expect(await up({ data: new Uint8Array(4 * 1024 * 1024 + 1) })).toEqual({
+        status: 'too_large',
+      });
+      mocks.assertOrgQuota.mockResolvedValueOnce({ ok: false, code: 'quota_exceeded' });
+      expect(await up()).toEqual({ status: 'quota_exceeded' });
+      mocks.resolvePublicDoor.mockResolvedValueOnce(null);
+      expect(await up()).toEqual({ status: 'not_found' });
+      expect(values$).not.toHaveBeenCalled();
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('submitFormDoor', () => {

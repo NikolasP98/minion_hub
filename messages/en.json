@@ -7429,5 +7429,20 @@
   "assistant_interruption_returned": "An action returned information, but its completion is not confirmed. Check this page before retrying.",
   "assistant_interruption_read": "A read was interrupted. Ask again if you still need the information.",
   "assistant_interruption_noReplay": "No action was repeated automatically.",
-  "assistant_interruption_dismiss": "Dismiss interrupted action notice"
+  "assistant_interruption_dismiss": "Dismiss interrupted action notice",
+  "doors_form_type_multiselect": "Multiple choice",
+  "doors_form_type_file": "File or photo",
+  "doors_form_file_accept": "What can be uploaded",
+  "doors_form_file_accept_any": "Any file",
+  "doors_form_file_accept_image": "Photos only",
+  "doors_form_file_max": "Maximum files",
+  "doors_form_file_uploading": "Uploading…",
+  "doors_form_file_ready": "{count} file(s) ready",
+  "doors_form_err_file": "The file could not be uploaded. Try again.",
+  "doors_form_err_file_type": "That file type is not accepted.",
+  "doors_form_err_file_large": "The file is larger than 4 MB.",
+  "doors_form_err_file_wait": "Wait for the files to finish uploading.",
+  "doors_form_tags_title": "Contact tags",
+  "doors_form_tags_hint": "Everyone who submits this form gets these tags in your CRM, whether they are new or already there.",
+  "doors_form_submission_files": "{count} file(s), in the contact's attachments"
 }
