@@ -198,6 +198,16 @@ describe('door tags and files', () => {
       expect(values$).not.toHaveBeenCalled();
       expect(mocks.put).not.toHaveBeenCalled();
     });
+
+    it('a config this build cannot read (unknown top-level or field key) is not_found, storing nothing', async () => {
+      mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: { ...casting, embed: true } }));
+      expect(await up()).toEqual({ status: 'not_found' });
+      const fields = casting.fields.map((f) => ({ ...f, width: 'half' }));
+      mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: { ...casting, fields } }));
+      expect(await up()).toEqual({ status: 'not_found' });
+      expect(values$).not.toHaveBeenCalled();
+      expect(mocks.put).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -325,6 +335,21 @@ describe('submitFormDoor', () => {
     expect((await submitFormDoor('qa-faq', { values, consent: true })).status).toBe('not_found');
     expect(mocks.ensureCrmContact).not.toHaveBeenCalled();
     expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it('a config this build cannot read (unknown top-level or field key) is not_found, nothing written', async () => {
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: { ...config, embed: true } }));
+    expect(await submitFormDoor('qa-intake', { values, consent: true })).toEqual({
+      status: 'not_found',
+    });
+    const fields = config.fields.map((f) => ({ ...f, width: 'half' }));
+    mocks.resolvePublicDoor.mockResolvedValueOnce(door({ config: { ...config, fields } }));
+    expect(await submitFormDoor('qa-intake', { values, consent: true })).toEqual({
+      status: 'not_found',
+    });
+    expect(mocks.ensureCrmContact).not.toHaveBeenCalled();
+    expect(tx.insert).not.toHaveBeenCalled();
+    expect(mocks.bumpDoorStat).not.toHaveBeenCalled();
   });
 
   it('missing consent → field error, no contact, no submission, no counter', async () => {

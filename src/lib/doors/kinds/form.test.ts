@@ -6,6 +6,7 @@ import {
   defaultConfig,
   fileIdsFromValues,
   profileFromValues,
+  readFormConfig,
   validateSubmission,
   type FormConfig,
 } from './form';
@@ -82,6 +83,14 @@ describe('form configSchema', () => {
         .success,
     ).toBe(false);
     expect(configSchema.safeParse({ ...intake, extra: 1 }).success).toBe(false);
+  });
+
+  it('readFormConfig: null for unknown top-level or field keys, the config otherwise', () => {
+    expect(readFormConfig({ ...intake, embed: true })).toBeNull();
+    expect(
+      readFormConfig({ ...intake, fields: [{ ...intake.fields[0], width: 'half' }] }),
+    ).toBeNull();
+    expect(readFormConfig(intake)?.fields).toEqual(intake.fields);
   });
 
   it('has no field cap: a 30-field clinical history is valid', () => {

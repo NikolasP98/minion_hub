@@ -89,6 +89,12 @@ export const configSchema = z
 
 export type FormConfig = z.infer<typeof configSchema>;
 
+/** Public paths: a config this build cannot read (e.g. keys from a newer release) is "no door", never a 500. */
+export function readFormConfig(raw: unknown): FormConfig | null {
+  const r = configSchema.safeParse(raw);
+  return r.success ? r.data : null;
+}
+
 // shortcut: default labels are Spanish (FACES is the first user); the owner edits them.
 export const defaultConfig: FormConfig = {
   fields: [

@@ -25,11 +25,12 @@ export const load: PageServerLoad = async ({ params, url, request, setHeaders })
   const { ctx, door } = resolved;
   const doorKey: DoorKey = `door:${door.id}`;
   const attribution = parseAttribution(url, request.headers.get('referer'), url.host, doorKey);
-  if (!isLikelyBot(request.headers.get('user-agent'))) await bumpDoorStat(ctx, doorKey, 'views');
   const [data, org] = await Promise.all([
     server.publicView(ctx, door),
     getTenant({ tenantId: ctx.tenantId } as TenantContext).catch(() => null),
   ]);
+  // After publicView: a door that answers 404 is not a view.
+  if (!isLikelyBot(request.headers.get('user-agent'))) await bumpDoorStat(ctx, doorKey, 'views');
   return {
     door: { slug: door.slug, title: door.title, description: door.description },
     kind: door.kind,
