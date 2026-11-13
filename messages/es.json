@@ -7429,5 +7429,20 @@
   "assistant_interruption_returned": "Una acción devolvió información, pero su finalización no está confirmada. Revisa esta página antes de reintentar.",
   "assistant_interruption_read": "Se interrumpió una consulta. Vuelve a pedir la información si aún la necesitas.",
   "assistant_interruption_noReplay": "No se repitió ninguna acción automáticamente.",
-  "assistant_interruption_dismiss": "Ocultar aviso de acción interrumpida"
+  "assistant_interruption_dismiss": "Ocultar aviso de acción interrumpida",
+  "doors_form_type_multiselect": "Varias opciones",
+  "doors_form_type_file": "Archivo o foto",
+  "doors_form_file_accept": "Qué se puede subir",
+  "doors_form_file_accept_any": "Cualquier archivo",
+  "doors_form_file_accept_image": "Solo fotos",
+  "doors_form_file_max": "Máximo de archivos",
+  "doors_form_file_uploading": "Subiendo…",
+  "doors_form_file_ready": "{count} archivo(s) listo(s)",
+  "doors_form_err_file": "No se pudo subir el archivo. Inténtalo de nuevo.",
+  "doors_form_err_file_type": "Ese tipo de archivo no se admite.",
+  "doors_form_err_file_large": "El archivo pesa más de 4 MB.",
+  "doors_form_err_file_wait": "Espera a que terminen de subir los archivos.",
+  "doors_form_tags_title": "Etiquetas del contacto",
+  "doors_form_tags_hint": "Cada persona que envía este formulario recibe estas etiquetas en tu CRM, sea nueva o ya exista.",
+  "doors_form_submission_files": "{count} archivo(s), en los adjuntos del contacto"
 }

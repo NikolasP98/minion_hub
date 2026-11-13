@@ -4,6 +4,7 @@ import {
   configSchema,
   contactFromValues,
   defaultConfig,
+  fileIdsFromValues,
   profileFromValues,
   validateSubmission,
   type FormConfig,
@@ -77,7 +78,7 @@ describe('form configSchema', () => {
         .success,
     ).toBe(false);
     expect(
-      configSchema.safeParse(field({ key: 'f', label: 'x', type: 'file', required: false }))
+      configSchema.safeParse(field({ key: 'f', label: 'x', type: 'video', required: false }))
         .success,
     ).toBe(false);
     expect(configSchema.safeParse({ ...intake, extra: 1 }).success).toBe(false);
@@ -212,6 +213,73 @@ describe('contactFromValues', () => {
       name: null,
       phone: '900',
       email: null,
+    });
+  });
+});
+
+describe('multiselect and file fields', () => {
+  const FILE_A = 'a'.repeat(24);
+  const FILE_B = 'b'.repeat(24);
+  const casting: FormConfig = {
+    fields: [
+      { key: 'telefono', label: 'WhatsApp', type: 'phone', required: true },
+      {
+        key: 'tratamientos',
+        label: 'Tratamientos',
+        type: 'multiselect',
+        required: true,
+        options: ['Botox/Soft', 'Rino Sculpt', 'Slim Face'],
+      },
+      { key: 'foto', label: 'Foto frontal', type: 'file', required: true, accept: 'image' },
+      { key: 'adjuntos', label: 'Adjuntos', type: 'file', required: false, maxFiles: 2 },
+    ],
+    consentText: 'Acepto.',
+    consentRequired: true,
+    tagIds: ['207440ff-2d42-4e5f-adf3-41f8e59f9601'],
+  };
+  const ok = {
+    telefono: '+51 900 000 041',
+    tratamientos: ['Slim Face', 'Botox/Soft'],
+    foto: [FILE_A],
+  };
+  const errors = (values: object) => {
+    const r = validateSubmission(casting, values, true);
+    return r.ok ? {} : r.errors;
+  };
+
+  it('config: options are required for multiselect, tag ids must be uuids', () => {
+    expect(configSchema.safeParse(casting).success).toBe(true);
+    const noOptions = {
+      ...casting,
+      fields: [casting.fields[0], { ...casting.fields[1], options: [] }],
+    };
+    expect(configSchema.safeParse(noOptions).success).toBe(false);
+    expect(configSchema.safeParse({ ...casting, tagIds: ['modelo'] }).success).toBe(false);
+  });
+
+  it('accepts option lists and file ids; blank optional lists are dropped', () => {
+    const r = validateSubmission(casting, { ...ok, adjuntos: [] }, true);
+    expect(r).toEqual({ ok: true, values: ok });
+    expect(fileIdsFromValues(casting.fields, { ...ok, adjuntos: [FILE_B, FILE_A] })).toEqual([
+      FILE_A,
+      FILE_B,
+    ]);
+  });
+
+  it('required lists must have an item; unknown options, bad ids, duplicates and too many files are invalid', () => {
+    expect(errors({ ...ok, tratamientos: [], foto: undefined })).toEqual({
+      tratamientos: 'required',
+      foto: 'required',
+    });
+    expect(errors({ ...ok, tratamientos: ['Otra cosa'] })).toEqual({ tratamientos: 'invalid' });
+    expect(errors({ ...ok, tratamientos: 'Slim Face' })).toEqual({ tratamientos: 'invalid' });
+    expect(errors({ ...ok, tratamientos: ['Slim Face', 'Slim Face'] })).toEqual({
+      tratamientos: 'invalid',
+    });
+    expect(errors({ ...ok, foto: ['../etc/passwd'] })).toEqual({ foto: 'invalid' });
+    expect(errors({ ...ok, foto: [FILE_A, FILE_B] })).toEqual({ foto: 'invalid' });
+    expect(errors({ ...ok, adjuntos: [FILE_A, FILE_B, 'c'.repeat(24)] })).toEqual({
+      adjuntos: 'invalid',
     });
   });
 });

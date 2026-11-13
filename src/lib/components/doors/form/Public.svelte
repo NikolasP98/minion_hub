@@ -4,6 +4,7 @@
   import { iconSizes, Button, Input, Select } from '$lib/components/ui';
   import { FormField } from '$lib/components/ui/foundations';
   import {
+    FORM_IMAGE_TYPES,
     validateSubmission,
     type FieldErrorCode,
     type FormField as FormFieldDef,
@@ -16,7 +17,11 @@
 
   const form = $derived(data as FormPublicData);
 
-  let values = $state<Record<string, string | boolean>>({});
+  let values = $state<Record<string, string | boolean | string[]>>({});
+  // Per file field: what the visitor sees while and after their files upload.
+  let uploads = $state<Record<string, { busy: boolean; error?: string }>>({});
+  const uploading = $derived(Object.values(uploads).some((u) => u.busy));
+  const list = (key: string) => (Array.isArray(values[key]) ? (values[key] as string[]) : []);
   let consent = $state(false);
   // Honeypot: hidden from people and assistive tech; only bots fill it.
   let website = $state('');
@@ -36,7 +41,69 @@
     return m.doors_form_err_invalid();
   }
 
-  function set(key: string, value: string | boolean) {
+  function toggle(key: string, option: string) {
+    const cur = list(key);
+    set(key, cur.includes(option) ? cur.filter((o) => o !== option) : [...cur, option]);
+  }
+
+  const MAX_BYTES = 4 * 1024 * 1024;
+
+  /** Phone photos are larger than the upload cap: shrink to a 2400 px JPEG first. */
+  async function shrink(file: File): Promise<Blob> {
+    if (!file.type.startsWith('image/') || file.size <= MAX_BYTES) return file;
+    try {
+      const bmp = await createImageBitmap(file);
+      const scale = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
+      const canvas = new OffscreenCanvas(
+        Math.round(bmp.width * scale),
+        Math.round(bmp.height * scale),
+      );
+      canvas.getContext('2d')?.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      return await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 });
+    } catch {
+      return file;
+    }
+  }
+
+  /** Uploads the chosen files right away; the form then submits their ids. A new pick replaces the old one. */
+  async function pick(field: FormFieldDef, input: HTMLInputElement) {
+    const chosen = [...(input.files ?? [])].slice(0, field.maxFiles ?? 1);
+    set(field.key, []);
+    if (!chosen.length) return void delete uploads[field.key];
+    uploads[field.key] = { busy: true };
+    try {
+      const ids: string[] = [];
+      for (const file of chosen) {
+        const body = await shrink(file);
+        if (body.size > MAX_BYTES) throw new Error('too_large');
+        const qs = new URLSearchParams({ field: field.key, name: file.name });
+        const res = await fetch(`/api/doors/public/${encodeURIComponent(door.slug)}/upload?${qs}`, {
+          method: 'POST',
+          headers: { 'content-type': body.type || 'application/octet-stream' },
+          body,
+        });
+        const out = (await res.json().catch(() => ({}))) as { fileId?: string; error?: string };
+        if (!res.ok || !out.fileId) throw new Error(out.error ?? 'failed');
+        ids.push(out.fileId);
+      }
+      set(field.key, ids);
+      uploads[field.key] = { busy: false };
+    } catch (e) {
+      const code = (e as Error).message;
+      input.value = '';
+      uploads[field.key] = {
+        busy: false,
+        error:
+          code === 'too_large'
+            ? m.doors_form_err_file_large()
+            : code === 'mime_not_allowed'
+              ? m.doors_form_err_file_type()
+              : m.doors_form_err_file(),
+      };
+    }
+  }
+
+  function set(key: string, value: string | boolean | string[]) {
     values[key] = value;
     if (errors[key]) delete errors[key];
   }
@@ -45,6 +112,10 @@
     event.preventDefault();
     if (sending) return;
     formError = null;
+    if (uploading) {
+      formError = m.doors_form_err_file_wait();
+      return;
+    }
     const checked = validateSubmission(form, values, consent);
     if (!checked.ok) {
       errors = checked.errors;
@@ -124,6 +195,51 @@
           error={fieldError(field)}
           onchange={(v) => set(field.key, String(v ?? ''))}
         />
+      {:else if field.type === 'multiselect'}
+        <FormField label={field.label} required={field.required} error={fieldError(field)}>
+          {#snippet children(p)}
+            <div
+              class="options"
+              role="group"
+              id={p.id}
+              aria-label={field.label}
+              aria-describedby={p['aria-describedby']}
+            >
+              {#each field.options ?? [] as option (option)}
+                <label class="check">
+                  <input
+                    type="checkbox"
+                    checked={list(field.key).includes(option)}
+                    onchange={() => toggle(field.key, option)}
+                  />
+                  <span class="t-body">{option}</span>
+                </label>
+              {/each}
+            </div>
+          {/snippet}
+        </FormField>
+      {:else if field.type === 'file'}
+        <FormField
+          label={field.label}
+          required={field.required}
+          error={uploads[field.key]?.error ?? fieldError(field)}
+          helper={uploads[field.key]?.busy
+            ? m.doors_form_file_uploading()
+            : list(field.key).length
+              ? m.doors_form_file_ready({ count: list(field.key).length })
+              : undefined}
+        >
+          {#snippet children(p)}
+            <input
+              {...p}
+              class="ctl"
+              type="file"
+              accept={field.accept === 'image' ? FORM_IMAGE_TYPES.join(',') : undefined}
+              multiple={(field.maxFiles ?? 1) > 1}
+              onchange={(e) => pick(field, e.currentTarget)}
+            />
+          {/snippet}
+        </FormField>
       {:else if field.type === 'checkbox'}
         <div class="check-field">
           <label class="check">
@@ -228,6 +344,7 @@
     border-color: var(--color-danger-border);
     outline-color: var(--color-danger-border);
   }
+  .options,
   .check-field {
     display: flex;
     flex-direction: column;
