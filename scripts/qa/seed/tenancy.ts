@@ -16,6 +16,7 @@ import type { SeedContext } from './db';
 export const ORG_BUSINESS = matrixUuid('tenancy.org.business');
 export const ORG_PERSONAL = matrixUuid('tenancy.org.personal');
 export const ORG_MODULES_OFF = matrixUuid('tenancy.org.business.modules-off');
+export const ORG_ROLE_TEMPLATES = matrixUuid('tenancy.org.organization-roles');
 export const ORG_IDENTITY_REQUIRED = matrixUuid('tenancy.org.business.identity-required');
 
 /** GoTrue id for a user matrix id — every other module that needs "the owner"
@@ -313,6 +314,8 @@ export async function seed(ctx: SeedContext): Promise<void> {
     on conflict (org_id) do update set requirements = excluded.requirements
   `;
 
+  await seedOrganizationRoleFixtures(ctx);
+
   for (const spec of USERS) {
     const id = userId(spec.id);
     const email = personaEmail(spec.id);
@@ -496,6 +499,15 @@ export async function seed(ctx: SeedContext): Promise<void> {
   const fixtures = [
     {
       role: 'custom-qa-access',
+      module: 'roles',
+      view: true,
+      edit: true,
+      manage: false,
+      own: false,
+      level: 0,
+    },
+    {
+      role: 'custom-qa-access',
       module: 'users',
       view: true,
       edit: false,
@@ -564,4 +576,86 @@ export async function seed(ctx: SeedContext): Promise<void> {
       field_level: 0,
     },
   });
+}
+
+/** Additive, independently callable fixture: does not reset unrelated QA organizations. */
+export async function seedOrganizationRoleFixtures(
+  ctx: Pick<SeedContext, 'sql' | 'admin' | 'register' | 'now'>,
+): Promise<void> {
+  const { sql, admin, register, now } = ctx;
+  await sql`insert into organizations(id,name,slug,kind,onboarded_at,role_model,default_role_key)
+    values(${ORG_ROLE_TEMPLATES},'QA Organization Roles','qa-organization-roles','business',${now},'organization','custom-administrator')
+    on conflict(id) do update set role_model='organization',default_role_key='custom-administrator',onboarded_at=excluded.onboarded_at`;
+  await sql`insert into org_roles(org_id,key,name,rank,source_role_key,template_id,template_version)
+    values(${ORG_ROLE_TEMPLATES},'custom-administrator','Administrator',80,'admin','admin',1)
+    on conflict(org_id,key) do update set name=excluded.name,rank=excluded.rank`;
+  // Match the version-1 Administrator snapshot. The seed contract independently
+  // compares these fixture grants with the current resolver module vocabulary.
+  for (const module of [
+    'overview',
+    'crm',
+    'finance',
+    'sales',
+    'scheduling',
+    'support',
+    'projects',
+    'memberships',
+    'comms',
+    'brains',
+    'stock',
+    'ads',
+    'pos',
+    'pulse',
+    'agents',
+    'channels',
+    'flows',
+    'marketplace',
+    'reliability',
+    'workspace',
+    'settings',
+    'users',
+    'roles',
+    'tools',
+  ]) {
+    const write = module !== 'overview';
+    const field = ['crm', 'finance', 'scheduling'].includes(module) ? 1 : 0;
+    await sql`insert into permission_rules(org_id,role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level)
+      values(${ORG_ROLE_TEMPLATES},'custom-administrator',${module},true,${write},${write},${write},${write},${write},false,${field})
+      on conflict(org_id,role_key,module) do update set can_view=true,can_create=excluded.can_create,can_edit=excluded.can_edit,
+      can_delete=excluded.can_delete,can_export=excluded.can_export,can_manage=excluded.can_manage,if_owner=false,field_level=excluded.field_level`;
+  }
+  register('tenancy.org.organization-roles', {
+    table: 'organizations',
+    where: { id: ORG_ROLE_TEMPLATES, role_model: 'organization' },
+  });
+  register('tenancy.role.organization-administrator', {
+    table: 'org_roles',
+    where: { org_id: ORG_ROLE_TEMPLATES, key: 'custom-administrator' },
+  });
+
+  for (const [suffix, ownership, assigned] of [
+    ['owner', 'owner', true],
+    ['member', 'member', true],
+    ['missing-role', 'member', false],
+  ] as const) {
+    const matrixId = `tenancy.user.organization-${suffix}`;
+    const email = personaEmail(matrixId);
+    const id = await findOrCreateGoTrueUser(admin, userId(matrixId), email, QA_PASSWORD, {
+      full_name: matrixId,
+    });
+    await sql`insert into profiles(id,email,display_name,role,account_type,onboarded_at)
+      values(${id}::uuid,${email},${matrixId},'user','person',${now})
+      on conflict(id) do update set email=excluded.email,display_name=excluded.display_name,role='user',onboarded_at=excluded.onboarded_at`;
+    await sql`insert into organization_members(organization_id,profile_id,role) values(${ORG_ROLE_TEMPLATES}::uuid,${id}::uuid,${ownership})
+      on conflict(organization_id,profile_id) do update set role=excluded.role`;
+    if (assigned)
+      await sql`insert into member_roles(org_id,profile_id,role_key)
+      values(${ORG_ROLE_TEMPLATES}::uuid,${id}::uuid,'custom-administrator') on conflict do nothing`;
+    register(matrixId, { table: 'profiles', where: { id } });
+    await ensureSeededPersonalAgent(ctx, {
+      profileId: id,
+      agentId: matrixTextId(matrixId, 'personal-agent'),
+      displayName: `${matrixId} agent`,
+    });
+  }
 }

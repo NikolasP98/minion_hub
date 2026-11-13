@@ -58,8 +58,8 @@ export function capsToLegacyPermissions(caps: Capabilities): string[] {
   add('users:edit', caps.can('users', 'edit'));
   add('users:remove', caps.can('users', 'delete'));
   add('users:manage', caps.can('users', 'manage'));
-  add('roles:view', caps.can('users', 'view'));
-  add('roles:manage', caps.can('users', 'manage'));
+  for (const action of ['view', 'create', 'edit', 'delete', 'manage'] as const)
+    add(`roles:${action}`, caps.can('roles', action));
   add('reliability:view', caps.can('reliability', 'view'));
   add('billing:view', caps.can('settings', 'view'));
   add('billing:manage', caps.can('settings', 'manage'));

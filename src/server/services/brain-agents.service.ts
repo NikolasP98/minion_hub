@@ -4,7 +4,8 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
 import { brainAgentTemplates, type BrainAgentTemplate } from '$server/db/pg-schema/brain-agents';
 import { brains, brainAccess, type Brain } from '$server/db/pg-schema/brains';
-import { recordAudit } from './activity.service';
+import { recordAudit, recordAuditInTx } from './activity.service';
+import { withBrainWriteAuthority } from './brain-access-grants.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 
 /**
@@ -15,10 +16,9 @@ import { gatewayCall } from '$lib/server/gateway-rpc';
  * hub performs `agents.create` + `config.patch` with the system gateway
  * credentials (operator.admin scope), never the browser.
  *
- * RBAC: every export here assumes the caller already holds `brains:manage`
- * (enforced at the API layer via `requireOrgCapability`) — this service does
- * not re-check it, same division of labor as `brains.service.ts`'s coarse
- * module gate vs. its own fine-grained `canAccessBrain`.
+ * Provisioning and deprovisioning independently recheck current module and
+ * per-brain authority at preflight and at the database grant boundary. Other
+ * exports retain their API-layer brains:manage gate.
  */
 
 type Actor = { id: string | null; name: string | null };
@@ -67,17 +67,6 @@ function defaultTemplate(orgId: string): BrainAgentTemplate {
   };
 }
 
-async function loadBrainRow(ctx: CoreCtx, brainId: string): Promise<Brain | null> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(brains)
-      .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
-      .limit(1),
-  );
-  return row ?? null;
-}
-
 // ── Template CRUD ────────────────────────────────────────────────────────
 
 /** Returns the org's template, or an unsaved default (id:'') if none exists
@@ -85,7 +74,11 @@ async function loadBrainRow(ctx: CoreCtx, brainId: string): Promise<Brain | null
  *  until the org actually saves something"; `updateTemplate` upserts. */
 export async function getTemplate(ctx: CoreCtx): Promise<BrainAgentTemplate> {
   const [row] = await withOrgCore(ctx, (tx) =>
-    tx.select().from(brainAgentTemplates).where(eq(brainAgentTemplates.orgId, ctx.tenantId)).limit(1),
+    tx
+      .select()
+      .from(brainAgentTemplates)
+      .where(eq(brainAgentTemplates.orgId, ctx.tenantId))
+      .limit(1),
   );
   return row ?? defaultTemplate(ctx.tenantId);
 }
@@ -107,14 +100,24 @@ export async function updateTemplate(
     tx
       .insert(brainAgentTemplates)
       .values(values)
-      .onConflictDoUpdate({ target: brainAgentTemplates.orgId, set: { ...values, updatedAt: new Date() } })
+      .onConflictDoUpdate({
+        target: brainAgentTemplates.orgId,
+        set: { ...values, updatedAt: new Date() },
+      })
       .returning(),
   );
   await recordAudit(ctx, {
     refType: 'brain_agent_template',
     refId: row.id,
     op: 'update',
-    changes: [{ field: 'instructions', label: 'Instructions', old: current.instructions, new: row.instructions }],
+    changes: [
+      {
+        field: 'instructions',
+        label: 'Instructions',
+        old: current.instructions,
+        new: row.instructions,
+      },
+    ],
     actor,
   });
   return row;
@@ -190,86 +193,124 @@ export async function provisionBrainAgent(
   brainId: string,
   actor: Actor,
 ): Promise<{ agentId: string }> {
-  const brain = await loadBrainRow(ctx, brainId);
-  if (!brain) throw error(404, 'brain not found');
+  const principal = { profileId: ctx.profileId };
+  const brain = await withBrainWriteAuthority(
+    ctx,
+    brainId,
+    principal,
+    async ({ brain }) => brain,
+    undefined,
+    { requireManage: true },
+  );
   if (brain.agentId) return { agentId: brain.agentId };
-
   const template = await getTemplate(ctx);
   const agentId = deriveBrainAgentId(brainId);
 
+  // RPCs deliberately run outside SQL locks. Partial remote setup remains
+  // unbound until the fresh finalizer commits; retry reuses the same agent ID.
   try {
-    await gatewayCall('agents.create', { name: agentId, workspace: `~/.minion/agents/${agentId}/workspace` });
+    await gatewayCall('agents.create', {
+      name: agentId,
+      workspace: `~/.minion/agents/${agentId}/workspace`,
+    });
   } catch (err) {
     if (!(err instanceof Error && /already exists/i.test(err.message))) throw err;
   }
   await patchBrainAgentConfig(agentId, template, brain);
 
-  await withOrgCore(ctx, async (tx) => {
-    await tx
-      .update(brains)
-      .set({ agentId, updatedAt: new Date() })
-      .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)));
-    await tx
-      .insert(brainAccess)
-      .values({ brainId, orgId: ctx.tenantId, principalType: 'agent', principalId: agentId, level: 'write' })
-      .onConflictDoNothing();
-  });
-
-  await recordAudit(ctx, {
-    refType: 'brain',
-    refId: brainId,
-    op: 'update',
-    changes: [{ field: 'agent_id', label: 'Managing agent', old: null, new: agentId }],
-    actor,
-  });
-
-  // P4.2 (done): the brain agent can now call hub gateway APIs as itself —
-  // resolveAssistantPrincipal (assistant-principal.ts) resolves `brain-<uuid>`
-  // via this row's `brains.agent_id` into a brains-only principal.
-
-  return { agentId };
+  return withBrainWriteAuthority(
+    ctx,
+    brainId,
+    principal,
+    async ({ tx, brain: current, profileId }) => {
+      if (current.agentId) return { agentId: current.agentId };
+      await tx
+        .update(brains)
+        .set({ agentId, updatedAt: new Date() })
+        .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)));
+      await tx
+        .insert(brainAccess)
+        .values({
+          brainId,
+          orgId: ctx.tenantId,
+          principalType: 'agent',
+          principalId: agentId,
+          level: 'write',
+        })
+        .onConflictDoNothing();
+      await recordAuditInTx(tx, ctx, {
+        refType: 'brain',
+        refId: brainId,
+        op: 'update',
+        changes: [{ field: 'agent_id', label: 'Managing agent', old: null, new: agentId }],
+        actor: { id: profileId, name: actor.name },
+      });
+      return { agentId };
+    },
+    undefined,
+    { requireManage: true },
+  );
 }
 
 /**
- * Disable agent management for a brain: deletes the gateway agent, clears
- * `brains.agent_id`, and removes its `brain_access` row. Idempotent — a
- * brain with no agent is a no-op.
+ * Disable the gateway agent, then remove its binding and ACL in a fresh
+ * authorized transaction. A remote not-found result permits retry after
+ * partial success. Gateway effects and the database commit are separate.
  */
-export async function deprovisionBrainAgent(ctx: CoreCtx, brainId: string, actor: Actor): Promise<void> {
-  const brain = await loadBrainRow(ctx, brainId);
-  if (!brain?.agentId) return;
+export async function deprovisionBrainAgent(
+  ctx: CoreCtx,
+  brainId: string,
+  actor: Actor,
+): Promise<void> {
+  const principal = { profileId: ctx.profileId };
+  const brain = await withBrainWriteAuthority(
+    ctx,
+    brainId,
+    principal,
+    async ({ brain }) => brain,
+    undefined,
+    { requireManage: true },
+  );
+  if (!brain.agentId) return;
   const agentId = brain.agentId;
-
   try {
     await gatewayCall('agents.delete', { agentId });
   } catch (err) {
     if (!(err instanceof Error && /not found/i.test(err.message))) throw err;
   }
-
-  await withOrgCore(ctx, async (tx) => {
-    await tx
-      .update(brains)
-      .set({ agentId: null, updatedAt: new Date() })
-      .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)));
-    await tx
-      .delete(brainAccess)
-      .where(
-        and(
-          eq(brainAccess.brainId, brainId),
-          eq(brainAccess.orgId, ctx.tenantId),
-          eq(brainAccess.principalType, 'agent'),
-          eq(brainAccess.principalId, agentId),
-        ),
-      );
-  });
-
-  await recordAudit(ctx, {
-    refType: 'brain',
-    refId: brainId,
-    op: 'update',
-    changes: [{ field: 'agent_id', label: 'Managing agent', old: agentId, new: null }],
-    actor,
-  });
+  await withBrainWriteAuthority(
+    ctx,
+    brainId,
+    principal,
+    async ({ tx, brain: current, profileId }) => {
+      if (!current.agentId) return;
+      if (current.agentId !== agentId)
+        throw error(409, 'Brain agent changed; refresh before retrying');
+      await tx
+        .update(brains)
+        .set({ agentId: null, updatedAt: new Date() })
+        .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)));
+      await tx
+        .delete(brainAccess)
+        .where(
+          and(
+            eq(brainAccess.brainId, brainId),
+            eq(brainAccess.orgId, ctx.tenantId),
+            eq(brainAccess.principalType, 'agent'),
+            eq(brainAccess.principalId, agentId),
+          ),
+        );
+      await recordAuditInTx(tx, ctx, {
+        refType: 'brain',
+        refId: brainId,
+        op: 'update',
+        changes: [{ field: 'agent_id', label: 'Managing agent', old: agentId, new: null }],
+        actor: { id: profileId, name: actor.name },
+      });
+    },
+    undefined,
+    { requireManage: true },
+  );
 }
 
 /**

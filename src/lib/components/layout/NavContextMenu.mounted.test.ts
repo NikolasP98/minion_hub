@@ -77,8 +77,8 @@ describe('NavContextMenu', () => {
     expect(r[0]).toMatch(/home/i);
   });
 
-  it('exposes access through visible More with users:manage and no settings:manage', async () => {
-    setup(['users:manage']);
+  it('exposes access through visible More with roles:edit and no settings:manage', async () => {
+    setup(['roles:edit']);
     mount({ kind: 'header', sectionId: 'custom:st4ff1' });
     await fireEvent.click(screen.getByRole('button', { name: 'More actions: Row' }));
     const text = (await rows()).join('|');
@@ -89,7 +89,7 @@ describe('NavContextMenu', () => {
   it('opens only the nearest menu when a touch press is nested in an area host', async () => {
     vi.useFakeTimers();
     try {
-      setup(['settings:manage', 'users:manage']);
+      setup(['settings:manage', 'roles:edit']);
       render(NavContextMenu, {
         props: {
           kind: 'area',
@@ -118,7 +118,7 @@ describe('NavContextMenu', () => {
   });
 
   it('keeps native page access separate from structural controls', async () => {
-    setup(['users:manage']);
+    setup(['roles:edit']);
     mount({ kind: 'item', href: '/pos/sell' });
     await fireEvent.keyDown(screen.getByTestId('row'), { key: 'F10', shiftKey: true });
     const text = (await rows()).join('|');

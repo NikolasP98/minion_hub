@@ -20,6 +20,7 @@ import {
   type NotificationAudienceHarness,
 } from '../../../../tests/fixtures/notification-audience/postgres-harness';
 import {
+  acquireScope,
   verifyCommandTagAdmissions,
   verifyClaimQuarantineCommandTag,
   verifyApplicantProjectionAndTerminalObservation,
@@ -56,6 +57,8 @@ import {
   verifySameGenerationRenewalBeforeProjection,
 } from '../../../../tests/fixtures/notification-audience/fence-cases';
 
+import { projectNotificationAudience } from './projection/transaction';
+import { revalidateNotificationCandidate } from './projection/revalidate';
 let harness: NotificationAudienceHarness;
 
 describe('native notification audience projection', () => {
@@ -190,5 +193,43 @@ describe('native notification audience projection', () => {
 
   it('limits abandoned-operation cleanup to one exact tuple in a marked disposable child', async () => {
     await verifyFixtureCleanupBoundary(harness);
+  });
+  it('projects local-role administrators and denies dangling assignments and unscoped catalog reads', async () => {
+    const active = await acquireScope(harness, 401, 'join.requested');
+    const { organizationId, managerId } = active.fixture;
+    await harness.owner`update public.organizations set role_model='organization',default_role_key='custom-administrator' where id=${organizationId}::uuid`;
+    await harness.owner`insert into public.org_roles(org_id,key,name,rank)values(${organizationId},'custom-administrator','Administrator',80)`;
+    await harness.owner`insert into public.member_roles(org_id,profile_id,role_key)values(${organizationId}::uuid,${managerId}::uuid,'custom-administrator')`;
+    await harness.owner`insert into public.permission_rules(org_id,role_key,module,can_view,can_manage)values(${organizationId}::uuid,'custom-administrator','users',true,true)`;
+    expect(await projectNotificationAudience(active, new AbortController().signal)).toMatchObject({
+      outcome: 'projected',
+    });
+    const candidates = await harness.owner<
+      Array<{ id: string; recipient_profile_id: string; authority_sha256: string }>
+    >`select id,recipient_profile_id::text,authority_sha256 from public.notification_audience_candidates where event_id=${active.event.id}::uuid and audience_mode='users_manage'`;
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.recipient_profile_id).toBe(managerId);
+    const scope = {
+      organizationId,
+      candidateId: candidates[0]!.id,
+      recipientProfileId: managerId,
+      authoritySha256: candidates[0]!.authority_sha256,
+    };
+    expect(await revalidateNotificationCandidate(scope)).not.toBeNull();
+    await harness.owner.begin(async (tx) => {
+      await tx`set local role app_notification_worker`;
+      await tx`select set_config('app.current_org_id',${organizationId},true)`;
+      expect(await tx`select count(key)::int as count from public.org_roles`).toEqual([
+        { count: 0 },
+      ]);
+    });
+    await expect(
+      harness.owner.begin(async (tx) => {
+        await tx`set local role app_notification_worker`;
+        await tx`select name from public.org_roles`;
+      }),
+    ).rejects.toMatchObject({ code: '42501' });
+    await harness.owner`delete from public.org_roles where org_id=${organizationId} and key='custom-administrator'`;
+    expect(await revalidateNotificationCandidate(scope)).toBeNull();
   });
 });

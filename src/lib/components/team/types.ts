@@ -38,6 +38,9 @@ export interface TeamRbacRole {
 export interface TeamOrganization {
   id: string;
   name: string;
+  roleModel?: 'legacy' | 'organization';
+  defaultRoleKey?: string | null;
+  roles?: { key: string; name: string }[];
 }
 
 export interface TeamLeaveType {

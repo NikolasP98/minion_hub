@@ -16,9 +16,17 @@ import { runSeed } from './index';
 import { countAllSeededRows, type RowRef } from './db';
 import { MATRIX, matrixById } from './matrix';
 import { matrixUuid } from './ids';
+import { MODULES } from '../../../src/server/services/rbac.service';
+import { templateCaps } from '../../../src/server/services/role-templates';
 import { GRANT_HALF_USED, GRANT_EXHAUSTED } from './pos';
 import { CHAIN_INVOICE_ID } from './stock';
-import { ORG_BUSINESS, ORG_PERSONAL, SIMULATION_OWNER_TWO_ORGS, userId } from './tenancy';
+import {
+  ORG_BUSINESS,
+  ORG_PERSONAL,
+  ORG_ROLE_TEMPLATES,
+  SIMULATION_OWNER_TWO_ORGS,
+  userId,
+} from './tenancy';
 
 const dbUrl = testDatabaseUrl();
 const MATRIX_BY_ID = matrixById();
@@ -27,6 +35,43 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
   let sql: ReturnType<typeof postgres>;
   let libsql: LibsqlClient;
   let registered: ReadonlyMap<string, RowRef>;
+
+  it('new role model seeds exactly one local Administrator and never falls back for missing assignments', async () => {
+    expect(
+      await sql`select role_model,default_role_key from organizations where id=${ORG_ROLE_TEMPLATES}::uuid`,
+    ).toMatchObject([{ role_model: 'organization', default_role_key: 'custom-administrator' }]);
+    expect(await sql`select key from org_roles where org_id=${ORG_ROLE_TEMPLATES}`).toEqual([
+      { key: 'custom-administrator' },
+    ]);
+    const assignments =
+      await sql`select role_key from member_roles where org_id=${ORG_ROLE_TEMPLATES}::uuid`;
+    expect(assignments).toHaveLength(2);
+    expect(assignments.every((r) => r.role_key === 'custom-administrator')).toBe(true);
+    const rules =
+      await sql`select module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level
+      from permission_rules where org_id=${ORG_ROLE_TEMPLATES}::uuid and role_key='custom-administrator'`;
+    expect(rules.map((r) => r.module).sort()).toEqual([...MODULES].sort());
+    for (const module of MODULES) {
+      const caps = templateCaps('admin', module);
+      expect(rules.find((r) => r.module === module)).toEqual({
+        module,
+        can_view: caps.view,
+        can_create: caps.create,
+        can_edit: caps.edit,
+        can_delete: caps.delete,
+        can_export: caps.export,
+        can_manage: caps.manage,
+        if_owner: false,
+        field_level: ['crm', 'finance', 'scheduling'].includes(module) ? 1 : 0,
+      });
+    }
+    expect(
+      await sql`select role_key from member_roles where org_id=${ORG_ROLE_TEMPLATES}::uuid and profile_id=${userId('tenancy.user.organization-missing-role')}::uuid`,
+    ).toHaveLength(0);
+    expect(
+      await sql`select role_model from organizations where id in (${ORG_BUSINESS}::uuid,${ORG_PERSONAL}::uuid)`,
+    ).toMatchObject([{ role_model: 'legacy' }, { role_model: 'legacy' }]);
+  });
 
   it('role-simulation fixtures keep access management separate from settings and preserve CRM limits', async () => {
     const rows = await sql<

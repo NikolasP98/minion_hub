@@ -205,12 +205,12 @@
     "class": "todo"
   },
   {
-    "file": "src/routes/api/marketplace/agents/+server.ts",
+    "file": "src/routes/api/marketplace/agents/[id]/+server.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
   },
   {
-    "file": "src/routes/api/marketplace/agents/[id]/+server.ts",
+    "file": "src/routes/api/marketplace/agents/+server.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
   },
@@ -506,11 +506,6 @@
   },
   {
     "file": "src/server/services/join/links.service.ts",
-    "calls": ["supabaseAdmin"],
-    "class": "todo"
-  },
-  {
-    "file": "src/server/services/join/membership.ts",
     "calls": ["supabaseAdmin"],
     "class": "todo"
   },

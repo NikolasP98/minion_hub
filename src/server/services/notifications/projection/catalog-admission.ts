@@ -11,7 +11,7 @@ export async function readNotificationProjectionCatalog(
   const rows = await tx<CatalogRow[]>`
     with source_names(relname) as (values
       ('organizations'),('organization_members'),('profiles'),('member_roles'),
-      ('permission_rules'),('join_request')
+      ('permission_rules'),('join_request'),('org_roles')
     ), operational_names(relname) as (values
       ('notification_worker_runtime'),('notification_org_control'),('notification_outbox'),
       ('notification_events'),('notification_projection_receipts'),

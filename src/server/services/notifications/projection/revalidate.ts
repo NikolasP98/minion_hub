@@ -195,7 +195,8 @@ async function readAuthorityBundle(
       from public.notification_events e join candidate_scope c
         on c.organization_id=e.organization_id and c.event_id=e.id
     ), organization_scope as materialized (
-      select organization.id,organization.status
+      select organization.id,organization.status,organization.role_model as role_model,
+        coalesce((select array_agg(local.key) from (select key from public.org_roles where org_id=organization.id::text order by key collate "C" limit ${PROJECTION_LIMITS.roleKeys + 1}) local),'{}'::text[]) as local_role_keys
       from public.organizations organization join event_scope event on event.organization_id=organization.id
     ), request_scope as materialized (
       select request.id,request.organization_id,request.supabase_id,request.user_id,request.status,
@@ -236,11 +237,13 @@ async function readAuthorityBundle(
         from request_scope request) as request_evidence,
       exists(select 1 from member_scope) as membership_found,
       (select count(*)::integer from assignments) as assignment_count,
-      (select count(distinct role_key)::integer from assignments where role_key is not null) as role_key_count,
+      greatest((select count(distinct role_key)::integer from assignments where role_key is not null),coalesce((select case when role_model='organization' then cardinality(local_role_keys) else 0 end from organization_scope),0)) as role_key_count,
       (select count(*)::integer from rule_scope) as rule_count,
       coalesce((select jsonb_agg(jsonb_build_object(
         'profileId',assignment.profile_id::text,'legacyRole',assignment.legacy_role,
-        'profileRole',assignment.profile_role,'roleKey',assignment.role_key)
+        'profileRole',assignment.profile_role,'roleKey',assignment.role_key,
+        'roleModel',(select role_model from organization_scope),
+        'localRoleKeys',case when assignment.role_key=any((select local_role_keys from organization_scope)::text[]) then jsonb_build_array(assignment.role_key) else '[]'::jsonb end)
         order by assignment.role_key collate "C") from assignments assignment),'[]'::jsonb) as members,
       coalesce((select jsonb_agg(jsonb_build_object(
         'role_key',rule.role_key,'module',rule.module,'can_manage',rule.can_manage,

@@ -29,6 +29,29 @@ function rule(roleKey: string, canManage: boolean, fieldLevel = 0): AuthorityRul
 }
 
 describe('notification projection authority', () => {
+  it('uses only valid local assignments and never substitutes an owner membership in the new model', () => {
+    const missing = {
+      ...member(OWNER, 'owner'),
+      roleModel: 'organization' as const,
+      localRoleKeys: ['custom-admin'],
+    };
+    const foreign = {
+      ...member(MANAGER, 'member', 'custom-foreign'),
+      roleModel: 'organization' as const,
+      localRoleKeys: ['custom-admin'],
+    };
+    const valid = {
+      ...member(CUSTOM, 'member', 'custom-admin'),
+      roleModel: 'organization' as const,
+      localRoleKeys: ['custom-admin'],
+    };
+    const recipients = resolveManagerRecipients(
+      [missing, foreign, valid],
+      [rule('custom-admin', true), rule('custom-foreign', true)],
+    );
+    expect(recipients.map((r) => r.profileId)).toEqual([CUSTOM]);
+  });
+
   it('uses explicit roles before legacy fallback and applies the canonical users:manage override', () => {
     const recipients = resolveManagerRecipients(
       [

@@ -1,4 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
+const rolePolicy = vi.hoisted(() =>
+  vi.fn(async () => ({ roleModel: 'legacy', defaultRoleKey: null })),
+);
+vi.mock('./organization-role-policy', () => ({ loadOrganizationRolePolicy: rolePolicy }));
 import { createMockDb } from '$server/test-utils/mock-db';
 
 vi.mock('./embeddings', () => ({
@@ -50,6 +54,7 @@ import type { BrainDocument } from '$server/db/pg-schema/brains';
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 afterEach(() => {
+  rolePolicy.mockResolvedValue({ roleModel: 'legacy', defaultRoleKey: null });
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -111,6 +116,43 @@ describe('brains.service — canAccessBrain (fail-closed access resolution)', ()
       roles: ['admin'],
     });
     expect(ok).toBe(true);
+  });
+
+  it('does not turn Team management into private-brain administration in a local-role org', async () => {
+    rolePolicy.mockResolvedValueOnce({
+      roleModel: 'organization',
+      defaultRoleKey: 'custom-administrator',
+    } as never);
+    vi.mocked(resolveCapabilities).mockResolvedValueOnce({
+      can: (module: string, action: string) => module === 'users' && action === 'manage',
+    } as never);
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[brainRow({ visibility: 'private' })], []]);
+    expect(
+      await canAccessBrain(ctx(db), 'brain-1', 'write', {
+        profileId: 'team-manager',
+        roles: ['custom-team-manager'],
+      }),
+    ).toBe(false);
+  });
+
+  it('uses the brains-specific view/manage predicate for local-role administrators', async () => {
+    rolePolicy.mockResolvedValueOnce({
+      roleModel: 'organization',
+      defaultRoleKey: 'custom-administrator',
+    } as never);
+    vi.mocked(resolveCapabilities).mockResolvedValueOnce({
+      can: (module: string, action: string) =>
+        module === 'brains' && ['view', 'manage'].includes(action),
+    } as never);
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[brainRow({ visibility: 'private' })]]);
+    expect(
+      await canAccessBrain(ctx(db), 'brain-1', 'write', {
+        profileId: 'local-admin',
+        roles: ['custom-administrator'],
+      }),
+    ).toBe(true);
   });
 
   it('grants read (not write) to any org member on a visibility:org brain', async () => {

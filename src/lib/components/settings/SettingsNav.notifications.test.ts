@@ -25,6 +25,29 @@ beforeEach(() => {
 });
 
 describe('notification settings use the same capability in route and actual navigation', () => {
+  it('offers Roles to a role viewer without Team or platform administration', () => {
+    context.page.data.permissions.permissions = ['roles:view'];
+    const view = render(SettingsNav);
+    expect(view.getByRole('link', { name: 'Roles' }).getAttribute('href')).toBe('/settings/roles');
+    expect(view.queryByRole('link', { name: 'Team' })).toBeNull();
+    expect(view.queryByRole('link', { name: 'Gateways' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Security' })).toBeNull();
+  });
+  it('offers Team management independently from role-definition access', () => {
+    context.page.data.permissions.permissions = ['users:manage'];
+    const view = render(SettingsNav);
+    expect(view.getByRole('link', { name: 'Team' }).getAttribute('href')).toBe('/settings/team');
+    expect(view.queryByRole('link', { name: 'Roles' })).toBeNull();
+  });
+  it('offers known organization settings to a custom administrator while retaining global-only boundaries', () => {
+    context.page.data.permissions.permissions = ['settings:manage', 'users:manage', 'roles:view'];
+    const view = render(SettingsNav);
+    for (const label of ['Backups', 'Modules', 'Tables', 'Workflows', 'Team', 'Roles'])
+      expect(view.getByRole('link', { name: label })).toBeTruthy();
+    expect(view.queryByRole('link', { name: 'Organizations' })).toBeNull();
+    expect(view.queryByRole('link', { name: 'Gateways' })).toBeNull();
+    expect(view.queryByRole('button', { name: 'Security' })).toBeNull();
+  });
   it('offers organization managers the actual settings link without a global-admin role', () => {
     context.page.data.permissions.permissions = ['comms:manage'];
     const view = render(SettingsNav);

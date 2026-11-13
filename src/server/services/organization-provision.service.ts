@@ -7,6 +7,9 @@ import { browserSharedTokenOff } from '$lib/gateway-browser-token';
 import { gatewayCallAsUser, resolveCredentialsForUser } from '$lib/server/gateway-rpc';
 import { gatewayAudience, issueGatewayJwt } from '$server/services/gateway-jwt.service';
 import { getDb } from '$server/db/client';
+import { env } from '$env/dynamic/private';
+import { bootstrapOrganization } from './organization-bootstrap.service';
+import { getPgClient } from '$server/db/pg-pool';
 
 export type OrganizationProvisionStepId =
   'organization' | 'membership' | 'rbac' | 'workforce' | 'gateway' | 'workstation' | 'readiness';
@@ -30,6 +33,7 @@ interface OrganizationRow {
   id: string;
   name: string;
   slug: string;
+  role_model?: 'legacy' | 'organization';
 }
 
 export function normalizeOrganizationName(value: unknown): string {
@@ -62,7 +66,7 @@ function safeMessage(error: unknown): string {
 async function findOrganization(slug: string): Promise<OrganizationRow | null> {
   const { data, error } = await supabaseAdmin()
     .from('organizations')
-    .select('id, name, slug')
+    .select('id, name, slug, role_model')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw new Error(`Organization lookup failed: ${error.message}`);
@@ -102,7 +106,7 @@ async function ensureOrganization(
   const { data, error } = await supabaseAdmin()
     .from('organizations')
     .insert(candidate)
-    .select('id, name, slug')
+    .select('id, name, slug, role_model')
     .single();
   if (!error && data) return data as OrganizationRow;
 
@@ -116,6 +120,17 @@ async function ensureOrganization(
 }
 
 async function verifyOrganization(orgId: string, profileId: string): Promise<void> {
+  const [model] = await getPgClient()<{ role_model: string }[]>`
+    select role_model from organizations where id=${orgId}::uuid`;
+  if (model?.role_model === 'organization') {
+    const [ready] = await getPgClient()<{ valid: boolean }[]>`
+      select exists(select 1 from organization_members m
+        join member_roles mr on mr.org_id=m.organization_id and mr.profile_id=m.profile_id
+        join org_roles r on r.org_id=mr.org_id::text and r.key=mr.role_key
+        where m.organization_id=${orgId}::uuid and m.profile_id=${profileId}::uuid and m.role='owner') as valid`;
+    if (!ready?.valid) throw new Error('Readiness check failed: organization access is incomplete');
+    return;
+  }
   const admin = supabaseAdmin();
   const [org, membership, role] = await Promise.all([
     admin.from('organizations').select('id').eq('id', orgId).maybeSingle(),
@@ -232,6 +247,7 @@ export async function provisionOrganization(
   const existingWorkforceCompanyId = optionalOrganizationId(params.existingWorkforceCompanyId);
   let organization: OrganizationRow | null = null;
   let failed = false;
+  let qualifiedBootstrap = false;
 
   async function step(
     id: OrganizationProvisionStepId,
@@ -268,10 +284,27 @@ export async function provisionOrganization(
   }
 
   await step('organization', `Organization ${slug} is registered`, async () => {
-    organization = await ensureOrganization(name, slug, existingWorkforceCompanyId);
+    if (env.ORG_ROLE_TEMPLATES_ENABLED === 'true') {
+      const result = await bootstrapOrganization({
+        name,
+        slug,
+        profileId: params.profileId,
+        organizationId: existingWorkforceCompanyId,
+      });
+      qualifiedBootstrap = true;
+      organization = {
+        id: result.id,
+        name: result.name,
+        slug: result.slug,
+        role_model: result.roleModel,
+      };
+    } else {
+      organization = await ensureOrganization(name, slug, existingWorkforceCompanyId);
+    }
   });
   await step('membership', 'Provisioning admin is an organization owner', async () => {
     if (!organization) throw new Error('Organization was not created');
+    if (qualifiedBootstrap || organization.role_model === 'organization') return;
     const { error } = await supabaseAdmin().from('organization_members').upsert(
       {
         organization_id: organization.id,
@@ -282,8 +315,9 @@ export async function provisionOrganization(
     );
     if (error) throw new Error(`Owner membership failed: ${error.message}`);
   });
-  await step('rbac', 'Owner role and full organization capabilities are active', async () => {
+  await step('rbac', 'Organization capabilities are active', async () => {
     if (!organization) throw new Error('Organization was not created');
+    if (qualifiedBootstrap || organization.role_model === 'organization') return;
     const { error } = await supabaseAdmin().from('member_roles').upsert(
       {
         org_id: organization.id,

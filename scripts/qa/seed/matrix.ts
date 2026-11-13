@@ -45,6 +45,17 @@ export interface MatrixEntry {
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  ...[
+    'tenancy.org.organization-roles',
+    'tenancy.role.organization-administrator',
+    'tenancy.user.organization-owner',
+    'tenancy.user.organization-member',
+    'tenancy.user.organization-missing-role',
+  ].map((id) => ({
+    id,
+    domain: 'tenancy' as const,
+    why: 'New organization local Administrator, explicit default membership and fail-closed missing assignment contrasted with legacy fixtures',
+  })),
   ...['owner', 'admin', 'manager', 'staff', 'viewer'].map((key) => ({
     id: `tenancy.system-role.${key}`,
     domain: 'tenancy' as const,

@@ -70,3 +70,97 @@ export function roleFitsActualAuthority(input: {
   return true;
 }
 export const noSimulationCapabilities = () => buildCapabilities([], []);
+
+/** Bound only new recipient rights after role unions; retained higher permissions do not block a reduction. */
+export function recipientGrantFitsActualAuthority(input: {
+  before: Capabilities;
+  after: Capabilities;
+  actual: Capabilities;
+  rules: CapabilityOverrideRow[];
+  nav: NavConfig;
+  platformAdmin?: boolean;
+  ranks?: { before: number; after: number; actual: number };
+}): boolean {
+  if (input.platformAdmin) return true;
+  const { before, after, actual, nav } = input;
+  if (input.ranks) {
+    const ranks = input.ranks;
+    if (
+      [ranks.before, ranks.after, ranks.actual].some(
+        (rank) => !Number.isSafeInteger(rank) || rank < 0,
+      )
+    )
+      return false;
+    const management = [
+      ['roles', 'create'],
+      ['roles', 'edit'],
+      ['roles', 'delete'],
+      ['users', 'manage'],
+    ] as const;
+    if (
+      management.some(
+        ([module, action]) =>
+          after.can(module, action) && (!before.can(module, action) || ranks.after > ranks.before),
+      ) &&
+      ranks.after > ranks.actual
+    )
+      return false;
+  }
+
+  const keys = new Set<string>([
+    ...MODULES,
+    ...ALL_SUBRESOURCES.map((row) => row.key),
+    ...input.rules.map((row) => row.module),
+  ]);
+  for (const key of keys) {
+    if (/^(?:page|section):/.test(key)) continue;
+    const scopeWidened = before.ownerScoped(key) && !after.ownerScoped(key);
+    const fieldsWidened = after.fieldLevel(key) > before.fieldLevel(key);
+    for (const action of ACTIONS) {
+      if (!after.can(key, action)) continue;
+      const readLike = action === 'view' || action === 'export';
+      const newlyEffective =
+        !before.can(key, action) || scopeWidened || (readLike && fieldsWidened);
+      if (!newlyEffective) continue;
+      if (!actual.can(key, action) || (actual.ownerScoped(key) && !after.ownerScoped(key)))
+        return false;
+      if (readLike && after.fieldLevel(key) > actual.fieldLevel(key)) return false;
+    }
+  }
+  for (const section of nav.sections) {
+    const key = `section:${section.id}`;
+    if (
+      before.explicitView(key) === false &&
+      after.explicitView(key) !== false &&
+      actual.explicitView(key) === false
+    )
+      return false;
+  }
+  const beforeContext = { nav, capabilities: before },
+    afterContext = { nav, capabilities: after },
+    actualContext = { nav, capabilities: actual };
+  for (const screen of SCREEN_DESIGN_MANIFEST.filter((screen) => !screen.pattern.includes('[')))
+    if (
+      simulationRouteAllowed(screen.pattern, afterContext) &&
+      !simulationRouteAllowed(screen.pattern, beforeContext) &&
+      !simulationRouteAllowed(screen.pattern, actualContext)
+    )
+      return false;
+  for (const section of nav.sections)
+    for (const page of section.pages)
+      if (
+        simulationPageAllowed(page, section, afterContext) &&
+        !simulationPageAllowed(page, section, beforeContext) &&
+        !simulationPageAllowed(page, section, actualContext)
+      )
+        return false;
+  for (const pages of Object.values(nav.builtinSections))
+    for (const page of pages)
+      if (
+        simulationPageAllowed(page, undefined, afterContext) &&
+        !simulationPageAllowed(page, undefined, beforeContext) &&
+        !simulationPageAllowed(page, undefined, actualContext)
+      )
+        return false;
+  return true;
+}

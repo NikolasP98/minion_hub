@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { requireOrgCapability, JOINABLE_ROLE_KEY } from '$server/services/rbac.service';
 import { approveRequest } from '$server/services/join/requests.service';
+import { loadOrganizationRolePolicy } from '$server/services/organization-role-policy';
 
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   await requireOrgCapability(locals, 'users', 'manage');
@@ -18,14 +19,20 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
       throw error(403, 'organizationId must match your active organization');
     }
   }
-  // Real system role only — never 'owner', never an arbitrary string; missing
-  // defaults to 'staff' (matches the invite form's preselected role).
-  const roleResult = JOINABLE_ROLE_KEY.safeParse(body.role ?? 'staff');
-  if (!roleResult.success) throw error(400, 'role must be one of: admin, manager, staff, viewer');
+  const policy = await loadOrganizationRolePolicy(body.organizationId);
+  let role = body.role;
+  if (policy.roleModel === 'legacy') {
+    const roleResult = JOINABLE_ROLE_KEY.safeParse(role ?? 'staff');
+    if (!roleResult.success) throw error(400, 'role must be one of: admin, manager, staff, viewer');
+    role = roleResult.data;
+  } else if (role !== undefined && (typeof role !== 'string' || !role.trim())) {
+    throw error(400, 'role must be an organization role key');
+  }
 
   await approveRequest(params.id!, {
     reviewerId: user.id,
-    role: roleResult.data,
+    role,
+    reviewerProfileId: user.supabaseId,
     organizationId: body.organizationId,
   });
   return json({ ok: true });

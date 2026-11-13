@@ -685,6 +685,7 @@ jobs:
         env:
           HUB_TEST_DB_URL: postgresql://postgres:postgres@127.0.0.1:54422/postgres
           REQUIRE_QA_NATIVE_POSTGRES: '1'
+          REQUIRE_ORG_ROLES_POSTGRES: '1'
           MINION_QC_DISPOSABLE: '1'
           MINION_QC_DATABASE_URL: postgres://minion_qc:disposable-ci-only@127.0.0.1:55462/minion_qc_vectors
         run: |

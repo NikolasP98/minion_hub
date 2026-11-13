@@ -1,3 +1,4 @@
+import { withOrganizationRoleSources } from './role-model-catalog';
 import pg17Expected from './catalog-fingerprint.pg17.expected.json';
 import pg17FenceOnceExpected from './catalog-fingerprint.pg17.fence-once.expected.json';
 import pg18Expected from './catalog-fingerprint.pg18.expected.json';
@@ -335,5 +336,10 @@ export function notificationProjectionCatalogMatches(snapshot: unknown): boolean
     serverMajor === 17
       ? [pg17Expected, pg17FenceOnceExpected]
       : [pg18Expected, pg18FenceOnceExpected];
-  return expectedCatalogs.some((expected) => exactJson(common, expected));
+  return expectedCatalogs.some(
+    (expected) =>
+      exactJson(common, expected) ||
+      exactJson(common, withOrganizationRoleSources(expected)) ||
+      exactJson(common, withOrganizationRoleSources(expected, false)),
+  );
 }

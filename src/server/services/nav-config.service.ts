@@ -47,11 +47,13 @@ export async function writeNavConfig(ctx: CoreCtx, config: NavConfig): Promise<N
           set: { value: config, updatedAt: new Date() },
         });
     });
-    const { pruneRemovedNavigationPolicies } = await import('./section-access.service');
+    const { pruneRemovedNavigationPolicies, assertOrganizationAccessRecoverableDrizzle } =
+      await import('./section-access.service');
     await pruneRemovedNavigationPolicies(tx, ctx, [
       ...navPageKeys(config).map((page) => page.key),
       ...config.sections.map((section) => `section:${section.id}`),
     ]);
+    await assertOrganizationAccessRecoverableDrizzle(tx, ctx.tenantId);
   });
   // The document and policy cleanup have committed. Failure to invalidate is a
   // read-repair problem; never encourage resubmitting a durable whole-nav save.

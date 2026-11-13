@@ -7,13 +7,13 @@ import { resolvePolicyReturnLocation } from '$server/services/section-access-ret
 
 const headers = { 'Cache-Control': 'private, no-store' };
 export const GET: RequestHandler = async ({ locals, url }) => {
-  await requireOrgCapability(locals, 'users', 'manage');
+  await requireOrgCapability(locals, 'roles', 'edit');
   const parsed = sectionAccessTargetSchema.safeParse(url.searchParams.get('target'));
   if (!parsed.success) throw error(400, 'Valid target required');
   return json(await readSectionAccess(locals, parsed.data), { headers });
 };
 export const PUT: RequestHandler = async (event) => {
-  await requireOrgCapability(event.locals, 'users', 'manage');
+  await requireOrgCapability(event.locals, 'roles', 'edit');
   const body: unknown = await event.request.json().catch(() => null);
   const receipt = await writeSectionAccess(event.locals, body);
   // Persistence has committed. A subsequent read/navigation failure must never

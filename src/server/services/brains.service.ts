@@ -1,3 +1,8 @@
+import {
+  withBrainWriteAuthority,
+  validateBrainGrantRecipients,
+} from './brain-access-grants.service';
+import { loadOrganizationRolePolicy } from './organization-role-policy';
 import { rejectSimulatedDelegation } from '$server/auth/effective-authority';
 import { createHash, randomUUID } from 'node:crypto';
 import { error } from '@sveltejs/kit';
@@ -14,7 +19,7 @@ import {
   type BrainAccessRow,
   type BrainDocument,
 } from '$server/db/pg-schema/brains';
-import { recordAudit, type FieldChange } from './activity.service';
+import { recordAudit, recordAuditInTx, type FieldChange } from './activity.service';
 import {
   embeddingsEnabled,
   embedTexts,
@@ -128,7 +133,13 @@ export async function canAccessBrain(
   const brain = await loadBrain(ctx, brainId);
   if (!brain) return false;
   if (principal.profileId && brain.createdBy === principal.profileId) return true;
-  if (principal.roles?.some((r) => r === 'owner' || r === 'admin')) return true;
+  const policy = await loadOrganizationRolePolicy(ctx.tenantId);
+  if (policy.roleModel === 'legacy') {
+    if (principal.roles?.some((r) => r === 'owner' || r === 'admin')) return true;
+  } else if (principal.profileId) {
+    const caps = await resolveCapabilities(ctx.tenantId, principal.profileId);
+    if (caps.can('brains', 'view') && caps.can('brains', 'manage')) return true;
+  }
   if (level === 'read' && brain.visibility === 'org') return true;
 
   const rows = await withOrgCore(ctx, (tx) =>
@@ -247,35 +258,31 @@ export async function updateBrain(
   principal: AccessPrincipal,
   actor: Actor,
 ): Promise<Brain | null> {
-  await requireAccess(ctx, brainId, 'write', principal);
-  const before = await loadBrain(ctx, brainId);
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .update(brains)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
-      .returning(),
-  );
-  if (!row) return null;
-  const changes: FieldChange[] = [];
-  const fields: Array<{ field: keyof typeof patch; label: string }> = [
-    { field: 'name', label: 'Name' },
-    { field: 'description', label: 'Description' },
-    { field: 'icon', label: 'Icon' },
-    { field: 'visibility', label: 'Visibility' },
-  ];
-  for (const f of fields) {
-    if (f.field in patch && before?.[f.field] !== row[f.field]) {
-      changes.push({
-        field: f.field,
-        label: f.label,
-        old: before?.[f.field] ?? null,
-        new: row[f.field],
+  return withBrainWriteAuthority(
+    ctx,
+    brainId,
+    principal,
+    async ({ tx, brain: before, profileId }) => {
+      const [row] = await tx
+        .update(brains)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(and(eq(brains.id, brainId), eq(brains.orgId, ctx.tenantId)))
+        .returning();
+      if (!row) return null;
+      const changes: FieldChange[] = [];
+      for (const field of ['name', 'description', 'icon', 'visibility'] as const)
+        if (field in patch && before[field] !== row[field])
+          changes.push({ field, label: field, old: before[field] ?? null, new: row[field] });
+      await recordAuditInTx(tx, ctx, {
+        refType: 'brain',
+        refId: brainId,
+        op: 'update',
+        changes,
+        actor: { id: profileId, name: actor.name },
       });
-    }
-  }
-  await recordAudit(ctx, { refType: 'brain', refId: brainId, op: 'update', changes, actor });
-  return row;
+      return row;
+    },
+  );
 }
 
 export async function deleteBrain(
@@ -590,23 +597,32 @@ export async function setAccess(
   }>,
   principal: AccessPrincipal,
 ): Promise<void> {
-  await requireAccess(ctx, brainId, 'write', principal);
-  await withOrgCore(ctx, async (tx) => {
-    await tx
-      .delete(brainAccess)
-      .where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId)));
-    if (rows.length > 0) {
-      await tx.insert(brainAccess).values(
-        rows.map((r) => ({
-          brainId,
-          orgId: ctx.tenantId,
-          principalType: r.principalType,
-          principalId: r.principalId,
-          level: r.level,
-        })),
-      );
-    }
-  });
+  await withBrainWriteAuthority(
+    ctx,
+    brainId,
+    principal,
+    async ({ tx, profileId }) => {
+      const previous = await tx
+        .select()
+        .from(brainAccess)
+        .where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId)));
+      await tx
+        .delete(brainAccess)
+        .where(and(eq(brainAccess.brainId, brainId), eq(brainAccess.orgId, ctx.tenantId)));
+      if (rows.length)
+        await tx
+          .insert(brainAccess)
+          .values(rows.map((row) => ({ ...row, brainId, orgId: ctx.tenantId })));
+      await recordAuditInTx(tx, ctx, {
+        refType: 'brain',
+        refId: brainId,
+        op: 'permission',
+        changes: [{ field: 'access', label: 'Access', old: previous, new: rows }],
+        actor: { id: profileId, name: null },
+      });
+    },
+    async ({ tx, policy }) => validateBrainGrantRecipients(tx, ctx.tenantId, policy, rows),
+  );
 }
 
 // ── Chunking (pure) ──────────────────────────────────────────────────────

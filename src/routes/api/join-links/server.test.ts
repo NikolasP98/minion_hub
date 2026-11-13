@@ -1,3 +1,6 @@
+vi.mock('$server/services/organization-role-policy', () => ({
+  loadOrganizationRolePolicy: vi.fn(async () => ({ roleModel: 'legacy', defaultRoleKey: null })),
+}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
@@ -121,5 +124,50 @@ describe('GET /api/join-links', () => {
 
     await expect(GET!({ locals } as never)).rejects.toMatchObject({ status: 403 });
     expect(listLinks).not.toHaveBeenCalled();
+  });
+});
+
+describe('organization-model invite selection', () => {
+  it('passes an omitted role to transactional default resolution with real grantor identity', async () => {
+    const { loadOrganizationRolePolicy } =
+      await import('$server/services/organization-role-policy');
+    vi.mocked(loadOrganizationRolePolicy).mockResolvedValueOnce({
+      roleModel: 'organization',
+      defaultRoleKey: 'custom-administrator',
+    });
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    await POST!({
+      locals: {
+        user: { id: 'legacy-user', supabaseId: 'profile-1', role: 'user' },
+        tenantCtx: { tenantId: 'org-1' },
+      },
+      request: postReq({}),
+      url,
+    } as never);
+    expect(createLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org-1',
+        role: undefined,
+        grantorProfileId: 'profile-1',
+      }),
+    );
+  });
+  it('passes a selected local role without rewriting it to a built-in role', async () => {
+    const { loadOrganizationRolePolicy } =
+      await import('$server/services/organization-role-policy');
+    vi.mocked(loadOrganizationRolePolicy).mockResolvedValueOnce({
+      roleModel: 'organization',
+      defaultRoleKey: 'custom-administrator',
+    });
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    await POST!({
+      locals: {
+        user: { id: 'legacy-user', supabaseId: 'profile-1', role: 'user' },
+        tenantCtx: { tenantId: 'org-1' },
+      },
+      request: postReq({ role: 'custom-marketing' }),
+      url,
+    } as never);
+    expect(createLink).toHaveBeenCalledWith(expect.objectContaining({ role: 'custom-marketing' }));
   });
 });

@@ -12,11 +12,80 @@ vi.mock('./rbac.service', async (orig) => ({
 import { capsToLegacyPermissions, loadPermissionsForUser } from './permissions.service';
 import { buildCapabilities } from './rbac.service';
 import { requiredViewPermForPath } from '$lib/permissions';
+import { templateCaps } from './role-templates';
+import { routeAccessPolicyIdForPath } from '$lib/routes/route-access-policies';
 
 const permsFor = (...roles: string[]) =>
   new Set(capsToLegacyPermissions(buildCapabilities(roles, [])));
 
 describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
+  const roleActions = ['view', 'create', 'edit', 'delete', 'manage'] as const;
+  const rule = (role_key: string, module: string, enabled: readonly string[]) => ({
+    role_key,
+    module,
+    can_view: enabled.includes('view'),
+    can_create: enabled.includes('create'),
+    can_edit: enabled.includes('edit'),
+    can_delete: enabled.includes('delete'),
+    can_export: enabled.includes('export'),
+    can_manage: enabled.includes('manage'),
+  });
+  test('role CRUD strings map independently to each explicit roles action', () => {
+    for (const action of roleActions) {
+      const enabled = action === 'view' ? ['view'] : ['view', action];
+      const p = new Set(
+        capsToLegacyPermissions(
+          buildCapabilities(['custom-reader'], [rule('custom-reader', 'roles', enabled)]),
+        ),
+      );
+      expect(roleActions.filter((a) => p.has(`roles:${a}`))).toEqual(enabled);
+      expect(p.has('users:manage')).toBe(false);
+    }
+  });
+  test('Team management never implies role CRUD', () => {
+    const p = new Set(
+      capsToLegacyPermissions(
+        buildCapabilities(
+          ['custom-team'],
+          [rule('custom-team', 'users', ['view', 'create', 'edit', 'delete', 'export', 'manage'])],
+        ),
+      ),
+    );
+    expect(p.has('users:manage')).toBe(true);
+    expect(roleActions.filter((a) => p.has(`roles:${a}`))).toEqual([]);
+  });
+  test('explicit role denial remains effective even when an admin role manages Team', () => {
+    const p = new Set(
+      capsToLegacyPermissions(buildCapabilities(['admin'], [rule('admin', 'roles', [])])),
+    );
+    expect(p.has('users:manage')).toBe(true);
+    expect(roleActions.filter((a) => p.has(`roles:${a}`))).toEqual([]);
+  });
+  test('Manager template grants role CRUD while Staff and Viewer templates grant none', () => {
+    for (const template of ['manager', 'staff', 'viewer'] as const) {
+      const caps = templateCaps(template, 'roles');
+      const p = new Set(
+        capsToLegacyPermissions(
+          buildCapabilities(
+            ['custom-template'],
+            [
+              rule(
+                'custom-template',
+                'roles',
+                Object.entries(caps)
+                  .filter(([, value]) => value)
+                  .map(([action]) => action),
+              ),
+            ],
+          ),
+        ),
+      );
+      expect(roleActions.filter((a) => p.has(`roles:${a}`))).toEqual(
+        template === 'manager' ? ['view', 'create', 'edit', 'delete'] : [],
+      );
+      expect(p.has('users:manage')).toBe(false);
+    }
+  });
   test('owner gets the full admin surface', () => {
     const p = permsFor('owner');
     for (const perm of [
@@ -30,7 +99,7 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
     }
   });
 
-  test('manager preserves every *:view (== old "user") + business, minus admin writes', () => {
+  test('legacy manager keeps platform reads without inheriting role access from Team', () => {
     const p = permsFor('manager');
     // All read perms a legacy "user" had:
     for (const v of [
@@ -40,7 +109,6 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
       'skills:view',
       'settings:view',
       'users:view',
-      'roles:view',
       'billing:view',
       'hosts:view',
       'workshop:view',
@@ -54,6 +122,10 @@ describe('capsToLegacyPermissions — RBAC → legacy nav vocab', () => {
     expect(p.has('settings:manage')).toBe(false);
     expect(p.has('users:remove')).toBe(false);
     expect(p.has('agents:edit')).toBe(false);
+    expect(p.has('roles:view')).toBe(false);
+    expect(p.has('roles:create')).toBe(false);
+    expect(p.has('roles:edit')).toBe(false);
+    expect(p.has('roles:delete')).toBe(false);
   });
 
   test('viewer is business-read only — no platform nav', () => {
@@ -194,9 +266,12 @@ describe('requiredViewPermForPath — central route guard mapping', () => {
     expect(requiredViewPermForPath('/overview')).toBeNull();
     expect(requiredViewPermForPath('/home')).toBeNull();
     expect(requiredViewPermForPath('/settings')).toBeNull();
-    expect(requiredViewPermForPath('/settings/roles')).toBeNull();
     expect(requiredViewPermForPath('/team')).toBe('scheduling:view'); // HR page (spec 2026-09-02-hub-team-hr-module)
     expect(requiredViewPermForPath('/crmfoo')).toBeNull(); // not a real prefix boundary
+  });
+  test('role settings use a role-view policy while the legacy view adapter stays nullable', () => {
+    expect(routeAccessPolicyIdForPath('/settings/roles')).toBe('org-capability:roles:view');
+    expect(requiredViewPermForPath('/settings/roles')).toBeNull();
   });
 });
 

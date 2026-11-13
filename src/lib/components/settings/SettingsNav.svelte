@@ -108,21 +108,21 @@
       label: m.settings_nav_backups(),
       icon: 'DatabaseBackup',
       href: '/settings/backups',
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'modules',
       label: m.settings_modules(),
       icon: 'Blocks',
       href: '/settings/modules',
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'tables',
       label: m.settings_nav_tables(),
       icon: 'Table2',
       href: '/settings/tables',
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'notifications',
@@ -136,24 +136,24 @@
       label: m.settings_nav_workflows(),
       icon: 'Workflow',
       href: '/settings/workflows',
-      adminOnly: true,
+      adminOnly: false,
     },
   ];
-  // "Team" group — admin route tabs.
+  // Organization access controls follow their route capabilities, independently of platform role.
   const TEAM_TABS: HubTab[] = [
     {
       id: 'team',
       label: m.settings_nav_team(),
       icon: 'Users',
       href: '/settings/team',
-      adminOnly: true,
+      adminOnly: false,
     },
     {
       id: 'roles',
       label: m.settings_nav_roles(),
       icon: 'KeyRound',
       href: '/settings/roles',
-      adminOnly: true,
+      adminOnly: false,
     },
   ];
 
@@ -188,9 +188,7 @@
       canViewPath(t.href),
     ),
   );
-  const visibleTeamTabs = $derived(
-    (isAdmin.value ? TEAM_TABS : []).filter((t) => canViewPath(t.href)),
-  );
+  const visibleTeamTabs = $derived(TEAM_TABS.filter((t) => canViewPath(t.href)));
 
   function hubItem(t: HubTab): SectionNavItem {
     return { id: t.id, label: t.label, icon: ICON_MAP[t.icon], href: t.href };

@@ -1,3 +1,4 @@
+import { MAX_ORGANIZATION_ROLES } from '$lib/rbac/role-limits';
 import type {
   NotificationNavigationId,
   NotificationTemplateKey,
@@ -7,7 +8,7 @@ export const PROJECTION_LIMITS = Object.freeze({
   supportTuples: 32,
   recipients: 10_000,
   recipientSentinel: 10_001,
-  roleKeys: 256,
+  roleKeys: MAX_ORGANIZATION_ROLES,
   rules: 256,
   rolesPerRecipient: 32,
   assignments: 100_000,

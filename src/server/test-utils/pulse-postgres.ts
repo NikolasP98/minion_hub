@@ -42,6 +42,10 @@ export async function openPulsePostgres() {
   await pg.unsafe('alter table bg_jobs add primary key(id)');
   await pg.unsafe('alter table organizations add primary key(id)');
   await pg.unsafe('alter table profiles add primary key(id)');
+  // Account removal uses the admission fence added after the captured baseline.
+  await pg.unsafe(
+    'alter table profiles add column deletion_pending boolean not null default false',
+  );
   await pg.unsafe('alter table personal_agents add primary key(id)');
   await pg.unsafe('alter table user_gateway add primary key(profile_id,gateway_id)');
   await pg.unsafe('alter table gateway add primary key(id)');

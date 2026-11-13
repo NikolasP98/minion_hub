@@ -9,11 +9,20 @@
   import { toastSuccess, toastError } from '$lib/state/ui/toast.svelte';
   import { Button, Select } from '$lib/components/ui';
 
-  type OrgOption = { id: string; name: string };
+  type OrgOption = {
+    id: string;
+    name: string;
+    roleModel?: 'legacy' | 'organization';
+    defaultRoleKey?: string | null;
+    roles?: { key: string; name: string }[];
+  };
 
   // Real system roles only (never 'owner' — the endpoint rejects it). Matches
   // JOINABLE_ROLE_KEY in rbac.service.ts.
-  const INVITE_ROLES = ['admin', 'manager', 'staff', 'viewer'];
+  const LEGACY_INVITE_ROLES = ['admin', 'manager', 'staff', 'viewer'].map((key) => ({
+    key,
+    name: key,
+  }));
 
   let {
     organizations = [],
@@ -28,6 +37,10 @@
 
   let inviteRole = $state('staff');
   let inviteOrg = $state('');
+  const selectedOrg = $derived(organizations.find((o) => o.id === inviteOrg) ?? organizations[0]);
+  const inviteRoles = $derived(
+    selectedOrg?.roles ?? (selectedOrg?.roleModel === 'organization' ? [] : LEGACY_INVITE_ROLES),
+  );
   let inviting = $state(false);
   let inviteError = $state<string | null>(null);
   let lastLinkUrl = $state<string | null>(null);
@@ -36,6 +49,7 @@
   const snapshot = () => JSON.stringify([inviteRole, inviteOrg]);
   onMount(() => {
     inviteOrg = organizations[0]?.id ?? '';
+    inviteRole = organizations[0]?.defaultRoleKey ?? 'staff';
     baseline = snapshot();
   });
   $effect(() => {
@@ -91,18 +105,35 @@
   <p class="text-xs font-semibold text-foreground">Create a shareable join link</p>
   <div class="grid grid-cols-2 gap-3">
     {#if organizations.length > 1}
-      <Select bind:value={inviteOrg} size="sm">
+      <Select
+        bind:value={inviteOrg}
+        size="sm"
+        onchange={(value) => {
+          const org = organizations.find((o) => o.id === value);
+          inviteRole = org?.defaultRoleKey ?? 'staff';
+        }}
+      >
         {#each organizations as o (o.id)}
           <option value={o.id}>{o.name}</option>
         {/each}
       </Select>
     {/if}
     <Select bind:value={inviteRole} size="sm">
-      {#each INVITE_ROLES as r (r)}
-        <option value={r}>{r}</option>
+      {#each inviteRoles as r (r.key)}
+        <option value={r.key}>{r.name}</option>
       {/each}
     </Select>
   </div>
+  {#if selectedOrg?.roleModel === 'organization'}
+    <p class="t-caption text-text-secondary">
+      {m.roles_defaultMemberNotice({
+        role:
+          inviteRoles.find((r) => r.key === selectedOrg.defaultRoleKey)?.name ??
+          selectedOrg.defaultRoleKey ??
+          '',
+      })}
+    </p>
+  {/if}
   {#if lastLinkUrl}
     <div class="flex items-center gap-2">
       <input
@@ -129,7 +160,7 @@
     size="sm"
     type="submit"
     class="text-xs px-3 py-1.5 rounded-md bg-accent text-accent-foreground border-none cursor-pointer font-[inherit] font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-    disabled={inviting}
+    disabled={inviting || !inviteRoles.some((r) => r.key === inviteRole)}
   >
     {inviting ? m.users_creating() : 'Generate link'}
   </Button>

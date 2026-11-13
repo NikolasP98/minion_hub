@@ -1,131 +1,99 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 
-const state: any = {};
-
-// A minimal chainable + thenable query-builder stand-in (mirrors supabase-js's
-// PostgrestFilterBuilder): .eq() accumulates AND filters, and the object
-// resolves via .single()/.select() or by being awaited directly.
-function selectChain() {
-  const rows: any[] = state.link ? [state.link] : (state.links ?? []);
-  const filters: Array<[string, any]> = [];
-  const matches = () => rows.filter((r) => filters.every(([k, v]) => r[k] === v));
-  const chain: any = {
-    eq(col: string, val: any) {
-      filters.push([col, val]);
+type Link = { id: string; organization_id: string; revoked: boolean };
+const state = vi.hoisted(() => ({
+  links: [] as Link[],
+  mint: vi.fn(),
+  consume: vi.fn(),
+}));
+vi.mock('./organization-admission', () => ({
+  mintOrganizationInvite: state.mint,
+  consumeOrganizationInvite: state.consume,
+}));
+function query() {
+  const filters: Array<[string, unknown]> = [];
+  const result = () =>
+    state.links.filter((row) => filters.every(([key, value]) => row[key as keyof Link] === value));
+  interface Query extends PromiseLike<{ data: Link[]; error: null }> {
+    eq(key: string, value: unknown): Query;
+    select(): Promise<{ data: Link[]; error: null }>;
+  }
+  const chain: Query = {
+    eq(key, value) {
+      filters.push([key, value]);
       return chain;
     },
-    single: async () => {
-      const [m] = matches();
-      return m ? { data: m, error: null } : { data: null, error: { message: 'none' } };
-    },
-    then(resolve: any) {
-      resolve({ data: matches(), error: null });
+    select: async () => ({ data: result(), error: null }),
+    then(resolve, reject) {
+      return Promise.resolve({ data: result(), error: null }).then(resolve, reject);
     },
   };
   return chain;
 }
-
-function updateChain() {
-  const rows: any[] = state.links ?? (state.link ? [state.link] : []);
-  const filters: Array<[string, any]> = [];
-  let usedLt = false;
-  const matches = () => rows.filter((r) => filters.every(([k, v]) => r[k] === v));
-  const chain: any = {
-    eq(col: string, val: any) {
-      filters.push([col, val]);
-      return chain;
-    },
-    lt() {
-      usedLt = true; // consumeLink's max-uses guard — driven by state.consumeOk below
-      return chain;
-    },
-    select: async () =>
-      usedLt
-        ? { data: state.consumeOk ? [{ id: 'l1' }] : [], error: null }
-        : { data: matches(), error: null },
-    then(resolve: any) {
-      resolve({ error: null });
-    },
-  };
-  return chain;
-}
-
 vi.mock('$server/supabase', () => ({
-  supabaseAdmin: () => ({
-    from: () => ({
-      insert: (row: any) => ({
-        select: () => ({ single: async () => ({ data: { id: 'l1', ...row }, error: null }) }),
-      }),
-      select: () => selectChain(),
-      update: () => updateChain(),
-    }),
-  }),
+  supabaseAdmin: () => ({ from: () => ({ select: query, update: query }) }),
 }));
-vi.mock('$server/db/client', () => ({ getDb: () => ({}) }));
-vi.mock('./membership', () => ({
-  createMembership: vi.fn(async () => {
-    state.membership = true;
-  }),
-}));
-
+import { createLink, consumeLink, listLinks, revokeLink } from './links.service';
 beforeEach(() => {
-  for (const k of Object.keys(state)) delete state[k];
+  state.links = [];
+  state.mint.mockReset().mockResolvedValue({ id: 'l1', token: 'verified-token' });
+  state.consume.mockReset().mockResolvedValue({ organizationId: 'org1' });
 });
-
 describe('links.service', () => {
-  test('createLink returns token URL', async () => {
-    const { createLink } = await import('./links.service');
-    const l = await createLink({ organizationId: 'org1', role: 'user', createdBy: 'admin1' });
-    expect(l.token).toMatch(/^[A-Za-z0-9_-]+$/);
-  });
-
-  test('consumeLink rejects unusable link', async () => {
-    const { consumeLink } = await import('./links.service');
-    state.link = {
-      id: 'l1',
-      token: 't',
-      organization_id: 'org1',
-      role: 'user',
-      revoked: true,
-      expires_at: null,
-      max_uses: null,
-      uses_count: 0,
+  test('mints legacy and local roles through the verified atomic grant boundary', async () => {
+    const opts = {
+      organizationId: 'org1',
+      role: 'staff',
+      createdBy: 'user1',
+      grantorProfileId: 'profile1',
     };
+    await expect(createLink(opts)).resolves.toEqual({ id: 'l1', token: 'verified-token' });
+    expect(state.mint).toHaveBeenCalledWith(opts);
+  });
+  test('rejects a mint without the authenticated grantor profile', async () => {
     await expect(
-      consumeLink('t', { id: 'u1', email: 'a@b.c', displayName: 'A' }),
-    ).rejects.toThrow();
-    expect(state.membership).toBeUndefined();
+      createLink({ organizationId: 'org1', role: 'admin', createdBy: 'user1' }),
+    ).rejects.toThrow('Authenticated grantor profile required');
+    expect(state.mint).not.toHaveBeenCalled();
   });
-
+  test('delegates redemption to the transaction that verifies grants and consumes a use', async () => {
+    const user = {
+      id: 'user1',
+      email: 'applicant@example.test',
+      displayName: null,
+      supabaseId: 'profile1',
+    };
+    await expect(consumeLink('verified-token', user)).resolves.toEqual({ organizationId: 'org1' });
+    expect(state.consume).toHaveBeenCalledWith('verified-token', user);
+  });
+  test('preserves a failed grant check without claiming membership admission', async () => {
+    state.consume.mockRejectedValueOnce(new Error('Role exceeds the grantor authority'));
+    await expect(
+      consumeLink('verified-token', {
+        id: 'user1',
+        email: 'applicant@example.test',
+        displayName: null,
+        supabaseId: 'profile1',
+      }),
+    ).rejects.toThrow('Role exceeds the grantor authority');
+  });
   test("listLinks(orgId) returns only that org's active links (D4 org filter)", async () => {
-    const { listLinks } = await import('./links.service');
     state.links = [
       { id: 'l1', organization_id: 'org1', revoked: false },
       { id: 'l2', organization_id: 'org2', revoked: false },
     ];
-    const result = await listLinks('org1');
-    expect(result.map((r: any) => r.id)).toEqual(['l1']);
+    expect((await listLinks('org1')).map((row) => row.id)).toEqual(['l1']);
   });
-
-  test('listLinks() with no org returns every active link (unscoped internal use)', async () => {
-    const { listLinks } = await import('./links.service');
+  test('listLinks() preserves the internal unscoped read', async () => {
     state.links = [
       { id: 'l1', organization_id: 'org1', revoked: false },
       { id: 'l2', organization_id: 'org2', revoked: false },
     ];
-    const result = await listLinks();
-    expect(result.map((r: any) => r.id).sort()).toEqual(['l1', 'l2']);
+    expect((await listLinks()).map((row) => row.id)).toEqual(['l1', 'l2']);
   });
-
-  test('revokeLink(id, orgId) revokes a link belonging to that org', async () => {
-    const { revokeLink } = await import('./links.service');
+  test('revokeLink scopes the mutation to the target organization', async () => {
     state.links = [{ id: 'l1', organization_id: 'org1', revoked: false }];
     await expect(revokeLink('l1', 'org1')).resolves.toBe(true);
-  });
-
-  test("revokeLink(id, orgId) is a no-op (false) for another org's link", async () => {
-    const { revokeLink } = await import('./links.service');
-    state.links = [{ id: 'l1', organization_id: 'org2', revoked: false }];
-    await expect(revokeLink('l1', 'org1')).resolves.toBe(false);
+    await expect(revokeLink('l1', 'org2')).resolves.toBe(false);
   });
 });

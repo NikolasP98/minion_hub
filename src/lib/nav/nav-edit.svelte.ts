@@ -17,7 +17,7 @@ export const navClipboard = $state<{
 }>({ item: null });
 
 export const canEditNav = (): boolean => can('settings:manage');
-export const canEditAccess = (): boolean => can('users:manage');
+export const canEditAccess = (): boolean => can('roles:edit');
 
 export const navValidationCtx = () => ({
   reserved: reservedSectionSlugs(),

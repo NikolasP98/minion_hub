@@ -1,3 +1,7 @@
+import {
+  parseOrganizationRolePolicy,
+  type OrganizationRolePolicy,
+} from './organization-role-policy';
 import { createHash } from 'node:crypto';
 import { error } from '@sveltejs/kit';
 import { sql } from 'drizzle-orm';
@@ -45,6 +49,13 @@ import {
   type SectionAccessSnapshot,
   type SectionAccessReceipt,
 } from '$lib/nav/section-access';
+import {
+  ROLE_BRAIN_LIMITS,
+  assertRecipientBrainGrantCeiling,
+  assertRoleBrainGrantCeiling,
+  readRoleBrainGrants,
+} from './brain-role-grants';
+import { recipientGrantFitsActualAuthority } from './role-simulation-policy';
 
 interface RoleRow extends Record<string, unknown> {
   key: string;
@@ -56,6 +67,7 @@ interface RoleRow extends Record<string, unknown> {
 }
 interface RuleRow extends CapabilityOverrideRow, Record<string, unknown> {}
 interface PolicyRows {
+  policy: OrganizationRolePolicy;
   orgName: string;
   roles: RoleRow[];
   rules: RuleRow[];
@@ -69,6 +81,10 @@ interface PolicyActor {
 interface ActorAuthority {
   real: Capabilities;
   effective: Capabilities;
+  objectReal: Capabilities;
+  objectEffective: Capabilities;
+  actualRoles: string[];
+  effectiveRoles: string[];
   rank: number;
   platformAdmin: boolean;
 }
@@ -104,13 +120,19 @@ function actorFor(locals: App.Locals): PolicyActor {
 }
 
 async function loadPolicyRows(tx: CoreTx, orgId: string): Promise<PolicyRows> {
-  const [org] = await tx.execute<{ name: string } & Record<string, unknown>>(
-    sql`select name from organizations where id=${orgId}::uuid and status='active'`,
+  const [org] = await tx.execute<
+    { name: string; role_model?: unknown; default_role_key?: unknown } & Record<string, unknown>
+  >(
+    sql`select name,to_jsonb(o)->>'role_model' as role_model,to_jsonb(o)->>'default_role_key' as default_role_key from organizations o where id=${orgId}::uuid and status='active'`,
   );
   if (!org) throw error(403, 'Active organization required');
-  const systemRoles = await tx.execute<RoleRow>(sql`
+  const policy = parseOrganizationRolePolicy(org);
+  const systemRoles =
+    policy.roleModel === 'legacy'
+      ? await tx.execute<RoleRow>(sql`
     select key,name,rank,description,is_system,null::text as source_role_key from permission_roles for share
-  `);
+  `)
+      : [];
   const customRoles = await tx.execute<RoleRow>(sql`
     select key,name,rank,null::text as description,false as is_system,source_role_key
     from org_roles where org_id=${orgId}::text for share
@@ -126,6 +148,7 @@ async function loadPolicyRows(tx: CoreTx, orgId: string): Promise<PolicyRows> {
     sql`select value from app_nav_config where org_id=${orgId} for share`,
   );
   return {
+    policy,
     orgName: org.name,
     roles: [...roles],
     rules: [...rules],
@@ -141,23 +164,31 @@ async function requireFreshPolicyActor(
   tx: CoreTx,
   actor: PolicyActor,
   rows: PolicyRows,
+  roleAction: 'edit' | 'delete' = 'edit',
 ): Promise<ActorAuthority> {
   const [member] = await tx.execute<
-    { role: string | null; profile_role: string | null } & Record<string, unknown>
+    { role: string | null; profile_role: string | null; deletion_pending: boolean } & Record<
+      string,
+      unknown
+    >
   >(
-    sql`select m.role,p.role as profile_role from organization_members m inner join profiles p on p.id=m.profile_id
+    sql`select m.role,p.role as profile_role,coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false) as deletion_pending from organization_members m inner join profiles p on p.id=m.profile_id
         where m.organization_id=${actor.orgId}::uuid and m.profile_id=${actor.profileId}::uuid for share of m,p`,
   );
-  if (!member) throw error(403, 'Organization membership required');
+  if (!member || member.deletion_pending)
+    throw error(403, 'Active organization membership required');
   const assigned = await tx.execute<{ role_key: string } & Record<string, unknown>>(
     sql`select role_key from member_roles where org_id=${actor.orgId}::uuid and profile_id=${actor.profileId}::uuid for share`,
   );
   const actualRoles = resolveMemberRoleKeys(
     assigned.map((r) => r.role_key),
     member.role,
+    rows.policy.roleModel,
+    rows.roles.map((r) => r.key),
   ).filter((key) => rows.roles.some((role) => role.key === key));
   const platformAdmin = member.profile_role === 'admin';
-  const real = platformAdmin ? platformCapabilities() : buildCapabilities(actualRoles, rows.rules);
+  const objectReal = buildCapabilities(actualRoles, rows.rules);
+  const real = platformAdmin ? platformCapabilities() : objectReal;
   const simulation = currentEffectiveAuthority(actor.orgId, actor.profileId);
   if (simulation?.invalid) throw error(403, 'Access management unavailable for this role');
   const effective = simulation
@@ -166,8 +197,8 @@ async function requireFreshPolicyActor(
         simulation.capabilities,
       )
     : real;
-  if (!real.can('users', 'manage') || !effective.can('users', 'manage'))
-    throw error(403, 'users: manage required');
+  if (!real.can('roles', roleAction) || !effective.can('roles', roleAction))
+    throw error(403, `roles: ${roleAction} required`);
   const ranks = actualRoles.map((key) => rows.roles.find((r) => r.key === key)?.rank ?? 0);
   const actualRank = platformAdmin ? Number.MAX_SAFE_INTEGER : Math.max(0, ...ranks);
   const selectedRank = simulation
@@ -176,6 +207,10 @@ async function requireFreshPolicyActor(
   return {
     real,
     effective,
+    objectReal,
+    objectEffective: simulation ? effective : objectReal,
+    actualRoles,
+    effectiveRoles: simulation ? [simulation.roleKey] : actualRoles,
     rank: Math.min(actualRank, selectedRank, simulation?.rank ?? actualRank),
     platformAdmin: platformAdmin && !simulation,
   };
@@ -333,6 +368,7 @@ export function sectionPolicyRevision(
       ? navPageKeys(rows.nav).find((p) => p.key === target.key)?.sectionKey
       : null;
   const definition = {
+    rolePolicy: rows.policy,
     target: target.definition,
     inheritedSection: inheritedSection
       ? canonicalRule(ruleFor(rows, role.key, inheritedSection))
@@ -488,6 +524,134 @@ function requireGrantCeiling(
       throw error(403, 'Cannot grant sensitive fields beyond your authority');
   }
 }
+async function requireRecipientPolicyCeiling(
+  tx: CoreTx,
+  actor: PolicyActor,
+  role: RoleRow,
+  before: PolicyRows,
+  after: PolicyRows,
+  authority: ActorAuthority,
+): Promise<void> {
+  const previous = buildCapabilities([role.key], before.rules);
+  const selected = buildCapabilities([role.key], after.rules);
+  const widens =
+    ACTIONS.some((action) => selected.can('brains', action) && !previous.can('brains', action)) ||
+    (selected.can('brains', 'view') &&
+      previous.ownerScoped('brains') &&
+      !selected.ownerScoped('brains'));
+  const snapshot = widens
+    ? await readRoleBrainGrants(tx, actor.orgId, {
+        brains: 'brains',
+        access: 'brain_access',
+        personalAgents: 'personal_agents',
+      })
+    : undefined;
+  const actualActor = {
+    profileId: actor.profileId,
+    roles: authority.actualRoles,
+    caps: authority.objectReal,
+  };
+  const effectiveActor = {
+    profileId: actor.profileId,
+    roles: authority.effectiveRoles,
+    caps: authority.objectEffective,
+  };
+  if (snapshot)
+    assertRoleBrainGrantCeiling({
+      roleModel: after.policy.roleModel,
+      snapshot,
+      actual: actualActor,
+      effective: effectiveActor,
+      selected: { roles: [role.key], caps: selected },
+      previous: { roles: [role.key], caps: previous },
+    });
+  // A role edit can activate a member's other-role ACLs, retained user ACLs or
+  // creator rights. Include canonical legacy fallback holders, not just rows
+  // explicitly assigned to the edited role.
+  const members = await tx.execute<
+    { profile_id: string; role: string } & Record<string, unknown>
+  >(sql`
+    select m.profile_id::text,m.role from organization_members m join profiles p on p.id=m.profile_id
+    where m.organization_id=${actor.orgId}::uuid
+      and not coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false)
+      and (exists(select 1 from member_roles ar where ar.org_id=${actor.orgId}::uuid
+          and ar.profile_id=m.profile_id and ar.role_key=${role.key})
+        or (${after.policy.roleModel}='legacy'
+          and not exists(select 1 from member_roles ar where ar.org_id=${actor.orgId}::uuid and ar.profile_id=m.profile_id)
+          and case m.role when 'owner' then 'owner' when 'admin' then 'admin' when 'member' then 'manager' else 'viewer' end=${role.key}))
+    order by m.profile_id limit ${ROLE_BRAIN_LIMITS.policyRecipients + 1} for share of m,p`);
+  if (members.length > ROLE_BRAIN_LIMITS.policyRecipients)
+    throw error(503, 'Role policy affects too many members');
+  if (!members.length) return;
+  const ids = sql.join(
+    members.map((member) => sql`${member.profile_id}::uuid`),
+    sql`, `,
+  );
+  const assignments = await tx.execute<
+    { profile_id: string; role_key: string } & Record<string, unknown>
+  >(sql`
+    select profile_id::text,role_key from member_roles where org_id=${actor.orgId}::uuid
+      and profile_id in (${ids}) order by profile_id,role_key
+      limit ${ROLE_BRAIN_LIMITS.policyEvaluatedCells + 1} for share`);
+  if (assignments.length > ROLE_BRAIN_LIMITS.policyEvaluatedCells)
+    throw error(503, 'Role policy authority exceeds the supported limit');
+  const assignedByMember = new Map<string, string[]>();
+  for (const assignment of assignments) {
+    const keys = assignedByMember.get(assignment.profile_id) ?? [];
+    keys.push(assignment.role_key);
+    assignedByMember.set(assignment.profile_id, keys);
+  }
+  const capCache = new Map<string, { before: Capabilities; after: Capabilities }>();
+  const rules = [...before.rules, ...after.rules];
+  const roleRanks = new Map(after.roles.map((entry) => [entry.key, entry.rank]));
+  let evaluatedDataCells = 0;
+  for (const member of members) {
+    const keys = resolveMemberRoleKeys(
+      assignedByMember.get(member.profile_id) ?? [],
+      member.role,
+      after.policy.roleModel,
+      after.roles.map((entry) => entry.key),
+    );
+    const signature = JSON.stringify(keys);
+    let caps = capCache.get(signature);
+    if (!caps) {
+      evaluatedDataCells +=
+        rules.length +
+        MODULES.length +
+        ALL_SUBRESOURCES.length +
+        [...navPageKeys(after.nav)].length;
+      if (evaluatedDataCells > ROLE_BRAIN_LIMITS.policyEvaluatedCells)
+        throw error(503, 'Role policy evaluation exceeds the supported limit');
+      caps = {
+        before: buildCapabilities(keys, before.rules),
+        after: buildCapabilities(keys, after.rules),
+      };
+      const rank = Math.max(0, ...keys.map((key) => roleRanks.get(key) ?? 0));
+      for (const actual of [authority.real, authority.effective])
+        if (
+          !recipientGrantFitsActualAuthority({
+            before: caps.before,
+            after: caps.after,
+            actual,
+            rules,
+            nav: after.nav,
+            ranks: { before: rank, after: rank, actual: authority.rank },
+          })
+        )
+          throw error(403, 'Cannot grant combined role access beyond your own authority');
+      capCache.set(signature, caps);
+    }
+    if (snapshot)
+      assertRecipientBrainGrantCeiling({
+        roleModel: after.policy.roleModel,
+        snapshot,
+        actual: actualActor,
+        effective: effectiveActor,
+        before: { profileId: member.profile_id, active: true, roles: keys, caps: caps.before },
+        after: { profileId: member.profile_id, active: true, roles: keys, caps: caps.after },
+      });
+  }
+}
 function affectedRegisteredTargets(targets: readonly SectionAccessTarget[], rows: PolicyRows) {
   return new Map(
     targets.flatMap((target) =>
@@ -551,6 +715,7 @@ export async function writeSectionAccess(
   const committed = await getCoreDb().transaction(async (tx) => {
     await lockNavigationPolicy(tx, actor.orgId);
     let rows = await loadPolicyRows(tx, actor.orgId);
+    const previousRows = rows;
     const authority = await requireFreshPolicyActor(tx, actor, rows);
     const role = rows.roles.find((r) => r.key === input.roleKey);
     if (!role) throw error(400, 'Role no longer exists in this organization');
@@ -597,7 +762,9 @@ export async function writeSectionAccess(
       rows,
     ).values())
       requireGrantCeiling(target, role, rows, authority);
+    await requireRecipientPolicyCeiling(tx, actor, role, previousRows, rows, authority);
     for (const write of writes) await persistPolicy(tx, actor, write.target, write.old, write.next);
+    await assertOrganizationAccessRecoverableDrizzle(tx, actor.orgId, rows);
     const revisions: Record<string, string> = {};
     const affected =
       target.kind === 'module'
@@ -639,6 +806,7 @@ export async function resetRegisteredRolePolicies(
   const committed = await getCoreDb().transaction(async (tx) => {
     await lockNavigationPolicy(tx, actor.orgId);
     let rows = await loadPolicyRows(tx, actor.orgId);
+    const previousRows = rows;
     const authority = await requireFreshPolicyActor(tx, actor, rows);
     const role = rows.roles.find((r) => r.key === roleKey);
     if (!role) throw error(400, 'Role no longer exists in this organization');
@@ -657,7 +825,9 @@ export async function resetRegisteredRolePolicies(
     const affected = affectedRegisteredTargets(targets, rows);
     // A parent reset also changes inherited child access, even without a child row.
     for (const target of affected.values()) requireGrantCeiling(target, role, rows, authority);
+    await requireRecipientPolicyCeiling(tx, actor, role, previousRows, rows, authority);
     for (const write of writes) await persistPolicy(tx, actor, write.target, write.old, null);
+    await assertOrganizationAccessRecoverableDrizzle(tx, actor.orgId, rows);
     const revisions: Record<string, string> = {};
     for (const changed of affected.values())
       revisions[changed.key] = sectionPolicyRevision(actor.orgId, changed, role, rows);
@@ -753,18 +923,44 @@ export async function deleteRoleAccessCatalog(locals: App.Locals, key: string): 
   await getCoreDb().transaction(async (tx) => {
     await lockNavigationPolicy(tx, actor.orgId);
     const rows = await loadPolicyRows(tx, actor.orgId);
-    const authority = await requireFreshPolicyActor(tx, actor, rows);
+    const authority = await requireFreshPolicyActor(tx, actor, rows, 'delete');
     const role = rows.roles.find((row) => row.key === key && !row.is_system);
     if (!role) throw error(404, 'Custom role not found');
     if (role.rank > authority.rank) throw error(403, 'Cannot remove a role above your authority');
+    const { roleFitsActualAuthority } = await import('./role-simulation-policy');
+    const selected = buildCapabilities([role.key], rows.rules);
+    for (const actual of [authority.real, authority.effective])
+      if (
+        !roleFitsActualAuthority({
+          actual,
+          selected,
+          rules: rows.rules,
+          nav: rows.nav,
+          platformAdmin: authority.platformAdmin,
+        })
+      )
+        throw error(403, 'Cannot delete a role beyond your own access');
     const assigned = await tx.execute<{ profile_id: string } & Record<string, unknown>>(
       sql`select profile_id from member_roles where org_id=${actor.orgId}::uuid and role_key=${key} for share`,
     );
     if (assigned.length) throw error(409, 'This role is still assigned to a member');
+    if (rows.policy.roleModel === 'organization') {
+      if (rows.policy.defaultRoleKey === key)
+        throw error(409, 'Choose a different default role first');
+      const references = await tx.execute<{ used: boolean } & Record<string, unknown>>(sql`
+        select exists(select 1 from join_link where organization_id=${actor.orgId} and role=${key}
+          and not revoked and (expires_at is null or expires_at>now())
+          and (max_uses is null or uses_count<max_uses))
+        or exists(select 1 from brain_access where org_id=${actor.orgId} and principal_type='role' and principal_id=${key}) as used`);
+      if (references[0]?.used)
+        throw error(409, 'Role is referenced by an invitation or object access grant');
+    }
+
     await tx.execute(
       sql`delete from permission_rules where org_id=${actor.orgId}::uuid and role_key=${key}`,
     );
     await tx.execute(sql`delete from org_roles where org_id=${actor.orgId}::text and key=${key}`);
+    await assertOrganizationAccessRecoverableDrizzle(tx, actor.orgId);
     const simulation = currentEffectiveAuthority(actor.orgId, actor.profileId);
     const removed = {
       key: role.key,
@@ -785,4 +981,41 @@ export async function deleteRoleAccessCatalog(locals: App.Locals, key: string): 
   } catch {
     console.warn('[roles] committed removal; permission refresh required');
   }
+}
+
+/** Check the post-change state inside the writer's existing policy transaction. */
+export async function assertOrganizationAccessRecoverableDrizzle(
+  tx: CoreTx,
+  orgId: string,
+  known?: PolicyRows,
+): Promise<void> {
+  const rows = known ?? (await loadPolicyRows(tx, orgId));
+  if (rows.policy.roleModel === 'legacy') return;
+  const members = await tx.execute<
+    { profile_id: string; role: string | null; profile_role: string | null } & Record<
+      string,
+      unknown
+    >
+  >(sql`
+    select m.profile_id::text,m.role,p.role as profile_role from organization_members m join profiles p on p.id=m.profile_id
+    where m.organization_id=${orgId}::uuid and (${rows.policy.roleModel}='legacy' or not coalesce((to_jsonb(p)->>'deletion_pending')::boolean,false)) for share of m,p`);
+  const assignments = await tx.execute<
+    { profile_id: string; role_key: string } & Record<string, unknown>
+  >(sql`
+    select profile_id::text,role_key from member_roles where org_id=${orgId}::uuid for share`);
+  const { hasRecoverableOrganizationAdministrator } =
+    await import('./organization-role-admin.service');
+  if (!members.some((m) => m.role === 'owner'))
+    throw error(409, 'An organization owner must remain');
+  if (
+    !hasRecoverableOrganizationAdministrator({
+      policy: rows.policy,
+      roles: rows.roles,
+      rules: rows.rules,
+      members: [...members],
+      assignments: [...assignments],
+      nav: rows.nav,
+    })
+  )
+    throw error(409, 'An administrator able to manage organization access must remain');
 }

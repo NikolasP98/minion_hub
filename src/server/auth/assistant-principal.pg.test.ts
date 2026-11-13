@@ -4,6 +4,12 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { createClient } from '@supabase/supabase-js';
 
 const entrypoints = vi.hoisted(() => ({ db: vi.fn(), admin: vi.fn() }));
+// Existing transport fixture models legacy organizations; model-specific SQL
+// admission and role catalog behavior is covered in the native organization suites.
+vi.mock('$server/services/organization-role-policy', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$server/services/organization-role-policy')>()),
+  loadOrganizationRolePolicy: async () => ({ roleModel: 'legacy', defaultRoleKey: null }),
+}));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: entrypoints.db }));
 vi.mock('$server/supabase', () => ({ supabaseAdmin: entrypoints.admin }));
 

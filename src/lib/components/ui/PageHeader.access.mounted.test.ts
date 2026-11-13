@@ -22,7 +22,7 @@ beforeEach(() => {
   state.data = {
     user: { id: 'actor' },
     activeOrgId: 'org',
-    permissions: { permissions: ['users:manage'] },
+    permissions: { permissions: ['roles:view', 'roles:edit'] },
     navConfig: EMPTY_NAV_CONFIG,
   };
   state.path = '/en/crm/customers';
@@ -35,7 +35,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe('main-page access action', () => {
-  it('uses the canonical module target without requiring Settings access', async () => {
+  it('uses the canonical module target for roles:edit without Team or Settings management', async () => {
     render(PageHeader, { props: { title: 'Customers' } });
     const button = await screen.findByRole('button', { name: 'Manage access: Customers' });
     await fireEvent.click(button);
@@ -63,10 +63,16 @@ describe('main-page access action', () => {
     dialog.close();
     dialog.remove();
   });
-  it('does not render policy controls for a denied role', async () => {
-    state.data = { ...state.data, permissions: { permissions: [] } };
+  it.each([
+    { name: 'a denied role', permissions: [] },
+    { name: 'a read-only role viewer', permissions: ['roles:view'] },
+    { name: 'Team management alone', permissions: ['users:manage'] },
+    { name: 'Settings management alone', permissions: ['settings:manage'] },
+  ])('does not render policy controls for $name', async ({ permissions }) => {
+    state.data = { ...state.data, permissions: { permissions } };
     render(PageHeader, { props: { title: 'Customers' } });
     await waitFor(() => expect(document.querySelector('[data-page-header]')).toBeTruthy());
     expect(screen.queryByRole('button')).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

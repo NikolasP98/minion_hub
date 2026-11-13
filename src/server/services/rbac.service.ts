@@ -7,6 +7,7 @@ import {
 import { z } from 'zod';
 import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import { supabaseAdmin } from '$server/supabase';
+import { loadOrganizationRolePolicy, type OrganizationRoleModel } from './organization-role-policy';
 import {
   MODULE_SUBRESOURCES,
   RBAC_BUSINESS_MODULES,
@@ -69,6 +70,7 @@ export const MODULES = [
   'workspace',
   'settings',
   'users',
+  'roles',
   'tools',
 ] as const;
 export type Module = (typeof MODULES)[number];
@@ -336,8 +338,13 @@ export async function resolveCapabilities(orgId: string, profileId: string): Pro
 export function resolveMemberRoleKeys(
   assignedRoleKeys: readonly string[],
   legacyMembershipRole: string | null | undefined,
+  roleModel: OrganizationRoleModel = 'legacy',
+  localRoleKeys: readonly string[] = [],
 ): string[] {
   const explicit = [...new Set(assignedRoleKeys)];
+  if (roleModel !== 'legacy' && roleModel !== 'organization') return [];
+  if (roleModel === 'organization')
+    return explicit.filter((key) => key.startsWith('custom-') && localRoleKeys.includes(key));
   return explicit.length > 0 ? explicit : [legacyRoleKey(legacyMembershipRole)];
 }
 
@@ -346,6 +353,7 @@ async function loadCapabilityRows(
   profileId: string,
 ): Promise<{ roles: string[]; rules: CapabilityOverrideRow[] }> {
   const admin = supabaseAdmin();
+  const policy = await loadOrganizationRolePolicy(orgId);
 
   const memberRolesResult = await admin
     .from('member_roles')
@@ -361,8 +369,28 @@ async function loadCapabilityRows(
     (r) => r.role_key,
   );
   let roles = assignedRoles;
+  if (policy.roleModel === 'organization') {
+    const [catalog, membership] = await Promise.all([
+      listOrgRoles(orgId),
+      admin
+        .from('organization_members')
+        .select('role')
+        .eq('organization_id', orgId)
+        .eq('profile_id', profileId)
+        .maybeSingle(),
+    ]);
+    if (membership.error) throw new Error('Failed to resolve organization membership');
+    roles = membership.data
+      ? resolveMemberRoleKeys(
+          assignedRoles,
+          null,
+          'organization',
+          catalog.map((r) => r.key),
+        )
+      : [];
+  }
 
-  if (roles.length === 0) {
+  if (roles.length === 0 && policy.roleModel === 'legacy') {
     const legacyMembershipResult = await admin
       .from('organization_members')
       .select('role')
@@ -460,17 +488,6 @@ export async function ownerFilter(locals: App.Locals, module: Module): Promise<s
 
 // ── Role Permission Manager (settings/roles) ────────────────────────────────
 
-function rowToActionSet(r: CapabilityOverrideRow): ActionSet {
-  return {
-    view: r.can_view,
-    create: r.can_create,
-    edit: r.can_edit,
-    delete: r.can_delete,
-    export: r.can_export,
-    manage: r.can_manage,
-  };
-}
-
 export interface SubResourceCaps {
   revision: string;
   key: string;
@@ -547,11 +564,12 @@ interface OrgRoleRow {
 
 /** This org's custom roles (org_roles), highest rank first. */
 async function listOrgRoles(orgId: string): Promise<OrgRoleRow[]> {
-  const { data } = await supabaseAdmin()
+  const { data, error: queryError } = await supabaseAdmin()
     .from('org_roles')
     .select('key, name, rank, source_role_key')
     .eq('org_id', orgId)
     .order('rank', { ascending: false });
+  if (queryError) throw new Error('Organization role catalog unavailable', { cause: queryError });
   return (data ?? []) as OrgRoleRow[];
 }
 
@@ -560,12 +578,14 @@ async function listOrgRoles(orgId: string): Promise<OrgRoleRow[]> {
  * unioned with the org's custom roles, highest rank first.
  */
 export async function listRoleCatalog(orgId: string): Promise<RoleCatalogEntry[]> {
-  const [{ data: sys }, custom] = await Promise.all([
+  const [policy, { data: sys, error: catalogError }, custom] = await Promise.all([
+    loadOrganizationRolePolicy(orgId),
     supabaseAdmin().from('permission_roles').select('key, name, rank, description'),
     listOrgRoles(orgId),
   ]);
+  if (catalogError) throw new Error('System role catalog unavailable', { cause: catalogError });
   const entries: RoleCatalogEntry[] = [
-    ...((sys ?? []) as RoleCatalogEntry[]),
+    ...(policy.roleModel === 'legacy' ? ((sys ?? []) as RoleCatalogEntry[]) : []),
     ...custom.map((c) => ({
       key: c.key,
       name: c.name,
@@ -579,7 +599,8 @@ export async function listRoleCatalog(orgId: string): Promise<RoleCatalogEntry[]
 
 /** A role key assignable in this org: a system role, or a custom role that org created. */
 export async function isAssignableRoleKey(orgId: string, key: unknown): Promise<boolean> {
-  if (isRoleKey(key)) return true;
+  const policy = await loadOrganizationRolePolicy(orgId);
+  if (isRoleKey(key)) return policy.roleModel === 'legacy';
   if (typeof key !== 'string') return false;
   const { data } = await supabaseAdmin()
     .from('org_roles')
@@ -590,178 +611,19 @@ export async function isAssignableRoleKey(orgId: string, key: unknown): Promise<
   return !!data;
 }
 
-/** Slugify a role name into the `custom-<slug>` key suffix. */
-function slugifyRoleName(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-/** A role's rank, whether it's a system role or this org's custom role. Null if unknown. */
-async function resolveRoleRank(orgId: string, roleKey: string): Promise<number | null> {
-  if (isRoleKey(roleKey)) {
-    const { data } = await supabaseAdmin()
-      .from('permission_roles')
-      .select('rank')
-      .eq('key', roleKey)
-      .maybeSingle();
-    return (data as { rank: number } | null)?.rank ?? null;
-  }
-  const { data } = await supabaseAdmin()
-    .from('org_roles')
-    .select('rank')
-    .eq('org_id', orgId)
-    .eq('key', roleKey)
-    .maybeSingle();
-  return (data as { rank: number } | null)?.rank ?? null;
-}
-
-/**
- * The highest role rank the caller may create or grant in this org. Platform
- * admins (profiles.role='admin') and EXPLICIT system callers (system=true) are
- * uncapped; an org member is capped at their own highest role rank. Without this,
- * an org `admin` (whose default matrix already includes `users:manage`) could
- * clone or assign the higher-ranked `owner` role and escalate past owner-only
- * surfaces. Fails closed: a missing callerProfileId is treated as a hard error,
- * NOT as a trusted system caller (an HTTP request that reaches here without an
- * identity is a bug/auth gap, not a seed script).
- */
-async function callerRankCap(
-  orgId: string,
-  callerProfileId: string | null,
-  system = false,
-): Promise<number> {
-  if (system) return Number.MAX_SAFE_INTEGER; // explicit trusted internal/seed path — never inferred from a missing id
-  if (!callerProfileId) throw error(403, 'Caller identity required to grant or clone roles.'); // fail closed
-  const effective = currentEffectiveAuthority(orgId, callerProfileId);
-  if (effective) return effective.rank;
-  const admin = supabaseAdmin();
-  const { data: prof } = await admin
-    .from('profiles')
-    .select('role')
-    .eq('id', callerProfileId)
-    .maybeSingle();
-  if ((prof as { role: string | null } | null)?.role === 'admin') return Number.MAX_SAFE_INTEGER; // platform superuser
-  const { data: mr } = await admin
-    .from('member_roles')
-    .select('role_key')
-    .eq('org_id', orgId)
-    .eq('profile_id', callerProfileId);
-  let roles = ((mr ?? []) as Array<{ role_key: string }>).map((r) => r.role_key);
-  if (roles.length === 0) {
-    const { data: om } = await admin
-      .from('organization_members')
-      .select('role')
-      .eq('organization_id', orgId)
-      .eq('profile_id', callerProfileId)
-      .maybeSingle();
-    roles = [legacyRoleKey((om as { role: string | null } | null)?.role)];
-  }
-  let cap = 0;
-  for (const rk of roles) {
-    const r = await resolveRoleRank(orgId, rk);
-    if (r != null && r > cap) cap = r;
-  }
-  return cap;
-}
-
-/** Throws 403 when the caller may not create/grant a role of `targetRank`. */
-async function assertMayGrantRank(
-  orgId: string,
-  callerProfileId: string | null,
-  targetRank: number | null,
-  verb: string,
-  system = false,
-): Promise<void> {
-  const cap = await callerRankCap(orgId, callerProfileId, system);
-  if ((targetRank ?? 0) > cap)
-    throw error(403, `You cannot ${verb} a role that outranks your own.`);
-}
-
-/**
- * Create a custom role by duplicating `sourceRoleKey`: inserts the `org_roles`
- * catalog row (key `custom-<slug>`, same rank as the source) AND clones the
- * source role's EFFECTIVE per-module matrix into `permission_rules` overrides
- * for the new key, so it starts as an editable copy (the existing per-module
- * ladder UI then edits those rows same as any role).
- */
+/** Compatibility adapter: all role creation uses the authenticated transactional writer. */
 export async function createCustomRole(
   orgId: string,
   params: { sourceRoleKey: string; name: string },
   createdBy: string | null = null,
   system = false,
 ): Promise<RoleCatalogEntry> {
-  const admin = supabaseAdmin();
-  const name = params.name.trim();
-  if (!name) throw error(400, 'name required');
-  if (!(await isAssignableRoleKey(orgId, params.sourceRoleKey)))
-    throw error(400, 'unknown sourceRoleKey');
-
-  const slug = slugifyRoleName(name);
-  if (!slug) throw error(400, 'name must contain at least one letter or digit');
-  const key = `custom-${slug}`;
-
-  const rank = await resolveRoleRank(orgId, params.sourceRoleKey);
-  if (rank === null) throw error(400, 'unknown sourceRoleKey');
-  // No self-escalation: can't clone a role that outranks the caller (e.g. an
-  // org admin duplicating `owner`). Platform admins/system callers are uncapped.
-  await assertMayGrantRank(orgId, createdBy, rank, 'duplicate', system);
-
-  const { data: existing } = await admin
-    .from('org_roles')
-    .select('key')
-    .eq('org_id', orgId)
-    .eq('key', key)
-    .maybeSingle();
-  if (existing) throw error(409, 'A custom role with that name already exists.');
-
-  const { data: rules } = await admin
-    .from('permission_rules')
-    .select(
-      'module, can_view, can_create, can_edit, can_delete, can_export, can_manage, if_owner, field_level',
-    )
-    .eq('org_id', orgId)
-    .eq('role_key', params.sourceRoleKey);
-  const ovr = new Map<string, CapabilityOverrideRow>();
-  for (const r of (rules ?? []) as CapabilityOverrideRow[]) ovr.set(r.module, r);
-
-  for (const mod of MODULES) {
-    const o = ovr.get(mod);
-    const caps = o ? rowToActionSet(o) : defaultCaps(params.sourceRoleKey, mod);
-    const ifOwner = o?.if_owner ?? false;
-    const fieldLevel = o?.field_level ?? defaultFieldLevel(mod);
-    await admin.from('permission_rules').upsert(
-      {
-        org_id: orgId,
-        role_key: key,
-        module: mod,
-        can_view: caps.view,
-        can_create: caps.create,
-        can_edit: caps.edit,
-        can_delete: caps.delete,
-        can_export: caps.export,
-        can_manage: caps.manage,
-        if_owner: ifOwner,
-        field_level: fieldLevel,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'org_id,role_key,module' },
-    );
-  }
-
-  await admin.from('org_roles').insert({
-    org_id: orgId,
-    key,
-    name,
-    rank,
-    source_role_key: params.sourceRoleKey,
-    created_by: createdBy,
-  });
-  await invalidateRbac(orgId);
-
-  return { key, name, rank, description: null, isCustom: true };
+  if (!createdBy || system) throw error(403, 'Authenticated role creator required');
+  const { createOrganizationRole } = await import('./organization-role-admin.service');
+  return createOrganizationRole(
+    { user: { supabaseId: createdBy }, tenantCtx: { tenantId: orgId } } as App.Locals,
+    { source: 'duplicate', sourceRoleKey: params.sourceRoleKey, name: params.name },
+  );
 }
 
 /**
@@ -812,20 +674,14 @@ export async function setMemberRole(
   grantedBy: string | null = null,
   system = false,
 ): Promise<void> {
-  // No self-escalation: can't grant a role that outranks the caller.
-  await assertMayGrantRank(
+  const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
+  await mutateOrganizationMemberRoles(
     orgId,
+    profileId,
+    { mode: 'replace', roleKey },
     grantedBy,
-    await resolveRoleRank(orgId, roleKey),
-    'assign',
     system,
   );
-  const admin = supabaseAdmin();
-  await admin.from('member_roles').delete().eq('org_id', orgId).eq('profile_id', profileId);
-  await admin
-    .from('member_roles')
-    .insert({ org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy });
-  await invalidateRbac(orgId);
 }
 
 /**
@@ -871,21 +727,14 @@ export async function addMemberRole(
   grantedBy: string | null = null,
   system = false,
 ): Promise<void> {
-  // No self-escalation: can't grant a role that outranks the caller.
-  await assertMayGrantRank(
+  const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
+  await mutateOrganizationMemberRoles(
     orgId,
+    profileId,
+    { mode: 'add', roleKey },
     grantedBy,
-    await resolveRoleRank(orgId, roleKey),
-    'assign',
     system,
   );
-  await supabaseAdmin()
-    .from('member_roles')
-    .upsert(
-      { org_id: orgId, profile_id: profileId, role_key: roleKey, granted_by: grantedBy },
-      { onConflict: 'org_id,profile_id,role_key', ignoreDuplicates: true },
-    );
-  await invalidateRbac(orgId);
 }
 
 /**
@@ -897,25 +746,15 @@ export async function removeMemberRole(
   orgId: string,
   profileId: string,
   roleKey: string,
+  callerProfileId: string | null = null,
 ): Promise<void> {
-  if (roleKey === 'owner') {
-    const { data } = await supabaseAdmin()
-      .from('member_roles')
-      .select('profile_id')
-      .eq('org_id', orgId)
-      .eq('role_key', 'owner');
-    const owners = ((data ?? []) as Array<{ profile_id: string }>).map((o) => o.profile_id);
-    if (wouldRemoveLastOwner(owners, profileId, roleKey)) {
-      throw error(400, "Cannot remove the organization's last owner.");
-    }
-  }
-  await supabaseAdmin()
-    .from('member_roles')
-    .delete()
-    .eq('org_id', orgId)
-    .eq('profile_id', profileId)
-    .eq('role_key', roleKey);
-  await invalidateRbac(orgId);
+  const { mutateOrganizationMemberRoles } = await import('./organization-role-admin.service');
+  await mutateOrganizationMemberRoles(
+    orgId,
+    profileId,
+    { mode: 'remove', roleKey },
+    callerProfileId,
+  );
 }
 
 /**
@@ -931,6 +770,8 @@ export async function setRoleOverride(
   ifOwner = false,
   fieldLevel?: number,
 ): Promise<void> {
+  if ((await loadOrganizationRolePolicy(orgId)).roleModel === 'organization')
+    throw error(403, 'Use authenticated organization permission editing');
   const admin = supabaseAdmin();
   const c = normalizeViewDependency(caps);
   await admin.from('permission_rules').upsert(
@@ -963,6 +804,8 @@ export async function clearRoleOverride(
   roleKey: string,
   module: string,
 ): Promise<void> {
+  if ((await loadOrganizationRolePolicy(orgId)).roleModel === 'organization')
+    throw error(403, 'Use authenticated organization permission editing');
   const admin = supabaseAdmin();
   await admin
     .from('permission_rules')
@@ -1023,6 +866,7 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   // across modules, so their routes gate on the LINKED OBJECT's module via
   // ATTACHMENT_OBJECT_MODULE (attachments.service) + hasOrgCapability.
   ['/api/crm', 'crm'],
+  ['/api/roles', 'roles'],
   // Deliberately NOT the whole /api/messages prefix — /api/messages/ingest is
   // the gateway's server-token ingest path and must stay capability-free.
   ['/api/messages/send', 'crm'],
@@ -1088,6 +932,7 @@ const READ_POST_ENDPOINTS: ReadonlyArray<readonly [RegExp, Module]> = [
   [/^\/api\/brains\/[^/]+\/search$/, 'brains'],
 ];
 const CREATE_COLLECTION_ENDPOINTS = new Set([
+  '/api/roles',
   '/api/builder/agents',
   '/api/builder/skills',
   '/api/builder/tools',
@@ -1126,7 +971,8 @@ export function apiReadCapability(pathname: string): {
     pathname === '/api/plugins/ui-list'
   )
     return null;
-  if (pathname === '/api/nav/access') return { module: 'users', action: 'manage' };
+  if (pathname === '/api/nav/access' || pathname === '/api/roles/overrides')
+    return { module: 'roles', action: 'edit' };
   // Parties are shared customer/supplier records, used outside CRM too.
   if (pathname === '/api/crm/parties' || /^\/api\/crm\/parties\/[^/]+$/.test(pathname))
     return {
@@ -1159,7 +1005,8 @@ export function apiWriteCapability(
   anyOf?: ReadonlyArray<{ module: Module; action: PermAction }>;
 } | null {
   if (!WRITE_METHODS.has(method)) return null;
-  if (pathname === '/api/nav/access') return { module: 'users', action: 'manage' };
+  if (pathname === '/api/nav/access' || pathname === '/api/roles/overrides')
+    return { module: 'roles', action: 'edit' };
   if (isSelfOnlyObservation(pathname, method)) return null;
   if (pathname.startsWith('/api/scheduling/public/')) return null; // anonymous booking
   // POST /api/join-requests (exact path only) is the APPLICANT creating their
@@ -1240,33 +1087,73 @@ export async function resolveFreshCapabilitiesInTransaction(
   tx: import('$server/db/with-org-core').CoreTx,
   orgId: string,
   profileId: string,
-): Promise<{ capabilities: Capabilities; roles: string[]; membershipRole: string | null }> {
+): Promise<{
+  capabilities: Capabilities;
+  roles: string[];
+  membershipRole: string | null;
+  realCapabilities: Capabilities;
+  realRoles: string[];
+}> {
   const { sql } = await import('drizzle-orm');
   const members = await tx.execute<{ role: string | null }>(
     sql`select role from organization_members where organization_id=${orgId}::uuid and profile_id=${profileId}::uuid for share`,
   );
   if (!members[0])
-    return { capabilities: buildCapabilities([], []), roles: [], membershipRole: null };
+    return {
+      capabilities: buildCapabilities([], []),
+      roles: [],
+      membershipRole: null,
+      realCapabilities: buildCapabilities([], []),
+      realRoles: [],
+    };
   const assigned = await tx.execute<{ role_key: string }>(
     sql`select role_key from member_roles where org_id=${orgId}::uuid and profile_id=${profileId}::uuid for share`,
   );
+  const [organization] = await tx.execute<{
+    role_model: string | null;
+    default_role_key: string | null;
+  }>(
+    sql`select to_jsonb(o)->>'role_model' as role_model,to_jsonb(o)->>'default_role_key' as default_role_key from organizations o where id=${orgId}::uuid for share`,
+  );
+  const { parseOrganizationRolePolicy } = await import('./organization-role-policy');
+  const policy = parseOrganizationRolePolicy(organization);
+  const localRoles =
+    policy.roleModel === 'organization'
+      ? await tx.execute<{ key: string }>(
+          sql`select key from org_roles where org_id=${orgId} for share`,
+        )
+      : [];
   const roles = resolveMemberRoleKeys(
     assigned.map((row) => row.role_key),
     members[0].role,
+    policy.roleModel,
+    localRoles.map((row) => row.key),
   );
   const rules = await tx.execute<CapabilityOverrideRow & Record<string, unknown>>(
     sql`select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from permission_rules where org_id=${orgId}::uuid for share`,
   );
   const effective = currentEffectiveAuthority(orgId, profileId);
+  const realCapabilities = buildCapabilities(roles, [...rules]);
+  const simulatedRoles =
+    effective &&
+    !effective.invalid &&
+    (policy.roleModel === 'legacy' || localRoles.some((role) => role.key === effective.roleKey))
+      ? [effective.roleKey]
+      : [];
   return {
-    // Membership is proven independently above; one admitted role replaces real assignments.
+    // A live simulation cannot restore grants revoked from the real actor.
     capabilities: effective
       ? narrowAdmittedCapabilities(
-          buildCapabilities(effective.invalid ? [] : [effective.roleKey], [...rules]),
-          effective.capabilities,
+          narrowAdmittedCapabilities(
+            buildCapabilities(simulatedRoles, [...rules]),
+            effective.capabilities,
+          ),
+          realCapabilities,
         )
-      : buildCapabilities(roles, [...rules]),
-    roles: effective ? [effective.roleKey] : roles,
+      : realCapabilities,
+    roles: effective ? simulatedRoles : roles,
     membershipRole: members[0].role,
+    realCapabilities,
+    realRoles: roles,
   };
 }

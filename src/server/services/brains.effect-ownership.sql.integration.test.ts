@@ -27,6 +27,15 @@ vi.mock('./finance-products.service', () => ({ listProducts: boundary.products }
 vi.mock('./crm-contacts.service', () => ({ listContactsCached: vi.fn(), listTags: vi.fn() }));
 vi.mock('./stock.service', () => ({ listItems: vi.fn(), getBins: vi.fn() }));
 vi.mock('./rbac.service', () => ({ resolveCapabilities: vi.fn() }));
+// This isolated legacy ingestion fixture owns document/job tables, not public
+// organization metadata. Keep its legacy owner semantics explicit; current
+// organization-role grant authority has separate native Brain/RLS coverage.
+vi.mock('./organization-role-policy', () => ({
+  loadOrganizationRolePolicy: vi.fn(async () => ({
+    roleModel: 'legacy' as const,
+    defaultRoleKey: null,
+  })),
+}));
 import { getCoreDb } from '$server/db/pg-client';
 import { withOrgCore } from '$server/db/with-org-core';
 import { advanceJob } from './bg-runtime';

@@ -20,6 +20,7 @@ const notifications = vi.hoisted(() => ({
   prepare: vi.fn(),
   recheck: vi.fn(),
   send: vi.fn(),
+  approve: vi.fn(),
 }));
 vi.mock('./pending.repository', () => ({
   admitPendingRequest: notifications.admit,
@@ -54,11 +55,7 @@ vi.mock('$server/supabase', () => ({
   }),
 }));
 vi.mock('$server/db/client', () => ({ getDb: () => ({}) }));
-vi.mock('./membership', () => ({
-  createMembership: vi.fn(async () => {
-    calls.membership = true;
-  }),
-}));
+vi.mock('./organization-admission', () => ({ approveOrganizationRequest: notifications.approve }));
 vi.mock('./notification-audience', () => ({
   prepareJoinReviewRecipients: notifications.prepare,
   recheckJoinReviewRecipient: notifications.recheck,
@@ -67,6 +64,7 @@ vi.mock('$server/services/email.service', () => ({ sendJoinRequestEmail: notific
 
 beforeEach(() => {
   calls = {};
+  notifications.approve.mockReset().mockResolvedValue(undefined);
   notifications.admit.mockReset().mockImplementation(async (who, organizationId, message) => {
     calls.inserted = {
       status: 'pending',
@@ -167,31 +165,33 @@ describe('requests.service', () => {
     expect(notifications.send).not.toHaveBeenCalled();
   });
 
-  test('approve creates membership + marks approved', async () => {
+  test('approval delegates authenticated reviewer and exact legacy role to the atomic grant boundary', async () => {
     const { approveRequest } = await import('./requests.service');
-    calls.row = {
-      status: 'pending',
-      user_id: 'u1',
-      email: 'a@b.c',
-      display_name: 'A',
-      organization_id: 'org1',
+    const opts = {
+      reviewerId: 'reviewer',
+      reviewerProfileId: 'reviewer-profile',
+      role: 'staff',
+      organizationId: 'org1',
     };
-    await approveRequest('r1', { reviewerId: 'admin1', role: 'user', organizationId: 'org1' });
-    expect(calls.membership).toBe(true);
-    expect(calls.updated?.status).toBe('approved');
-  });
-
-  test('approve is a no-op when request is not pending', async () => {
-    const { approveRequest } = await import('./requests.service');
-    calls.row = {
-      status: 'approved',
-      user_id: 'u1',
-      email: 'a@b.c',
-      display_name: 'A',
-      organization_id: 'org1',
-    };
-    await approveRequest('r1', { reviewerId: 'admin1', role: 'user', organizationId: 'org1' });
-    expect(calls.membership).toBeUndefined();
+    await approveRequest('r1', opts);
+    expect(notifications.approve).toHaveBeenCalledWith('r1', opts);
     expect(calls.updated).toBeUndefined();
+  });
+  test('approval keeps an omitted role for the fresh policy default resolver', async () => {
+    const { approveRequest } = await import('./requests.service');
+    const opts = {
+      reviewerId: 'reviewer',
+      reviewerProfileId: 'reviewer-profile',
+      organizationId: 'org1',
+    };
+    await approveRequest('r1', opts);
+    expect(notifications.approve).toHaveBeenCalledWith('r1', opts);
+  });
+  test('approval refuses a reviewer without authenticated profile provenance', async () => {
+    const { approveRequest } = await import('./requests.service');
+    await expect(
+      approveRequest('r1', { reviewerId: 'reviewer', role: 'staff', organizationId: 'org1' }),
+    ).rejects.toThrow('Authenticated reviewer profile required');
+    expect(notifications.approve).not.toHaveBeenCalled();
   });
 });

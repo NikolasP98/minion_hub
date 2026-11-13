@@ -50,7 +50,13 @@
 
   type RbacRole = { key: string; name: string; rank: number; description: string | null };
 
-  type OrgOption = { id: string; name: string };
+  type OrgOption = {
+    id: string;
+    name: string;
+    roleModel?: 'legacy' | 'organization';
+    defaultRoleKey?: string | null;
+    roles?: { key: string; name: string }[];
+  };
 
   interface Props {
     initialUsers?: UserRow[];
@@ -193,7 +199,13 @@
         }
         // requested_role is legacy (always 'user' from the applicant's own
         // request) — approving as a real system role, defaulting to staff.
-        const role = req.requestedRole === 'admin' ? 'admin' : 'staff';
+        const selectedOrg = organizations.find((o) => o.id === organizationId);
+        const role =
+          selectedOrg?.roleModel === 'organization'
+            ? (selectedOrg.defaultRoleKey ?? undefined)
+            : req.requestedRole === 'admin'
+              ? 'admin'
+              : 'staff';
         res = await fetch(`/api/join-requests/${req.id}/approve`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -413,6 +425,7 @@
       {#if showInvite}
         <div class="mt-3">
           <JoinLinkForm {organizations} onCreated={loadJoinLinks} />
+          <p class="t-caption text-text-secondary">{m.roles_unionNotice()}</p>
         </div>
       {/if}
     {/if}

@@ -18,6 +18,12 @@ const boundary = vi.hoisted(() => ({
   reminderOrgs: vi.fn(),
   env: { CRON_SECRET: 'disposable-cron-secret' } as Record<string, string>,
 }));
+// This route fixture deliberately exercises the legacy model; organization-model
+// admission/authority has separate native coverage.
+vi.mock('$server/services/organization-role-policy', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('$server/services/organization-role-policy')>()),
+  loadOrganizationRolePolicy: async () => ({ roleModel: 'legacy', defaultRoleKey: null }),
+}));
 vi.mock('$server/db/pg-client', () => ({
   getCoreDb: boundary.db,
   getOrgTransactionDb: boundary.db,

@@ -1,5 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
+import { loadOrganizationRolePolicy } from '$server/services/organization-role-policy';
+import { listRoleCatalog } from '$server/services/rbac.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { listPendingRequests } from '$server/services/join/requests.service';
 import { listLinks } from '$server/services/join/links.service';
@@ -18,10 +20,17 @@ export const load: PageServerLoad = async ({ locals, parent }) => {
     ? [{ id: activeOrg.id, name: activeOrg.name, slug: activeOrg.slug ?? null }]
     : [];
 
+  const policy = await loadOrganizationRolePolicy(locals.tenantCtx.tenantId);
   return {
     // Org-scoped: an admin only sees their own org's pending requests / links.
     requests: await listPendingRequests(locals.tenantCtx.tenantId),
     links: await listLinks(locals.tenantCtx.tenantId),
     orgs,
+    rolePolicy: policy,
+    roleOptions: (await listRoleCatalog(locals.tenantCtx.tenantId)).filter(
+      (r) =>
+        policy.roleModel === 'organization' ||
+        ['admin', 'manager', 'staff', 'viewer'].includes(r.key),
+    ),
   };
 };

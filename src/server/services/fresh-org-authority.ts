@@ -1,5 +1,7 @@
 import { currentEffectiveAuthority } from '$server/auth/effective-authority';
 import { getPgClient } from '$server/db/pg-pool';
+import type postgres from 'postgres';
+import type { OrganizationRoleModel } from './organization-role-policy';
 import {
   buildCapabilities,
   resolveMemberRoleKeys,
@@ -17,6 +19,7 @@ export interface FreshOrgAuthorityTables {
   authUsers: string;
   memberRoles: string;
   permissionRules: string;
+  orgRoles?: string;
 }
 
 export const FRESH_ORG_AUTHORITY_TABLES: Readonly<FreshOrgAuthorityTables> = Object.freeze({
@@ -44,6 +47,8 @@ export interface FreshOrgAuthorityRow {
   auth_email: string | null;
   email_confirmed_at: Date | string | null;
   role_key: string | null;
+  role_model?: string | null;
+  local_role_keys?: string[];
 }
 
 export interface FreshOrgAuthorizedMember {
@@ -51,6 +56,24 @@ export interface FreshOrgAuthorizedMember {
   verifiedEmail: string | null;
 }
 
+function rowModel(row: FreshOrgAuthorityRow): OrganizationRoleModel {
+  if (row.role_model == null || row.role_model === 'legacy') return 'legacy';
+  if (row.role_model === 'organization') return 'organization';
+  throw new Error('Unknown organization role model');
+}
+async function attachLocalRoles(
+  tx: postgres.TransactionSql,
+  tables: Readonly<FreshOrgAuthorityTables>,
+  rows: FreshOrgAuthorityRow[],
+  orgId: string,
+) {
+  if (!rows.some((row) => rowModel(row) === 'organization')) return;
+  const table = tables.orgRoles ?? tables.memberRoles.replace(/member_roles$/, 'org_roles');
+  const local = await tx<
+    Array<{ key: string }>
+  >`select key from ${tx(table)} where org_id=${orgId}`;
+  for (const row of rows) row.local_role_keys = local.map((r) => r.key);
+}
 function verifiedEmail(row: FreshOrgAuthorityRow): string | null {
   if (!row.email_confirmed_at || typeof row.auth_email !== 'string') return null;
   const email = row.auth_email.trim().toLocaleLowerCase('en-US');
@@ -77,7 +100,12 @@ export function buildFreshOrgAuthorizedMembers(
       // The profile-level administrator bypass is considered only after this
       // member came from the exact organization_members candidate set.
       if (row.profile_role === 'admin') return true;
-      const roles = resolveMemberRoleKeys([...assignedRoles], row.legacy_role);
+      const roles = resolveMemberRoleKeys(
+        [...assignedRoles],
+        row.legacy_role,
+        rowModel(row),
+        row.local_role_keys ?? [],
+      );
       return buildCapabilities(roles, [...rules]).can(module, action);
     })
     .map(({ row }) => ({ profileId: row.profile_id, verifiedEmail: verifiedEmail(row) }))
@@ -91,14 +119,26 @@ function authorityRoleKeys(rows: FreshOrgAuthorityRow[], limit: number): string[
   for (const row of rows) {
     grouped.set(row.profile_id, row);
     if (row.role_key) {
-      roleKeys.add(row.role_key);
+      for (const key of resolveMemberRoleKeys(
+        [row.role_key],
+        row.legacy_role,
+        rowModel(row),
+        row.local_role_keys ?? [],
+      ))
+        roleKeys.add(key);
       membersWithAssignedRoles.add(row.profile_id);
     }
   }
   if (grouped.size > limit) throw new FreshOrgAuthorityOverflow(limit);
   for (const row of grouped.values()) {
     if (!membersWithAssignedRoles.has(row.profile_id)) {
-      roleKeys.add(resolveMemberRoleKeys([], row.legacy_role)[0]!);
+      for (const key of resolveMemberRoleKeys(
+        [],
+        row.legacy_role,
+        rowModel(row),
+        row.local_role_keys ?? [],
+      ))
+        roleKeys.add(key);
     }
   }
   return [...roleKeys];
@@ -123,7 +163,7 @@ export async function resolveFreshOrgMembersWithCapability(
   return pg.begin('isolation level repeatable read read only', async (tx) => {
     const rows = await tx<FreshOrgAuthorityRow[]>`
       with candidates as (
-        select m.profile_id,m.role as legacy_role,p.role as profile_role
+        select m.profile_id,m.role as legacy_role,p.role as profile_role,to_jsonb(o)->>'role_model' as role_model
         from ${tx(tables.organizationMembers)} m
         inner join ${tx(tables.organizations)} o on o.id=m.organization_id and o.status='active'
         inner join ${tx(tables.profiles)} p on p.id=m.profile_id
@@ -131,7 +171,7 @@ export async function resolveFreshOrgMembersWithCapability(
         order by m.profile_id
         limit ${limit + 1}
       )
-      select c.profile_id::text,c.legacy_role,c.profile_role,
+      select c.profile_id::text,c.legacy_role,c.profile_role,c.role_model,
              u.email as auth_email,u.email_confirmed_at,mr.role_key
       from candidates c
       left join ${tx(tables.authUsers)} u on u.id=c.profile_id
@@ -139,6 +179,7 @@ export async function resolveFreshOrgMembersWithCapability(
         on mr.org_id=${orgId}::uuid and mr.profile_id=c.profile_id
       order by c.profile_id,mr.role_key
     `;
+    await attachLocalRoles(tx, tables, rows, orgId);
     const roleKeys = authorityRoleKeys(rows, limit);
     const rules =
       roleKeys.length === 0
@@ -163,7 +204,7 @@ export async function resolveFreshOrgMemberWithCapability(
   const pg = getPgClient();
   return pg.begin('isolation level repeatable read read only', async (tx) => {
     const rows = await tx<FreshOrgAuthorityRow[]>`
-      select m.profile_id::text,m.role as legacy_role,p.role as profile_role,
+      select m.profile_id::text,m.role as legacy_role,p.role as profile_role,to_jsonb(o)->>'role_model' as role_model,
              u.email as auth_email,u.email_confirmed_at,mr.role_key
       from ${tx(tables.organizationMembers)} m
       inner join ${tx(tables.organizations)} o on o.id=m.organization_id and o.status='active'
@@ -174,6 +215,7 @@ export async function resolveFreshOrgMemberWithCapability(
       where m.organization_id=${orgId}::uuid and m.profile_id=${profileId}::uuid
       order by mr.role_key
     `;
+    await attachLocalRoles(tx, tables, rows, orgId);
     const roleKeys = authorityRoleKeys(rows, 1);
     const rules =
       roleKeys.length === 0

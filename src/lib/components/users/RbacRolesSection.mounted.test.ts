@@ -4,7 +4,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/sv
 const state = vi.hoisted(() => ({
   invalidate: vi.fn(),
   fetch: vi.fn(),
-  permissions: ['users:manage'] as string[],
+  permissions: [
+    'roles:view',
+    'roles:create',
+    'roles:edit',
+    'roles:delete',
+    'users:manage',
+  ] as string[],
   mode: undefined as { active: boolean; roleKey: string | null; generation: string } | undefined,
 }));
 const authority = vi.hoisted(() => ({
@@ -111,7 +117,14 @@ async function editParent() {
   await fireEvent.click(screen.getAllByRole('checkbox', { name: 'edit' })[0]);
 }
 beforeEach(() => {
-  state.permissions = ['users:manage'];
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+    this.dispatchEvent(new Event('close'));
+  };
+  state.permissions = ['roles:view', 'roles:create', 'roles:edit', 'roles:delete', 'users:manage'];
   state.mode = undefined;
   state.invalidate.mockReset().mockResolvedValue(undefined);
   state.fetch.mockReset().mockResolvedValue(
@@ -150,8 +163,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe('Settings permission authority retirement', () => {
-  it('shows read-only policy to a users:view member with no catalog mutations', async () => {
-    state.permissions = ['users:view'];
+  it('shows read-only policy to a roles:view member with no catalog mutations', async () => {
+    state.permissions = ['roles:view'];
     render(RbacRolesSection, fixture());
     await fireEvent.click(screen.getByTitle('Advanced (granular actions, scope, sections)'));
     expect(
@@ -299,18 +312,168 @@ describe('Settings permission authority retirement', () => {
     expect(state.fetch.mock.calls[0][0]).toBe('/api/roles/custom-preview');
     expect(state.invalidate).not.toHaveBeenCalled();
   });
-  it('keeps cloning on the ordinary refresh path because it does not change effective authority', async () => {
-    state.fetch.mockResolvedValue(new Response(JSON.stringify({ key: 'custom-copy' })));
-    render(RbacRolesSection, fixture());
-    await fireEvent.click(screen.getByTitle(m.roles_duplicate()));
-    await fireEvent.input(screen.getByPlaceholderText(m.roles_duplicateNamePlaceholder()), {
-      target: { value: 'QA copy' },
-    });
-    await fireEvent.click(screen.getByRole('button', { name: m.roles_duplicateSubmit() }));
-    await waitFor(() => expect(state.invalidate).toHaveBeenCalledWith('settings:roles'));
+});
+
+const props = () => ({
+  roles: [
+    {
+      key: 'custom-administrator',
+      name: 'Administrator',
+      rank: 80,
+      description: null,
+      isSystem: false,
+      memberCount: 2,
+      modules: [],
+    },
+  ],
+  roleSettings: {
+    roleModel: 'organization' as const,
+    defaultRoleKey: 'custom-administrator',
+    revision: 'a'.repeat(64),
+    templates: [
+      { id: 'staff' as const, name: 'Staff', rank: 40, version: 1, description: 'Staff template' },
+    ],
+  },
+  actions: ['view', 'create', 'edit', 'delete', 'export', 'manage'],
+  businessModules: [],
+  adminModules: [],
+});
+describe('organization roles and templates', () => {
+  beforeEach(() => {
+    state.fetch.mockResolvedValue(
+      new Response(JSON.stringify({ key: 'custom-marketing' }), { status: 201 }),
+    );
+  });
+  it('does not expose role CRUD to a read-only role viewer with Team management', () => {
+    state.permissions = [];
+    state.permissions.push('roles:view');
+    state.permissions.push('users:manage');
+    render(RbacRolesSection, props());
+    expect(screen.queryByText('Role templates')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Rename role' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duplicate as custom role' })).toBeNull();
+    expect(screen.queryByLabelText(m.roles_deleteCustom())).toBeNull();
+  });
+  it('allows Manager role CRUD controls without Team management or default changes', () => {
+    state.permissions = state.permissions.filter((permission) => permission !== 'users:manage');
+    const data = props();
+    data.roleSettings.defaultRoleKey = 'custom-other';
+    render(RbacRolesSection, data);
+    expect(screen.getByText('Role templates')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Rename role' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Use as the default for new members' })).toBeNull();
+  });
+  it('deletes the selected local role from its header with delete permission alone after confirmation', async () => {
+    state.permissions = ['roles:view', 'roles:delete'];
+    const data = props();
+    data.roles[0].memberCount = 0;
+    data.roleSettings.defaultRoleKey = 'custom-other';
+    state.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true })));
+    render(RbacRolesSection, data);
+    const remove = screen.getByLabelText(m.roles_deleteCustom()) as HTMLButtonElement;
+    expect(remove.closest('aside')).toBeNull();
+    expect(remove.disabled).toBe(false);
+    expect(remove.hasAttribute('title')).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Rename role' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Duplicate as custom role' })).toBeNull();
+    vi.mocked(confirm).mockReturnValueOnce(false);
+    await fireEvent.click(remove);
+    expect(state.fetch).not.toHaveBeenCalled();
+    await fireEvent.click(remove);
+    await waitFor(() => expect(authority.commit).toHaveBeenCalledWith('/en/settings/roles'));
+    expect(confirm).toHaveBeenCalledWith(m.roles_confirmDelete());
     expect(state.fetch).toHaveBeenCalledTimes(1);
+    expect(state.fetch).toHaveBeenCalledWith('/api/roles/custom-administrator', {
+      method: 'DELETE',
+    });
+    expect(state.invalidate).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: 'default', members: 0, defaultKey: 'custom-administrator' },
+    { name: 'assigned', members: 2, defaultKey: 'custom-other' },
+  ])(
+    'disables selected-role header deletion for the $name role with the existing reason',
+    ({ members, defaultKey }) => {
+      state.permissions = ['roles:view', 'roles:delete'];
+      const data = props();
+      data.roles[0].memberCount = members;
+      data.roleSettings.defaultRoleKey = defaultKey;
+      render(RbacRolesSection, data);
+      const remove = screen.getByLabelText(m.roles_deleteCustom()) as HTMLButtonElement;
+      expect(remove.disabled).toBe(true);
+      expect(remove.title).toBe(
+        defaultKey === data.roles[0].key
+          ? m.roles_deleteDefault()
+          : m.roles_deleteInUse({ count: String(members) }),
+      );
+      expect(state.fetch).not.toHaveBeenCalled();
+    },
+  );
+  it('keeps templates separate from the active-role selector and explains additive assignments', () => {
+    render(RbacRolesSection, props());
+    const activePicker = screen.getByRole('combobox', { name: 'Select role' }) as HTMLSelectElement;
+    expect([...activePicker.options].map((option) => option.textContent)).toEqual([
+      'Administrator',
+    ]);
+    expect(screen.getByText(/New members receive Administrator/)).toBeTruthy();
+    expect(screen.getByText(/Adding a restricted role alongside Administrator/)).toBeTruthy();
+  });
+  it('creates an independent versioned template copy without assigning members', async () => {
+    render(RbacRolesSection, props());
+    await fireEvent.click(screen.getByText('Role templates'));
+    await fireEvent.click(screen.getByRole('button', { name: 'Create from Staff' }));
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Role name' }), {
+      target: { value: 'Marketing' },
+    });
+    expect(screen.getByText('New roles start without members.')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
+    await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(1));
     expect(state.fetch.mock.calls[0][0]).toBe('/api/roles');
-    expect(authority.prepare).not.toHaveBeenCalled();
+    expect(JSON.parse(state.fetch.mock.calls[0][1].body)).toEqual({
+      source: 'template',
+      templateId: 'staff',
+      templateVersion: 1,
+      name: 'Marketing',
+    });
+    await waitFor(() =>
+      expect(authority.commit).toHaveBeenCalledWith('/en/settings/roles?role=custom-marketing'),
+    );
+    expect(authority.prepare).toHaveBeenCalledTimes(1);
+    expect(state.invalidate).not.toHaveBeenCalled();
+  });
+  it('keeps the role name and dialog available when the catalog write conflicts', async () => {
+    state.fetch.mockResolvedValueOnce(new Response('{}', { status: 409 }));
+    render(RbacRolesSection, props());
+    await fireEvent.click(screen.getByText('Role templates'));
+    await fireEvent.click(screen.getByRole('button', { name: 'Create an empty role' }));
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Role name' }), {
+      target: { value: 'Marketing' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect((screen.getByRole('textbox', { name: 'Role name' }) as HTMLInputElement).value).toBe(
+      'Marketing',
+    );
     expect(authority.commit).not.toHaveBeenCalled();
+  });
+  it('renames using the stable key and current settings revision', async () => {
+    state.fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ key: 'custom-administrator', name: 'Owners', revision: 'b'.repeat(64) }),
+        { status: 200 },
+      ),
+    );
+    render(RbacRolesSection, props());
+    await fireEvent.click(screen.getByRole('button', { name: 'Rename role' }));
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Role name' }), {
+      target: { value: 'Owners' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+    await waitFor(() => expect(state.fetch).toHaveBeenCalledTimes(1));
+    expect(state.fetch.mock.calls[0][0]).toBe('/api/roles/custom-administrator');
+    expect(JSON.parse(state.fetch.mock.calls[0][1].body)).toEqual({
+      name: 'Owners',
+      revision: 'a'.repeat(64),
+    });
   });
 });

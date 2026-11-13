@@ -1,5 +1,12 @@
+vi.mock('./organization-role-policy', () => ({
+  loadOrganizationRolePolicy: async () => ({ roleModel: 'legacy', defaultRoleKey: null }),
+}));
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 const policyDelete = vi.hoisted(() => vi.fn());
+const transactionalCreate = vi.hoisted(() => vi.fn());
+vi.mock('./organization-role-admin.service', () => ({
+  createOrganizationRole: transactionalCreate,
+}));
 vi.mock('./section-access.service', () => ({ deleteRoleAccessCatalog: policyDelete }));
 
 /**
@@ -123,6 +130,7 @@ import {
   defaultCaps,
   legacyRoleKey,
   apiWriteCapability,
+  apiReadCapability,
   normalizeViewDependency,
   wouldRemoveLastOwner,
   listRoleCatalog,
@@ -144,6 +152,29 @@ const ROW = (over: Record<string, unknown>) => ({
   can_export: false,
   can_manage: false,
   ...over,
+});
+
+describe('role definition and page policy API actions', () => {
+  test('central gates distinguish roleCRUD and policyreset from Team administration', () => {
+    expect(apiReadCapability('/api/roles')).toMatchObject({ module: 'roles', action: 'view' });
+    expect(apiReadCapability('/api/nav/access')).toMatchObject({ module: 'roles', action: 'edit' });
+    expect(apiWriteCapability('/api/roles', 'POST')).toMatchObject({
+      module: 'roles',
+      action: 'create',
+    });
+    expect(apiWriteCapability('/api/roles/custom-sales', 'PATCH')).toMatchObject({
+      module: 'roles',
+      action: 'edit',
+    });
+    expect(apiWriteCapability('/api/roles/custom-sales', 'DELETE')).toMatchObject({
+      module: 'roles',
+      action: 'delete',
+    });
+    expect(apiWriteCapability('/api/roles/overrides', 'DELETE')).toMatchObject({
+      module: 'roles',
+      action: 'edit',
+    });
+  });
 });
 
 describe('defaultCaps — role tiers', () => {
@@ -683,81 +714,43 @@ describe('isAssignableRoleKey', () => {
   });
 });
 
-describe('createCustomRole — clone-copies-rules', () => {
-  test("clones the source role's effective per-module matrix into permission_rules for the new key", async () => {
-    // Caller is a platform admin (uncapped) — the rank cap is exercised separately below.
-    db.profiles = [{ id: 'user1', role: 'admin' }];
-    // staff has an org override on finance (normally view-only by default).
-    db.permission_rules = [
-      {
-        org_id: 'org1',
-        role_key: 'staff',
-        module: 'finance',
-        can_view: true,
-        can_create: false,
-        can_edit: true,
-        can_delete: false,
-        can_export: false,
-        can_manage: false,
-        if_owner: false,
-        field_level: 1,
-      },
-    ];
-    const role = await createCustomRole(
-      'org1',
-      { sourceRoleKey: 'staff', name: 'Senior Support' },
-      'user1',
+describe('createCustomRole — authenticated compatibility adapter', () => {
+  test('delegates the legacy body and exact actor to the atomic role writer', async () => {
+    transactionalCreate.mockResolvedValueOnce({
+      key: 'custom-sales',
+      name: 'Sales',
+      rank: 40,
+      description: null,
+      isCustom: true,
+    });
+    await expect(
+      createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Sales' }, 'actor1'),
+    ).resolves.toMatchObject({ key: 'custom-sales' });
+    expect(transactionalCreate).toHaveBeenLastCalledWith(
+      { user: { supabaseId: 'actor1' }, tenantCtx: { tenantId: 'org1' } },
+      { source: 'duplicate', sourceRoleKey: 'staff', name: 'Sales' },
     );
-    expect(role.key).toBe('custom-senior-support');
-    expect(role.rank).toBe(40); // same rank as staff
-
-    const orgRole = db.org_roles.find((r) => r.key === 'custom-senior-support');
-    expect(orgRole?.source_role_key).toBe('staff');
-    expect(orgRole?.created_by).toBe('user1');
-
-    const rules = db.permission_rules.filter((r) => r.role_key === 'custom-senior-support');
-    // One row per MODULE — the clone is total, not just the overridden ones.
-    expect(rules.length).toBeGreaterThan(10);
-    const finance = rules.find((r) => r.module === 'finance');
-    expect(finance?.can_edit).toBe(true); // copied the override, not the staff default
-    const crm = rules.find((r) => r.module === 'crm');
-    expect(crm?.can_edit).toBe(true); // staff default for crm (no override) was cloned too
   });
-
-  test('rejects an unknown sourceRoleKey', async () => {
+  test('cannot infer actor authority from missing identity or a system flag', async () => {
+    const previous = transactionalCreate.mock.calls.length;
     await expect(
-      createCustomRole('org1', { sourceRoleKey: 'nonsense', name: 'X' }, null),
-    ).rejects.toThrow();
-  });
-
-  test('rejects a duplicate name/key', async () => {
-    await createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true);
-    await expect(
-      createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Senior Support' }, null, true),
-    ).rejects.toThrow();
-  });
-
-  test('no self-escalation: an org admin cannot clone a higher-ranked owner role', async () => {
-    // admin-user is an org admin (rank 80); owner is rank 100.
-    db.profiles = [{ id: 'admin-user', role: 'user' }];
-    db.member_roles = [{ org_id: 'org1', profile_id: 'admin-user', role_key: 'admin' }];
-    await expect(
-      createCustomRole('org1', { sourceRoleKey: 'owner', name: 'Sneaky Owner' }, 'admin-user'),
+      createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Sales' }, null),
     ).rejects.toMatchObject({ status: 403 });
-    // and cloning at/below their own rank still works
-    const ok = await createCustomRole(
-      'org1',
-      { sourceRoleKey: 'manager', name: 'Team Lead' },
-      'admin-user',
-    );
-    expect(ok.key).toBe('custom-team-lead');
-  });
-
-  test('fails closed: a null caller without system=true is rejected (no fail-open escalation)', async () => {
-    // A missing HTTP caller id must NOT be treated as a trusted system caller.
     await expect(
-      createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Nulled' }, null),
+      createCustomRole('org1', { sourceRoleKey: 'staff', name: 'Sales' }, 'actor1', true),
     ).rejects.toMatchObject({ status: 403 });
+    expect(transactionalCreate.mock.calls).toHaveLength(previous);
+  });
+  test('propagates fresh-policy rejection without performing legacy multiwrites', async () => {
+    const before = JSON.stringify(db);
+    transactionalCreate.mockRejectedValueOnce({
+      status: 403,
+      body: { message: 'Cannot grant beyond authority' },
+    });
+    await expect(
+      createCustomRole('org1', { sourceRoleKey: 'manager', name: 'Escalated' }, 'actor1'),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(JSON.stringify(db)).toBe(before);
   });
 });
 

@@ -3,8 +3,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const f = vi.hoisted(() => ({
   issue: vi.fn(),
   resolve: vi.fn(),
+  privateEnv: {} as Record<string, string | undefined>,
+  bootstrap: vi.fn(),
+  workforce: vi.fn(),
+  supabase: vi.fn(),
   publicEnv: {} as Record<string, string | undefined>,
 }));
+vi.mock('$env/dynamic/private', () => ({ env: f.privateEnv }));
+vi.mock('./organization-bootstrap.service', () => ({ bootstrapOrganization: f.bootstrap }));
+vi.mock('$lib/server/workforce-fetch', () => ({ workforceClientForOrg: f.workforce }));
+vi.mock('$server/supabase', () => ({ supabaseAdmin: f.supabase }));
 vi.mock('$env/dynamic/public', () => ({ env: f.publicEnv }));
 vi.mock('$server/services/gateway-jwt.service', () => ({
   issueGatewayJwt: f.issue,
@@ -20,6 +28,7 @@ import {
   mintOrgGatewayJwt,
   normalizeOrganizationName,
   organizationSlug,
+  provisionOrganization,
 } from './organization-provision.service';
 
 describe('organization provision input', () => {
@@ -55,5 +64,39 @@ describe('provisioning gateway JWT audience (spec 045)', () => {
     expect(f.issue).toHaveBeenCalledWith({ db: {}, tenantId: 'org-a' }, 'profile-1', {
       audience: 'gw:gw.example.test:8443',
     });
+  });
+});
+
+describe('qualified provisioning retry preserves existing access', () => {
+  it('never reseeds global Owner when bootstrap returns an existing legacy organization', async () => {
+    f.privateEnv.ORG_ROLE_TEMPLATES_ENABLED = 'true';
+    f.bootstrap.mockResolvedValue({
+      id: '10000000-0000-4000-8000-000000000001',
+      name: 'Existing',
+      slug: 'existing',
+      roleModel: 'legacy',
+      created: false,
+    });
+    f.supabase.mockImplementation(() => {
+      throw Error('Legacy access repair must not execute');
+    });
+    f.workforce.mockRejectedValue(
+      Error('External provisioning intentionally unavailable in fixture'),
+    );
+    try {
+      const event = {
+        locals: { user: { id: 'owner', supabaseId: '20000000-0000-4000-8000-000000000001' } },
+      } as Parameters<typeof provisionOrganization>[0];
+      const result = await provisionOrganization(event, {
+        name: 'Existing',
+        profileId: '20000000-0000-4000-8000-000000000001',
+      });
+      expect(result.steps.find((s) => s.id === 'membership')?.status).toBe('complete');
+      expect(result.steps.find((s) => s.id === 'rbac')?.status).toBe('complete');
+      expect(result.steps.find((s) => s.id === 'workforce')?.status).toBe('failed');
+      expect(f.supabase).not.toHaveBeenCalled();
+    } finally {
+      delete f.privateEnv.ORG_ROLE_TEMPLATES_ENABLED;
+    }
   });
 });

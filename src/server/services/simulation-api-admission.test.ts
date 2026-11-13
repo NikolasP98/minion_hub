@@ -1,29 +1,57 @@
 import { describe, expect, it } from 'vitest';
 import { apiReadCapability, apiWriteCapability, buildCapabilities } from './rbac.service';
 describe('simulation and contextual API capability seams', () => {
-  it('gates contextual reads/writes with users:manage independently of settings:manage', () => {
+  it('gates contextual reads/writes with roles:edit independently of Team and Settings management', () => {
     const caps = buildCapabilities(
       ['custom-access'],
       [
         {
           role_key: 'custom-access',
-          module: 'users',
+          module: 'roles',
           can_view: true,
           can_create: false,
-          can_edit: false,
+          can_edit: true,
           can_delete: false,
           can_export: false,
-          can_manage: true,
+          can_manage: false,
         },
       ],
     );
     expect(caps.can('settings', 'manage')).toBe(false);
+    expect(caps.can('users', 'manage')).toBe(false);
     const get = apiReadCapability('/api/nav/access'),
       put = apiWriteCapability('/api/nav/access', 'PUT');
-    expect(get).toEqual({ module: 'users', action: 'manage' });
+    expect(get).toEqual({ module: 'roles', action: 'edit' });
     expect(put).toEqual(get);
     expect(caps.can(get!.module, get!.action)).toBe(true);
   });
+  it.each(['users', 'settings', 'roles'] as const)(
+    'does not allow contextual policy reads/writes from %s view or unrelated management',
+    (module) => {
+      const caps = buildCapabilities(
+        ['custom-limited'],
+        [
+          {
+            role_key: 'custom-limited',
+            module,
+            can_view: true,
+            can_create: false,
+            can_edit: false,
+            can_delete: false,
+            can_export: false,
+            can_manage: module !== 'roles',
+          },
+        ],
+      );
+      for (const admission of [
+        apiReadCapability('/api/nav/access'),
+        apiWriteCapability('/api/nav/access', 'PUT'),
+      ]) {
+        expect(admission).toEqual({ module: 'roles', action: 'edit' });
+        expect(caps.can(admission!.module, admission!.action)).toBe(false);
+      }
+    },
+  );
   it('requires direct CRM/sales/support view even when no page navigation occurs', () => {
     for (const [path, module] of [
       ['/api/crm/contacts', 'crm'],
