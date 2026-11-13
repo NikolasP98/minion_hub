@@ -22,6 +22,7 @@ export const ATTACHMENT_LIMITS = {
   orgQuotaBytes: readEnvBytes('ATTACHMENT_ORG_QUOTA_BYTES', 2 * 1024 * 1024 * 1024),
 };
 
+// Never add a type a browser runs or renders as a page (html, svg, js, xml): the bucket serves files as stored.
 export const ATTACHMENT_MIME_ALLOWLIST = new Set([
   'application/pdf',
   'image/png',
@@ -42,6 +43,20 @@ export const ATTACHMENT_MIME_ALLOWLIST = new Set([
   'audio/mp4', // m4a
   'audio/x-m4a',
   'audio/wav',
+  'audio/x-wav',
+  'audio/ogg', // WhatsApp voice notes
+  'audio/webm',
+  'audio/aac',
+  'video/ogg', // some browsers report .ogg as video
+  'video/quicktime', // iPhone .mov
+  'video/webm',
+  'image/heif',
+  'image/avif',
+  'image/tiff',
+  'image/bmp',
+  'application/vnd.ms-powerpoint', // ppt
+  'application/rtf',
+  'application/x-zip-compressed', // .zip as Windows reports it
 ]);
 
 export type AttachmentValidationCode = 'too_large' | 'mime_not_allowed' | 'quota_exceeded';
