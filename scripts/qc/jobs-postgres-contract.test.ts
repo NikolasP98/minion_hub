@@ -69,7 +69,7 @@ describe('marked jobs PostgreSQL lane admission', () => {
     ).toThrow('Missing admitted native fixture');
   });
   it('accepts only all admitted files with actual passing assertions', () => {
-    expect(assertJobsPostgresReport(report())).toEqual({ files: 18, passed: 303, skipped: 0 });
+    expect(assertJobsPostgresReport(report())).toEqual({ files: 19, passed: 306, skipped: 0 });
     expect(() =>
       assertJobsPostgresReport({
         ...report(),
