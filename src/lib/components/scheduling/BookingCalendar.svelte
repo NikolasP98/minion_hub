@@ -149,6 +149,7 @@
     MoreVertical,
     Plus,
     Receipt,
+    ShoppingBag,
     SquareArrowOutUpRight,
     Palette,
     PaintBucket,
@@ -175,6 +176,7 @@
   import {
     calendarDays,
     monthGridDays,
+    productsForVisit,
     shiftCalendarDate,
     shiftCalendarMonth,
     todayIn,
@@ -183,6 +185,7 @@
     type CalendarInvoice,
     type CalendarResource,
     type CalendarView,
+    type SoldProduct,
   } from './calendar-window';
   import {
     dayAt,
@@ -2627,10 +2630,29 @@
   onpointercancel={drag ? () => (drag = null) : undefined}
 />
 
+<!-- Products sold with the visit (spec 120): a fixed section, read-only. A line
+     that cost nothing is a gift. -->
+{#snippet soldProducts(list: SoldProduct[])}
+  {#if list.length}
+    <dl class="hc-row hc-products">
+      <dt class="t-caption">{m.pos_calendar_products()}</dt>
+      <dd class="t-body">
+        {#each list as p, i (i)}
+          <span class="hc-prod">
+            {p.qty} × {p.description}
+            {#if p.total === 0}<span class="hc-gift">({m.pos_calendar_gift()})</span>{/if}
+          </span>
+        {/each}
+      </dd>
+    </dl>
+  {/if}
+{/snippet}
+
 <!-- The per-booking hover card of a LONE booking. A multi-service event shows
      `defaultVisitCard` instead, and its per-service detail lives in the tray. -->
 {#snippet defaultBookingCard(sel: CalendarBooking)}
   {@const selTone = statusTones[sel.status] ?? null}
+  {@const sold = productsForVisit([sel])}
   <div class="hover-card">
     <div class="hc-head">
       <span class="t-label hc-time">{hhmm(sel.start)} – {hhmm(sel.end)}</span>
@@ -2645,6 +2667,8 @@
       </span>
     </div>
     {#each hoverRows as f (f)}
+      <!-- Above the actions, so the buttons stay last. -->
+      {#if f === 'actions'}{@render soldProducts(sold)}{/if}
       {#if f === 'title'}
         <!-- The title IS the opener (owner ask 2026-09-26: no "Open" button); the
              expand glyph slides in on hover/focus so the affordance reads
@@ -2705,6 +2729,7 @@
         </div>
       {/if}
     {/each}
+    {#if !hoverRows.includes('actions')}{@render soldProducts(sold)}{/if}
   </div>
 {/snippet}
 
@@ -2788,6 +2813,7 @@
         </li>
       {/each}
     </ul>
+    {@render soldProducts(productsForVisit(box.members))}
     <p class="t-caption hc-hint">{m.cal_visit_open_hint()}</p>
   </div>
 {/snippet}
@@ -3662,6 +3688,14 @@
                                     {/each}
                                   </span>
                                 {/if}
+                              {/if}
+                              {#if productsForVisit(box.members).length}
+                                <span class="evt-products">
+                                  <ShoppingBag
+                                    size={iconSizes.xs}
+                                    aria-label={m.pos_calendar_products_marker()}
+                                  />
+                                </span>
                               {/if}
                               {#if cancelledN > 0}
                                 <span class="evt-cancelled t-caption truncate"
@@ -4663,6 +4697,14 @@
   /* Container-only: a cancelled member no longer paints the whole box (owner
    *  ask 2026-09-29), so it stays findable as a caption on the box itself,
    *  not just the hover card. */
+  /* "Products were sold with this visit": bottom-right, clear of the tag marks. */
+  .evt-products {
+    position: absolute;
+    right: var(--space-0-5);
+    bottom: var(--space-0-5);
+    display: flex;
+    color: var(--color-text-secondary);
+  }
   .evt-cancelled {
     display: block;
     color: var(--color-text-tertiary);
@@ -5015,6 +5057,12 @@
     color: var(--color-text-primary);
     min-width: 0;
     overflow-wrap: anywhere;
+  }
+  .hc-prod {
+    display: block;
+  }
+  .hc-gift {
+    color: var(--color-text-secondary);
   }
   /* A nested sub-item: its own caption line under the block's first line. */
   .hc-sub {
