@@ -660,6 +660,50 @@ describe('notification legacy reconciliation against PostgreSQL', () => {
     }
   }, 60_000);
 
+  it('accepts the stale-send reap of a sending reminder and drops a late final write', async () => {
+    const child = await createChild('reminder-stale-reap');
+    const session = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => {} });
+    try {
+      await installPrerequisites(child.db);
+      const migration = runMigration(child.url);
+      expect(migration.code, migration.stderr).toBe(0);
+      await child.db`INSERT INTO public.sched_bookings(id,org_id) VALUES (${BOOKING_A},${ORG_A})`;
+      const asLedger = <T>(operation: (tx: Sql) => Promise<T>) =>
+        session.begin(async (tx) => {
+          await tx`SELECT set_config('role','app_ledger',true)`;
+          await tx`SELECT set_config('app.current_org_id',${ORG_A},true)`;
+          return operation(tx as unknown as Sql);
+        });
+      const id = '20000000-0000-4000-8000-000000000021';
+      await asLedger(
+        (tx) =>
+          tx`INSERT INTO public.sched_reminders
+          (id,org_id,booking_id,stage,channel,recipient,status)
+          VALUES (${id},${ORG_A},${BOOKING_A},'24h','whatsapp','fixture@example.invalid','sending')`,
+      );
+      // The cross-organisation statement of stale-sends.service.ts (limit 0 so the fresh row is stale).
+      expect(
+        await child.db`UPDATE sched_reminders SET status = 'failed', error = 'stale_claim'
+          WHERE status = 'sending' AND created_at < now() - make_interval(mins => ${0})
+          RETURNING id,status,error,sent_at`,
+      ).toEqual([{ id, status: 'failed', error: 'stale_claim', sent_at: null }]);
+      // The guarded final write of a send that outlived its claim matches nothing.
+      expect(
+        await asLedger(
+          (tx) =>
+            tx`UPDATE public.sched_reminders SET status='sent',sent_at=now(),content='late'
+            WHERE id=${id} AND status='sending' RETURNING id`,
+        ),
+      ).toEqual([]);
+      expect(
+        await child.db`SELECT status,error,content FROM public.sched_reminders WHERE id=${id}`,
+      ).toEqual([{ status: 'failed', error: 'stale_claim', content: null }]);
+    } finally {
+      await session.end({ timeout: 5 });
+      await dropChild(child);
+    }
+  }, 60_000);
+
   it('keeps legacy sent rows as immutable claims without creating delivery effects', async () => {
     const child = await createChild('legacy-claim');
     const session = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => {} });

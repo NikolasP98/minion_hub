@@ -204,6 +204,8 @@ export async function processOrgReminders(
                     eq(schedReminders.stage, stage.key),
                     eq(schedReminders.channel, chan.channel),
                     eq(schedReminders.recipientRole, role),
+                    // A claim the stale-send sweep already failed stays failed.
+                    eq(schedReminders.status, 'sending'),
                   ),
                 ),
             );

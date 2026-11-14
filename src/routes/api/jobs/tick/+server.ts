@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 import { runTick } from '$server/services/bg-runtime';
 import { evaluateInboxRules } from '$server/services/inbox/evaluate';
 import { runDoorFollowUps } from '$server/services/doors-followup.service';
+import { reapStaleSends } from '$server/services/stale-sends.service';
 // Importing the service registers its bg-runtime handler (side effect).
 import '$server/services/groupchat.service';
 import '$server/services/brains.service';
@@ -56,5 +57,13 @@ export const GET: RequestHandler = async ({ request }) => {
     console.error('[jobs/tick] door follow-ups failed', err instanceof Error ? err.name : 'error');
     followUps = { error: 'door_follow_ups_failed' };
   }
-  return json({ ...res, inbox, followUps });
+  // Spec 118: sends left in progress by a dead invocation, every org, every tick.
+  let staleSends: Awaited<ReturnType<typeof reapStaleSends>> | { error: string };
+  try {
+    staleSends = await reapStaleSends();
+  } catch (err) {
+    console.error('[jobs/tick] stale-send sweep failed', err instanceof Error ? err.name : 'error');
+    staleSends = { error: 'stale_sends_failed' };
+  }
+  return json({ ...res, inbox, followUps, staleSends });
 };

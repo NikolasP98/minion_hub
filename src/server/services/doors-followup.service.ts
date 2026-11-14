@@ -180,6 +180,7 @@ async function finalize(
       set status = ${status}, recipient = ${fields.recipient}, content = ${fields.content},
           error = ${fields.error ?? null}, sent_at = ${status === 'sent' ? sql`now()` : null}
       where org_id = ${ctx.tenantId} and door_id = ${c.door_id} and contact_id = ${c.contact_id}
+        and status = 'sending'
     `),
   );
 }

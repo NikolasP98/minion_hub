@@ -130,7 +130,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/db/notification-legacy-reconciliation.sql.integration.test.ts',
-      minimumAssertions: 10,
+      minimumAssertions: 11,
       requiredBehaviors: [
         'notification legacy reconciliation against PostgreSQL uses exact frozen historical migration bytes and supported-baseline provenance',
         'notification legacy reconciliation against PostgreSQL runs the production runner from fresh and every exact historical prefix while preserving old values',
@@ -141,6 +141,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'notification legacy reconciliation against PostgreSQL rejects a transitive app-ledger membership without mutating the cluster role graph',
         'notification legacy reconciliation against PostgreSQL enforces exact app-ledger ACLs and organization RLS across independent sessions',
         'notification legacy reconciliation against PostgreSQL allows only sending-to-terminal reminder transitions and preserves immutable identity',
+        'notification legacy reconciliation against PostgreSQL accepts the stale-send reap of a sending reminder and drops a late final write',
         'notification legacy reconciliation against PostgreSQL keeps legacy sent rows as immutable claims without creating delivery effects',
       ],
     },

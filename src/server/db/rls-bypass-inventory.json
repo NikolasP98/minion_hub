@@ -640,6 +640,11 @@
     "class": "todo"
   },
   {
+    "file": "src/server/services/stale-sends.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
     "file": "src/server/services/supabase-credential.ts",
     "calls": ["supabaseAdmin"],
     "class": "todo"
