@@ -7494,8 +7494,17 @@
   "pos_swap_err_reconciled": "This sale is reconciled to an invoice. Undo the reconciliation in Finances and try again.",
   "pos_appt_ctx_sale": "Correct the sale",
   "pos_rering_action": "Void and charge again",
-  "pos_rering_explain": "This sale will be voided and the till will open with the same items, prices and client. Change the product there and charge again. Choose what happens to the money already charged.",
+  "pos_rering_explain": "This sale will be voided and the till will open with the same items, prices and client, and with the product you choose here. Also choose what happens to the money already charged.",
   "pos_rering_manual": "This sale includes packages or instalments, so the till cannot be filled automatically. Void the sale from the agenda and charge it again by hand.",
   "pos_rering_err_void": "The sale could not be voided. Nothing changed; try again.",
-  "pos_rering_err_storage": "The sale was voided, but the till could not be filled. Charge it again by hand in Sell."
+  "pos_rering_err_storage": "The sale was voided, but the till could not be filled. Charge it again by hand in Sell.",
+  "pos_rering_other_price": "The right product has another price",
+  "pos_rering_to": "Right product",
+  "pos_rering_keep": "I will pick it at the till",
+  "pos_rering_err_prepare": "The till could not be prepared for this sale. Nothing was voided. Void it from the agenda and charge it by hand.",
+  "pos_rering_err_inactive": "These items are no longer active in the catalogue: {items}. Nothing was voided. Activate them in the catalogue and try again.",
+  "pos_rering_err_stock": "The sale was voided, but its stock was not returned. Check the movement in Stock before charging again.",
+  "pos_rering_err_no_party": "This sale has no client, so it cannot leave a credit. Choose cash or no refund.",
+  "pos_rering_err_package": "A package sold in this sale was already used in an appointment. Cancel that appointment first and try again.",
+  "pos_rering_err_already_void": "This sale was already void. Charge it again in Sell."
 }

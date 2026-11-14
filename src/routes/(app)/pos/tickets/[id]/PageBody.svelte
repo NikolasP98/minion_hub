@@ -24,7 +24,10 @@
   import { swapOptions, type SwapCandidate } from '$lib/pos/swap-options';
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
-  import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
+  import {
+    createSellChargeHandoff,
+    dispatchSellChargeHandoff,
+  } from '$lib/components/pos/sell-charge-handoff';
   import VoidRefundChoice, { type RefundChoice } from '$lib/components/pos/VoidRefundChoice.svelte';
   import { voidRefusalKey } from '$lib/components/scheduling/calendar-context-menu';
 
@@ -162,6 +165,7 @@
     offerRering = false;
     rering = false;
     refund = 'cash';
+    reringTo = '';
     const res = await fetch('/api/pos/sellables');
     if (swapping?.id !== line.id) return; // closed or another line opened meanwhile
     if (!res.ok) {
@@ -170,6 +174,7 @@
       return;
     }
     const body = (await res.json()) as { sellables: SwapCandidate[] };
+    sellables = body.sellables;
     swapChoices = swapOptions(body.sellables, line);
     swapTo = swapChoices[0]?.productId ?? '';
     offerRering = swapChoices.length === 0;
@@ -218,9 +223,63 @@
   let offerRering = $state(false);
   let rering = $state(false);
   let refund = $state<RefundChoice>('cash');
-  // The till can only be pre-filled with treatments and products.
-  const canRering = $derived(data.lines.every((l) => l.kind === 'service' || l.kind === 'product'));
+  /** The product the wrong line becomes at the till; '' = the user picks it there. */
+  let reringTo = $state('');
+  let sellables = $state<SwapCandidate[]>([]);
+  // A package session or an instalment is stored as a treatment line; the till
+  // cannot be pre-filled with either, so those sales are corrected by hand.
+  const canRering = $derived(data.lines.every((l) => !l.planId && !l.redemptionId));
+  const VOID_ERR: Record<string, () => string> = {
+    no_open_shift: m.pos_appt_cancel_paid_no_shift,
+    period_locked: m.pos_swap_err_period,
+    reconciled: m.pos_swap_err_reconciled,
+    no_party: m.pos_rering_err_no_party,
+    package_in_use: m.pos_rering_err_package,
+    already_void: m.pos_rering_err_already_void,
+  };
+  /** The sale is void (or the flow cannot go on): leave only the message. */
+  function endRering(message: string) {
+    swapErr = message;
+    rering = false;
+    offerRering = false;
+    swapTo = '';
+    void invalidate('pos:ticket');
+  }
   async function voidAndRecharge() {
+    if (swapBusy || !swapping) return;
+    const wrong = swapping;
+    const replacement = sellables.find((p) => p.productId === reringTo);
+    const identity = { actorId: page.data.user.id, orgId: page.data.activeOrgId ?? '' };
+    const input = {
+      lines: data.lines.map((l) => {
+        const swapped = l.id === wrong.id && replacement;
+        return {
+          bookingId: l.bookingId ?? null,
+          productId: swapped ? replacement.productId : (l.finProductId ?? null),
+          title: swapped ? replacement.name : l.description,
+          kind: l.kind === 'product' ? ('product' as const) : ('service' as const),
+          qty: Number(l.qty),
+          // A replacement rings up at its own catalogue price, unless the
+          // line was a gift: a gift stays a gift.
+          ...(swapped && Number(l.unitPrice) !== 0 ? {} : { unitPrice: Number(l.unitPrice) }),
+          discount: Number(l.discount ?? 0),
+        };
+      }),
+      partyId: t.partyId,
+      customerName: t.customerName,
+    };
+    // Everything that can stop the till from being filled is checked BEFORE
+    // the void, which cannot be undone.
+    const active = new Set(sellables.map((p) => p.productId));
+    const gone = input.lines.filter((l) => !l.productId || !active.has(l.productId));
+    if (gone.length) {
+      swapErr = m.pos_rering_err_inactive({ items: gone.map((l) => l.title).join(', ') });
+      return;
+    }
+    if (!createSellChargeHandoff(identity, input)) {
+      swapErr = m.pos_rering_err_prepare();
+      return;
+    }
     swapBusy = true;
     swapErr = null;
     try {
@@ -229,41 +288,28 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ refund }),
       });
+      const body = (await res.json().catch(() => ({}))) as {
+        code?: string;
+        error?: string;
+        ticket?: { stockWarning?: unknown };
+      };
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
-        const key = voidRefusalKey(res.status, body);
-        swapErr =
-          key === 'forbidden'
+        const message =
+          voidRefusalKey(res.status, body) === 'forbidden'
             ? m.pos_appt_cancel_paid_forbidden()
-            : key === 'no_open_shift'
-              ? m.pos_appt_cancel_paid_no_shift()
-              : body.code === 'period_locked'
-                ? m.pos_swap_err_period()
-                : m.pos_rering_err_void();
+            : (VOID_ERR[body.code ?? '']?.() ?? m.pos_rering_err_void());
+        if (body.code === 'already_void') endRering(message);
+        else swapErr = message;
         return;
       }
+      // The old stock movement is still live: charging again would deduct twice.
+      if (body.ticket?.stockWarning) return endRering(m.pos_rering_err_stock());
       dispatchSellChargeHandoff({
         storage: () => localStorage,
-        identity: { actorId: page.data.user.id, orgId: page.data.activeOrgId ?? '' },
-        input: {
-          lines: data.lines.map((l) => ({
-            bookingId: l.bookingId ?? null,
-            productId: l.finProductId ?? null,
-            title: l.description,
-            kind: l.kind === 'product' ? ('product' as const) : ('service' as const),
-            qty: Number(l.qty),
-            unitPrice: Number(l.unitPrice),
-            discount: Number(l.discount ?? 0),
-          })),
-          partyId: t.partyId,
-          customerName: t.customerName,
-        },
+        identity,
+        input,
         navigate: () => void goto('/pos/sell'),
-        // The sale is already void: say so, and show it.
-        onStorageFailure: () => {
-          swapErr = m.pos_rering_err_storage();
-          void invalidate('pos:ticket');
-        },
+        onStorageFailure: () => endRering(m.pos_rering_err_storage()),
       });
     } finally {
       swapBusy = false;
@@ -645,6 +691,16 @@
       <p class="t-caption">{swapping.description} · {money(swapping.unitPrice)}</p>
       {#if rering}
         <p class="t-caption">{m.pos_rering_explain()}</p>
+        <Select
+          label={m.pos_rering_to()}
+          bind:value={reringTo}
+          options={[
+            { value: '', label: m.pos_rering_keep() },
+            ...sellables
+              .filter((p) => p.kind === 'product' && p.productId !== swapping?.finProductId)
+              .map((p) => ({ value: p.productId, label: p.name })),
+          ]}
+        />
         <VoidRefundChoice bind:value={refund} />
       {:else if swapChoices === null}
         <Spinner size="sm" />
@@ -655,6 +711,18 @@
           options={swapChoices.map((s) => ({ value: s.productId, label: s.name }))}
         />
         <p class="t-caption">{m.pos_swap_note()}</p>
+        {#if canRering && canAct('pos', 'manage')}
+          <!-- The right product may have another price: the list above cannot offer it. -->
+          <Button
+            variant="ghost"
+            size="xs"
+            type="button"
+            onclick={() => {
+              rering = true;
+              swapErr = null;
+            }}>{m.pos_rering_other_price()}</Button
+          >
+        {/if}
       {:else if !swapErr}
         <p class="t-caption">{m.pos_swap_none()}</p>
       {/if}
@@ -672,8 +740,12 @@
   {/if}
   {#snippet footer()}
     {#if rering}
-      <Button type="button" variant="primary" loading={swapBusy} onclick={voidAndRecharge}
-        >{m.pos_rering_action()}</Button
+      <Button
+        type="button"
+        variant="primary"
+        loading={swapBusy}
+        disabled={swapBusy}
+        onclick={voidAndRecharge}>{m.pos_rering_action()}</Button
       >
     {:else if offerRering && canRering && canAct('pos', 'manage')}
       <Button

@@ -68,18 +68,20 @@ const sellables = [
   { productId: 'faja-m', name: 'Faja M', kind: 'product', unitPrice: 120 },
   { productId: 'faja-l', name: 'Faja L', kind: 'product', unitPrice: 120 },
   { productId: 'faja-xl', name: 'Faja XL', kind: 'product', unitPrice: 150 },
+  { productId: 'botox', name: 'Botox', kind: 'service', unitPrice: 120 },
 ];
 let swap: () => Response;
-const fetchMock = vi.fn(async (url: string, init?: RequestInit) =>
+const defaultFetch = async (url: string, init?: RequestInit) =>
   init?.method !== 'POST'
     ? Response.json({ sellables })
     : url.endsWith('/void')
       ? Response.json({ ok: true })
-      : swap(),
-);
+      : swap();
+const fetchMock = vi.fn(defaultFetch);
 
 beforeEach(() => {
   swap = () => Response.json({ ok: true });
+  fetchMock.mockImplementation(defaultFetch);
   vi.stubGlobal('fetch', fetchMock);
   Element.prototype.scrollIntoView = () => {};
 });
@@ -171,6 +173,82 @@ it('when a swap is not enough, voids the sale and opens the till at the charged 
       unitPrice: 120,
       discount: 0,
     },
+    {
+      bookingId: 'b1',
+      productId: 'faja-xl',
+      title: 'Faja XL',
+      kind: 'product',
+      qty: 1,
+      unitPrice: 120,
+      discount: 0,
+    },
   ]);
   expect(staged.partyId).toBe('party-1');
+});
+
+const voided = () => fetchMock.mock.calls.some(([url]) => String(url).endsWith('/void'));
+
+it('a product of another price: the till opens with it at its catalogue price', async () => {
+  const view = await openSwap();
+  await fireEvent.click(view.getByRole('button', { name: m.pos_rering_other_price() }));
+  await fireEvent.change(view.getByLabelText(m.pos_rering_to()), { target: { value: 'faja-xl' } });
+  await fireEvent.click(view.getByRole('button', { name: m.pos_rering_action() }));
+  await waitFor(() => expect(goto).toHaveBeenCalledWith('/pos/sell'));
+  const staged = JSON.parse(localStorage.getItem('pos-charge:actor-a:org-a')!);
+  expect(staged.lines[0]).toEqual({
+    bookingId: null,
+    productId: 'faja-xl',
+    title: 'Faja XL',
+    kind: 'product',
+    qty: 1,
+    discount: 0,
+  });
+});
+
+it('a sale with a package session or an instalment is not voided for the user', async () => {
+  swap = () => Response.json({ code: 'price_differs', error: 'x' }, { status: 409 });
+  const withSession = {
+    ...data,
+    lines: [...data.lines, { ...line('l4', 'service', 'botox', 'Sesión'), redemptionId: 'r1' }],
+  } as typeof data;
+  const view = render(Ticket, { data: withSession });
+  await fireEvent.click(view.getAllByRole('button', { name: m.pos_swap_action() })[0]);
+  await waitFor(() => expect(view.getByText(m.pos_swap_note())).toBeTruthy());
+  expect(view.queryByRole('button', { name: m.pos_rering_other_price() })).toBeNull();
+  await fireEvent.click(view.getByRole('button', { name: m.pos_swap_save() }));
+  await waitFor(() => expect(view.getByText(m.pos_rering_manual())).toBeTruthy());
+  expect(view.queryByRole('button', { name: m.pos_rering_action() })).toBeNull();
+});
+
+it('refuses BEFORE the void when an item can no longer be put in the till', async () => {
+  const retired = {
+    ...data,
+    lines: [...data.lines, line('l5', 'service', 'peeling', 'Peeling')],
+  } as typeof data;
+  const view = render(Ticket, { data: retired });
+  await fireEvent.click(view.getAllByRole('button', { name: m.pos_swap_action() })[0]);
+  await waitFor(() => view.getByRole('button', { name: m.pos_rering_other_price() }));
+  await fireEvent.click(view.getByRole('button', { name: m.pos_rering_other_price() }));
+  await fireEvent.click(view.getByRole('button', { name: m.pos_rering_action() }));
+  await waitFor(() =>
+    expect(view.getByRole('alert').textContent).toBe(
+      m.pos_rering_err_inactive({ items: 'Peeling' }),
+    ),
+  );
+  expect(voided()).toBe(false);
+});
+
+it('a void refusal names its own next step', async () => {
+  fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+    init?.method !== 'POST'
+      ? Response.json({ sellables })
+      : Response.json({ code: 'no_party', error: 'x' }, { status: 409 }),
+  );
+  const view = await openSwap();
+  await fireEvent.click(view.getByRole('button', { name: m.pos_rering_other_price() }));
+  await fireEvent.click(view.getByRole('button', { name: m.pos_rering_action() }));
+  await waitFor(() =>
+    expect(view.getByRole('alert').textContent).toBe(m.pos_rering_err_no_party()),
+  );
+  expect(goto).not.toHaveBeenCalled();
 });
