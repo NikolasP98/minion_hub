@@ -123,7 +123,16 @@
     booking(DAYS[4], '12:00', 45, {
       attendeeName: 'Paid visit',
       paid: true,
-      tickets: [{ id: 'tk1', humanId: 'F001-000123' }],
+      tickets: [
+        {
+          id: 'tk1',
+          humanId: 'F001-000123',
+          products: [
+            { description: 'Faja post-operatoria L', qty: 1, total: 0 },
+            { description: 'Crema cicatrizante', qty: 2, total: 90 },
+          ],
+        },
+      ],
     }),
     booking(DAYS[5], '10:00', 240, {
       resourceId: 'r-mar',
