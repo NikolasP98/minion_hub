@@ -95,13 +95,17 @@ export async function approveRequest(
   return approveOrganizationRequest(id, { ...opts, reviewerProfileId: opts.reviewerProfileId });
 }
 
+/** The request was no longer pending when the decision was written. */
+export class JoinRequestConflictError extends Error {}
+
 export async function denyRequest(
   id: string,
   opts: { reviewerId: string; organizationId: string },
 ): Promise<void> {
   // Tenant-scope the update: an admin of one org cannot deny another org's
-  // request by id (cross-tenant IDOR). No-match → no-op (0 rows), not an error.
-  const { error } = await supabaseAdmin()
+  // request by id (cross-tenant IDOR). The `pending` predicate keeps an approved
+  // request from being overwritten; matching no row means it was already decided.
+  const { data, error } = await supabaseAdmin()
     .from('join_request')
     .update({
       status: 'denied',
@@ -109,8 +113,11 @@ export async function denyRequest(
       reviewed_at: new Date().toISOString(),
     })
     .eq('id', id)
-    .eq('organization_id', opts.organizationId);
+    .eq('organization_id', opts.organizationId)
+    .eq('status', 'pending')
+    .select('id');
   if (error) throw new Error(error.message);
+  if (!data?.length) throw new JoinRequestConflictError('already_decided');
 }
 
 /** Count an org's pending join requests. Supabase `join_request` is the

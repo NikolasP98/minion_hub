@@ -10,6 +10,8 @@ interface CallState {
     organization_id: string;
   };
   updated?: Record<string, unknown>;
+  filters?: [string, unknown][];
+  updateRows?: { id: string }[];
   membership?: boolean;
 }
 let calls: CallState = {};
@@ -45,12 +47,21 @@ vi.mock('$server/supabase', () => ({
           order: () => ({/* listPending unused here */}),
         }),
       }),
-      update: (patch: Record<string, unknown>) => ({
-        eq: () => {
-          calls.updated = patch;
-          return Promise.resolve({ error: null });
-        },
-      }),
+      update: (patch: Record<string, unknown>) => {
+        calls.updated = patch;
+        calls.filters = [];
+        // Chainable thenable: records every `.eq()` and resolves to the rows `.select()` returns.
+        const chain = {
+          eq: (col: string, val: unknown) => {
+            calls.filters!.push([col, val]);
+            return chain;
+          },
+          select: () => chain,
+          then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+            Promise.resolve({ data: calls.updateRows ?? [], error: null }).then(resolve, reject),
+        };
+        return chain;
+      },
     }),
   }),
 }));
@@ -193,5 +204,27 @@ describe('requests.service', () => {
       approveRequest('r1', { reviewerId: 'reviewer', role: 'staff', organizationId: 'org1' }),
     ).rejects.toThrow('Authenticated reviewer profile required');
     expect(notifications.approve).not.toHaveBeenCalled();
+  });
+
+  test('deny a pending request writes denied, scoped to the org and to status pending', async () => {
+    calls.updateRows = [{ id: 'r1' }];
+    const { denyRequest } = await import('./requests.service');
+    await denyRequest('r1', { reviewerId: 'reviewer', organizationId: 'org1' });
+    expect(calls.updated?.status).toBe('denied');
+    expect(calls.filters).toEqual([
+      ['id', 'r1'],
+      ['organization_id', 'org1'],
+      ['status', 'pending'],
+    ]);
+  });
+  test('deny of an already decided request changes nothing and throws already_decided', async () => {
+    calls.updateRows = [];
+    const { denyRequest, JoinRequestConflictError } = await import('./requests.service');
+    const err = await denyRequest('r1', { reviewerId: 'reviewer', organizationId: 'org1' }).catch(
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(JoinRequestConflictError);
+    expect((err as Error).message).toBe('already_decided');
+    expect(calls.filters).toContainEqual(['status', 'pending']);
   });
 });

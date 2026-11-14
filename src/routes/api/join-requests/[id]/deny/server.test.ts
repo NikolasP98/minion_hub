@@ -4,7 +4,10 @@ const requireOrgCapability = vi.fn();
 const denyRequest = vi.fn();
 
 vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability }));
-vi.mock('$server/services/join/requests.service', () => ({ denyRequest }));
+vi.mock('$server/services/join/requests.service', () => ({
+  denyRequest,
+  JoinRequestConflictError: class JoinRequestConflictError extends Error {},
+}));
 
 const { POST } = await import('./+server');
 
@@ -32,5 +35,17 @@ describe('POST /api/join-requests/[id]/deny', () => {
       status: 403,
     });
     expect(denyRequest).not.toHaveBeenCalled();
+  });
+
+  it('a request that was already decided answers 409', async () => {
+    const { JoinRequestConflictError } = await import('$server/services/join/requests.service');
+    requireOrgCapability.mockResolvedValue({ can: () => true });
+    denyRequest.mockRejectedValueOnce(new JoinRequestConflictError('already_decided'));
+    const locals = { user: { id: 'u1', role: 'user' }, tenantCtx: { tenantId: 'org-1' } };
+
+    await expect(POST!({ locals, params: { id: 'r1' } } as never)).rejects.toMatchObject({
+      status: 409,
+      body: { message: 'already_decided' },
+    });
   });
 });
