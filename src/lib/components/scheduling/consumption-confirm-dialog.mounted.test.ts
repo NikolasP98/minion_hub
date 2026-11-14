@@ -19,8 +19,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const confirmButton = (view: ReturnType<typeof render>) =>
-  view.getByRole('button', { name: 'Mark completed' }) as HTMLButtonElement;
+const confirmButton = (view: {
+  getByRole: (role: 'button', options: { name: string }) => HTMLElement;
+}) => view.getByRole('button', { name: 'Mark completed' }) as HTMLButtonElement;
 
 describe('ConsumptionConfirmDialog waits for its rows (spec 116 FR-013)', () => {
   it('confirm is disabled while the rows load and sends nothing', async () => {
