@@ -1022,6 +1022,23 @@ export async function listBookings(
 }
 
 const SETTABLE = new Set(['accepted', 'pending', 'cancelled', 'rejected', 'completed', 'no_show']);
+/** Live = still ahead of the customer. Every other stored status (the four
+ *  closed ones, or anything outside the six) is final (spec 116 FR-009). */
+const isLiveStatus = (status: string): boolean =>
+  (ACTIVE_STATUSES as readonly string[]).includes(status);
+
+/** A status change out of a final status: a closed appointment is corrected by
+ *  a new booking, never reopened. Routes answer it as 409 `invalid_transition`. */
+export class BookingTransitionError extends Error {
+  readonly code = 'invalid_transition';
+  constructor(
+    public readonly from: string,
+    public readonly to: string,
+  ) {
+    super(`booking is ${from}; it cannot become ${to}`);
+    this.name = 'BookingTransitionError';
+  }
+}
 /** Statuses meaning "this appointment did not happen": open accruals go back to
  *  stock AND the package session goes back to the client. `completed` is the
  *  only terminal status that KEEPS the session consumed (spec §3.2). */
@@ -1081,6 +1098,7 @@ async function setBookingStatusInTx(
     .limit(1)
     .for('update');
   if (!current || current.status === status) return;
+  if (!isLiveStatus(current.status)) throw new BookingTransitionError(current.status, status);
   await tx
     .update(schedBookings)
     .set({ status, updatedAt: new Date() })
@@ -1094,6 +1112,23 @@ async function setBookingStatusInTx(
     changedBy: opts.actor?.id ?? ctx.profileId ?? null,
   });
   if (RELEASING.has(status)) await reverseBookingRedemptionsInTx(tx, ctx.tenantId, id, opts);
+  // A cancelled/rejected booking hands its paid SERVICE back to the tray
+  // (`listPendingSchedulingLines`). Product lines and no-shows keep the link.
+  if (status === 'cancelled' || status === 'rejected')
+    await tx
+      .update(posTicketLines)
+      .set({ bookingId: null })
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.bookingId, id),
+          eq(posTicketLines.kind, 'service'),
+          inArray(
+            posTicketLines.ticketId,
+            sql`(select ${posTickets.id} from ${posTickets} where ${posTickets.orgId} = ${ctx.tenantId} and ${posTickets.status} not in ('void', 'voided'))`,
+          ),
+        ),
+      );
 }
 
 export async function setBookingStatus(
@@ -1154,6 +1189,7 @@ export async function cancelBooking(
         id: schedBookings.id,
         seriesId: schedBookings.seriesId,
         seriesIndex: schedBookings.seriesIndex,
+        status: schedBookings.status,
       })
       .from(schedBookings)
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
@@ -1172,7 +1208,10 @@ export async function cancelBooking(
         ),
       )
       .orderBy(asc(schedBookings.seriesIndex));
-    return [row.id, ...later.map((r) => r.id)];
+    const laterIds = later.map((r) => r.id);
+    // A final root is skipped so the rest of the series still cancels; alone,
+    // it stays the target so the caller gets the refusal, not a 404.
+    return isLiveStatus(row.status) || !laterIds.length ? [row.id, ...laterIds] : laterIds;
   });
   // One status change per booking: each is independently idempotent, reverses
   // its own redemption and writes its own log row.
@@ -3110,30 +3149,15 @@ export async function patchBooking(
     // archived option/property) rolls the reschedule back with it.
     await writeBookingProperties(tx, ctx, patch.properties, [id]);
     if (patch.status === undefined) return updated;
+    // The status owner, so the general editor gets the same final-status
+    // guard, log row, session hand-back and paid-line release (FR-010).
+    await setBookingStatusInTx(tx, ctx, id, patch.status, patch);
     const [result] = await tx
-      .update(schedBookings)
-      .set({ status: patch.status, updatedAt: new Date() })
+      .select()
+      .from(schedBookings)
       .where(and(eq(schedBookings.id, id), eq(schedBookings.orgId, ctx.tenantId)))
-      .returning();
-    // Same in-tx bookkeeping `setBookingStatus` does, so a status set through
-    // the general editor can't skip it: the log row, and — once packages exist —
-    // handing the drawn session back to its grant. Without this a cancel via
-    // PATCH would keep a redemption alive against a booking that is gone.
-    if (existing.status !== patch.status) {
-      await tx.insert(schedBookingStatusLog).values({
-        orgId: ctx.tenantId,
-        bookingId: id,
-        fromStatus: existing.status,
-        toStatus: patch.status,
-        reason: patch.reason ?? null,
-        changedBy: patch.actor?.id ?? ctx.profileId ?? null,
-      });
-      if (RELEASING.has(patch.status))
-        await reverseBookingRedemptionsInTx(tx, ctx.tenantId, id, {
-          reason: patch.reason ?? null,
-          actor: patch.actor,
-        });
-    }
+      .limit(1);
+    if (!result) throw new Error('booking not found');
     return result;
   });
   // TODO(handoff): Admit stock release durably with the booking commit; process

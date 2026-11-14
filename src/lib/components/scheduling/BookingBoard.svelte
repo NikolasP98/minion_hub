@@ -97,6 +97,7 @@
     if (prop) return customValues.valueOf(box.lead.id, prop);
     return axisKind === 'staff' ? box.lead.resourceId || null : box.statusLead.status;
   }
+  const LIVE_STATUSES = new Set(['pending', 'accepted']);
   const canMove = $derived(
     prop ? true : axisKind === 'staff' ? onstaff !== undefined : onstatus !== undefined,
   );
@@ -118,6 +119,12 @@
     }
     // Status and staff have no "unclassified" target: there is nothing to write.
     if (!columnId) return false;
+    // A closed appointment is final (spec 116): it never leaves its status
+    // column; the server refuses it too.
+    if (axisKind === 'status' && !LIVE_STATUSES.has(box.statusLead.status)) {
+      toastError(m.sched_status_final());
+      return false;
+    }
     if (axisKind === 'staff')
       await onstaff?.(
         id,

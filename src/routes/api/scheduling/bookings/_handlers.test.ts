@@ -54,6 +54,9 @@ class FakeBookingReferencedError extends Error {
     this.references = references;
   }
 }
+class FakeBookingTransitionError extends Error {
+  readonly code = 'invalid_transition';
+}
 class FakeLastServiceError extends Error {
   constructor() {
     super('a visit must keep at least one service');
@@ -77,6 +80,7 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
   cancelBooking: (...args: unknown[]) => cancelBooking(...args),
   getBooking: (...args: unknown[]) => getBooking(...args),
   BookingConflictError: FakeBookingConflictError,
+  BookingTransitionError: FakeBookingTransitionError,
   BookingReferencedError: FakeBookingReferencedError,
   LastServiceError: FakeLastServiceError,
   // Unrelated exports other handlers in this module need at import time.
@@ -468,6 +472,19 @@ describe('patchBookingResponse with properties', () => {
     expect(await res.json()).toEqual({ error: 'conflict', message: 'clash', conflicts });
   });
 
+  it('a status change out of a final status → 409 {error:"invalid_transition", message}', async () => {
+    patchBooking.mockRejectedValue(
+      new FakeBookingTransitionError('booking is no_show; it cannot become accepted'),
+    );
+    const res = await patchBookingResponse(ctx, locals, req({ status: 'accepted' }, 'PATCH'), 'b1');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'invalid_transition',
+      message: 'booking is no_show; it cannot become accepted',
+    });
+  });
+
   it('a plain move (no properties) runs no property authorization at all', async () => {
     patchBooking.mockResolvedValue(booked);
     await patchBookingResponse(ctx, locals, req(next, 'PATCH'), 'b1');
@@ -589,6 +606,24 @@ describe('groupBookingResponse {status}', () => {
       skipped: [],
       stockWarning: null,
       warnings: [],
+    });
+  });
+
+  it('an ungrouped booking in a final status answers 409 invalid_transition (spec 116)', async () => {
+    visitMembers.mockResolvedValue({ groupId: null, members: [] });
+    patchBooking.mockRejectedValue(
+      new FakeBookingTransitionError('booking is cancelled; it cannot become accepted'),
+    );
+
+    const res = await groupBookingResponse(ctx, locals, req({ status: 'accepted' }), 'b1');
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'invalid_transition',
+      message: 'b1: booking is cancelled; it cannot become accepted',
+      groupId: null,
+      applied: [],
+      skipped: [],
     });
   });
 

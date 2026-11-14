@@ -7,6 +7,7 @@ vi.mock('$lib/state/ui/toast.svelte', () => ({
 }));
 vi.mock('$lib/paraglide/messages', () => ({
   sched_status_failed: () => 'status failed',
+  sched_status_final: () => 'status final',
   cal_move_property_refused: ({ code }: { code: string }) => `property refused: ${code}`,
 }));
 
@@ -178,6 +179,19 @@ describe('createBookingMover', () => {
       expect(mover.pending('b1')).toBe(false);
       expect(mover.statusOf('b1', 'accepted')).toBe('accepted');
       expect(toastError).toHaveBeenCalledOnce();
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    it('a refusal out of a closed status says so (spec 116 invalid_transition)', async () => {
+      fetchMock.mockResolvedValue(
+        jsonResponse({ error: 'invalid_transition', message: 'booking is cancelled' }, 409),
+      );
+      const mover = createBookingMover({ apiBase: '/api/pos/appointments', onError, refresh });
+
+      await mover.setStatus('b1', 'accepted');
+
+      expect(mover.statusOf('b1', 'cancelled')).toBe('cancelled');
+      expect(toastError).toHaveBeenCalledExactlyOnceWith('status final');
       expect(refresh).toHaveBeenCalledOnce();
     });
 

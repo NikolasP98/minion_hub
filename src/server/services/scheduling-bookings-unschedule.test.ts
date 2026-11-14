@@ -85,8 +85,11 @@ function captureInserts(db: unknown) {
 }
 
 /** The awaits one `setBookingStatusInTx` consumes: lock+read status, update the
- *  row, insert the log row, read the live package redemptions. */
-const cancelOneMember = (status = 'accepted') => [[{ status }], [], [], []];
+ *  row, insert the log row, read the live package redemptions, release its own
+ *  paid service lines (a no-op here: the bulk unlink already ran). */
+const cancelOneMember = (status = 'accepted') => [[{ status }], [], [], [], []];
+/** The status writes only, without each member's own line release. */
+const statusSets = (sets: Record<string, unknown>[]) => sets.slice(1).filter((s) => 'status' in s);
 
 describe('unscheduleVisit', () => {
   it('releases the ticket lines and cancels every member in ONE transaction', async () => {
@@ -110,7 +113,7 @@ describe('unscheduleVisit', () => {
     expect(vi.mocked(db.transaction)).toHaveBeenCalledTimes(1);
     // First write unlinks the lines; then one status write per member.
     expect(sets[0]).toEqual({ bookingId: null });
-    expect(sets.slice(1).map((s) => s.status)).toEqual(['cancelled', 'cancelled']);
+    expect(statusSets(sets).map((s) => s.status)).toEqual(['cancelled', 'cancelled']);
   });
 
   it('releases the accruals of each cancelled member AFTER the commit', async () => {
@@ -185,7 +188,7 @@ describe('unscheduleVisit', () => {
 
     expect(r).toEqual({ found: true, cancelled: ['b2'], released: 1 });
     expect(sets[0]).toEqual({ bookingId: null });
-    expect(sets.slice(1).map((s) => s.status)).toEqual(['cancelled']);
+    expect(statusSets(sets).map((s) => s.status)).toEqual(['cancelled']);
     expect(mocks.releaseAccruals.mock.calls.map((c) => c[2])).toEqual(['b2']);
   });
 
@@ -205,7 +208,7 @@ describe('unscheduleVisit', () => {
     const r = await unscheduleVisit(ctx(db), 'b1');
 
     expect(r).toEqual({ found: true, cancelled: ['b2'], released: 1 });
-    expect(sets.slice(1).map((s) => s.status)).toEqual(['cancelled']);
+    expect(statusSets(sets).map((s) => s.status)).toEqual(['cancelled']);
     expect(mocks.releaseAccruals.mock.calls.map((c) => c[2])).toEqual(['b2']);
   });
 
