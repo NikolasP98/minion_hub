@@ -1270,7 +1270,7 @@ describe('swapTicketLineProduct — change a product on a submitted sale (spec 1
     unitPrice: '120.00',
     ...over,
   });
-  /** Sale, line, shift, documents, period lock, both products. */
+  /** Sale, shift, documents, period lock, line, both products. */
   const readSequence = (over: {
     ticket?: Record<string, unknown>;
     line?: Record<string, unknown>;
@@ -1278,10 +1278,10 @@ describe('swapTicketLineProduct — change a product on a submitted sale (spec 1
     products?: unknown[];
   }) => [
     [ticketRow(over.ticket)],
-    [line(over.line)],
     [{ status: 'open' }],
     over.emissions ?? [],
     [], // no accounting lock
+    [line(over.line)],
     over.products ?? [product('fp-l', 'Faja L'), product('fp-m', 'Faja M')],
   ];
   const swap = (db: unknown, input = { productId: 'fp-m', expectedProductId: 'fp-l' }) =>
@@ -1325,11 +1325,28 @@ describe('swapTicketLineProduct — change a product on a submitted sale (spec 1
         ],
       }),
       [], // recipes: neither product moves stock
-      [{ status: 'submitted' }], // sale re-read under lock
+      [ticketRow()], // guards again, under the sale's lock
+      [{ status: 'open' }],
+      [],
+      [],
       [{ id: 'l1' }], // line update
     ]);
     await expect(swap(db)).resolves.toEqual({ entryId: null, stockWarning: null });
     expect(db.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a document issued between the first read and the write', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...readSequence({}),
+      [], // recipes: neither product moves stock
+      [ticketRow()], // guards again, under the sale's lock
+      [{ status: 'open' }],
+      [{ status: 'accepted', environment: 'production' }], // issued meanwhile
+      [],
+    ]);
+    await expect(swap(db)).rejects.toMatchObject({ code: 'emitted' });
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it('refuses when stock would move but the sale has no movement', async () => {

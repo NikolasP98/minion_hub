@@ -1395,25 +1395,15 @@ export async function swapTicketLineProduct(
       eq(posTicketLines.finProductId, productId),
     );
 
-  const read = await withOrgCore(ctx, async (tx) => {
-    const [ticket] = await tx
+  /** The guard chain every fiscal edit runs; `lock` holds the sale for the write. */
+  const guardedTicket = async (tx: CoreTx, lock: boolean) => {
+    const q = tx
       .select()
       .from(posTickets)
       .where(and(eq(posTickets.id, ticketId), eq(posTickets.orgId, ctx.tenantId)))
       .limit(1);
+    const [ticket] = lock ? await q.for('update') : await q;
     if (!ticket) throw new PosError('ticket not found', 'not_found');
-    const [line] = await tx
-      .select()
-      .from(posTicketLines)
-      .where(
-        and(
-          eq(posTicketLines.id, lineId),
-          eq(posTicketLines.ticketId, ticketId),
-          eq(posTicketLines.orgId, ctx.tenantId),
-        ),
-      )
-      .limit(1);
-    if (!line) throw new PosError('line not found', 'not_found');
     const [shift] = await tx
       .select({ status: posShifts.status })
       .from(posShifts)
@@ -1434,6 +1424,23 @@ export async function swapTicketLineProduct(
       },
       { fiscal: true },
     );
+    return ticket;
+  };
+
+  const read = await withOrgCore(ctx, async (tx) => {
+    const ticket = await guardedTicket(tx, false);
+    const [line] = await tx
+      .select()
+      .from(posTicketLines)
+      .where(
+        and(
+          eq(posTicketLines.id, lineId),
+          eq(posTicketLines.ticketId, ticketId),
+          eq(posTicketLines.orgId, ctx.tenantId),
+        ),
+      )
+      .limit(1);
+    if (!line) throw new PosError('line not found', 'not_found');
     if (line.kind !== 'product' || !line.finProductId)
       throw new PosError('only a product line can be swapped', 'line_not_product');
     if (line.finProductId !== input.expectedProductId)
@@ -1511,13 +1518,9 @@ export async function swapTicketLineProduct(
   }
 
   await withOrgCore(ctx, async (tx) => {
-    const [live] = await tx
-      .select({ status: posTickets.status })
-      .from(posTickets)
-      .where(and(eq(posTickets.id, ticketId), eq(posTickets.orgId, ctx.tenantId)))
-      .limit(1)
-      .for('update');
-    if (!live || live.status === 'void') throw new PosError('ticket is void', 'ticket_void');
+    // Re-run the guards under the sale's lock: a void, an accounting lock or
+    // a document issued since the first read must still refuse.
+    await guardedTicket(tx, true);
     const updated = await tx
       .update(posTicketLines)
       .set({ finProductId: newProduct.id, description: newProduct.name })
