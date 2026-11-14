@@ -1867,7 +1867,8 @@ export async function voidTicket(
       .select({ id: posShifts.id })
       .from(posShifts)
       .where(openShiftOf(ctx.tenantId, actor.id))
-      .limit(1);
+      .limit(1)
+      .for('share');
   const noOpenShift = () => new PosError('no open shift for the refund', 'no_open_shift');
   // Preflight only: refusing here keeps the stock cancel below from running
   // for a void that cannot complete. The money transaction re-reads it.
