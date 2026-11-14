@@ -62,6 +62,7 @@ import {
   type SubmitTicketInput,
 } from './pos.service';
 import { paymentPolicyRevision } from './pos/credit-method-policy';
+import { posShifts } from '$server/db/pg-pos-schema';
 
 const DEFAULT_POLICY_REVISION = paymentPolicyRevision(DEFAULT_POS_SETTINGS);
 
@@ -94,6 +95,31 @@ beforeEach(() => {
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 const actor = { id: 'u1', name: 'Test User' };
+
+/** Records every `select…from(table)…for(mode)` row lock. The mock's chains
+ *  are throwaway proxies, so each link is re-wrapped to see `.from`/`.for`. */
+function captureLocks(db: unknown) {
+  const locks: Array<{ table: unknown; mode: unknown }> = [];
+  const target = db as Record<string, unknown>;
+  const inner = target['select'] as (...a: unknown[]) => Record<string, unknown>;
+  target['select'] = vi.fn((...args: unknown[]) => {
+    let table: unknown;
+    const wrap = (chain: Record<string, unknown>): Record<string, unknown> =>
+      new Proxy(chain, {
+        get(t, prop) {
+          const value = t[prop as string];
+          if (prop === 'then' || typeof value !== 'function') return value;
+          return (...a: unknown[]) => {
+            if (prop === 'from') table = a[0];
+            if (prop === 'for') locks.push({ table, mode: a[0] });
+            return wrap((value as (...x: unknown[]) => Record<string, unknown>)(...a));
+          };
+        },
+      });
+    return wrap(inner(...args));
+  });
+  return locks;
+}
 
 const openShiftRow = { id: 'shift-1', orgId: 'org-1', status: 'open', openingFloat: {} };
 
@@ -211,6 +237,20 @@ describe('submitTicket — validation guards', () => {
       actor,
     };
     await expect(submitTicket(ctx(db), input)).rejects.toMatchObject({ code: 'no_open_shift' });
+  });
+
+  it('reads the open shift FOR SHARE so a concurrent close waits for the sale', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const locks = captureLocks(db);
+    resolveSequence([[], []]); // settings (defaults), open-shift lookup (none)
+    await expect(
+      submitTicket(ctx(db), {
+        lines: [{ kind: 'product', description: 'X', qty: 1, unitPrice: 10 }],
+        payments: [{ method: 'cash', amount: 10, tendered: 10 }],
+        actor,
+      }),
+    ).rejects.toMatchObject({ code: 'no_open_shift' });
+    expect(locks).toContainEqual({ table: posShifts, mode: 'share' });
   });
 
   it('payment_mismatch when payments do not sum to the total', async () => {

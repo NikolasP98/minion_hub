@@ -33,6 +33,27 @@ beforeEach(() => {
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
 const actor = { id: 'u1', name: 'Test User' };
 
+/** Records every `.set()` payload (same helper as `scheduling-bookings-unschedule.test.ts`). */
+function captureUpdates(db: unknown) {
+  const sets: Record<string, unknown>[] = [];
+  const target = db as Record<string, unknown>;
+  const inner = target['update'] as (...a: unknown[]) => Record<string, unknown>;
+  target['update'] = vi.fn((...args: unknown[]) => {
+    const chain = inner(...args);
+    return new Proxy(chain, {
+      get(t, prop) {
+        if (prop === 'set')
+          return (v: Record<string, unknown>) => {
+            sets.push(v);
+            return (t['set'] as (x: unknown) => unknown)(v);
+          };
+        return t[prop as string];
+      },
+    });
+  });
+  return sets;
+}
+
 describe('normalizeMethods', () => {
   it('upgrades a legacy string[] row — takesTendered guessed true only for cash', () => {
     expect(normalizeMethods(['cash', 'card'])).toEqual([
@@ -501,6 +522,35 @@ describe('closeShift', () => {
     ]);
     const closed = await closeShift(ctx(db), { counted: { cash: 0 }, actor });
     expect(closed.expected).toEqual({ cash: -79 });
+  });
+
+  it('records a method the till does not count at the server total, ignoring the client value', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    resolveSequence([
+      [], // settings (defaults: cash counted; card, yape, plin, transfer recorded)
+      [{ id: 's1', orgId: 'org-1', status: 'open', openingFloat: { cash: 50 } }],
+      [
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '30.00' },
+      ],
+      [{ id: 's1', orgId: 'org-1', status: 'closed', openingFloat: {}, expected: {}, counted: {} }],
+    ]);
+    await closeShift(ctx(db), { counted: { cash: 58, card: 999, yape: 5 }, actor });
+    expect(sets[0].counted).toEqual({ cash: 58, card: 30, yape: 0, plin: 0, transfer: 0 });
+  });
+
+  it('throws no_open_shift when the shift closed while this close waited for it', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [], // settings
+      [{ id: 's1', orgId: 'org-1', status: 'open', openingFloat: {} }],
+      [], // payments
+      [], // conditional update: the row is no longer open
+    ]);
+    await expect(closeShift(ctx(db), { counted: {}, actor })).rejects.toMatchObject({
+      code: 'no_open_shift',
+    });
   });
 
   it('closes the shift named by shiftId (a manager counting someone else)', async () => {

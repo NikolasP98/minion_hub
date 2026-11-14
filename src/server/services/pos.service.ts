@@ -385,6 +385,10 @@ export async function closeShift(
   requirePosCurrency(settings.currency);
   const counted = moneyRecord(input.counted, 'input');
   const closed = await withOrgCore(ctx, async (tx) => {
+    // A stuck sale holding the shift fails this close instead of stalling the pooled connection.
+    await tx.execute(sql`set local lock_timeout = '5s'`);
+    // FOR UPDATE waits for every sale, void and correction holding the shift
+    // FOR SHARE, so the totals below include what they committed.
     const [open] = await tx
       .select()
       .from(posShifts)
@@ -397,7 +401,8 @@ export async function closeShift(
             )
           : openShiftOf(ctx.tenantId, input.actor.id),
       )
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!open) throw new PosError('no open shift to close', 'no_open_shift');
 
     const byMethod = await paymentsByMethod(tx, ctx.tenantId, open.id);
@@ -406,6 +411,9 @@ export async function closeShift(
       moneyRecord(open.openingFloat, 'stored'),
       settings.methods,
     );
+    // Nobody counts a card or a transfer: the register's own total is the count.
+    for (const method of settings.methods)
+      if (!method.takesTendered) counted[method.id] = expected[method.id] ?? 0;
 
     const [closed] = await tx
       .update(posShifts)
@@ -418,8 +426,15 @@ export async function closeShift(
         note: input.note ?? null,
         updatedAt: new Date(),
       })
-      .where(and(eq(posShifts.id, open.id), eq(posShifts.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(posShifts.id, open.id),
+          eq(posShifts.orgId, ctx.tenantId),
+          eq(posShifts.status, 'open'),
+        ),
+      )
       .returning();
+    if (!closed) throw new PosError('no open shift to close', 'no_open_shift');
     return checkedShift(closed);
   });
   // ---- POST-COMMIT: the close is the commit point to SUNAT (spec 2026-10-15
@@ -1537,6 +1552,8 @@ export async function submitTicket(
 
   // ---- money tx ----
   const ticket = await withOrgCore(ctx, async (tx) => {
+    // A sale waiting on a closing shift fails after 5 s instead of stalling the pooled connection.
+    await tx.execute(sql`set local lock_timeout = '5s'`);
     const lockedSettings = await getPosSettingsInTx(tx, ctx.tenantId);
     if (input.paymentPolicyRevision !== lockedSettings.paymentPolicyRevision)
       throw new PosError('POS settings changed. Review the sale again.', 'pos_settings_changed');
@@ -1583,11 +1600,13 @@ export async function submitTicket(
       );
     const ticketId = randomUUID();
     if (packages.size) await lockGrantSources(tx, ctx.tenantId, [ticketId]);
+    // FOR SHARE: a close waits for this sale, or this sale sees the shift closed.
     const [open] = await tx
       .select()
       .from(posShifts)
       .where(openShiftOf(ctx.tenantId, input.actor.id))
-      .limit(1);
+      .limit(1)
+      .for('share');
     if (!open) throw new PosError('open a shift first', 'no_open_shift');
 
     const humanId = await nextSerialId(tx, ctx.tenantId, 'POS-.YYYY.-', new Date());
@@ -2131,6 +2150,7 @@ export async function changePaymentMethod(
   if (!reason) throw new PosError('a reason is required', 'invalid_method');
 
   return withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`set local lock_timeout = '5s'`);
     const [ticket] = await tx
       .select()
       .from(posTickets)
@@ -2152,11 +2172,13 @@ export async function changePaymentMethod(
       .for('update');
     if (!payment) throw new PosError('payment not found', 'not_found');
     checkedPayment(payment);
+    // FOR SHARE: an in-place rewrite never lands on a shift whose totals were stored.
     const [sellingShift] = await tx
       .select({ status: posShifts.status })
       .from(posShifts)
       .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
-      .limit(1);
+      .limit(1)
+      .for('share');
     const emissions = await tx
       .select({ status: posEmissions.status })
       .from(posEmissions)
@@ -2212,7 +2234,8 @@ export async function changePaymentMethod(
         .select({ id: posShifts.id })
         .from(posShifts)
         .where(openShiftOf(ctx.tenantId, input.actor.id))
-        .limit(1);
+        .limit(1)
+        .for('share');
       if (!open) throw new PosError('no open shift for the correction', 'no_open_shift');
       await tx.insert(posPayments).values(
         plan.rows.map((row) => ({

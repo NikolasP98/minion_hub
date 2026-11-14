@@ -6999,6 +6999,7 @@
   "pos_tender_err_emitted": "Issued to SUNAT: requires a credit note",
   "pos_tender_err_manage": "Correcting a closed shift needs a manager",
   "pos_tender_err_generic": "Could not change the payment method",
+  "pos_shift_totals_failed": "The shift totals could not be loaded. Retry before closing.",
   "pos_shift_close_emit": "{count} receipts will be issued to SUNAT when the shift closes",
   "pos_shift_closed_emitted": "{count} receipts handed to SUNAT",
   "pos_emit_now": "Issue now",

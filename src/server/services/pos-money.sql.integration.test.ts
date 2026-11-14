@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import type postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schemaTypes from '@minion-stack/db/pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -22,7 +23,7 @@ import { createGrantsForTicketLine } from './pos-packages.service';
 import { requireGrantSourceCurrencies } from './pos/grant-money';
 import { cancelPlanOperation, lookupOwnPlanOperation, planRequestHash } from './pos/plan-operation';
 import { resolveWalletIdentity, resolveWalletIdentityForAdmission } from './pos/wallet-identity';
-import { getPosSettingsInTx, voidTicket } from './pos.service';
+import { changePaymentMethod, closeShift, getPosSettingsInTx, voidTicket } from './pos.service';
 import { lockGrantSources, lockPosIdentityShared, lockPosWalletExclusive } from './pos/lock-key';
 import { moneyNumber } from './pos/money';
 import { validateDueSchedule } from './pos/payment-plan-schedule';
@@ -152,6 +153,18 @@ beforeAll(async () => {
       party_id uuid,
       display_name text,
       deleted_at timestamptz
+    );
+    -- changePaymentMethod reads emissions and writes one audit row.
+    CREATE TABLE pos_emissions (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
+      ticket_id uuid NOT NULL, status text NOT NULL DEFAULT 'pending'
+    );
+    CREATE TABLE doc_audit_log (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
+      ref_type text NOT NULL, ref_id uuid NOT NULL, actor_id uuid, actor_name text,
+      simulation_role_key text, simulation_generation uuid,
+      op text NOT NULL DEFAULT 'update', changes jsonb NOT NULL DEFAULT '[]',
+      occurred_at timestamptz NOT NULL DEFAULT now()
     );
   `);
   const grantStart = migration.indexOf('create table if not exists public.pos_package_grants (');
@@ -457,18 +470,24 @@ async function waitForAdvisoryWaiters(count: number) {
 }
 
 /** Row-lock sibling of `waitForAdvisoryWaiters`: the first waiter on a locked
- *  row waits on the holder's transactionid, later ones on the tuple. `orDone`
- *  ends the wait early for a racer that (wrongly) never queues. */
-async function waitForRowLockWaiters(count: number, orDone: () => boolean = () => false) {
+ *  row waits on the holder's transactionid, later ones on the tuple. Pass a
+ *  function to end the wait early for a racer that (wrongly) never queues, or
+ *  a list of lock types to wait on something other than a row. */
+async function waitForRowLockWaiters(
+  count: number,
+  opt: (() => boolean) | string[] = ['tuple', 'transactionid'],
+) {
+  const orDone = typeof opt === 'function' ? opt : () => false;
+  const locktypes = typeof opt === 'function' ? ['tuple', 'transactionid'] : opt;
   const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
     if (orDone()) return;
     const rows =
-      await harness.owner`SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('tuple','transactionid') AND NOT granted`;
+      await harness.owner`SELECT count(*) AS n FROM pg_locks WHERE locktype = ANY(${locktypes}) AND NOT granted AND (database IS NULL OR database=(SELECT oid FROM pg_database WHERE datname=current_database()))`;
     if (Number(rows[0].n) >= count) return;
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
-  throw new Error(`Expected ${count} actual PostgreSQL row-lock waiters`);
+  throw new Error(`Expected ${count} actual PostgreSQL ${locktypes.join('/')} lock waiters`);
 }
 
 function deferred() {
@@ -1366,5 +1385,124 @@ describe('native plan operation admission', () => {
     });
     expect(await planCount()).toBe(0);
     expect(await createPlan(anonymous, input())).toMatchObject({ createdBy: null });
+  });
+});
+
+describe('native shift close admission', () => {
+  const actor = { id: ACTOR, name: 'Fixture actor' };
+
+  async function seedShiftSale() {
+    const shiftId = crypto.randomUUID();
+    const ticketId = crypto.randomUUID();
+    const paymentId = crypto.randomUUID();
+    await owner`INSERT INTO pos_shifts (id,org_id,status,opened_by) VALUES (${shiftId},${ORG},'open',${ACTOR})`;
+    await owner`INSERT INTO pos_tickets (id,org_id,human_id,shift_id,status,subtotal,total,currency,created_by)
+      VALUES (${ticketId},${ORG},${`T-${ticketId.slice(0, 8)}`},${shiftId},'submitted',30,30,'PEN',${ACTOR})`;
+    await owner`INSERT INTO pos_payments (id,org_id,ticket_id,shift_id,method,amount)
+      VALUES (${paymentId},${ORG},${ticketId},${shiftId},'cash',30)`;
+    return { shiftId, ticketId, paymentId };
+  }
+
+  /** A transaction that holds the shift row the way a sale does, until released. */
+  function holdShiftShared(
+    shiftId: string,
+    during?: (tx: postgres.TransactionSql) => Promise<unknown>,
+  ) {
+    const ready = deferred();
+    const release = deferred();
+    const done = owner.begin(async (tx) => {
+      await tx`SELECT id FROM pos_shifts WHERE id=${shiftId} FOR SHARE`;
+      await during?.(tx);
+      ready.resolve();
+      await release.promise;
+    });
+    return { ready: ready.promise, release: release.resolve, done };
+  }
+
+  it('closes a shift once when two closes race and stores the winner count', async () => {
+    const { shiftId } = await seedShiftSale();
+    const holder = holdShiftShared(shiftId);
+    await holder.ready;
+    const counts = [10, 20];
+    const closes = counts.map((cash) =>
+      closeShift(independentCtx(), { counted: { cash }, actor, shiftId }),
+    );
+    try {
+      await waitForRowLockWaiters(2);
+      holder.release();
+      await holder.done;
+      const results = await Promise.allSettled(closes);
+      const winners = results.flatMap((result, i) => (result.status === 'fulfilled' ? [i] : []));
+      expect(winners).toHaveLength(1);
+      expect(results[1 - winners[0]]).toMatchObject({
+        status: 'rejected',
+        reason: { code: 'no_open_shift' },
+      });
+      expect(
+        await owner`SELECT status, counted->>'cash' AS cash FROM pos_shifts WHERE id=${shiftId}`,
+      ).toEqual([{ status: 'closed', cash: String(counts[winners[0]]) }]);
+    } finally {
+      holder.release();
+      await Promise.allSettled([holder.done, ...closes]);
+    }
+  });
+
+  it('waits for a sale holding the shift and counts the payment it committed', async () => {
+    const { shiftId, ticketId } = await seedShiftSale();
+    const holder = holdShiftShared(
+      shiftId,
+      (tx) =>
+        tx`INSERT INTO pos_payments (org_id,ticket_id,shift_id,method,amount) VALUES (${ORG},${ticketId},${shiftId},'card',12.5)`,
+    );
+    await holder.ready;
+    const closing = closeShift(independentCtx(), {
+      counted: { cash: 30, card: 999 },
+      actor,
+      shiftId,
+    });
+    try {
+      await waitForRowLockWaiters(1);
+      holder.release();
+      await holder.done;
+      const closed = await closing;
+      expect(closed.expected).toEqual({ cash: 30, card: 12.5 });
+      // A method the till does not count is recorded at the server's total.
+      expect(closed.counted).toMatchObject({ cash: 30, card: 12.5, yape: 0 });
+    } finally {
+      holder.release();
+      await Promise.allSettled([holder.done, closing]);
+    }
+  });
+
+  it('makes a close wait for a payment-method correction on the same shift', async () => {
+    const { shiftId, ticketId, paymentId } = await seedShiftSale();
+    // Parks the correction at its audit insert, after it read the shift.
+    const auditReady = deferred();
+    const releaseAudit = deferred();
+    const auditGate = owner.begin(async (tx) => {
+      await tx`LOCK TABLE doc_audit_log IN EXCLUSIVE MODE`;
+      auditReady.resolve();
+      await releaseAudit.promise;
+    });
+    await auditReady.promise;
+    const correcting = changePaymentMethod(independentCtx(), ticketId, paymentId, {
+      method: 'card',
+      reason: 'wrong tender',
+      actor,
+      canCorrectClosed: false,
+    });
+    let closing: ReturnType<typeof closeShift> | undefined;
+    try {
+      await waitForRowLockWaiters(1, ['relation']);
+      closing = closeShift(independentCtx(), { counted: { cash: 0 }, actor, shiftId });
+      await waitForRowLockWaiters(1);
+      releaseAudit.resolve();
+      await auditGate;
+      await expect(correcting).resolves.toEqual({ path: 'open' });
+      expect((await closing).expected).toEqual({ cash: 0, card: 30 });
+    } finally {
+      releaseAudit.resolve();
+      await Promise.allSettled([auditGate, correcting, closing]);
+    }
   });
 });
