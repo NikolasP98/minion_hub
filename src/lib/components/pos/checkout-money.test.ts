@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { changeDue, rowChange, type PaymentRow } from './PaymentPanel.svelte';
-import { lineCents, lineKey, lineNeedsPrice, type CartLine } from './SellCart.svelte';
+import { lineCents, lineKey, lineKeys, lineNeedsPrice, type CartLine } from './SellCart.svelte';
 import {
   CheckoutMoneyDraftError,
   cartMoneyState,
@@ -271,6 +271,20 @@ describe('lineKey', () => {
       [walkIn, { ...walkIn, bookingId: 'bk-1' }, { ...walkIn, bookingId: 'bk-2' }].map(lineKey),
     );
     expect(keys.size).toBe(3);
+  });
+
+  it('gives every row its own key when two rows share one (meta spec 120)', () => {
+    const paid: CartLine = { sellable, qty: 1, unitPrice: 50, discount: 0 };
+    const gift: CartLine = { ...paid, unitPrice: 0 };
+    // The same product sold and gifted; a visit's treatment and its product.
+    expect(lineKeys([paid, gift])).toEqual(['svc-1', 'svc-1#1']);
+    expect(
+      lineKeys([
+        { ...paid, bookingId: 'bk-1' },
+        { ...gift, bookingId: 'bk-1' },
+      ]),
+    ).toEqual(['b:bk-1', 'b:bk-1#1']);
+    expect(lineKeys([paid])).toEqual(['svc-1']);
   });
 
   it('keys package and instalment lines on their own ids', () => {
