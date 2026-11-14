@@ -7472,5 +7472,8 @@
   "roles_rename": "Rename role",
   "roles_useTemplate": "Create from {template}",
   "roles_defaultRoleBadge": "Default for new members",
-  "roles_noAssignmentsChanged": "New roles start without members."
+  "roles_noAssignmentsChanged": "New roles start without members.",
+  "pos_calendar_products": "Products",
+  "pos_calendar_gift": "gift",
+  "pos_calendar_products_marker": "Has products"
 }

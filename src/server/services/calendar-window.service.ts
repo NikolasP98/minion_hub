@@ -6,7 +6,11 @@ import { categoryColorsForProducts } from '$server/services/finance-products.ser
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
-import { bookingTicketLinks, listTicketsForCalendar } from '$server/services/pos-accounts.service';
+import {
+  bookingTicketLinks,
+  listTicketsForCalendar,
+  type BookingTicketLink,
+} from '$server/services/pos-accounts.service';
 import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-window';
 
 /** The subset of an event type the window needs for `kindId`/`productOf`
@@ -91,14 +95,14 @@ export async function loadCalendarWindow(
       : [];
   // Per-booking paid-ness for the event context menu (spec 2026-10-13 D3):
   // anchored on the line's booking_id, NOT the window — a ticket sold weeks
-  // ago still marks its booking paid. One query over the window's ids.
+  // ago still marks its booking paid. Two statements over the window's ids.
   const ticketLinks =
     pos && !isDenied(foreign.pos)
       ? await bookingTicketLinks(
           foreign.pos,
           bookings.map((b) => b.id),
-        ).catch(() => new Map<string, { id: string; humanId: string | null }[]>())
-      : new Map<string, { id: string; humanId: string | null }[]>();
+        ).catch(() => new Map<string, BookingTicketLink[]>())
+      : new Map<string, BookingTicketLink[]>();
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
   if (pos && !isDenied(foreign.stock)) {

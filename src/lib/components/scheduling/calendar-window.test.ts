@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  productsForVisit,
   calendarDays,
   calendarCacheRange,
   calendarInstantWindow,
@@ -191,5 +192,35 @@ describe('calendar window', () => {
     const load = calendarLoadWindow('2026-09-14', 'day', 'America/Lima');
     const instant = calendarInstantWindow('2026-09-14', 'day', 'America/Lima');
     expect(load).toEqual(instant);
+  });
+});
+
+describe('productsForVisit (spec 120)', () => {
+  const faja = { description: 'Faja L', qty: 1, total: 0 };
+  const crema = { description: 'Crema', qty: 2, total: 80 };
+
+  it('lists the product lines of the sales that charged the visit', () => {
+    const out = productsForVisit([
+      { tickets: [{ id: 't1', humanId: 'POS-1', products: [faja, crema] }] },
+    ]);
+    expect(out).toEqual([faja, crema]);
+  });
+
+  it('counts a sale once when it charged several bookings of the visit', () => {
+    const sale = { id: 't1', humanId: 'POS-1', products: [faja] };
+    expect(productsForVisit([{ tickets: [sale] }, { tickets: [sale] }])).toEqual([faja]);
+  });
+
+  it('keeps one row per line across two sales, with no merging', () => {
+    const out = productsForVisit([
+      { tickets: [{ id: 't1', humanId: null, products: [faja] }] },
+      { tickets: [{ id: 't2', humanId: null, products: [faja] }] },
+    ]);
+    expect(out).toEqual([faja, faja]);
+  });
+
+  it('is empty for an unpaid visit and for payloads without products', () => {
+    expect(productsForVisit([{}, { tickets: [] }])).toEqual([]);
+    expect(productsForVisit([{ tickets: [{ id: 't1', humanId: null }] }])).toEqual([]);
   });
 });

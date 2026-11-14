@@ -7472,5 +7472,8 @@
   "roles_rename": "Renombrar rol",
   "roles_useTemplate": "Crear desde {template}",
   "roles_defaultRoleBadge": "Predeterminado para nuevos miembros",
-  "roles_noAssignmentsChanged": "Los nuevos roles comienzan sin miembros."
+  "roles_noAssignmentsChanged": "Los nuevos roles comienzan sin miembros.",
+  "pos_calendar_products": "Productos",
+  "pos_calendar_gift": "regalo",
+  "pos_calendar_products_marker": "Con productos"
 }

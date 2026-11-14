@@ -192,7 +192,35 @@ export interface CalendarBooking {
   /** How the service is settled (the drawer's rule: grant → plan → cash). */
   funding?: 'cash' | 'grant' | 'plan';
   /** The non-void tickets that charged this booking (POS calendar only). */
-  tickets?: { id: string; humanId: string | null }[];
+  tickets?: {
+    id: string;
+    humanId: string | null;
+    /** The sale's product lines (spec 120); absent on older payloads. */
+    products?: SoldProduct[];
+  }[];
+}
+
+/** A product line of a sale that charged a visit. */
+export interface SoldProduct {
+  description: string;
+  qty: number;
+  total: number;
+}
+
+/** Products sold with a visit: the product lines of every sale that charged
+ *  one of its bookings, each sale counted once. One row per sale line. */
+export function productsForVisit(
+  members: ReadonlyArray<Pick<CalendarBooking, 'tickets'>>,
+): SoldProduct[] {
+  const seen = new Set<string>();
+  const out: SoldProduct[] = [];
+  for (const m of members)
+    for (const t of m.tickets ?? []) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      out.push(...(t.products ?? []));
+    }
+  return out;
 }
 
 export interface CalendarBookingTag {

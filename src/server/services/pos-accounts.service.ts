@@ -592,13 +592,16 @@ export interface CalendarTicket {
 export interface BookingTicketLink {
   id: string;
   humanId: string | null;
+  /** The sale's product lines — what else left with the visit (spec 120). */
+  products: { description: string; qty: number; total: number }[];
 }
 
 /**
- * Non-void tickets per booking, ONE query over the given ids (the window's
- * bookings) — anchored on the line's `booking_id`, so a ticket sold in an
- * earlier week still counts, unlike the window-scoped `listTicketsForCalendar`.
- * Bookings with no ticket are absent from the map.
+ * Non-void tickets per booking, over the given ids (the window's bookings) —
+ * anchored on the line's `booking_id`, so a ticket sold in an earlier week
+ * still counts, unlike the window-scoped `listTicketsForCalendar`. Two
+ * statements at most, whatever the number of bookings: the links, then the
+ * product lines of the linked tickets. Bookings with no ticket are absent.
  */
 export async function bookingTicketLinks(
   ctx: CoreCtx,
@@ -628,9 +631,37 @@ export async function bookingTicketLinks(
   for (const r of rows) {
     if (!r.bookingId) continue;
     const list = out.get(r.bookingId) ?? [];
-    if (!list.some((t) => t.id === r.id)) list.push({ id: r.id, humanId: r.humanId });
+    if (!list.some((t) => t.id === r.id)) list.push({ id: r.id, humanId: r.humanId, products: [] });
     out.set(r.bookingId, list);
   }
+  const ticketIds = [...new Set(rows.map((r) => r.id))];
+  if (!ticketIds.length) return out;
+  const productRows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        ticketId: posTicketLines.ticketId,
+        description: posTicketLines.description,
+        qty: posTicketLines.qty,
+        total: posTicketLines.total,
+      })
+      .from(posTicketLines)
+      .where(
+        and(
+          eq(posTicketLines.orgId, ctx.tenantId),
+          inArray(posTicketLines.ticketId, ticketIds),
+          eq(posTicketLines.kind, 'product'),
+        ),
+      ),
+  );
+  const productsByTicket = new Map<string, BookingTicketLink['products']>();
+  for (const p of productRows) {
+    const list = productsByTicket.get(p.ticketId) ?? [];
+    list.push({ description: p.description, qty: Number(p.qty), total: Number(p.total) });
+    productsByTicket.set(p.ticketId, list);
+  }
+  // One sale linked to several bookings shares the same list.
+  for (const links of out.values())
+    for (const link of links) link.products = productsByTicket.get(link.id) ?? [];
   return out;
 }
 
