@@ -35,6 +35,8 @@ const bodySchema = z.object({
   resourceId: z.string().max(200).nullable().optional(),
 });
 
+const SENSITIVE_MATCH_FIELDS = ['attendeeEmail', 'attendeePhone', 'notes'] as const;
+
 /** A receipt exposes scheduling facts, not raw funding or arbitrary metadata. */
 function bookingReceipt(booking: SchedBooking, maskSensitive: boolean) {
   return {
@@ -76,6 +78,7 @@ function bookingReceipt(booking: SchedBooking, maskSensitive: boolean) {
  * without rechecking changed availability rules or advancing updatedAt;
  * a committed move returns outcome: 'moved' with a monotonically newer updatedAt.
  * Receipts whitelist scheduling fields and mask attendee PII by principal level.
+ * A masked principal gets 403 if it sends attendeeEmail, attendeePhone or notes.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
   const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'scheduling', 'edit');
@@ -83,6 +86,14 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
   if (b.confirm && !b.expectedUpdatedAt)
     throw error(400, 'expectedUpdatedAt is required from a booking preview');
   const maskSensitive = capabilities.fieldLevel('scheduling') < SENSITIVE_FIELD_LEVEL;
+  // The legacy fields are equality checks against the stored booking (409 on a
+  // mismatch). A principal that only sees masked PII could use that answer to
+  // guess the real email, phone or notes, so it may not send them at all.
+  if (maskSensitive) {
+    const probed = SENSITIVE_MATCH_FIELDS.filter((field) => b[field] !== undefined);
+    if (probed.length)
+      throw error(403, `Your role can't see ${probed.join(', ')}, so it can't send them`);
+  }
   const input = {
     start: b.start,
     resourceId: b.resourceId,

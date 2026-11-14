@@ -336,11 +336,23 @@ describe('assistant reschedule executes the native same-booking transaction', ()
     'attendeePhone',
     'notes',
   ])('rejects changing %s instead of silently discarding it', async (field) => {
+    authority.fieldLevel = 1;
     const value = field.endsWith('Id') ? missing : 'a different value';
     await expect(post({ [field]: value })).rejects.toMatchObject({ status: 409 });
     expect((await stored()).start_time).toEqual(new Date(originalStart));
   });
+  it.each(['attendeeEmail', 'attendeePhone', 'notes'])(
+    'refuses %s from a masked principal so it cannot probe the stored value',
+    async (field) => {
+      const real = { attendeeEmail: 'fixture@example.invalid', attendeePhone: '+15550000000' };
+      const guess = real[field as keyof typeof real] ?? 'Private note';
+      await expect(post({ [field]: guess })).rejects.toMatchObject({ status: 403 });
+      await expect(post({ [field]: 'wrong guess' })).rejects.toMatchObject({ status: 403 });
+      await expect(post({ [field]: null })).rejects.toMatchObject({ status: 403 });
+    },
+  );
   it('allows identical legacy identity fields and keeps omitted fields unchanged', async () => {
+    authority.fieldLevel = 1;
     const result = await preview({
       crmContactId: contact,
       attendeeName: 'Synthetic Customer',
