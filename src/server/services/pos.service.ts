@@ -64,7 +64,7 @@ import {
   type LineModifier,
 } from './stock.logic';
 import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
-import { schedBookings } from '$server/db/pg-scheduling-schema';
+import { schedBookings, schedBookingProducts } from '$server/db/pg-scheduling-schema';
 import { parties } from '$server/db/pg-party-schema';
 import { finInvoices, finProducts, finProductComponents } from '$server/db/pg-finance-schema';
 import { blockedPackageConsumption } from '$lib/components/pos/composition';
@@ -1335,6 +1335,245 @@ export async function repostTicketStock(
     throw e;
   }
   return { ...(await postTicketStock(ctx, ticketId, actor)), changes };
+}
+
+// ---- swap a product on a submitted sale (meta spec 120, S4) ----
+
+/** The visit's product row follows the sale line. When the visit already
+ *  carries the target product the old row is dropped (unique per visit). */
+async function moveVisitProduct(
+  tx: CoreTx,
+  orgId: string,
+  bookingId: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  const row = and(
+    eq(schedBookingProducts.orgId, orgId),
+    eq(schedBookingProducts.bookingId, bookingId),
+    eq(schedBookingProducts.productId, from),
+  );
+  const [taken] = await tx
+    .select({ id: schedBookingProducts.id })
+    .from(schedBookingProducts)
+    .where(
+      and(
+        eq(schedBookingProducts.orgId, orgId),
+        eq(schedBookingProducts.bookingId, bookingId),
+        eq(schedBookingProducts.productId, to),
+      ),
+    )
+    .limit(1);
+  if (taken) await tx.delete(schedBookingProducts).where(row);
+  else
+    await tx.update(schedBookingProducts).set({ productId: to, updatedAt: new Date() }).where(row);
+}
+
+/**
+ * Replace the product of ONE line on a submitted sale with another product of
+ * the same catalogue price. The line keeps what was charged; money, payments
+ * and the ticket number do not move. Stock follows through `repostTicketStock`.
+ *
+ * Everything that can refuse is checked BEFORE the line changes, so a refusal
+ * leaves the sale exactly as it was. Codes: `not_found`, the
+ * `assertTicketMutable` chain (`ticket_void`, `period_locked`, `reconciled`,
+ * `emitted`), `line_not_product`, `line_changed`, `price_differs`,
+ * `stock_drift`, `negative_stock`, `operation_conflict`.
+ */
+export async function swapTicketLineProduct(
+  ctx: CoreCtx,
+  ticketId: string,
+  lineId: string,
+  input: { productId: string; expectedProductId: string },
+  actor: Actor,
+): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
+  const lineIs = (productId: string) =>
+    and(
+      eq(posTicketLines.id, lineId),
+      eq(posTicketLines.ticketId, ticketId),
+      eq(posTicketLines.orgId, ctx.tenantId),
+      eq(posTicketLines.finProductId, productId),
+    );
+
+  /** The guard chain every fiscal edit runs; `lock` holds the sale for the write. */
+  const guardedTicket = async (tx: CoreTx, lock: boolean) => {
+    const q = tx
+      .select()
+      .from(posTickets)
+      .where(and(eq(posTickets.id, ticketId), eq(posTickets.orgId, ctx.tenantId)))
+      .limit(1);
+    const [ticket] = lock ? await q.for('update') : await q;
+    if (!ticket) throw new PosError('ticket not found', 'not_found');
+    const [shift] = await tx
+      .select({ status: posShifts.status })
+      .from(posShifts)
+      .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
+      .limit(1);
+    const emissions = await tx
+      .select({ status: posEmissions.status, environment: posEmissions.environment })
+      .from(posEmissions)
+      .where(and(eq(posEmissions.orgId, ctx.tenantId), eq(posEmissions.ticketId, ticketId)));
+    assertTicketMutable(
+      {
+        ticket,
+        shiftStatus: shift?.status ?? 'closed',
+        // A test-environment document binds nothing: only a real one that
+        // did not end in error makes the product a fiscal fact.
+        emitted: emissions.some((e) => e.status !== 'error' && e.environment !== 'beta'),
+        periodLocked: await isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt),
+      },
+      { fiscal: true },
+    );
+    return ticket;
+  };
+
+  const read = await withOrgCore(ctx, async (tx) => {
+    const ticket = await guardedTicket(tx, false);
+    const [line] = await tx
+      .select()
+      .from(posTicketLines)
+      .where(
+        and(
+          eq(posTicketLines.id, lineId),
+          eq(posTicketLines.ticketId, ticketId),
+          eq(posTicketLines.orgId, ctx.tenantId),
+        ),
+      )
+      .limit(1);
+    if (!line) throw new PosError('line not found', 'not_found');
+    if (line.kind !== 'product' || !line.finProductId)
+      throw new PosError('only a product line can be swapped', 'line_not_product');
+    if (line.finProductId !== input.expectedProductId)
+      throw new PosError('the line changed since it was read', 'line_changed');
+    const products = await tx
+      .select({
+        id: finProducts.id,
+        name: finProducts.name,
+        kind: finProducts.kind,
+        active: finProducts.active,
+        unitPrice: finProducts.unitPrice,
+      })
+      .from(finProducts)
+      .where(
+        and(
+          eq(finProducts.orgId, ctx.tenantId),
+          inArray(finProducts.id, [line.finProductId, input.productId]),
+        ),
+      );
+    const oldProduct = products.find((p) => p.id === line.finProductId);
+    const newProduct = products.find((p) => p.id === input.productId);
+    if (!newProduct || !newProduct.active) throw new PosError('product not found', 'not_found');
+    if (newProduct.kind !== 'product')
+      throw new PosError('the replacement must be a product', 'line_not_product');
+    if (round2(Number(oldProduct?.unitPrice ?? 0)) !== round2(Number(newProduct.unitPrice ?? 0)))
+      throw new PosError('the replacement has a different price', 'price_differs');
+    return { ticket, line, newProduct, oldProductId: line.finProductId };
+  });
+  const { ticket, line, newProduct, oldProductId } = read;
+  if (newProduct.id === oldProductId)
+    return {
+      entryId: ticket.stockEntryId,
+      stockWarning: (ticket.stockWarning as StockWarning | null) ?? null,
+    };
+
+  // Stock preflight: nothing below may refuse once the line has changed.
+  const res = await loadIssueResolution(ctx, [oldProductId, newProduct.id]);
+  const qty = Number(line.qty);
+  const itemsOf = (ex: ExplodedIssueQuantities) =>
+    new Set([...ex.stockQtyByItem.keys(), ...ex.consumptionQtyByItem.keys()]);
+  const oldItems = itemsOf(explodeLineForIssue(oldProductId, qty, [], res));
+  const newExploded = explodeLineForIssue(newProduct.id, qty, [], res);
+  const newItems = itemsOf(newExploded);
+  const movesStock = oldItems.size > 0 || newItems.size > 0;
+  const drift = (why: string) =>
+    new PosError(`the sale's stock cannot be corrected in place: ${why}`, 'stock_drift');
+  if (movesStock) {
+    // Per-line modifiers name items of the OLD recipe; they do not carry over.
+    if (lineModifiersOf(line).length) throw drift('the line has modifiers');
+    if (!ticket.stockEntryId) throw drift('the sale has no stock movement');
+    const before = await previewTicketRepost(ctx, ticketId);
+    if (
+      planRepost(before.oldByItem, before.newByItem, { allowedItemIds: new Set() }).changes.length
+    )
+      throw drift('its recipes changed since the sale');
+    const warehouseId = await resolveDefaultWarehouse(ctx);
+    if (warehouseId) {
+      // shortcut: does not net out an item both products consume, so such a
+      // swap can be refused for stock the return would cover; net it if that bites.
+      const shortfalls = await checkStockShortfalls(
+        ctx,
+        [
+          ...[...newExploded.stockQtyByItem].map(([itemId, q]) => ({ itemId, qty: round4(q) })),
+          ...[...newExploded.consumptionQtyByItem].map(([itemId, q]) => ({
+            itemId,
+            qty: round4(q),
+            qtyConsumption: round4(q),
+          })),
+        ],
+        warehouseId,
+      );
+      if (shortfalls.length)
+        throw new PosError('the replacement is out of stock', 'negative_stock', shortfalls);
+    }
+  }
+
+  await withOrgCore(ctx, async (tx) => {
+    // Re-run the guards under the sale's lock: a void, an accounting lock or
+    // a document issued since the first read must still refuse.
+    await guardedTicket(tx, true);
+    const updated = await tx
+      .update(posTicketLines)
+      .set({ finProductId: newProduct.id, description: newProduct.name })
+      .where(lineIs(oldProductId))
+      .returning({ id: posTicketLines.id });
+    if (!updated.length) throw new PosError('the line changed since it was read', 'line_changed');
+    if (line.bookingId)
+      await moveVisitProduct(tx, ctx.tenantId, line.bookingId, oldProductId, newProduct.id);
+  });
+
+  let stock = {
+    entryId: ticket.stockEntryId,
+    stockWarning: (ticket.stockWarning as StockWarning | null) ?? null,
+  };
+  if (movesStock) {
+    try {
+      stock = await repostTicketStock(ctx, ticketId, actor, {
+        allowedItemIds: oldItems,
+        allowIncreaseItemIds: newItems,
+      });
+    } catch (e) {
+      // The movement was not rebuilt (a void or another correction won the
+      // race): put the line back so the sale and its stock still agree.
+      if (e instanceof PosError)
+        await withOrgCore(ctx, async (tx) => {
+          await tx
+            .update(posTicketLines)
+            .set({ finProductId: oldProductId, description: line.description })
+            .where(lineIs(newProduct.id));
+          if (line.bookingId)
+            await moveVisitProduct(tx, ctx.tenantId, line.bookingId, newProduct.id, oldProductId);
+        });
+      throw e;
+    }
+  }
+
+  await withOrgCore(ctx, (tx) =>
+    recordAuditInTx(tx, ctx, {
+      refType: 'pos_ticket',
+      refId: ticketId,
+      op: 'update',
+      changes: [
+        {
+          field: `line.${lineId}.product`,
+          label: 'Producto',
+          old: line.description,
+          new: newProduct.name,
+        },
+      ],
+      actor,
+    }),
+  );
+  return { entryId: stock.entryId, stockWarning: stock.stockWarning };
 }
 
 // ---- packages, plans, client credit (spec §3) ----

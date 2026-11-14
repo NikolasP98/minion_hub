@@ -66,6 +66,7 @@ import {
   postTicketStock,
   planRepost,
   repostTicketStock,
+  swapTicketLineProduct,
   voidTicket,
   computeTicketTotals,
   DEFAULT_POS_SETTINGS,
@@ -1243,6 +1244,156 @@ describe('repostTicketStock — rebuild a sale under the current rule (spec 120)
 
     expect(out.entryId).toBeNull();
     expect(out.stockWarning).toMatchObject({ code: 'bin_locked' });
+  });
+});
+
+describe('swapTicketLineProduct — change a product on a submitted sale (spec 120)', () => {
+  const line = (over: Record<string, unknown> = {}) => ({
+    id: 'l1',
+    orgId: 'org-1',
+    ticketId: 'ticket-1',
+    kind: 'product',
+    finProductId: 'fp-l',
+    bookingId: null,
+    redemptionId: null,
+    description: 'Faja L',
+    qty: '1',
+    unitPrice: '0',
+    modifiers: null,
+    ...over,
+  });
+  const product = (id: string, name: string, over: Record<string, unknown> = {}) => ({
+    id,
+    name,
+    kind: 'product',
+    active: true,
+    unitPrice: '120.00',
+    ...over,
+  });
+  /** Sale, shift, documents, period lock, line, both products. */
+  const readSequence = (over: {
+    ticket?: Record<string, unknown>;
+    line?: Record<string, unknown>;
+    emissions?: unknown[];
+    products?: unknown[];
+  }) => [
+    [ticketRow(over.ticket)],
+    [{ status: 'open' }],
+    over.emissions ?? [],
+    [], // no accounting lock
+    [line(over.line)],
+    over.products ?? [product('fp-l', 'Faja L'), product('fp-m', 'Faja M')],
+  ];
+  const swap = (db: unknown, input = { productId: 'fp-m', expectedProductId: 'fp-l' }) =>
+    swapTicketLineProduct(ctx(db), 'ticket-1', 'l1', input, actor);
+
+  it.each([
+    ['a void sale', { ticket: { status: 'void' } }, 'ticket_void'],
+    ['a treatment line', { line: { kind: 'service' } }, 'line_not_product'],
+    ['a line someone else already changed', { line: { finProductId: 'fp-x' } }, 'line_changed'],
+    [
+      'a replacement at another price',
+      { products: [product('fp-l', 'Faja L'), product('fp-m', 'Faja M', { unitPrice: '150' })] },
+      'price_differs',
+    ],
+    [
+      'a replacement that is a treatment',
+      { products: [product('fp-l', 'Faja L'), product('fp-m', 'Masaje', { kind: 'service' })] },
+      'line_not_product',
+    ],
+    ['an archived replacement', { products: [product('fp-l', 'Faja L')] }, 'not_found'],
+    [
+      'a sale with a real electronic document',
+      { emissions: [{ status: 'accepted', environment: 'production' }] },
+      'emitted',
+    ],
+  ])('refuses %s and changes nothing', async (_name, over, code) => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence(readSequence(over));
+    await expect(swap(db)).rejects.toMatchObject({ code });
+    expect(db.update).not.toHaveBeenCalled();
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('a test-environment or failed document does not block the swap', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...readSequence({
+        emissions: [
+          { status: 'accepted', environment: 'beta' },
+          { status: 'error', environment: 'production' },
+        ],
+      }),
+      [], // recipes: neither product moves stock
+      [ticketRow()], // guards again, under the sale's lock
+      [{ status: 'open' }],
+      [],
+      [],
+      [{ id: 'l1' }], // line update
+    ]);
+    await expect(swap(db)).resolves.toEqual({ entryId: null, stockWarning: null });
+    expect(db.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a document issued between the first read and the write', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...readSequence({}),
+      [], // recipes: neither product moves stock
+      [ticketRow()], // guards again, under the sale's lock
+      [{ status: 'open' }],
+      [{ status: 'accepted', environment: 'production' }], // issued meanwhile
+      [],
+    ]);
+    await expect(swap(db)).rejects.toMatchObject({ code: 'emitted' });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses when stock would move but the sale has no movement', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...readSequence({}),
+      [
+        { finProductId: 'fp-l', itemId: 'item-l', qtyPerUnit: '1' },
+        { finProductId: 'fp-m', itemId: 'item-m', qtyPerUnit: '1' },
+      ],
+    ]);
+    await expect(swap(db)).rejects.toMatchObject({ code: 'stock_drift' });
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses before touching the line when the replacement is out of stock', async () => {
+    const { db, resolveSequence } = createMockDb();
+    getEntryMock.mockResolvedValue({
+      entry: { id: 'entry-old', status: 'submitted' },
+      lines: [{ itemId: 'item-l', qty: '1' }],
+    });
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    resolveSequence([
+      ...readSequence({ ticket: { stockEntryId: 'entry-old' } }),
+      [
+        { finProductId: 'fp-l', itemId: 'item-l', qtyPerUnit: '1' },
+        { finProductId: 'fp-m', itemId: 'item-m', qtyPerUnit: '1' },
+      ], // recipes of both products
+      [ticketRow({ stockEntryId: 'entry-old' })], // preview: sale
+      [line()], // preview: lines
+      [{ finProductId: 'fp-l', itemId: 'item-l', qtyPerUnit: '1' }], // preview: recipe
+      [{ id: 'item-l', unitsPerStockUom: null }], // preview: unit conversion
+      [{ itemId: 'item-m', qty: 0 }], // bins: none of the replacement
+      [{ id: 'item-m', name: 'Faja M', code: 'FAJA-M', unitsPerStockUom: null }],
+    ]);
+    await expect(swap(db)).rejects.toMatchObject({ code: 'negative_stock' });
+    expect(db.update).not.toHaveBeenCalled();
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('swapping to the same product is a no-op', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence(readSequence({ products: [product('fp-l', 'Faja L')] }));
+    await expect(swap(db, { productId: 'fp-l', expectedProductId: 'fp-l' })).resolves.toMatchObject(
+      { entryId: null },
+    );
+    expect(db.update).not.toHaveBeenCalled();
   });
 });
 
