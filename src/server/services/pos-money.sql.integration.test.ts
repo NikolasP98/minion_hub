@@ -238,6 +238,7 @@ async function paid(planId: string, amount: string) {
   const ticketId = crypto.randomUUID();
   await owner`INSERT INTO pos_tickets (id,org_id,status) VALUES (${ticketId},${ORG},'submitted')`;
   await owner`INSERT INTO pos_ticket_lines (org_id,ticket_id,plan_id,total) VALUES (${ORG},${ticketId},${planId},${amount})`;
+  return ticketId;
 }
 
 describe('native POS decimal and schedule boundaries', () => {
@@ -456,10 +457,12 @@ async function waitForAdvisoryWaiters(count: number) {
 }
 
 /** Row-lock sibling of `waitForAdvisoryWaiters`: the first waiter on a locked
- *  row waits on the holder's transactionid, later ones on the tuple. */
-async function waitForRowLockWaiters(count: number) {
+ *  row waits on the holder's transactionid, later ones on the tuple. `orDone`
+ *  ends the wait early for a racer that (wrongly) never queues. */
+async function waitForRowLockWaiters(count: number, orDone: () => boolean = () => false) {
   const deadline = Date.now() + 3000;
   while (Date.now() < deadline) {
+    if (orDone()) return;
     const rows =
       await harness.owner`SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('tuple','transactionid') AND NOT granted`;
     if (Number(rows[0].n) >= count) return;
@@ -562,6 +565,106 @@ describe('native void concurrency', () => {
     expect(
       await owner`SELECT count(*)::int AS n FROM pos_payments WHERE ticket_id=${ticketId}`,
     ).toEqual([{ n: 1 }]);
+  });
+});
+
+/** Holds the plan row FOR UPDATE until released, so racers queue behind it. */
+async function holdPlanRow(planId: string) {
+  const ready = deferred();
+  const release = deferred();
+  const holder = owner.begin(async (tx) => {
+    await tx`SELECT id FROM pos_payment_plans WHERE id=${planId} FOR UPDATE`;
+    ready.resolve();
+    await release.promise;
+  });
+  await ready.promise;
+  return { holder, release: release.resolve };
+}
+
+const fixtureActor = { id: ACTOR, name: 'Fixture actor' };
+
+describe('native plan state after a void', () => {
+  it('reopens a settled plan when its settling instalment is voided, then cancel works', async () => {
+    const plan = await createPlan(ctx, input());
+    const first = await paid(plan.id, '40.00');
+    const settling = await paid(plan.id, '60.00');
+    expect((await settlePlanIfPaid(ctx, plan.id)).plan.status).toBe('settled');
+
+    await voidTicket(ctx, settling, fixtureActor, { refund: 'none' });
+    expect(
+      await owner`SELECT status, settled_at FROM pos_payment_plans WHERE id=${plan.id}`,
+    ).toEqual([{ status: 'open', settled_at: null }]);
+    expect(await getPlan(ctx, plan.id)).toMatchObject({ isPaid: false, remaining: 60 });
+
+    // Open again ⇒ it can be cancelled (it threw plan_settled before) …
+    expect(await cancelPlan(ctx, plan.id)).toMatchObject({ status: 'cancelled' });
+    // … and voiding another instalment of a cancelled plan leaves it cancelled.
+    await voidTicket(ctx, first, fixtureActor, { refund: 'none' });
+    expect((await getPlan(ctx, plan.id))?.plan.status).toBe('cancelled');
+  });
+
+  it('reopened plans accept a new instalment that settles them again', async () => {
+    const plan = await createPlan(ctx, input());
+    const settling = await paid(plan.id, '100.00');
+    const firstSettledAt = (await settlePlanIfPaid(ctx, plan.id)).plan.settledAt;
+    await voidTicket(ctx, settling, fixtureActor, { refund: 'none' });
+    await paid(plan.id, '100.00');
+    // A fresh settledAt proves the plan went open → settled again, not that it stayed settled.
+    const resettled = (await settlePlanIfPaid(ctx, plan.id)).plan;
+    expect(resettled.status).toBe('settled');
+    expect(resettled.settledAt?.getTime()).toBeGreaterThan(firstSettledAt!.getTime());
+  });
+
+  it('a void racing settlePlanIfPaid never leaves the plan settled and unpaid', async () => {
+    const plan = await createPlan(ctx, input());
+    const first = await paid(plan.id, '40.00');
+    await paid(plan.id, '60.00'); // fully paid; the post-sale settle has not run yet
+    const { holder, release } = await holdPlanRow(plan.id);
+    const settling = settlePlanIfPaid(independentCtx(), plan.id);
+    let voidDone = false;
+    const voiding = voidTicket(independentCtx(), first, fixtureActor, { refund: 'none' });
+    voiding.then(
+      () => (voidDone = true),
+      () => (voidDone = true),
+    );
+    try {
+      await waitForRowLockWaiters(1);
+      // Settle queued first; the void either queues behind it on the plan row
+      // or (without the plan lock) finishes before settle can re-check.
+      await waitForRowLockWaiters(2, () => voidDone);
+      release();
+      await holder;
+      await settling;
+      await voiding;
+      const detail = await getPlan(ctx, plan.id);
+      expect(detail).toMatchObject({ isPaid: false, plan: { status: 'open' } });
+    } finally {
+      release();
+      await Promise.allSettled([holder, settling, voiding]);
+    }
+  });
+
+  it('a cancel racing settlePlanIfPaid leaves one consistent outcome', async () => {
+    const plan = await createPlan(ctx, input());
+    await paid(plan.id, '100.00');
+    const { holder, release } = await holdPlanRow(plan.id);
+    const settling = settlePlanIfPaid(independentCtx(), plan.id);
+    let cancelling: Promise<unknown> = Promise.resolve();
+    try {
+      await waitForRowLockWaiters(1);
+      cancelling = cancelPlan(independentCtx(), plan.id);
+      await waitForRowLockWaiters(2);
+      release();
+      await holder;
+      await settling;
+      await expect(cancelling).rejects.toMatchObject({ code: 'plan_settled' });
+      expect(
+        await owner`SELECT status, cancelled_at IS NULL AS never_cancelled FROM pos_payment_plans WHERE id=${plan.id}`,
+      ).toEqual([{ status: 'settled', never_cancelled: true }]);
+    } finally {
+      release();
+      await Promise.allSettled([holder, settling, cancelling]);
+    }
   });
 });
 

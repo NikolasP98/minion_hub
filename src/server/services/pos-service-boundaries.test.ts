@@ -221,6 +221,7 @@ const accountRuntimeExports = [
   'listPlans',
   'listTicketsForCalendar',
   'parseClientKey',
+  'reopenPlansIfUnpaidInTx',
   'resolveClientAccount',
   'settlePlanIfPaid',
 ] as const;

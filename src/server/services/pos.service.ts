@@ -73,7 +73,12 @@ import { ensureProductCategory } from './pos-categories.service';
 import { bustFinanceCache, getFinSettings } from './finance.service';
 // Packages, plans and client credit use focused leaves; the public service
 // barrels remain compatibility facades rather than runtime dependency roots.
-import { addLedgerEntryInTx, settlePlanIfPaid, type ClientRef } from './pos-accounts.service';
+import {
+  addLedgerEntryInTx,
+  reopenPlansIfUnpaidInTx,
+  settlePlanIfPaid,
+  type ClientRef,
+} from './pos-accounts.service';
 import { createGrantsForTicketLine, reverseRedemptionInTx } from './pos-packages.service';
 import { expiryFrom, grantToday, toAmount, type PackageEdge } from './pos-accounts.logic';
 import { emitHubEvent } from '$server/events/emit';
@@ -2080,13 +2085,18 @@ export async function voidTicket(
       )
       .returning();
     if (!updated.length) throw new PosError('ticket already void', 'already_void');
+    // Un-paying an instalment reopens a settled plan (plan rows lock last).
+    const planLines = await tx
+      .select({ planId: posTicketLines.planId })
+      .from(posTicketLines)
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, id)));
+    await reopenPlansIfUnpaidInTx(
+      tx,
+      ctx.tenantId,
+      planLines.flatMap((l) => (l.planId ? [l.planId] : [])),
+    );
     return updated;
   });
-  // TODO(handoff): voiding an instalment ticket un-pays its plan (paid-to-date
-  // is derived over non-void tickets) but does NOT flip a `settled` plan back
-  // to `open` — settlePlanIfPaid only ever settles. Harmless today (the derived
-  // progress on every read is correct); the stored status can lie. See meta
-  // proposals/2026-09-13-pos-packages-plans-s1-followups.md.
   return row;
 }
 
