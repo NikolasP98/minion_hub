@@ -141,6 +141,7 @@ import {
 } from './pos/settings';
 export * from './pos/settings';
 import { isUniqueViolation } from './pos/db-errors';
+import { planOperationId } from './pos/plan-operation';
 export { isUniqueViolation } from './pos/db-errors';
 import { assertTicketMutable, effectiveMethod, planTenderChange } from './pos/tender-correction';
 import { recordAuditInTx } from './activity.service';
@@ -638,6 +639,8 @@ export interface SubmitTicketInput {
   allowNegativeStock?: boolean;
   /** Revision returned by settings/preview. Required for every committing sale. */
   paymentPolicyRevision?: string;
+  /** Client-chosen id (spec 116 FR-015): a repeat returns the first ticket. */
+  ticketId?: string;
 }
 
 export interface StockShortfallLine {
@@ -1479,7 +1482,16 @@ async function validateCustomerAdmissionInTx(
 export async function submitTicket(
   ctx: CoreCtx,
   input: SubmitTicketInput,
-): Promise<{ ticket: PosTicket; stockWarning: StockWarning | null }> {
+): Promise<SubmitTicketResult> {
+  // A repeated charge is looked up FIRST: its own commit (a settled plan, a
+  // billed session, issued stock, a newer policy) would refuse it below.
+  const clientTicketId = input.ticketId === undefined ? undefined : planOperationId(input.ticketId);
+  if (clientTicketId) {
+    if (!ctx.profileId)
+      throw new PosError('Authenticated profile required.', 'operation_actor_required');
+    const stored = await replayTicket(ctx, clientTicketId);
+    if (stored) return replayedTicket(ctx, stored, input.actor);
+  }
   const settings = await getPosSettings(ctx);
 
   if (input.paymentPolicyRevision !== settings.paymentPolicyRevision)
@@ -1598,7 +1610,7 @@ export async function submitTicket(
         },
         { walletAlreadyLocked: true },
       );
-    const ticketId = randomUUID();
+    const ticketId = clientTicketId ?? randomUUID();
     if (packages.size) await lockGrantSources(tx, ctx.tenantId, [ticketId]);
     // FOR SHARE: a close waits for this sale, or this sale sees the shift closed.
     const [open] = await tx
@@ -1733,17 +1745,74 @@ export async function submitTicket(
       total: minorToDecimal(moneyMinor(lockedMoney.total)),
     } as unknown as Parameters<typeof emitHubEvent>[1]);
     return row;
+  }).catch((e: unknown) => {
+    // Unique violation on the client id: a concurrent first attempt won.
+    if (clientTicketId && isUniqueViolation(e)) return null;
+    throw e;
   });
+  if (!ticket) {
+    const winner = clientTicketId ? await replayTicket(ctx, clientTicketId) : null;
+    if (!winner) throw new PosError('ticket id is already taken', 'operation_conflict');
+    return replayedTicket(ctx, winner, input.actor);
+  }
 
+  // SUNAT emission no longer fires per sale: the shift close is the commit
+  // point (spec 2026-10-15 T2, `closeShift` → `emitShiftTickets`), which is
+  // what lets an open shift's tickets take quick corrections. A customer who
+  // needs the comprobante now gets it through `emitTicketNow`.
+  return { ticket, stockWarning: await afterTicketCommit(ctx, ticket.id, planIds, input.actor) };
+}
+
+interface SubmitTicketResult {
+  ticket: PosTicket;
+  stockWarning: StockWarning | null;
+  /** The client id already named a committed ticket; nothing new was written. */
+  replayed?: true;
+}
+
+/** This profile's ticket under that id, or null; another profile's is a conflict. */
+async function replayTicket(ctx: CoreCtx, ticketId: string): Promise<PosTicket | null> {
+  const ticket = await loadTicketRow(ctx, ticketId);
+  if (!ticket) return null;
+  if (ticket.createdBy !== ctx.profileId)
+    throw new PosError('ticket id belongs to another sale', 'operation_conflict');
+  return ticket;
+}
+
+/** A replay re-runs only the idempotent post-commit steps, never the money. */
+async function replayedTicket(
+  ctx: CoreCtx,
+  ticket: PosTicket,
+  actor: Actor,
+): Promise<SubmitTicketResult> {
+  // A ticket voided since its first answer comes back as it is now: void.
+  if (ticket.status === 'void') return { ticket, stockWarning: null, replayed: true };
+  const lines = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ planId: posTicketLines.planId })
+      .from(posTicketLines)
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticket.id))),
+  );
+  const planIds = [...new Set(lines.map((l) => l.planId).filter((v): v is string => Boolean(v)))];
+  const stockWarning = await afterTicketCommit(ctx, ticket.id, planIds, actor);
+  return { ticket, stockWarning, replayed: true };
+}
+
+async function afterTicketCommit(
+  ctx: CoreCtx,
+  ticketId: string,
+  planIds: string[],
+  actor: Actor,
+): Promise<StockWarning | null> {
   // ---- POST-COMMIT stock, fail-soft ----
   let stockWarning: StockWarning | null = null;
   try {
     if (await isModuleEnabled(ctx, 'stock')) {
-      const posted = await postTicketStock(ctx, ticket.id, input.actor);
+      const posted = await postTicketStock(ctx, ticketId, actor);
       stockWarning = posted.stockWarning;
     }
   } catch (e) {
-    console.error('[pos] post-commit stock failed', ticket.id, e);
+    console.error('[pos] post-commit stock failed', ticketId, e);
     stockWarning = {
       code: 'stock_post_failed',
       message: e instanceof Error ? e.message : String(e),
@@ -1761,12 +1830,7 @@ export async function submitTicket(
       console.error('[pos] plan settle failed', planId, e);
     }
   }
-
-  // SUNAT emission no longer fires per sale: the shift close is the commit
-  // point (spec 2026-10-15 T2, `closeShift` → `emitShiftTickets`), which is
-  // what lets an open shift's tickets take quick corrections. A customer who
-  // needs the comprobante now gets it through `emitTicketNow`.
-  return { ticket, stockWarning };
+  return stockWarning;
 }
 
 /**

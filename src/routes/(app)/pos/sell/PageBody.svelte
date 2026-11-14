@@ -58,7 +58,12 @@
     creditPayments,
     paymentPolicyIssue,
   } from '$lib/components/pos/payment-policy';
-  import { submitPosTicket, type PosTicketRequest } from '$lib/components/pos/pos-ticket-transport';
+  import {
+    submitPosTicket,
+    ticketAttemptFor,
+    type PosTicketRequest,
+    type TicketAttempt,
+  } from '$lib/components/pos/pos-ticket-transport';
   import {
     createPaymentPolicyRecovery,
     repairCommittedTicketView,
@@ -827,11 +832,15 @@
     toastError(m.pos_sell_charge(), failure instanceof Error ? failure.message : String(failure));
   }
 
+  // The id of the charge in flight, derived from its request: resending the same
+  // request after a lost reply returns the first ticket instead of a second sale.
+  let ticketAttempt: TicketAttempt | null = null;
+
   async function charge(force = false) {
     // TODO(handoff): HS-011 in minion-meta/proposals/2026-10-02-hub-gateway-production-readiness-recon.md
-    // must add a durable ticket idempotency key and freeze the submitted draft.
-    // This owner fence prevents stale UI effects but cannot reconcile a lost
-    // post-commit HTTP response, so that write must still never be replayed.
+    // — the ticket id lives in page memory only, so a reload after a lost reply
+    // loses it and the next charge can still duplicate. Remaining fix: a durable
+    // draft across reload, as plans do in `plan-open-persistence.ts`.
     if (chargeDisabled) return;
     const checkedCart = cartMoneyState(lines);
     const checkedPayments = paymentRowsState(payments);
@@ -843,39 +852,41 @@
     if (!checkedRemaining.ok || checkedRemaining.value.minor !== 0n) return;
     shortfallBanner = null;
     const paymentPolicyRevision = posSettings.paymentPolicyRevision;
+    const request = {
+      lines: lines.map((line, index) => ({
+        // The wire only knows service|product: a BUNDLE is sold as one
+        // service line and explodes into package grants server-side.
+        kind: line.sellable.kind === 'product' ? 'product' : 'service',
+        // An instalment is money against the plan, not a sale of the
+        // treatment — the plan itself carries the product.
+        finProductId: line.planId ? null : line.sellable.productId,
+        bookingId: line.bookingId ?? null,
+        description: line.sellable.name,
+        qty: checkedCart.value.lines[index].qty,
+        unitPrice: checkedCart.value.lines[index].unitPrice,
+        discount: checkedCart.value.lines[index].discount,
+        planId: line.planId ?? null,
+        redemptionId: line.redemptionId ?? null,
+      })),
+      payments: payments.map((payment, index) => ({
+        method: payment.method,
+        amount: checkedPayments.value.rows[index].amount,
+        tendered: payment.takesTendered ? checkedPayments.value.rows[index].tendered : null,
+      })),
+      partyId,
+      customerName,
+      allowNegativeStock: force,
+    } satisfies PosTicketRequest;
+    ticketAttempt = ticketAttemptFor(ticketAttempt, request);
+    const ticketId = ticketAttempt.id;
     const attempt = await runPaymentPolicyTicketAttempt({
       recovery: paymentPolicyRecovery,
       paymentPolicyRevision,
-      submit: () =>
-        submitPosTicket({
-          paymentPolicyRevision,
-          request: {
-            lines: lines.map((line, index) => ({
-              // The wire only knows service|product: a BUNDLE is sold as one
-              // service line and explodes into package grants server-side.
-              kind: line.sellable.kind === 'product' ? 'product' : 'service',
-              // An instalment is money against the plan, not a sale of the
-              // treatment — the plan itself carries the product.
-              finProductId: line.planId ? null : line.sellable.productId,
-              bookingId: line.bookingId ?? null,
-              description: line.sellable.name,
-              qty: checkedCart.value.lines[index].qty,
-              unitPrice: checkedCart.value.lines[index].unitPrice,
-              discount: checkedCart.value.lines[index].discount,
-              planId: line.planId ?? null,
-              redemptionId: line.redemptionId ?? null,
-            })),
-            payments: payments.map((payment, index) => ({
-              method: payment.method,
-              amount: checkedPayments.value.rows[index].amount,
-              tendered: payment.takesTendered ? checkedPayments.value.rows[index].tendered : null,
-            })),
-            partyId,
-            customerName,
-            allowNegativeStock: force,
-          } satisfies PosTicketRequest,
-        }),
+      submit: () => submitPosTicket({ paymentPolicyRevision, request: { ...request, ticketId } }),
     });
+    // Committed: the next charge is a new sale, even for an identical cart.
+    if (attempt.status === 'committed' || attempt.status === 'committed-stale')
+      ticketAttempt = null;
     if (attempt.status === 'committed-stale' || attempt.status === 'rejected-stale') return;
     if (attempt.status === 'policy-changed') {
       toastWarning(m.pos_payment_policy_changed());
