@@ -27,6 +27,13 @@ const submitEntryMock =
   vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
 const cancelEntryMock =
   vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
+const getEntryMock =
+  vi.fn<
+    (
+      ctx: unknown,
+      id: string,
+    ) => Promise<{ entry: { id: string; status: string }; lines: [] } | null>
+  >();
 const listAllComponentEdgesMock =
   vi.fn<
     (ctx: unknown) => Promise<Array<{ parentItemId: string; childItemId: string; qty: number }>>
@@ -37,6 +44,7 @@ vi.mock('./stock.service', () => ({
     findEntryBySourceMock(ctx, source, sourceId),
   submitEntry: (ctx: unknown, id: string, actor: unknown) => submitEntryMock(ctx, id, actor),
   cancelEntry: (ctx: unknown, id: string, actor: unknown) => cancelEntryMock(ctx, id, actor),
+  getEntry: (ctx: unknown, id: string) => getEntryMock(ctx, id),
   StockError: MockStockError,
   // Slice 1b: resolveIssueLines expands results through the component DAG.
   listAllComponentEdges: (ctx: unknown) => listAllComponentEdgesMock(ctx),
@@ -81,6 +89,7 @@ function mockExecute(db: unknown, value: unknown) {
 beforeEach(() => {
   vi.clearAllMocks();
   findEntryBySourceMock.mockResolvedValue(null);
+  getEntryMock.mockResolvedValue(null);
   // Default: no components anywhere => the explosion is the identity, so every
   // pre-Slice-1b expectation still describes the behaviour exactly.
   listAllComponentEdgesMock.mockResolvedValue([]);
@@ -456,49 +465,43 @@ describe('submitTicket — booking-linked lines never issue', () => {
 });
 
 describe('postTicketStock — line resolution', () => {
-  it('product and service both via stk_consumption (qty × qtyPerUnit), unmapped lines resolve to nothing', async () => {
+  it('kind decides: products issue (linked to a visit or not), a service awaiting scheduling does not (spec 120)', async () => {
     const { db, resolveSequence } = createMockDb();
+    const line = (id: string, kind: string, finProductId: string, extra: object = {}) => ({
+      id,
+      orgId: 'org-1',
+      ticketId: 'ticket-8',
+      kind,
+      finProductId,
+      bookingId: null,
+      redemptionId: null,
+      qty: '1',
+      unitPrice: '10',
+      ...extra,
+    });
     resolveSequence([
       [ticketRow({ id: 'ticket-8' })], // loadTicketRow
       [
-        {
-          id: 'l1',
-          orgId: 'org-1',
-          ticketId: 'ticket-8',
-          kind: 'product',
-          finProductId: 'fp-prod',
-          bookingId: null,
-          qty: '3',
-          unitPrice: '10',
-        },
-        {
-          id: 'l2',
-          orgId: 'org-1',
-          ticketId: 'ticket-8',
-          kind: 'service',
-          finProductId: 'fp-svc',
-          bookingId: null,
-          qty: '2',
-          unitPrice: '30',
-        },
-        {
-          id: 'l3',
-          orgId: 'org-1',
-          ticketId: 'ticket-8',
-          kind: 'product',
-          finProductId: 'fp-unmapped',
-          bookingId: null,
-          qty: '1',
-          unitPrice: '5',
-        },
+        line('l1', 'product', 'fp-prod', { qty: '3' }),
+        line('l2', 'service', 'fp-svc', { qty: '2' }), // awaiting scheduling → nothing
+        line('l3', 'product', 'fp-unmapped'),
+        line('l4', 'product', 'fp-tray', { bookingId: 'bkg-1' }), // charged from a visit → issues
+        line('l5', 'service', 'fp-booked', { bookingId: 'bkg-1' }), // booking-owned → nothing
+        line('l6', 'service', 'fp-redeemed', { redemptionId: 'red-1' }), // counter session → issues
+        line('l7', 'service', 'fp-bundle'), // bundle → issues
       ], // ticket lines
+      [{ id: 'fp-bundle' }], // bundle lookup, asked only for fp-svc + fp-bundle
       [
         { finProductId: 'fp-prod', itemId: 'item-a', qtyPerUnit: '1' },
-        { finProductId: 'fp-svc', itemId: 'item-b', qtyPerUnit: '5' },
-      ], // stk_consumption batch lookup (fp-unmapped has no recipe)
+        { finProductId: 'fp-tray', itemId: 'item-c', qtyPerUnit: '1' },
+        { finProductId: 'fp-redeemed', itemId: 'item-d', qtyPerUnit: '2' },
+        { finProductId: 'fp-bundle', itemId: 'item-e', qtyPerUnit: '1' },
+      ], // stk_consumption batch lookup (fp-svc / fp-booked are never asked for)
       [
         { itemId: 'item-a', qty: 5 },
-        { itemId: 'item-b', qty: 50 },
+        { itemId: 'item-c', qty: 5 },
+        { itemId: 'item-d', qty: 5 },
+        { itemId: 'item-e', qty: 5 },
       ], // fresh checkStockShortfalls: bins
       [], // fresh checkStockShortfalls: item names (no shortfall, unused)
       [], // stampTicketStock update
@@ -512,9 +515,81 @@ describe('postTicketStock — line resolution', () => {
       lines: { itemId: string; qty: number; qtyConsumption?: number }[];
     };
     expect(call.lines).toEqual([
-      { itemId: 'item-a', qty: 3, qtyConsumption: 3 }, // 3 × its 1-unit row
-      { itemId: 'item-b', qty: 10, qtyConsumption: 10 }, // 2 × 5 consumption-UOM
+      { itemId: 'item-a', qty: 3, qtyConsumption: 3 },
+      { itemId: 'item-c', qty: 1, qtyConsumption: 1 },
+      { itemId: 'item-d', qty: 2, qtyConsumption: 2 },
+      { itemId: 'item-e', qty: 1, qtyConsumption: 1 },
     ]);
+  });
+
+  it('a sale of services awaiting scheduling posts no stock entry and no warning (spec 120)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 'ticket-s' })], // loadTicketRow
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-s',
+          kind: 'service',
+          finProductId: 'fp-svc',
+          bookingId: null,
+          redemptionId: null,
+          qty: '1',
+          unitPrice: '30',
+        },
+      ], // ticket lines
+      [], // bundle lookup: fp-svc is not a bundle
+      [], // stampTicketStock update
+    ]);
+
+    const out = await postTicketStock(ctx(db), 'ticket-s', actor);
+
+    expect(out).toEqual({ entryId: null, stockWarning: null });
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('a stamp left on a cancelled entry is an interrupted rebuild: posts again (spec 120)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    getEntryMock.mockResolvedValue({ entry: { id: 'entry-old', status: 'cancelled' }, lines: [] });
+    findEntryBySourceMock.mockResolvedValue(null);
+    resolveSequence([
+      [ticketRow({ id: 'ticket-r', stockEntryId: 'entry-old' })], // loadTicketRow
+      [
+        {
+          id: 'l1',
+          orgId: 'org-1',
+          ticketId: 'ticket-r',
+          kind: 'product',
+          finProductId: 'fp-prod',
+          bookingId: null,
+          redemptionId: null,
+          qty: '1',
+          unitPrice: '10',
+        },
+      ], // ticket lines
+      [{ finProductId: 'fp-prod', itemId: 'item-a', qtyPerUnit: '1' }], // stk_consumption
+      [{ itemId: 'item-a', qty: 5 }], // bins
+      [], // item names (unused)
+      [], // stampTicketStock update
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-new' });
+
+    const out = await postTicketStock(ctx(db), 'ticket-r', actor);
+
+    expect(out).toEqual({ entryId: 'entry-new', stockWarning: null });
+  });
+
+  it('a stamp on a live entry is a posted sale: no second issue', async () => {
+    const { db, resolveSequence } = createMockDb();
+    getEntryMock.mockResolvedValue({ entry: { id: 'entry-1', status: 'submitted' }, lines: [] });
+    resolveSequence([[ticketRow({ id: 'ticket-p', stockEntryId: 'entry-1' })]]);
+
+    const out = await postTicketStock(ctx(db), 'ticket-p', actor);
+
+    expect(out).toEqual({ entryId: 'entry-1', stockWarning: null });
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
   });
 
   it('a 0-qty usage mapping beside a real one issues only the real line (spec 033)', async () => {
@@ -526,7 +601,7 @@ describe('postTicketStock — line resolution', () => {
           id: 'l1',
           orgId: 'org-1',
           ticketId: 'ticket-z',
-          kind: 'service',
+          kind: 'product',
           finProductId: 'fp-svc',
           bookingId: null,
           qty: '2',
@@ -611,7 +686,7 @@ describe('postTicketStock — line resolution', () => {
           id: 'l2',
           orgId: 'org-1',
           ticketId: 'ticket-mixed-uom',
-          kind: 'service',
+          kind: 'product',
           finProductId: 'fp-procedure',
           bookingId: null,
           qty: '1',
@@ -649,7 +724,7 @@ describe('postTicketStock — line resolution', () => {
           id: 'l1',
           orgId: 'org-1',
           ticketId: 'ticket-mod',
-          kind: 'service',
+          kind: 'product',
           finProductId: 'fp-procedure',
           bookingId: null,
           qty: '1',
@@ -1044,6 +1119,28 @@ describe('voidTicket', () => {
     expect(result.status).toBe('void');
   });
 
+  it('a sale that moved no stock (services only, spec 120) voids cleanly: nothing to cancel, no warning', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 't1', stockEntryId: null })], // loadTicketRow
+      [], // no accounting lock
+      [{ id: 'shift-1' }], // the actor's open shift
+      [], // live redemptions
+      [], // grants
+      [], // ledger money preflight
+      [], // ticket line preflight
+      [], // payment preflight
+      [{ id: 'shift-1' }], // the refund shift, re-read inside the money tx
+      [], // client-ledger rows to reverse
+      [ticketRow({ id: 't1', status: 'void', stockEntryId: null })], // update returning
+    ]);
+
+    const result = await voidTicket(ctx(db), 't1', actor);
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+    expect(result.status).toBe('void');
+    expect(result.stockWarning ?? null).toBeNull();
+  });
+
   it.each([
     { amount: 'NaN', currency: 'PEN', code: 'invalid_stored_amount' },
     { amount: '-50.00', currency: 'JPY', code: 'unsupported_pos_currency' },
@@ -1257,7 +1354,7 @@ describe('submitTicket — stock preflight uom conversion', () => {
       id: 'line-1',
       orgId: 'org-1',
       ticketId: 'ticket-1',
-      kind: 'service',
+      kind: 'product',
       finProductId: 'fp-svc',
       bookingId: null,
       qty: '2',
@@ -1271,7 +1368,7 @@ describe('submitTicket — stock preflight uom conversion', () => {
   const serum = [{ id: 'item-b', name: 'Serum', code: 'SER', unitsPerStockUom: '500' }];
   const input: SubmitTicketInput = {
     lines: [
-      { kind: 'service', finProductId: 'fp-svc', description: 'Facial', qty: 2, unitPrice: 10 },
+      { kind: 'product', finProductId: 'fp-svc', description: 'Facial', qty: 2, unitPrice: 10 },
     ],
     payments: [{ method: 'cash', amount: 20, tendered: 20 }],
     actor,

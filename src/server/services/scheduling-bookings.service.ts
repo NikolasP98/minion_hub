@@ -610,6 +610,9 @@ async function accrueForBooking(
   ctx: CoreCtx,
   row: SchedBooking,
   lines: AccrualLineInput[] | null,
+  /** Units of service for the default recipe — a paid ticket line's qty
+   *  (spec 120). Adjusted `lines` are taken as given. */
+  quantity = 1,
 ): Promise<void> {
   if (!row.productId) return;
   try {
@@ -619,6 +622,7 @@ async function accrueForBooking(
         sourceId: row.id,
         finProductId: row.productId,
         lines,
+        quantity,
       });
     }
   } catch (e) {
@@ -754,6 +758,8 @@ export async function bookAndLinkTicketLine(
   // `withOrgCore`, and withOrgCore must never nest.
   const today = await orgDateKey(ctx, input.packageGrantId);
 
+  // The paid line's qty — the reservation covers all of it (spec 120).
+  let lineQty = 1;
   const out = await withOrgCore(ctx, async (tx): Promise<BookTicketLineResult> => {
     const [ticket] = await tx
       .select({ status: posTickets.status, partyId: posTickets.partyId })
@@ -768,7 +774,11 @@ export async function bookAndLinkTicketLine(
     if (ticket.status === 'void') throw new PosError('ticket is void', 'ticket_void');
 
     const [line] = await tx
-      .select({ kind: posTicketLines.kind, bookingId: posTicketLines.bookingId })
+      .select({
+        kind: posTicketLines.kind,
+        bookingId: posTicketLines.bookingId,
+        qty: posTicketLines.qty,
+      })
       .from(posTicketLines)
       .where(
         and(
@@ -844,10 +854,11 @@ export async function bookAndLinkTicketLine(
     // Lost the race for the line → the booking just inserted goes back with it.
     if (!claimed) throw new PosError('line already scheduled', 'line_already_scheduled');
 
+    lineQty = Number(line.qty) || 1;
     return { booking: booked.row, created: booked.created };
   });
 
-  if (out.created) await accrueForBooking(ctx, out.booking, input.consumption ?? null);
+  if (out.created) await accrueForBooking(ctx, out.booking, input.consumption ?? null, lineQty);
   return out;
 }
 

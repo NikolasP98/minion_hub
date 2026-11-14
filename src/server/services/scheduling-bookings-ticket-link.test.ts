@@ -33,9 +33,9 @@ vi.mock('./finance.service', () => ({
 vi.mock('./scheduling-slots.service', () => ({ serviceRulesOf: () => undefined }));
 vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
 
-const accrueMock = vi.fn<() => Promise<number>>(async () => 1);
+const accrueMock = vi.fn<(ctx: unknown, input: unknown) => Promise<number>>(async () => 1);
 vi.mock('./stock-accruals.service', () => ({
-  accrueConsumption: () => accrueMock(),
+  accrueConsumption: (ctx: unknown, input: unknown) => accrueMock(ctx, input),
   releaseAccruals: async () => 1,
   accrualSummaryForSources: async () => [],
 }));
@@ -94,10 +94,16 @@ const occurrence = (row: unknown, crm: unknown[] = []) => [
 
 /** ticket → line → (optional party phone lookup). */
 const preamble = (
-  opts: { partyId?: string | null; status?: string; kind?: string; bookingId?: string | null } = {},
+  opts: {
+    partyId?: string | null;
+    status?: string;
+    kind?: string;
+    bookingId?: string | null;
+    qty?: string;
+  } = {},
 ) => [
   [{ status: opts.status ?? 'submitted', partyId: opts.partyId ?? null }],
-  [{ kind: opts.kind ?? 'service', bookingId: opts.bookingId ?? null }],
+  [{ kind: opts.kind ?? 'service', bookingId: opts.bookingId ?? null, qty: opts.qty ?? '1' }],
 ];
 
 const input = { ticketId: 'tk-1', lineId: 'ln-1', eventTypeId: 'et-1', start };
@@ -112,6 +118,19 @@ describe('bookAndLinkTicketLine', () => {
     expect(out).toMatchObject({ created: true, booking: { id: 'b-1' } });
     expect(db.transaction).toHaveBeenCalledTimes(1);
     expect(accrueMock).toHaveBeenCalledTimes(1); // post-commit, fail-soft
+  });
+
+  it("reserves the line's full quantity: a 3-unit paid line accrues 3 (spec 120)", async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      ...preamble({ qty: '3' }),
+      ...occurrence(bookingRow('b-1')),
+      [{ id: 'ln-1' }],
+    ]);
+
+    await bookAndLinkTicketLine(ctx(db), input);
+
+    expect(accrueMock.mock.calls[0][1]).toMatchObject({ sourceId: 'b-1', quantity: 3 });
   });
 
   it('a failing line claim rolls the booking back — ONE transaction, nothing post-commit', async () => {
