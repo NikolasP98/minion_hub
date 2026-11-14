@@ -53,6 +53,7 @@ import {
   posPackageRedemptions,
   posPaymentPlans,
   posPayments,
+  posTickets,
 } from '$server/db/pg-pos-schema';
 import { allocateGrants, expiryFrom, grantToday } from './pos-accounts.logic';
 import {
@@ -456,6 +457,100 @@ describe('submitTicket — credit tender', () => {
     resolveSequence([[settingsRow]]);
     await expect(submitTicket(ctx(db), { ...creditInput, partyId: null })).rejects.toMatchObject({
       code: 'client_required',
+    });
+  });
+});
+
+describe('submitTicket — a repeated charge (client ticket id)', () => {
+  const TICKET_ID = '7c1f1a52-2d4e-4f3a-9b6e-0d3c5e8f9a10';
+  const signedIn = (db: unknown) => ({ ...ctx(db), profileId: 'u1' });
+  const stored = (patch: Record<string, unknown> = {}) =>
+    ticketRow({ id: TICKET_ID, createdBy: 'u1', ...patch });
+
+  it('replays the final instalment instead of refusing its now-settled plan', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [stored()], // replay lookup
+      [{ planId: 'plan-1' }], // stored lines: the plan this ticket paid
+      [{ id: 'plan-1', status: 'settled', totalAmount: '200', currency: 'PEN' }], // settlePlanIfPaid
+    ]);
+    const result = await submitTicket(signedIn(db), {
+      lines: [{ kind: 'service', description: 'Cuota', qty: 1, unitPrice: 100, planId: 'plan-1' }],
+      payments: [{ method: 'cash', amount: 100, tendered: 100 }],
+      partyId: 'party-1',
+      actor,
+      ticketId: TICKET_ID,
+    });
+    expect(result).toMatchObject({ ticket: { id: TICKET_ID }, replayed: true });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('replays a billed package session instead of refusing it as already billed', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[stored({ subtotal: '0', total: '0' })], []]);
+    const result = await submitTicket(signedIn(db), {
+      lines: [
+        {
+          kind: 'service',
+          finProductId: 'svc-1',
+          description: 'Sesión de paquete',
+          qty: 1,
+          unitPrice: 0,
+          redemptionId: 'red-1',
+        },
+      ],
+      payments: [],
+      partyId: 'party-1',
+      actor,
+      ticketId: TICKET_ID,
+    });
+    expect(result).toMatchObject({ ticket: { id: TICKET_ID }, replayed: true });
+    expect(updatedTables(db)).not.toContain(posPackageRedemptions);
+  });
+
+  /** The ticket insert loses a unique race on its id (a concurrent first attempt). */
+  function failTicketInsert(db: unknown) {
+    const target = db as Record<string, unknown>;
+    const inner = target['insert'] as (table: unknown) => unknown;
+    const duplicate = Object.assign(new Error('duplicate key'), { code: '23505' });
+    target['insert'] = vi.fn((table: unknown) =>
+      table === posTickets
+        ? { values: () => ({ returning: () => Promise.reject(duplicate) }) }
+        : inner(table),
+    );
+  }
+  const plain = {
+    lines: [{ kind: 'product' as const, description: 'X', qty: 1, unitPrice: 10 }],
+    payments: [{ method: 'cash', amount: 10, tendered: 10 }],
+    actor,
+    ticketId: TICKET_ID,
+  };
+
+  it('answers a lost insert race with the ticket that won it', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db);
+    failTicketInsert(db);
+    resolveSequence([
+      [], // replay lookup: nothing yet
+      [], // settings
+      [], // settings re-read under the transaction lock
+      [openShiftRow],
+      [stored()], // replay lookup after the rollback: the winner
+      [], // its stored lines
+    ]);
+    await expect(submitTicket(signedIn(db), plain)).resolves.toMatchObject({
+      ticket: { id: TICKET_ID },
+      replayed: true,
+    });
+  });
+
+  it('refuses with operation_conflict when the taken id is not this organisation’s', async () => {
+    const { db, resolveSequence } = createMockDb();
+    mockExecute(db);
+    failTicketInsert(db);
+    resolveSequence([[], [], [], [openShiftRow], []]);
+    await expect(submitTicket(signedIn(db), plain)).rejects.toMatchObject({
+      code: 'operation_conflict',
     });
   });
 });

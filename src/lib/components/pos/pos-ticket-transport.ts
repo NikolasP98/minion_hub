@@ -14,6 +14,26 @@ export interface PosTicketRequest {
   partyId: string | null;
   customerName: string | null;
   allowNegativeStock: boolean;
+  /** Same id for the same request: a repeat returns the first ticket (spec 116 FR-015). */
+  ticketId?: string;
+}
+
+export interface TicketAttempt {
+  fingerprint: string;
+  id: string;
+}
+
+/** The id a charge sends (spec 116 FR-016): the same request keeps its id, any
+ *  change to lines, payments or customer mints a new one. The charge-anyway
+ *  flag is left out, so that retry replays instead of selling twice. */
+export function ticketAttemptFor(
+  previous: TicketAttempt | null,
+  request: PosTicketRequest,
+  mint: () => string = () => crypto.randomUUID(),
+): TicketAttempt {
+  const { allowNegativeStock: _override, ticketId: _id, ...intent } = request;
+  const fingerprint = JSON.stringify(intent);
+  return previous?.fingerprint === fingerprint ? previous : { fingerprint, id: mint() };
 }
 
 export interface PosTicketResult {

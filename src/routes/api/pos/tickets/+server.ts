@@ -41,6 +41,8 @@ const postSchema = z.object({
   note: z.string().max(20_000).nullable().optional(),
   allowNegativeStock: z.boolean().optional(),
   paymentPolicyRevision: z.string().regex(/^[0-9a-f]{64}$/),
+  /** Client-chosen id: a repeat of a committed charge returns that ticket (200). */
+  ticketId: z.string().uuid().optional(),
 });
 
 /** GET /api/pos/tickets?shiftId=&from=&to=&limit= */
@@ -81,7 +83,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     name: locals.user?.displayName ?? locals.user?.email ?? null,
   };
   try {
-    const { ticket, stockWarning } = await submitTicket(ctx, {
+    const { ticket, stockWarning, replayed } = await submitTicket(ctx, {
       lines: body.lines,
       payments: body.payments,
       partyId: body.partyId ?? null,
@@ -92,8 +94,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
       actor,
       allowNegativeStock: body.allowNegativeStock ?? false,
       paymentPolicyRevision: body.paymentPolicyRevision,
+      ticketId: body.ticketId,
     });
-    return json({ ok: true, ticket, stockWarning }, { status: 201 });
+    return json({ ok: true, ticket, stockWarning }, { status: replayed ? 200 : 201 });
   } catch (e) {
     return handlePosError(e);
   }

@@ -1029,6 +1029,53 @@ describe('submitTicket — stock shortfall integrity', () => {
   });
 });
 
+describe('submitTicket — a repeated charge (client ticket id)', () => {
+  const TICKET_ID = '7c1f1a52-2d4e-4f3a-9b6e-0d3c5e8f9a10';
+  const cart: SubmitTicketInput = {
+    lines: [
+      { kind: 'product', finProductId: 'fp-1', description: 'Retail', qty: 2, unitPrice: 10 },
+    ],
+    payments: [{ method: 'cash', amount: 20, tendered: 20 }],
+    actor,
+    ticketId: TICKET_ID.toUpperCase(),
+  };
+  const signedIn = (db: unknown) => ({ ...ctx(db), profileId: 'u1' });
+
+  it('returns the stored ticket before any preflight, even after the policy revision changed', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: TICKET_ID, createdBy: 'u1' })], // replay lookup by (id, org)
+      [], // stored lines: no plans to settle
+      [ticketRow({ id: TICKET_ID, createdBy: 'u1', stockEntryId: 'entry-1' })], // postTicketStock: already issued
+    ]);
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    const result = await submitTicketService(signedIn(db), {
+      ...cart,
+      paymentPolicyRevision: '0'.repeat(64),
+    });
+    expect(result).toMatchObject({ ticket: { id: TICKET_ID }, stockWarning: null, replayed: true });
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses an id another profile created', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[ticketRow({ id: TICKET_ID, createdBy: 'u2' })]]);
+    await expect(submitTicket(signedIn(db), cart)).rejects.toMatchObject({
+      code: 'operation_conflict',
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('requires a signed-in profile to carry an id', async () => {
+    const { db } = createMockDb();
+    await expect(submitTicket(ctx(db), cart)).rejects.toMatchObject({
+      code: 'operation_actor_required',
+    });
+    expect(db.select).not.toHaveBeenCalled();
+  });
+});
+
 describe('voidTicket', () => {
   it.each([
     { facet: 'grant', grants: [{ id: 'g1', unitValue: 'NaN' }], lines: [], payments: [] },
