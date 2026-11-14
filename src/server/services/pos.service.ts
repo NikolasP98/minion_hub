@@ -41,6 +41,7 @@ import { resolveDefaultWarehouse } from './stock-accruals.service';
 import {
   createSourcedIssue,
   findEntryBySource,
+  getEntry,
   submitEntry,
   cancelEntry,
   StockError,
@@ -689,9 +690,14 @@ async function stampTicketStock(
 }
 
 /**
- * Line→stock resolution. Lines carrying a bookingId are booking-owned and
- * never issue from here; unmapped lines issue nothing. Aggregated by item so
- * two lines mapping to the same item collapse into one issue line.
+ * Line→stock resolution. The line's KIND decides (meta spec 120):
+ *   · a product line always issues at the sale, linked to a visit or not;
+ *   · a service line issues nothing — its supplies are reserved when it is
+ *     scheduled and issued once, when the appointment is completed. The two
+ *     exceptions keep the sale as their only deduction: a package session
+ *     redeemed at the counter (`redemptionId`, no booking) and a bundle line.
+ * Unmapped lines issue nothing. Aggregated by item so two lines mapping to
+ * the same item collapse into one issue line.
  *
  * ONE stock path (meta spec 024): a sellable reaches stock only through its
  * stk_consumption recipe (qty × qtyPerUnit per mapped item), whatever its
@@ -747,16 +753,42 @@ function explodeLineForIssue(
   return explodeIssueRoots(roots, qty, res.byParent, res.isStockItem, modifiers);
 }
 
+/** Bundle products among `productIds` — the only unlinked, unredeemed service
+ *  lines that still issue at the sale. No query when there is nothing to ask. */
+async function bundleProductIds(ctx: CoreCtx, productIds: string[]): Promise<Set<string>> {
+  if (!productIds.length) return new Set();
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .selectDistinct({ id: finProductComponents.bundleProductId })
+      .from(finProductComponents)
+      .where(
+        and(
+          eq(finProductComponents.orgId, ctx.tenantId),
+          inArray(finProductComponents.bundleProductId, productIds),
+        ),
+      ),
+  );
+  return new Set(rows.map((r) => r.id));
+}
+
 async function resolveIssueLines(
   ctx: CoreCtx,
   lines: PosTicketLine[],
 ): Promise<CreateIssueFromInvoiceLine[]> {
-  // Every issuable line regardless of kind — the recipe decides.
-  const finIds = [
-    ...new Set(
-      lines.filter((l) => !l.bookingId && l.finProductId).map((l) => l.finProductId as string),
-    ),
-  ];
+  // Service lines awaiting scheduling: only a bundle among them issues here.
+  const awaiting = lines.filter(
+    (l) => l.kind !== 'product' && l.finProductId && !l.bookingId && !l.redemptionId,
+  );
+  const bundles = await bundleProductIds(ctx, [
+    ...new Set(awaiting.map((l) => l.finProductId as string)),
+  ]);
+  const issuesAtSale = (l: PosTicketLine): boolean => {
+    if (!l.finProductId) return false; // unmapped
+    if (l.kind === 'product') return true;
+    if (l.bookingId) return false; // booking-owned: issued at completion
+    return Boolean(l.redemptionId) || bundles.has(l.finProductId);
+  };
+  const finIds = [...new Set(lines.filter(issuesAtSale).map((l) => l.finProductId as string))];
   const res = await loadIssueResolution(ctx, finIds);
 
   // Resolve AND expand per line, not in two phases: modifiers (#9) are a
@@ -768,7 +800,7 @@ async function resolveIssueLines(
     for (const [itemId, qty] of additions) target.set(itemId, (target.get(itemId) ?? 0) + qty);
   };
   for (const l of lines) {
-    if (l.bookingId || !l.finProductId) continue; // booking-owned or unmapped → issues nothing
+    if (!issuesAtSale(l) || !l.finProductId) continue;
     const exploded = explodeLineForIssue(l.finProductId, Number(l.qty), lineModifiersOf(l), res);
     accumulate(stockQtyByItem, exploded.stockQtyByItem);
     accumulate(consumptionQtyByItem, exploded.consumptionQtyByItem);
@@ -1017,12 +1049,17 @@ export async function postTicketStock(
   if (ticket.status === 'void') throw new PosError('ticket is void', 'already_void');
 
   if (ticket.stockEntryId) {
-    if (ticket.stockWarning)
-      await stampTicketStock(ctx, ticketId, {
-        stockEntryId: ticket.stockEntryId,
-        stockWarning: null,
-      });
-    return { entryId: ticket.stockEntryId, stockWarning: null };
+    // A stamp left on a cancelled (or vanished) entry is an interrupted
+    // rebuild, not a posted sale: fall through and post again (spec 120).
+    const stamped = await getEntry(ctx, ticket.stockEntryId);
+    if (stamped && stamped.entry.status !== 'cancelled') {
+      if (ticket.stockWarning)
+        await stampTicketStock(ctx, ticketId, {
+          stockEntryId: ticket.stockEntryId,
+          stockWarning: null,
+        });
+      return { entryId: ticket.stockEntryId, stockWarning: null };
+    }
   }
 
   const existing = await findEntryBySource(ctx, 'pos', ticketId);

@@ -26,6 +26,7 @@ vi.mock('./stock.service', () => ({
   findEntryBySource: vi.fn(async () => null),
   submitEntry: vi.fn(),
   cancelEntry: vi.fn(),
+  getEntry: vi.fn(async () => null),
   StockError: MockStockError,
   listAllComponentEdges: vi.fn(async () => []),
 }));
