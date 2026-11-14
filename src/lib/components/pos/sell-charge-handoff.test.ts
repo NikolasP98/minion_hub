@@ -52,7 +52,7 @@ describe('createSellChargeHandoff', () => {
       lines: [line('b1', 'service-a', 'Cut'), line('b2', 'service-b', 'Color')],
       partyId: 'party-a',
     });
-    expect(handoff?.version).toBe(3);
+    expect(handoff?.version).toBe(4);
     expect(handoff?.lines).toEqual([
       { bookingId: 'b1', productId: 'service-a', title: 'Cut', kind: 'service', qty: 1 },
       { bookingId: 'b2', productId: 'service-b', title: 'Color', kind: 'service', qty: 1 },
@@ -112,7 +112,7 @@ describe('parseSellChargeHandoff', () => {
       planId: null,
     });
     const handoff = parseSellChargeHandoff(v2, IDENTITY);
-    expect(handoff?.version).toBe(3);
+    expect(handoff?.version).toBe(4);
     expect(handoff?.lines).toEqual([
       { bookingId: 'b1', productId: 'service-a', title: 'Cut', kind: 'service', qty: 1 },
       { bookingId: 'b2', productId: null, title: 'Color', kind: 'service', qty: 1 },
@@ -131,7 +131,7 @@ describe('parseSellChargeHandoff', () => {
       planId: null,
     });
     const handoff = parseSellChargeHandoff(v1, IDENTITY);
-    expect(handoff?.version).toBe(3);
+    expect(handoff?.version).toBe(4);
     expect(handoff?.lines).toEqual([
       { bookingId: 'b1', productId: 'service-a', title: '', kind: 'service', qty: 1 },
     ]);
@@ -219,5 +219,48 @@ describe('stageSellChargeHandoff', () => {
     expect(stage.pendingPlanId).toBe('plan-a');
     expect(stage.notice).toBe('loaded');
     expect(stage.missingLines).toBe(0);
+  });
+});
+
+describe('v4 — charging a voided sale again (meta spec 120)', () => {
+  const input = {
+    lines: [
+      { bookingId: 'b1', productId: 'service-a', title: 'Cut', unitPrice: 15, discount: 2 },
+      { bookingId: null, productId: 'product-a', title: 'Faja', kind: 'product' as const, qty: 2 },
+    ],
+  };
+
+  it('carries the charged price, the discount and a line with no appointment', () => {
+    const handoff = createSellChargeHandoff(IDENTITY, input)!;
+    const parsed = parseSellChargeHandoff(JSON.stringify(handoff), IDENTITY)!;
+    expect(parsed.lines).toEqual([
+      {
+        bookingId: 'b1',
+        productId: 'service-a',
+        title: 'Cut',
+        kind: 'service',
+        qty: 1,
+        unitPrice: 15,
+        discount: 2,
+      },
+      { bookingId: null, productId: 'product-a', title: 'Faja', kind: 'product', qty: 2 },
+    ]);
+  });
+
+  it('stages the charged price over the catalogue price, and the catalogue price when absent', () => {
+    const stage = stageSellChargeHandoff(createSellChargeHandoff(IDENTITY, input)!, SELLABLES);
+    expect(stage.lines.map((l) => [l.unitPrice, l.discount, l.bookingId])).toEqual([
+      [15, 2, 'b1'],
+      ['20', 0, null],
+    ]);
+  });
+
+  it('rejects a negative or non-numeric price', () => {
+    for (const unitPrice of [-1, Number.NaN, '15'])
+      expect(
+        createSellChargeHandoff(IDENTITY, {
+          lines: [{ bookingId: 'b1', productId: 'service-a', title: 'x', unitPrice } as never],
+        }),
+      ).toBeNull();
   });
 });

@@ -22,6 +22,11 @@
   import { presentPosTicketStatus } from '$lib/pos/ticket-status';
   import * as m from '$lib/paraglide/messages';
   import { swapOptions, type SwapCandidate } from '$lib/pos/swap-options';
+  import { goto } from '$lib/navigation';
+  import { page } from '$app/state';
+  import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
+  import VoidRefundChoice, { type RefundChoice } from '$lib/components/pos/VoidRefundChoice.svelte';
+  import { voidRefusalKey } from '$lib/components/scheduling/calendar-context-menu';
 
   type PageData = Granted<LoadedPageData['pos']>;
   let { data }: { data: PageData } = $props();
@@ -154,6 +159,9 @@
     swapChoices = null;
     swapTo = '';
     swapErr = null;
+    offerRering = false;
+    rering = false;
+    refund = 'cash';
     const res = await fetch('/api/pos/sellables');
     if (swapping?.id !== line.id) return; // closed or another line opened meanwhile
     if (!res.ok) {
@@ -164,6 +172,7 @@
     const body = (await res.json()) as { sellables: SwapCandidate[] };
     swapChoices = swapOptions(body.sellables, line);
     swapTo = swapChoices[0]?.productId ?? '';
+    offerRering = swapChoices.length === 0;
   }
   async function saveSwap() {
     if (!swapping?.finProductId || !swapTo || swapBusy) return;
@@ -195,11 +204,71 @@
         return;
       }
       swapErr = SWAP_ERR[body.code ?? '']?.() ?? m.pos_swap_err_generic();
+      offerRering = RERING.has(body.code ?? '');
     } finally {
       swapBusy = false;
     }
   }
   const stockWarning = $derived(t.stockWarning as object | null);
+
+  // ── When a swap is not enough (meta spec 120, S5) ──
+  // The app does the correction with the user: it voids the sale with the
+  // chosen refund and opens the till pre-filled with what the sale charged.
+  const RERING = new Set(['price_differs', 'stock_drift', 'no_stock_entry', 'emitted']);
+  let offerRering = $state(false);
+  let rering = $state(false);
+  let refund = $state<RefundChoice>('cash');
+  // The till can only be pre-filled with treatments and products.
+  const canRering = $derived(data.lines.every((l) => l.kind === 'service' || l.kind === 'product'));
+  async function voidAndRecharge() {
+    swapBusy = true;
+    swapErr = null;
+    try {
+      const res = await fetch(`/api/pos/tickets/${t.id}/void`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refund }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { code?: string; error?: string };
+        const key = voidRefusalKey(res.status, body);
+        swapErr =
+          key === 'forbidden'
+            ? m.pos_appt_cancel_paid_forbidden()
+            : key === 'no_open_shift'
+              ? m.pos_appt_cancel_paid_no_shift()
+              : body.code === 'period_locked'
+                ? m.pos_swap_err_period()
+                : m.pos_rering_err_void();
+        return;
+      }
+      dispatchSellChargeHandoff({
+        storage: () => localStorage,
+        identity: { actorId: page.data.user.id, orgId: page.data.activeOrgId ?? '' },
+        input: {
+          lines: data.lines.map((l) => ({
+            bookingId: l.bookingId ?? null,
+            productId: l.finProductId ?? null,
+            title: l.description,
+            kind: l.kind === 'product' ? ('product' as const) : ('service' as const),
+            qty: Number(l.qty),
+            unitPrice: Number(l.unitPrice),
+            discount: Number(l.discount ?? 0),
+          })),
+          partyId: t.partyId,
+          customerName: t.customerName,
+        },
+        navigate: () => void goto('/pos/sell'),
+        // The sale is already void: say so, and show it.
+        onStorageFailure: () => {
+          swapErr = m.pos_rering_err_storage();
+          void invalidate('pos:ticket');
+        },
+      });
+    } finally {
+      swapBusy = false;
+    }
+  }
 
   const lineColumns: DataColumn<Line>[] = [
     {
@@ -574,7 +643,10 @@
   {#if swapping}
     <div class="tender-form">
       <p class="t-caption">{swapping.description} · {money(swapping.unitPrice)}</p>
-      {#if swapChoices === null}
+      {#if rering}
+        <p class="t-caption">{m.pos_rering_explain()}</p>
+        <VoidRefundChoice bind:value={refund} />
+      {:else if swapChoices === null}
         <Spinner size="sm" />
       {:else if swapChoices.length}
         <Select
@@ -589,16 +661,38 @@
       {#if swapErr}
         <p class="t-caption tender-err" role="alert">{swapErr}</p>
       {/if}
+      {#if offerRering && !rering}
+        {#if !canRering}
+          <p class="t-caption">{m.pos_rering_manual()}</p>
+        {:else if !canAct('pos', 'manage')}
+          <p class="t-caption">{m.pos_appt_cancel_paid_forbidden()}</p>
+        {/if}
+      {/if}
     </div>
   {/if}
   {#snippet footer()}
-    <Button
-      type="button"
-      variant="primary"
-      loading={swapBusy}
-      disabled={swapBusy || !swapTo}
-      onclick={saveSwap}>{m.pos_swap_save()}</Button
-    >
+    {#if rering}
+      <Button type="button" variant="primary" loading={swapBusy} onclick={voidAndRecharge}
+        >{m.pos_rering_action()}</Button
+      >
+    {:else if offerRering && canRering && canAct('pos', 'manage')}
+      <Button
+        type="button"
+        variant="primary"
+        onclick={() => {
+          rering = true;
+          swapErr = null;
+        }}>{m.pos_rering_action()}</Button
+      >
+    {:else}
+      <Button
+        type="button"
+        variant="primary"
+        loading={swapBusy}
+        disabled={swapBusy || !swapTo}
+        onclick={saveSwap}>{m.pos_swap_save()}</Button
+      >
+    {/if}
   {/snippet}
 </Modal>
 
