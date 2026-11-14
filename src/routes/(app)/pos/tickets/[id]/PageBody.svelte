@@ -10,7 +10,7 @@
    */
   import type { PageData as LoadedPageData } from './$types';
   import type { Granted } from '$lib/permissions';
-  import { PageHeader, Button, Badge, Modal, Select, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Badge, Modal, Select, Spinner, iconSizes } from '$lib/components/ui';
   import { invalidate } from '$app/navigation';
   import { canAct } from '$lib/access/can.svelte';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -21,6 +21,7 @@
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { presentPosTicketStatus } from '$lib/pos/ticket-status';
   import * as m from '$lib/paraglide/messages';
+  import { swapOptions, type SwapCandidate } from '$lib/pos/swap-options';
 
   type PageData = Granted<LoadedPageData['pos']>;
   let { data }: { data: PageData } = $props();
@@ -126,6 +127,65 @@
       busy = false;
     }
   }
+
+  // ── Product swap (meta spec 120, S4) ──
+  // A product line can change to another product of the same price; money does
+  // not move. Every refusal says what to do instead.
+  const canSwap = $derived(t.status !== 'void' && !data.periodLocked && canAct('pos', 'edit'));
+  let swapping = $state<Line | null>(null);
+  let swapChoices = $state<SwapCandidate[] | null>(null);
+  let swapTo = $state('');
+  let swapBusy = $state(false);
+  let swapErr = $state<string | null>(null);
+  const SWAP_ERR: Record<string, () => string> = {
+    price_differs: m.pos_swap_err_rering,
+    stock_drift: m.pos_swap_err_rering,
+    no_stock_entry: m.pos_swap_err_rering,
+    emitted: m.pos_swap_err_rering,
+    reconciled: m.pos_swap_err_rering,
+    negative_stock: m.pos_swap_err_no_stock,
+    period_locked: m.pos_swap_err_period,
+    line_changed: m.pos_swap_err_changed,
+  };
+  async function openSwap(line: Line) {
+    swapping = line;
+    swapChoices = null;
+    swapTo = '';
+    swapErr = null;
+    const res = await fetch('/api/pos/sellables');
+    if (swapping?.id !== line.id) return; // closed or another line opened meanwhile
+    if (!res.ok) {
+      swapChoices = [];
+      swapErr = m.pos_swap_err_generic();
+      return;
+    }
+    const body = (await res.json()) as { sellables: SwapCandidate[] };
+    swapChoices = swapOptions(body.sellables, line);
+    swapTo = swapChoices[0]?.productId ?? '';
+  }
+  async function saveSwap() {
+    if (!swapping?.finProductId || !swapTo) return;
+    swapBusy = true;
+    swapErr = null;
+    try {
+      const res = await fetch(`/api/pos/tickets/${t.id}/lines/${swapping.id}/swap`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ productId: swapTo, expectedProductId: swapping.finProductId }),
+      });
+      if (res.ok) {
+        swapping = null;
+        await invalidate('pos:ticket');
+        return;
+      }
+      const body = (await res.json().catch(() => ({}))) as { code?: string };
+      swapErr = SWAP_ERR[body.code ?? '']?.() ?? m.pos_swap_err_generic();
+      if (body.code === 'line_changed') await invalidate('pos:ticket');
+    } finally {
+      swapBusy = false;
+    }
+  }
+  const stockWarning = $derived(t.stockWarning as { code?: string } | null);
 
   const lineColumns: DataColumn<Line>[] = [
     {
@@ -246,7 +306,14 @@
   <PageBody padding="compact" scroll="region" class="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
     <div class="flex flex-col gap-4 min-h-0">
       <section class="card">
-        <header class="card-h"><span>{m.pos_ticket_section_lines()}</span></header>
+        <header class="card-h">
+          <span>{m.pos_ticket_section_lines()}</span>
+          {#if t.stockEntryId}
+            <a class="card-link" href={`/stock/entries/${t.stockEntryId}`}
+              >{m.pos_ticket_stock_link()}</a
+            >
+          {/if}
+        </header>
         <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
           {#snippet cell(row: Line, col: DataColumn<Line>)}
             {#if col.key === 'description'}
@@ -260,7 +327,14 @@
                      shared calendar page kit) and switch this href to it. -->
                 <a class="link" href="/scheduling/bookings">{row.description}</a>
               {:else}
-                {row.description}
+                <span class="pay-method">
+                  <span>{row.description}</span>
+                  {#if canSwap && row.kind === 'product' && row.finProductId}
+                    <Button variant="ghost" size="xs" type="button" onclick={() => openSwap(row)}
+                      >{m.pos_swap_action()}</Button
+                    >
+                  {/if}
+                </span>
               {/if}
             {:else if col.key === 'unitPrice'}
               {money(row.unitPrice)}
@@ -271,6 +345,11 @@
             {/if}
           {/snippet}
         </DataTable>
+        {#if stockWarning}
+          <p class="t-caption stock-warn" role="status">
+            {m.pos_ticket_stock_warning({ code: stockWarning.code ?? '' })}
+          </p>
+        {/if}
       </section>
 
       {#if data.payments.length > 0}
@@ -456,6 +535,45 @@
   {/snippet}
 </Modal>
 
+<Modal
+  open={swapping !== null}
+  onclose={() => (swapping = null)}
+  title={m.pos_swap_title()}
+  size="sm"
+>
+  {#if swapping}
+    <div class="tender-form">
+      <p class="t-caption">{swapping.description} · {money(swapping.unitPrice)}</p>
+      {#if swapChoices === null}
+        <Spinner size="sm" />
+      {:else if swapChoices.length}
+        <label class="field">
+          <span class="lbl">{m.pos_swap_new()}</span>
+          <Select
+            bind:value={swapTo}
+            options={swapChoices.map((s) => ({ value: s.productId, label: s.name }))}
+          />
+        </label>
+        <p class="t-caption">{m.pos_swap_note()}</p>
+      {:else if !swapErr}
+        <p class="t-caption">{m.pos_swap_none()}</p>
+      {/if}
+      {#if swapErr}
+        <p class="t-caption tender-err" role="alert">{swapErr}</p>
+      {/if}
+    </div>
+  {/if}
+  {#snippet footer()}
+    <Button
+      type="button"
+      variant="primary"
+      loading={swapBusy}
+      disabled={swapBusy || !swapTo}
+      onclick={saveSwap}>{m.pos_swap_save()}</Button
+    >
+  {/snippet}
+</Modal>
+
 <style>
   .card {
     border: 1px solid var(--color-border);
@@ -538,6 +656,20 @@
   }
   .tender-err {
     color: var(--color-danger-fg);
+  }
+  .stock-warn {
+    margin-top: var(--space-2);
+    color: var(--color-warning-fg);
+  }
+  .card-link {
+    color: var(--color-accent);
+    text-transform: none;
+    letter-spacing: 0;
+    text-decoration: none;
+  }
+  .card-link:hover,
+  .card-link:focus-visible {
+    text-decoration: underline;
   }
   .link {
     color: inherit;

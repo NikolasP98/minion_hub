@@ -7477,5 +7477,18 @@
   "roles_noAssignmentsChanged": "New roles start without members.",
   "pos_calendar_products": "Products",
   "pos_calendar_gift": "gift",
-  "pos_calendar_products_marker": "Has products"
+  "pos_calendar_products_marker": "Has products",
+  "pos_swap_action": "Change product",
+  "pos_swap_title": "Change product",
+  "pos_swap_new": "New product",
+  "pos_swap_note": "The price does not change. Stock returns the old product and deducts the new one.",
+  "pos_swap_save": "Change",
+  "pos_swap_none": "No other product has the same price. To change to a product with another price, void the sale and charge it again.",
+  "pos_swap_err_rering": "This change cannot be made here. Void the sale and charge it again with the right product.",
+  "pos_swap_err_no_stock": "The new product is out of stock. Record the receipt in Stock and try again.",
+  "pos_swap_err_period": "Accounting closed this period. Ask for it to be reopened to correct this sale.",
+  "pos_swap_err_changed": "The sale changed while you were editing it. Check the item and try again.",
+  "pos_swap_err_generic": "The product could not be changed. Try again.",
+  "pos_ticket_stock_link": "Stock movement",
+  "pos_ticket_stock_warning": "Stock for this sale was not fully recorded ({code}). Check it in Stock."
 }

@@ -7477,5 +7477,18 @@
   "roles_noAssignmentsChanged": "Los nuevos roles comienzan sin miembros.",
   "pos_calendar_products": "Productos",
   "pos_calendar_gift": "regalo",
-  "pos_calendar_products_marker": "Con productos"
+  "pos_calendar_products_marker": "Con productos",
+  "pos_swap_action": "Cambiar producto",
+  "pos_swap_title": "Cambiar producto",
+  "pos_swap_new": "Producto nuevo",
+  "pos_swap_note": "El precio no cambia. El stock devuelve el producto anterior y descuenta el nuevo.",
+  "pos_swap_save": "Cambiar",
+  "pos_swap_none": "No hay otro producto con el mismo precio. Para cambiar a un producto de otro precio, anula la venta y vuelve a cobrarla.",
+  "pos_swap_err_rering": "Este cambio no se puede hacer aquí. Anula la venta y vuelve a cobrarla con el producto correcto.",
+  "pos_swap_err_no_stock": "No hay stock del producto nuevo. Registra el ingreso en Inventario y vuelve a intentar.",
+  "pos_swap_err_period": "Periodo cerrado por contabilidad. Pide que lo reabran para corregir esta venta.",
+  "pos_swap_err_changed": "La venta cambió mientras la editabas. Revisa el ítem y vuelve a intentar.",
+  "pos_swap_err_generic": "No se pudo cambiar el producto. Vuelve a intentar.",
+  "pos_ticket_stock_link": "Movimiento de stock",
+  "pos_ticket_stock_warning": "El stock de esta venta no se registró por completo ({code}). Revísalo en Inventario."
 }
