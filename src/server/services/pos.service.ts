@@ -62,7 +62,7 @@ import {
   type IssueRoot,
   type LineModifier,
 } from './stock.logic';
-import { stkItems, stkConsumption, stkBins } from '$server/db/pg-schema/stock';
+import { stkItems, stkConsumption, stkBins, stkEntries } from '$server/db/pg-schema/stock';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { parties } from '$server/db/pg-party-schema';
 import { finInvoices, finProducts, finProductComponents } from '$server/db/pg-finance-schema';
@@ -1843,12 +1843,15 @@ export async function voidTicket(
   if (refund === 'credit' && !ticket.partyId)
     throw new PosError('ticket has no party to credit', 'no_party');
 
+  // FOR SHARE conflicts with the close's lock, so the refund cannot land on a
+  // shift that closes underneath it. The preflight takes it too, harmlessly.
   const refundShift = (tx: CoreTx) =>
     tx
       .select({ id: posShifts.id })
       .from(posShifts)
       .where(openShiftOf(ctx.tenantId, actor.id))
-      .limit(1);
+      .limit(1)
+      .for('share');
   const noOpenShift = () => new PosError('no open shift for the refund', 'no_open_shift');
   // Preflight only: refusing here keeps the stock cancel below from running
   // for a void that cannot complete. The money transaction re-reads it.
@@ -1879,22 +1882,45 @@ export async function voidTicket(
       .from(posPayments)
       .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.ticketId, id)));
     payments.forEach(checkedPayment);
-    return { ...plan, payments };
+    return plan;
   });
 
   let stockWarning: StockWarning | null = null;
   if (ticket.stockEntryId) {
+    const stockEntryId = ticket.stockEntryId;
     try {
-      await cancelEntry(ctx, ticket.stockEntryId, actor);
+      await cancelEntry(ctx, stockEntryId, actor);
     } catch (e) {
       if (!(e instanceof StockError)) throw e;
-      stockWarning = { code: 'void_stock_failed', message: e.message };
+      // A concurrent void may have cancelled it first: that is the reversal we
+      // wanted, not a failure to warn staff about.
+      const [entry] =
+        e.code === 'not_submitted'
+          ? await withOrgCore(ctx, (tx) =>
+              tx
+                .select({ status: stkEntries.status })
+                .from(stkEntries)
+                .where(and(eq(stkEntries.id, stockEntryId), eq(stkEntries.orgId, ctx.tenantId))),
+            )
+          : [];
+      if (entry?.status !== 'cancelled')
+        stockWarning = { code: 'void_stock_failed', message: e.message };
     }
   }
 
   const reason = `void of ${ticket.humanId}`;
   const refundClient = { partyId: ticket.partyId, crmContactId: ticket.crmContactId };
   const [row] = await withOrgCore(ctx, async (tx) => {
+    // Lock order: ticket FOR UPDATE → refund shift FOR SHARE → identity → wallets.
+    await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+    // The decisive "already void" check: a concurrent void waits here and then
+    // sees the winner's committed status, before writing anything.
+    const [locked] = await tx
+      .select({ status: posTickets.status })
+      .from(posTickets)
+      .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
+      .for('update');
+    if (locked?.status !== 'submitted') throw new PosError('ticket already void', 'already_void');
     const [shift] = refund === 'cash' ? await refundShift(tx) : [];
     if (refund === 'cash' && !shift) throw noOpenShift();
     // A contact-only historical row follows the current active bridge for
@@ -1905,6 +1931,12 @@ export async function voidTicket(
       .select()
       .from(posClientLedger)
       .where(and(eq(posClientLedger.orgId, ctx.tenantId), eq(posClientLedger.ticketId, id)));
+    // Refund what is stored now, under the ticket lock — not the preflight read.
+    const payments = await tx
+      .select()
+      .from(posPayments)
+      .where(and(eq(posPayments.orgId, ctx.tenantId), eq(posPayments.ticketId, id)));
+    payments.forEach(checkedPayment);
     const walletLocks = new Map<string, { clientKey: string; currency: string }>();
     for (const entry of ledgerRows) {
       checkedLedger(entry);
@@ -1964,7 +1996,7 @@ export async function voidTicket(
     }
     // The ledger is append-only, so unwinding stored value is an opposing row,
     // never an edit. `metadata.voidOf` keeps it idempotent if this ever runs
-    // twice (it cannot today — `already_void` guards the entry).
+    // twice (it cannot: the locked `already_void` re-check above guards it).
     for (const entry of ledgerRows) {
       if ((entry.metadata as Record<string, unknown> | null)?.voidOf) continue;
       checkedLedger(entry);
@@ -1990,11 +2022,11 @@ export async function voidTicket(
     }
     // The refund (I4). `metadata.voidOf === id` marks both forms as already
     // written, so a re-run never refunds twice.
-    const original = reversal.payments.filter(
+    const original = payments.filter(
       (p) => !(p.metadata as Record<string, unknown> | null)?.voidOf,
     );
     const refunded =
-      original.length !== reversal.payments.length ||
+      original.length !== payments.length ||
       ledgerRows.some((e) => (e.metadata as Record<string, unknown> | null)?.voidOf === id);
     if (refund === 'cash' && !refunded) {
       const byMethod = new Map<string, bigint>();
@@ -2031,7 +2063,7 @@ export async function voidTicket(
           { preservePersistedIdentity: true, walletAlreadyLocked: true },
         );
     }
-    return tx
+    const updated = await tx
       .update(posTickets)
       .set({
         status: 'void',
@@ -2039,8 +2071,16 @@ export async function voidTicket(
         voidedBy: actor.id,
         ...(stockWarning ? { stockWarning } : {}),
       })
-      .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(posTickets.id, id),
+          eq(posTickets.orgId, ctx.tenantId),
+          eq(posTickets.status, 'submitted'),
+        ),
+      )
       .returning();
+    if (!updated.length) throw new PosError('ticket already void', 'already_void');
+    return updated;
   });
   // TODO(handoff): voiding an instalment ticket un-pays its plan (paid-to-date
   // is derived over non-void tickets) but does NOT flip a `settled` plan back

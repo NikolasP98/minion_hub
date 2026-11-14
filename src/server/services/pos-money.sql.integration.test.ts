@@ -455,6 +455,19 @@ async function waitForAdvisoryWaiters(count: number) {
   throw new Error(`Expected ${count} actual PostgreSQL advisory-lock waiters`);
 }
 
+/** Row-lock sibling of `waitForAdvisoryWaiters`: the first waiter on a locked
+ *  row waits on the holder's transactionid, later ones on the tuple. */
+async function waitForRowLockWaiters(count: number) {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const rows =
+      await harness.owner`SELECT count(*) AS n FROM pg_locks WHERE locktype IN ('tuple','transactionid') AND NOT granted`;
+    if (Number(rows[0].n) >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`Expected ${count} actual PostgreSQL row-lock waiters`);
+}
+
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {
@@ -478,6 +491,79 @@ async function seedContactOnlyTicket(amount = '-30.00') {
   ) VALUES (${ORG},${client.crmContactId},'redemption',${amount},'PEN',${ticketId},${ACTOR})`;
   return { shiftId, ticketId };
 }
+
+/** A 30.00 PEN cash sale to the fixture client, paid on the actor's open shift. */
+async function seedCashTicket() {
+  const shiftId = crypto.randomUUID();
+  const ticketId = crypto.randomUUID();
+  await owner`INSERT INTO pos_shifts (id,org_id,status,opened_by) VALUES (${shiftId},${ORG},'open',${ACTOR})`;
+  await owner`INSERT INTO pos_tickets (
+    id,org_id,human_id,shift_id,party_id,crm_contact_id,status,subtotal,total,currency,created_by
+  ) VALUES (
+    ${ticketId},${ORG},${`T-${ticketId.slice(0, 8)}`},${shiftId},${client.partyId},
+    ${client.crmContactId},'submitted',30,30,'PEN',${ACTOR}
+  )`;
+  await owner`INSERT INTO pos_payments (org_id,ticket_id,shift_id,method,amount)
+    VALUES (${ORG},${ticketId},${shiftId},'cash','30.00')`;
+  return { shiftId, ticketId };
+}
+
+/** Two voids queued behind a held ticket row lock, released together. */
+async function raceTwoVoids(ticketId: string, refund: 'cash' | 'credit') {
+  const holderReady = deferred();
+  const releaseHolder = deferred();
+  const holder = owner.begin(async (tx) => {
+    await tx`SELECT id FROM pos_tickets WHERE id=${ticketId} FOR UPDATE`;
+    holderReady.resolve();
+    await releaseHolder.promise;
+  });
+  await holderReady.promise;
+  const voids = [0, 1].map(() =>
+    voidTicket(independentCtx(), ticketId, { id: ACTOR, name: 'Fixture actor' }, { refund }),
+  );
+  try {
+    await waitForRowLockWaiters(2);
+    releaseHolder.resolve();
+    await holder;
+    return await Promise.allSettled(voids);
+  } finally {
+    releaseHolder.resolve();
+    await Promise.allSettled([holder, ...voids]);
+  }
+}
+
+function expectOneVoidWins(results: PromiseSettledResult<unknown>[]) {
+  expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  const rejected = results.filter((r) => r.status === 'rejected');
+  expect(rejected).toHaveLength(1);
+  expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: 'already_void' });
+}
+
+describe('native void concurrency', () => {
+  it('refunds a cash ticket once when two voids race on the ticket row', async () => {
+    const { ticketId } = await seedCashTicket();
+    expectOneVoidWins(await raceTwoVoids(ticketId, 'cash'));
+    expect(
+      await owner`SELECT method, amount::text AS amount FROM pos_payments
+        WHERE ticket_id=${ticketId} AND metadata->>'voidOf'=${ticketId}`,
+    ).toEqual([{ method: 'cash', amount: '-30.00' }]);
+    expect(await owner`SELECT status FROM pos_tickets WHERE id=${ticketId}`).toEqual([
+      { status: 'void' },
+    ]);
+  });
+
+  it('moves the client balance once when two credit-refund voids race on the ticket row', async () => {
+    const { ticketId } = await seedCashTicket();
+    expectOneVoidWins(await raceTwoVoids(ticketId, 'credit'));
+    expect(
+      await owner`SELECT kind, amount::text AS amount FROM pos_client_ledger
+        WHERE ticket_id=${ticketId} AND metadata->>'voidOf'=${ticketId}`,
+    ).toEqual([{ kind: 'refund', amount: '30.00' }]);
+    expect(
+      await owner`SELECT count(*)::int AS n FROM pos_payments WHERE ticket_id=${ticketId}`,
+    ).toEqual([{ n: 1 }]);
+  });
+});
 
 describe('native wallet migration authority', () => {
   it('keeps the application ledger append-only under forced RLS and exposes only the versioned lock helper', async () => {
