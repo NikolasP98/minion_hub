@@ -8,7 +8,7 @@ import {
   schedEventTypes,
   schedResources,
 } from '$server/db/pg-scheduling-schema';
-import { posPackageRedemptions } from '$server/db/pg-pos-schema';
+import { posPackageRedemptions, posTicketLines, posTickets } from '$server/db/pg-pos-schema';
 import { finInvoices } from '$server/db/pg-finance-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 
@@ -50,6 +50,8 @@ beforeAll(async () => {
     schedResources,
     finInvoices,
     posPackageRedemptions,
+    posTickets,
+    posTicketLines,
   ]) {
     const config = getTableConfig(table);
     await client.exec(
@@ -63,7 +65,7 @@ beforeEach(async () => {
   effects.audit.mockResolvedValue(undefined);
   effects.release.mockResolvedValue(0);
   await client.exec(
-    'TRUNCATE sched_bookings, sched_booking_status_log, sched_resources, sched_event_types, fin_invoices, pos_package_redemptions',
+    'TRUNCATE sched_bookings, sched_booking_status_log, sched_resources, sched_event_types, fin_invoices, pos_package_redemptions, pos_tickets, pos_ticket_lines',
   );
   await client.query(
     'INSERT INTO sched_bookings (id,org_id,uid,event_type_id,resource_id,start_time,end_time,status,title,metadata) VALUES ($1::uuid,$2,($1::uuid)::text,$3,$4,$5,$6,$7,$8,$9)',
@@ -151,5 +153,38 @@ describe('atomic booking changes', () => {
     });
     expect(result.status).toBe('cancelled');
     expect(effects.release).toHaveBeenCalledOnce();
+  });
+  // Spec 116 slice 5 (FR-009, FR-011, FR-012) on real SQL.
+  it('a cancel frees the paid service line of a live ticket only; product and void-ticket lines keep the link', async () => {
+    const live = '50000000-0000-4000-8000-000000000001';
+    const dead = '50000000-0000-4000-8000-000000000002';
+    await client.query(
+      `INSERT INTO pos_tickets (id,org_id,status) VALUES ($1,$3,'submitted'),($2,$3,'void')`,
+      [live, dead, ctx.tenantId],
+    );
+    await client.query(
+      `INSERT INTO pos_ticket_lines (id,org_id,ticket_id,kind,booking_id) VALUES
+        ('60000000-0000-4000-8000-000000000001',$1,$2,'service',$4),
+        ('60000000-0000-4000-8000-000000000002',$1,$2,'product',$4),
+        ('60000000-0000-4000-8000-000000000003',$1,$3,'service',$4)`,
+      [ctx.tenantId, live, dead, id],
+    );
+    await patchBooking(ctx, id, { status: 'cancelled' });
+    const lines = await client.query<{ id: string; booking_id: string | null }>(
+      'SELECT id::text, booking_id::text FROM pos_ticket_lines ORDER BY id',
+    );
+    expect(lines.rows.map((l) => l.booking_id)).toEqual([null, id, id]);
+  });
+  it('a closed booking refuses any other status: nothing written, no log row', async () => {
+    await patchBooking(ctx, id, { status: 'no_show' });
+    const before = await row();
+    await expect(patchBooking(ctx, id, { status: 'accepted', title: 'New' })).rejects.toMatchObject(
+      {
+        code: 'invalid_transition',
+      },
+    );
+    expect(await row()).toEqual(before);
+    const log = await client.query('SELECT to_status FROM sched_booking_status_log');
+    expect(log.rows).toEqual([{ to_status: 'no_show' }]);
   });
 });

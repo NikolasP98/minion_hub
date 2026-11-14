@@ -13,6 +13,7 @@ import {
   getBookingDetail,
   SlotUnavailableError,
   BookingConflictError,
+  BookingTransitionError,
   groupBookingWith,
   ungroupBooking,
   moveGroup,
@@ -414,6 +415,8 @@ function statusFailureResponse(e: unknown, prefix = '', extra?: Record<string, u
       { error: 'conflict', message: prefix + e.message, conflicts: e.conflicts, ...extra },
       { status: 409 },
     );
+  if (e instanceof BookingTransitionError)
+    return json({ error: e.code, message: prefix + e.message, ...extra }, { status: 409 });
   throw error(400, prefix + (e instanceof Error ? e.message : 'invalid'));
 }
 

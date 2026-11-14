@@ -5,7 +5,11 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
-import { getBooking, setBookingStatus } from '$server/services/scheduling-bookings.service';
+import {
+  BookingTransitionError,
+  getBooking,
+  setBookingStatus,
+} from '$server/services/scheduling-bookings.service';
 import { realizeAccruals } from '$server/services/stock-accruals.service';
 
 const postSchema = z.object({
@@ -38,9 +42,15 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
 
   const booking = await getBooking(ctx, params.id!);
   if (!booking) throw error(404, 'booking not found');
-  if (['cancelled', 'rejected'].includes(booking.status)) throw error(400, `booking is ${booking.status}`);
-
-  if (booking.status !== 'completed') await setBookingStatus(ctx, params.id!, 'completed');
+  // The status owner refuses completing a closed booking (spec 116 FR-009);
+  // completing a completed one stays idempotent.
+  try {
+    if (booking.status !== 'completed') await setBookingStatus(ctx, params.id!, 'completed');
+  } catch (e) {
+    if (e instanceof BookingTransitionError)
+      return json({ error: e.code, message: e.message }, { status: 409 });
+    throw e;
+  }
 
   try {
     const r = await realizeAccruals(ctx, {

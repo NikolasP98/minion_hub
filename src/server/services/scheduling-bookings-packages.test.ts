@@ -244,18 +244,22 @@ describe('cancelBooking — series scope', () => {
   it("scope 'following' cancels this occurrence and only STRICTLY LATER indexes", async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [{ id: 'b-2', seriesId: 's-1', seriesIndex: 1 }], // the target occurrence
+      [{ id: 'b-2', seriesId: 's-1', seriesIndex: 1, status: 'accepted' }], // the target occurrence
       [{ id: 'b-3' }, { id: 'b-4' }], // later, still-live occurrences
-      // three setBookingStatus round-trips (b-2, b-3, b-4)
+      // three setBookingStatus round-trips (b-2, b-3, b-4): lock + read,
+      // update, log, redemptions, paid-line release
       [{ status: 'accepted' }],
       [],
       [],
       [],
-      [{ status: 'accepted' }],
-      [],
-      [],
       [],
       [{ status: 'accepted' }],
+      [],
+      [],
+      [],
+      [],
+      [{ status: 'accepted' }],
+      [],
       [],
       [],
       [],
@@ -273,7 +277,7 @@ describe('cancelBooking — series scope', () => {
   it("scope 'one' touches only the booking itself", async () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
-      [{ id: 'b-2', seriesId: 's-1', seriesIndex: 1 }],
+      [{ id: 'b-2', seriesId: 's-1', seriesIndex: 1, status: 'accepted' }],
       [{ status: 'accepted' }],
       [],
       [],

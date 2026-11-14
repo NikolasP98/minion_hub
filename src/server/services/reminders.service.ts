@@ -29,7 +29,7 @@ async function getReminderConfig(ctx: CoreCtx) {
 }
 import { composeReminder, inferConfirmationReply } from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
-import { setBookingStatus } from './scheduling-bookings.service';
+import { BookingTransitionError, setBookingStatus } from './scheduling-bookings.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 import { insertMessages } from './messages.service';
 
@@ -381,7 +381,15 @@ export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<
     }
     if (!verdict) continue;
 
-    await setBookingStatus(ctx, b.id, verdict === 'yes' ? 'accepted' : 'cancelled');
+    try {
+      await setBookingStatus(ctx, b.id, verdict === 'yes' ? 'accepted' : 'cancelled');
+    } catch (e) {
+      // Closed after the scan selected it (staff acted while we read replies):
+      // the closed status stands, so nothing is counted or logged on the contact.
+      if (!(e instanceof BookingTransitionError)) throw e;
+      console.warn('[reminders] reply ignored, booking already closed', b.id, e.message);
+      continue;
+    }
     if (verdict === 'yes') result.confirmed += 1;
     else result.declined += 1;
 

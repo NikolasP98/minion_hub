@@ -486,8 +486,11 @@
       if (!res.ok) {
         // A member the server refused (409 conflict / 400) carries its own
         // message — a bare "409" would tell the user nothing.
-        const j = (await res.json().catch(() => ({}))) as { message?: string };
-        err = j.message ?? String(res.status);
+        const j = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+        err =
+          j.error === 'invalid_transition'
+            ? m.sched_status_final()
+            : (j.message ?? String(res.status));
         return;
       }
       const j = await res.json();

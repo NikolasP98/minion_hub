@@ -129,17 +129,23 @@ export function createBookingMover(config: BookingMoverConfig): BookingMover {
     url: string,
     init: RequestInit,
   ): Promise<void> {
-    let needsConfirmation = false;
+    let refusal: string | undefined;
     const ok = await statusOverlay.run(id, status, async () => {
       const res = await fetch(url, init);
       if (res.status === 409) {
         const j = (await res.json().catch(() => ({}))) as { error?: string };
-        needsConfirmation = j.error === 'consumption_confirmation_required';
+        refusal = j.error;
       }
       return res.ok;
     });
     if (!ok)
-      toastError(needsConfirmation ? m.sched_status_needs_consumption() : m.sched_status_failed());
+      toastError(
+        refusal === 'consumption_confirmation_required'
+          ? m.sched_status_needs_consumption()
+          : refusal === 'invalid_transition'
+            ? m.sched_status_final()
+            : m.sched_status_failed(),
+      );
     await config.refresh();
   }
 

@@ -3,7 +3,11 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
 import { requireAssistantCapability, agentActor } from '../../_shared/action-auth';
-import { getBooking, setBookingStatus } from '$server/services/scheduling-bookings.service';
+import {
+	BookingTransitionError,
+	getBooking,
+	setBookingStatus,
+} from '$server/services/scheduling-bookings.service';
 import { listAccruals, realizeAccruals } from '$server/services/stock-accruals.service';
 
 const bodySchema = z.object({
@@ -52,8 +56,13 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
 		});
 	}
 
-	if (['cancelled', 'rejected'].includes(booking.status)) throw error(400, `booking is ${booking.status}`);
-	if (booking.status !== 'completed') await setBookingStatus(ctx, b.bookingId, 'completed');
+	try {
+		if (booking.status !== 'completed') await setBookingStatus(ctx, b.bookingId, 'completed');
+	} catch (e) {
+		if (e instanceof BookingTransitionError)
+			return json({ error: e.code, message: e.message }, { status: 409 });
+		throw e;
+	}
 	const actor = await agentActor(principalId);
 	try {
 		const r = await realizeAccruals(ctx, {

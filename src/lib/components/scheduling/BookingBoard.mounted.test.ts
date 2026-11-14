@@ -18,7 +18,14 @@ import {
   RESOURCES,
 } from '../../../../tests/fixtures/mobile-composition/seed';
 
+const toast = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock('$lib/state/ui/toast.svelte', async (orig) => ({
+  ...(await orig<object>()),
+  toastError: (...a: unknown[]) => toast.error(...a),
+}));
+
 afterEach(() => {
+  toast.error.mockClear();
   cleanup();
   vi.restoreAllMocks();
 });
@@ -147,6 +154,29 @@ describe('BookingBoard "Move to…" keyboard path (HC-015)', () => {
     expect(document.activeElement).toBe(trigger);
     expect(onstatus).not.toHaveBeenCalled();
     expect(live(view).textContent).toBe('');
+  });
+
+  it('spec 116: a closed card does not move to another status — no write, the refusal is said', async () => {
+    const { view, onstatus } = mount({
+      bookings: EVENTS.slice(0, 2).map((b) =>
+        b.id === SUBJECT.id ? { ...b, status: 'cancelled' } : b,
+      ),
+    });
+    const trigger = subjectWrap(view).querySelector<HTMLElement>(
+      '[data-scope="menu"][data-part="trigger"]',
+    )!;
+    trigger.focus();
+    await openAndWalkTo(trigger, 'Confirmed');
+    await fireEvent.keyDown(menuEl()!, { key: 'Enter' });
+    await settle();
+    await settle();
+
+    expect(onstatus).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(
+      'A closed appointment cannot be reopened. Create a new one.',
+    );
+    expect(live(view).textContent).toBe(`Could not move ${SUBJECT.attendeeName}`);
+    expect(columnOf(subjectWrap(view))).toBe('Cancelled');
   });
 
   it('HC-015B: a refused custom-column write announces the failure (one apply, no second write)', async () => {

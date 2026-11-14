@@ -20,11 +20,25 @@ vi.mock('$server/supabase', () => ({
 
 const mockCreateBooking = vi.fn();
 const mockPreviewAssistantBooking = vi.fn();
+const mockGetBooking = vi.fn();
+const mockSetBookingStatus = vi.fn();
+const mockRealizeAccruals = vi.fn();
+const { FakeBookingTransitionError } = vi.hoisted(() => ({
+  FakeBookingTransitionError: class extends Error {
+    readonly code = 'invalid_transition';
+  },
+}));
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   createBooking: (...args: unknown[]) => mockCreateBooking(...args),
   previewAssistantBooking: (...args: unknown[]) => mockPreviewAssistantBooking(...args),
-  setBookingStatus: vi.fn(),
+  getBooking: (...args: unknown[]) => mockGetBooking(...args),
+  setBookingStatus: (...args: unknown[]) => mockSetBookingStatus(...args),
   SlotUnavailableError: class SlotUnavailableError extends Error {},
+  BookingTransitionError: FakeBookingTransitionError,
+}));
+vi.mock('$server/services/stock-accruals.service', () => ({
+  listAccruals: vi.fn(),
+  realizeAccruals: (...args: unknown[]) => mockRealizeAccruals(...args),
 }));
 
 const mockUpdateIssue = vi.fn();
@@ -73,6 +87,7 @@ vi.mock('$server/services/builder.service', () => ({
 }));
 
 import { POST as bookingCreatePOST } from './booking-create/+server';
+import { POST as bookingCompletePOST } from './booking-complete/+server';
 import { POST as ticketUpdatePOST } from './ticket-update/+server';
 import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
 import { POST as stockIssueFromInvoicePOST } from './stock-issue-from-invoice/+server';
@@ -159,6 +174,44 @@ describe('POST /api/gateway/actions/booking-create', () => {
       }),
     );
     expect(mockCreateBooking).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/gateway/actions/booking-complete', () => {
+  const booking = { id: 'b1', title: 'Botox', status: 'no_show', productId: null, partyId: null };
+  beforeEach(() =>
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps({ 'scheduling.edit': true }),
+    }),
+  );
+
+  it('a closed booking answers 409 invalid_transition and realizes no stock', async () => {
+    mockGetBooking.mockResolvedValue(booking);
+    mockSetBookingStatus.mockRejectedValue(
+      new FakeBookingTransitionError('booking is no_show; it cannot become completed'),
+    );
+    const res = await bookingCompletePOST(
+      makeEvent('/api/gateway/actions/booking-complete', { confirm: true, bookingId: 'b1' }),
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: 'invalid_transition',
+      message: 'booking is no_show; it cannot become completed',
+    });
+    expect(mockRealizeAccruals).not.toHaveBeenCalled();
+  });
+
+  it('an already-completed booking stays idempotent: no status write, the realize retries', async () => {
+    mockGetBooking.mockResolvedValue({ ...booking, status: 'completed' });
+    mockRealizeAccruals.mockResolvedValue({ entry: null, realized: 0, stockWarning: null });
+    const res = await bookingCompletePOST(
+      makeEvent('/api/gateway/actions/booking-complete', { confirm: true, bookingId: 'b1' }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSetBookingStatus).not.toHaveBeenCalled();
+    expect(mockRealizeAccruals).toHaveBeenCalledTimes(1);
   });
 });
 
