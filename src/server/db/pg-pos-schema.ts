@@ -256,6 +256,10 @@ export const posEmissions = pgTable(
       t.correlativo,
     ),
     orgTicketIdx: index('pos_emissions_org_ticket_idx').on(t.orgId, t.ticketId),
+    // One live (non-error) document per ticket; see triggerShadowEmission.
+    orgTicketLiveUniq: uniqueIndex('pos_emissions_org_ticket_live_uniq')
+      .on(t.orgId, t.ticketId)
+      .where(sql`status <> 'error'`),
   }),
 );
 export type PosEmission = typeof posEmissions.$inferSelect;

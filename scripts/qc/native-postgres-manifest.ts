@@ -273,6 +273,15 @@ export const NATIVE_POSTGRES_MANIFEST = {
       ],
     },
     {
+      file: 'src/server/services/pos-emission.sql.integration.test.ts',
+      minimumAssertions: 3,
+      requiredBehaviors: [
+        'native POS one live emission per ticket two concurrent triggers leave one live row and consume one document number',
+        'native POS one live emission per ticket a ticket whose only emission is error gets a new row on retry',
+        'native POS one live emission per ticket a late provider result on a row the sweep already failed changes nothing',
+      ],
+    },
+    {
       file: 'src/server/services/pos-money.sql.integration.test.ts',
       minimumAssertions: 27,
       requiredBehaviors: [

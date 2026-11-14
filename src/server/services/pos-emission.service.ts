@@ -330,6 +330,8 @@ export async function triggerShadowEmission(
     });
     fireAndForget(runBetaEmission(ctx, emissionId, invoice, docRequired));
   } catch (e) {
+    // Another trigger already holds this ticket's live document; its number rolled back.
+    if (isLivePerTicketViolation(e)) return;
     // no_serie / no_emitter / a transient DB error — log and move on, this must
     // never surface to the cashier (spec §4: shadow is invisible). Verified for
     // ⚠️ A2 of the igv-rate spec: a misconfigured rate cannot reach the
@@ -340,6 +342,21 @@ export async function triggerShadowEmission(
     // serie is exactly what is missing.
     console.error('[pos-emission] shadow emission trigger failed', ticket.id, e);
   }
+}
+
+/** The live-per-ticket index fired. Drizzle wraps the driver error, so walk `.cause`. */
+function isLivePerTicketViolation(error: unknown): boolean {
+  let current = error;
+  for (let depth = 0; depth <= 4 && current && typeof current === 'object'; depth++) {
+    const candidate = current as { code?: unknown; constraint_name?: unknown; cause?: unknown };
+    if (
+      candidate.code === '23505' &&
+      candidate.constraint_name === 'pos_emissions_org_ticket_live_uniq'
+    )
+      return true;
+    current = candidate.cause;
+  }
+  return false;
 }
 
 /**
