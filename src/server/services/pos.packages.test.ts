@@ -473,7 +473,9 @@ describe('voidTicket — undoing a package sale', () => {
       [], // ledger preflight
       [], // ticket line preflight
       [], // payment preflight
+      [{ status: 'submitted' }], // ticket row FOR UPDATE (money tx)
       [{ id: 'shift-1' }], // the refund shift, re-read inside the money tx
+      [], // payments re-read inside the money tx
       [], // clear the ticket stamp
       [], // cancel grants update
       [], // client-ledger rows to reverse
@@ -502,7 +504,9 @@ describe('voidTicket — undoing a package sale', () => {
       [], // ledger preflight
       [], // ticket line preflight
       [], // payment preflight
+      [{ status: 'submitted' }], // ticket row FOR UPDATE (money tx)
       [{ id: 'shift-1' }], // refund shift (in tx)
+      [], // payments re-read inside the money tx
       [], // clear the ticket stamp
       [], // client-ledger rows
       [ticketRow({ id: 't8', status: 'void' })],
@@ -543,6 +547,7 @@ describe('voidTicket — undoing a package sale', () => {
       [{ amount: '-50', currency: 'PEN' }], // ledger preflight
       [], // line preflight
       [], // payment preflight
+      [{ status: 'submitted' }], // ticket row FOR UPDATE (money tx)
       [{ id: 'shift-1' }], // refund shift (in tx)
       [
         {
@@ -556,6 +561,7 @@ describe('voidTicket — undoing a package sale', () => {
           metadata: {},
         },
       ],
+      [], // payments re-read inside the money tx
       [{ id: 'ledger-2' }], // the opposing row
       [ticketRow({ id: 't7', status: 'void' })],
     ]);
@@ -591,7 +597,7 @@ describe('voidTicket — the refund', () => {
     { method: 'cash', amount: '10.00', tendered: null, metadata: {} },
     { method: 'card', amount: '30.00', tendered: null, metadata: {} },
   ];
-  /** loadTicketRow → period lock (none) → open-shift preflight (cash only) → reversal plan → refund shift (cash only) → ledger rows → update. */
+  /** loadTicketRow → period lock (none) → open-shift preflight (cash only) → reversal plan → ticket lock → refund shift (cash only) → ledger rows → payments → update. */
   const sequence = (ticket: Record<string, unknown>, shift: { id: string } | null, cash = true) => [
     [ticketRow(ticket)],
     [], // no accounting lock on the ticket's month (spec 2026-10-15 T4)
@@ -601,8 +607,10 @@ describe('voidTicket — the refund', () => {
     [], // ledger preflight
     [], // line preflight
     payments,
+    [{ status: 'submitted' }], // ticket row FOR UPDATE (money tx)
     ...(cash ? [shift ? [shift] : []] : []),
     [], // client-ledger rows to reverse
+    payments, // re-read inside the money tx
     [ticketRow({ ...ticket, status: 'void' })],
   ];
 

@@ -377,11 +377,14 @@ export async function getPlan(ctx: CoreCtx, id: string): Promise<PlanDetail | nu
 
 export async function cancelPlan(ctx: CoreCtx, id: string, actor?: Actor): Promise<PosPaymentPlan> {
   const [row] = await withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+    // Locked so a concurrent settle or void-reopen decides first, then we re-check.
     const [plan] = await tx
       .select()
       .from(posPaymentPlans)
       .where(and(eq(posPaymentPlans.id, id), eq(posPaymentPlans.orgId, ctx.tenantId)))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!plan) throw new PosError('plan not found', 'not_found');
     checkedPlan(plan);
     if (plan.status === 'settled') throw new PosError('plan is settled', 'plan_settled');
@@ -394,7 +397,13 @@ export async function cancelPlan(ctx: CoreCtx, id: string, actor?: Actor): Promi
     return tx
       .update(posPaymentPlans)
       .set({ status: 'cancelled', cancelledAt: new Date(), cancelledBy: actor?.id ?? null })
-      .where(and(eq(posPaymentPlans.id, id), eq(posPaymentPlans.orgId, ctx.tenantId)))
+      .where(
+        and(
+          eq(posPaymentPlans.id, id),
+          eq(posPaymentPlans.orgId, ctx.tenantId),
+          eq(posPaymentPlans.status, 'open'),
+        ),
+      )
       .returning();
   });
   return checkedPlan(row);
@@ -407,11 +416,15 @@ export async function cancelPlan(ctx: CoreCtx, id: string, actor?: Actor): Promi
  */
 export async function settlePlanIfPaid(ctx: CoreCtx, id: string): Promise<PlanDetail> {
   return withOrgCore(ctx, async (tx) => {
+    await tx.execute(sql`SET LOCAL lock_timeout = '5s'`);
+    // Locked BEFORE reading the lines: a void un-paying an instalment must
+    // either finish first (we see it) or queue behind us (it reopens).
     const [plan] = await tx
       .select()
       .from(posPaymentPlans)
       .where(and(eq(posPaymentPlans.id, id), eq(posPaymentPlans.orgId, ctx.tenantId)))
-      .limit(1);
+      .limit(1)
+      .for('update');
     if (!plan) throw new PosError('plan not found', 'not_found');
     const lines = await paidLinesInTx(tx, ctx.tenantId, id);
     const detail = planDetail(plan, lines);
@@ -430,6 +443,38 @@ export async function settlePlanIfPaid(ctx: CoreCtx, id: string): Promise<PlanDe
       .returning();
     return { ...detail, plan: checkedPlan(settled ?? plan) };
   });
+}
+
+/**
+ * The inverse of `settlePlanIfPaid`, for a void: reopen each `settled` plan
+ * whose non-void lines no longer cover its total. Runs inside the void's
+ * transaction (after its status update), so `paidLinesInTx` already excludes
+ * the voided ticket. Plan rows are locked in id order.
+ */
+export async function reopenPlansIfUnpaidInTx(
+  tx: CoreTx,
+  orgId: string,
+  planIds: string[],
+): Promise<void> {
+  for (const id of [...new Set(planIds)].sort()) {
+    const [plan] = await tx
+      .select()
+      .from(posPaymentPlans)
+      .where(and(eq(posPaymentPlans.id, id), eq(posPaymentPlans.orgId, orgId)))
+      .for('update');
+    if (plan?.status !== 'settled') continue;
+    if (planDetail(plan, await paidLinesInTx(tx, orgId, id)).isPaid) continue;
+    await tx
+      .update(posPaymentPlans)
+      .set({ status: 'open', settledAt: null })
+      .where(
+        and(
+          eq(posPaymentPlans.id, id),
+          eq(posPaymentPlans.orgId, orgId),
+          eq(posPaymentPlans.status, 'settled'),
+        ),
+      );
+  }
 }
 
 /** A paid service line that still owes an appointment (same rule as

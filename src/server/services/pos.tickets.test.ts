@@ -1073,8 +1073,10 @@ describe('voidTicket', () => {
       [], // ledger money preflight before stock cancellation
       [], // ticket line preflight
       [], // payment preflight
+      [{ status: 'submitted' }], // ticket row FOR UPDATE (money tx)
       [{ id: 'shift-1' }], // the refund shift, re-read inside the money tx
       [], // client-ledger rows to reverse
+      [], // payments re-read inside the money tx
       [ticketRow({ id: 't1', status: 'void', stockEntryId: 'entry-1' })], // update returning
     ]);
     cancelEntryMock.mockResolvedValue({ id: 'entry-1' });
@@ -1147,7 +1149,82 @@ describe('voidTicket', () => {
     resolveSequence([[ticketRow({ id: 't4', status: 'void' })]]);
     await expect(voidTicket(ctx(db), 't4', actor)).rejects.toMatchObject({ code: 'already_void' });
   });
+
+  it('throws already_void when the locked ticket row is already void (lost the race)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 't1' })], // loadTicketRow: still submitted before the tx
+      [], // no accounting lock
+      [{ id: 'shift-1' }], // refund shift preflight
+      [],
+      [],
+      [],
+      [],
+      [], // reversal preflight: redemptions, grants, ledger, lines, payments
+      [{ status: 'void' }], // ticket row FOR UPDATE: the other void committed first
+    ]);
+    await expect(voidTicket(ctx(db), 't1', actor)).rejects.toMatchObject({ code: 'already_void' });
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { entryStatus: 'cancelled', warned: false },
+    { entryStatus: 'draft', warned: true },
+  ])(
+    'a not_submitted stock cancel on a $entryStatus entry stores a warning: $warned',
+    async ({ entryStatus, warned }) => {
+      const { db, resolveSequence } = createMockDb();
+      const sets = captureUpdateSets(db);
+      resolveSequence([
+        [ticketRow({ id: 't1', stockEntryId: 'entry-1' })], // loadTicketRow
+        [], // no accounting lock
+        [{ id: 'shift-1' }], // refund shift preflight
+        [],
+        [],
+        [],
+        [],
+        [], // reversal preflight: redemptions, grants, ledger, lines, payments
+        [{ status: entryStatus }], // stock entry re-read after not_submitted
+        [{ status: 'submitted' }], // ticket row FOR UPDATE
+        [{ id: 'shift-1' }], // refund shift FOR SHARE
+        [], // client-ledger rows to reverse
+        [], // payments re-read inside the money tx
+        [ticketRow({ id: 't1', status: 'void', stockEntryId: 'entry-1' })], // update returning
+      ]);
+      cancelEntryMock.mockRejectedValue(
+        new MockStockError(`entry is ${entryStatus}, not submitted`, 'not_submitted'),
+      );
+      await voidTicket(ctx(db), 't1', actor);
+      const voidSet = sets.find((s) => s.status === 'void');
+      expect(voidSet).toBeDefined();
+      if (warned) expect(voidSet).toHaveProperty('stockWarning.code', 'void_stock_failed');
+      else expect(voidSet).not.toHaveProperty('stockWarning');
+    },
+  );
 });
+
+/** Records every `.set()` payload — the mock's chains are throwaway proxies
+ *  (same helper as `scheduling-bookings-unschedule.test.ts`). */
+function captureUpdateSets(db: unknown) {
+  const sets: Record<string, unknown>[] = [];
+  const target = db as Record<string, unknown>;
+  const inner = target['update'] as (...a: unknown[]) => Record<string, unknown>;
+  target['update'] = vi.fn((...args: unknown[]) => {
+    const chain = inner(...args);
+    return new Proxy(chain, {
+      get(t, prop) {
+        if (prop === 'set')
+          return (v: Record<string, unknown>) => {
+            sets.push(v);
+            return (t['set'] as (x: unknown) => unknown)(v);
+          };
+        return t[prop as string];
+      },
+    });
+  });
+  return sets;
+}
 
 /**
  * `pos_settings.requirements.identityDocument` — the per-org "a DNI/RUC on

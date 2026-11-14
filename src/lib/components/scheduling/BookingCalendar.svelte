@@ -2394,14 +2394,21 @@
         ...optimisticLane,
         ...Object.fromEntries(properties.map((p) => [p.recordId, p.value])),
       };
-    const res = await onmove?.(box.lead.id, next, opts);
-    // Landed or failed, the fresh `bookings` are already in the prop by now
-    // (the route awaits its refresh before returning) and the lane is re-read
-    // from server truth; one more tick lets the grid paint them under the
-    // overlay before it goes, so nothing flickers.
-    if (properties) await cv.refetch(ids).catch(() => {});
-    await tick();
-    clearOptimistic(ids);
+    let res: void | MoveResult = undefined;
+    try {
+      res = await onmove?.(box.lead.id, next, opts);
+      // Landed or failed, the fresh `bookings` are already in the prop by now
+      // (the route awaits its refresh before returning) and the lane is re-read
+      // from server truth; one more tick lets the grid paint them under the
+      // overlay before it goes, so nothing flickers.
+      if (properties) await cv.refetch(ids).catch(() => {});
+      await tick();
+    } catch {
+      // The request itself threw (network drop): snap back and say so.
+      temporalError = m.sched_move_failed();
+    } finally {
+      clearOptimistic(ids);
+    }
     if (res?.conflicts?.length) {
       if (d.timeZone !== timeZone || d.mutationScope !== mutationScope) {
         temporalError = m.cal_gesture_scope_changed();
@@ -2602,10 +2609,15 @@
       };
     // The refused operation first, the answer on top: `{ group: true }` +
     // `{ overrideConflicts: true }` is still one container call.
-    await onmove?.(ask.id, ask.next, { ...ask.opts, ...opts });
-    if (props.length) await cv.refetch(props.map((p) => p.recordId)).catch(() => {});
-    await tick();
-    clearOptimistic([...ids, ...props.map((p) => p.recordId)]);
+    try {
+      await onmove?.(ask.id, ask.next, { ...ask.opts, ...opts });
+      if (props.length) await cv.refetch(props.map((p) => p.recordId)).catch(() => {});
+      await tick();
+    } catch {
+      temporalError = m.sched_move_failed();
+    } finally {
+      clearOptimistic([...ids, ...props.map((p) => p.recordId)]);
+    }
   }
 </script>
 
