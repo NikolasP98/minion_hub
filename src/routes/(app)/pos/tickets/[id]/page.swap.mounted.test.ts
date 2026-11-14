@@ -41,7 +41,12 @@ const data = {
     total: '240.00',
     note: null,
   },
-  lines: [line('l1', 'product', 'faja-m', 'Faja M'), line('l2', 'service', 'botox', 'Botox')],
+  lines: [
+    line('l1', 'product', 'faja-m', 'Faja M'),
+    line('l2', 'service', 'botox', 'Botox'),
+    // A product charged from a visit's tray: linked to the appointment, still swappable.
+    { ...line('l3', 'product', 'faja-xl', 'Faja XL'), bookingId: 'b1' },
+  ],
   payments: [],
   emissions: [],
   methods: [],
@@ -75,9 +80,9 @@ afterEach(() => {
 
 const openSwap = async () => {
   const view = render(Ticket, { data });
-  // Only the product line offers the swap; the treatment line does not.
+  // Product lines offer the swap, linked to a visit or not; the treatment does not.
   const buttons = view.getAllByRole('button', { name: m.pos_swap_action() });
-  expect(buttons).toHaveLength(1);
+  expect(buttons).toHaveLength(2);
   await fireEvent.click(buttons[0]);
   await waitFor(() => expect(view.getByText(m.pos_swap_note())).toBeTruthy());
   return view;
@@ -108,4 +113,14 @@ it('a refusal says what to do instead', async () => {
   await fireEvent.click(view.getByRole('button', { name: m.pos_swap_save() }));
   await waitFor(() => expect(view.getByRole('alert').textContent).toBe(m.pos_swap_err_rering()));
   expect(invalidate).not.toHaveBeenCalled();
+});
+
+it('a sale that changed underneath reloads and reopens on the current line', async () => {
+  swap = () => Response.json({ code: 'line_changed', error: 'x' }, { status: 409 });
+  const view = await openSwap();
+  await fireEvent.click(view.getByRole('button', { name: m.pos_swap_save() }));
+  await waitFor(() => expect(view.getByRole('alert').textContent).toBe(m.pos_swap_err_changed()));
+  expect(invalidate).toHaveBeenCalledWith('pos:ticket');
+  // The choices were loaded again for the reloaded line.
+  expect(fetchMock.mock.calls.filter(([url]) => url === '/api/pos/sellables')).toHaveLength(2);
 });

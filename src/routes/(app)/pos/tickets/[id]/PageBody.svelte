@@ -142,11 +142,13 @@
     stock_drift: m.pos_swap_err_rering,
     no_stock_entry: m.pos_swap_err_rering,
     emitted: m.pos_swap_err_rering,
-    reconciled: m.pos_swap_err_rering,
+    // A reconciled sale cannot be voided either: the invoice link goes first.
+    reconciled: m.pos_swap_err_reconciled,
     negative_stock: m.pos_swap_err_no_stock,
     period_locked: m.pos_swap_err_period,
-    line_changed: m.pos_swap_err_changed,
   };
+  /** The sale is not what the dialog was opened on: reload it and start over. */
+  const STALE = new Set(['line_changed', 'line_not_product', 'ticket_void', 'not_found']);
   async function openSwap(line: Line) {
     swapping = line;
     swapChoices = null;
@@ -164,28 +166,40 @@
     swapTo = swapChoices[0]?.productId ?? '';
   }
   async function saveSwap() {
-    if (!swapping?.finProductId || !swapTo) return;
+    if (!swapping?.finProductId || !swapTo || swapBusy) return;
+    const lineId = swapping.id;
     swapBusy = true;
     swapErr = null;
     try {
-      const res = await fetch(`/api/pos/tickets/${t.id}/lines/${swapping.id}/swap`, {
+      const res = await fetch(`/api/pos/tickets/${t.id}/lines/${lineId}/swap`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ productId: swapTo, expectedProductId: swapping.finProductId }),
       });
+      // The reply belongs to a dialog the user already left.
+      const current = () => swapping?.id === lineId;
       if (res.ok) {
-        swapping = null;
+        if (current()) swapping = null;
         await invalidate('pos:ticket');
         return;
       }
       const body = (await res.json().catch(() => ({}))) as { code?: string };
+      if (!current()) return;
+      if (STALE.has(body.code ?? '')) {
+        // Show the sale as it is now, with the choices for its current product.
+        await invalidate('pos:ticket');
+        const fresh = data.lines.find((l) => l.id === lineId);
+        if (canSwap && fresh?.kind === 'product' && fresh.finProductId) await openSwap(fresh);
+        else swapping = null;
+        swapErr = m.pos_swap_err_changed();
+        return;
+      }
       swapErr = SWAP_ERR[body.code ?? '']?.() ?? m.pos_swap_err_generic();
-      if (body.code === 'line_changed') await invalidate('pos:ticket');
     } finally {
       swapBusy = false;
     }
   }
-  const stockWarning = $derived(t.stockWarning as { code?: string } | null);
+  const stockWarning = $derived(t.stockWarning as object | null);
 
   const lineColumns: DataColumn<Line>[] = [
     {
@@ -317,25 +331,28 @@
         <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
           {#snippet cell(row: Line, col: DataColumn<Line>)}
             {#if col.key === 'description'}
-              {#if row.bookingId}
-                <!-- TODO(handoff): no calendar deep-link param exists yet —
-                     /pos/appointments keeps the open booking in local state
-                     only (`detailId`), and no route reads a `booking` search
-                     param, so a service line can only point at the bookings
-                     list. Wire a `?booking=<id>` param into
-                     src/routes/(app)/pos/appointments/+page.svelte (and the
-                     shared calendar page kit) and switch this href to it. -->
-                <a class="link" href="/scheduling/bookings">{row.description}</a>
-              {:else}
-                <span class="pay-method">
+              <span class="pay-method">
+                {#if row.bookingId}
+                  <!-- TODO(handoff): no calendar deep-link param exists yet —
+                       /pos/appointments keeps the open booking in local state
+                       only (`detailId`), and no route reads a `booking` search
+                       param, so a service line can only point at the bookings
+                       list. Wire a `?booking=<id>` param into
+                       src/routes/(app)/pos/appointments/+page.svelte (and the
+                       shared calendar page kit) and switch this href to it. -->
+                  <a class="link" href="/scheduling/bookings">{row.description}</a>
+                {:else}
                   <span>{row.description}</span>
-                  {#if canSwap && row.kind === 'product' && row.finProductId}
-                    <Button variant="ghost" size="xs" type="button" onclick={() => openSwap(row)}
-                      >{m.pos_swap_action()}</Button
-                    >
-                  {/if}
-                </span>
-              {/if}
+                {/if}
+                <!-- TODO(handoff): a swap is recorded in the audit log but this
+                     page does not show it ("Cambiado de X a Y por …"); see meta
+                     proposals/2026-11-14-hub-till-corrections-followups.md item 10. -->
+                {#if canSwap && row.kind === 'product' && row.finProductId}
+                  <Button variant="ghost" size="xs" type="button" onclick={() => openSwap(row)}
+                    >{m.pos_swap_action()}</Button
+                  >
+                {/if}
+              </span>
             {:else if col.key === 'unitPrice'}
               {money(row.unitPrice)}
             {:else if col.key === 'discount'}
@@ -347,7 +364,7 @@
         </DataTable>
         {#if stockWarning}
           <p class="t-caption stock-warn" role="status">
-            {m.pos_ticket_stock_warning({ code: stockWarning.code ?? '' })}
+            {m.pos_ticket_stock_warning()}
           </p>
         {/if}
       </section>
@@ -547,13 +564,11 @@
       {#if swapChoices === null}
         <Spinner size="sm" />
       {:else if swapChoices.length}
-        <label class="field">
-          <span class="lbl">{m.pos_swap_new()}</span>
-          <Select
-            bind:value={swapTo}
-            options={swapChoices.map((s) => ({ value: s.productId, label: s.name }))}
-          />
-        </label>
+        <Select
+          label={m.pos_swap_new()}
+          bind:value={swapTo}
+          options={swapChoices.map((s) => ({ value: s.productId, label: s.name }))}
+        />
         <p class="t-caption">{m.pos_swap_note()}</p>
       {:else if !swapErr}
         <p class="t-caption">{m.pos_swap_none()}</p>
@@ -663,8 +678,8 @@
   }
   .card-link {
     color: var(--color-accent);
-    text-transform: none;
-    letter-spacing: 0;
+    text-transform: inherit;
+    letter-spacing: inherit;
     text-decoration: none;
   }
   .card-link:hover,

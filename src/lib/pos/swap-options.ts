@@ -10,16 +10,18 @@ export interface SwapCandidate {
 
 export function swapOptions<T extends SwapCandidate>(
   sellables: readonly T[],
-  line: { finProductId: string | null; unitPrice: string | number | null },
+  line: { finProductId: string | null },
 ): T[] {
+  // The server compares CATALOGUE prices (a missing price counts as 0), not
+  // the price charged. A retired product is not in this list, so its
+  // catalogue price is unknown here: offer nothing rather than guess.
   const current = sellables.find((s) => s.productId === line.finProductId);
-  // A retired product is not in the list: fall back to the price charged.
-  const price = current?.unitPrice ?? Number(line.unitPrice ?? NaN);
+  if (!current) return [];
+  const price = current.unitPrice ?? 0;
   return sellables.filter(
     (s) =>
       s.kind === 'product' &&
       s.productId !== line.finProductId &&
-      s.unitPrice != null &&
-      Math.abs(s.unitPrice - price) < 0.005,
+      Math.abs((s.unitPrice ?? 0) - price) < 0.005,
   );
 }
