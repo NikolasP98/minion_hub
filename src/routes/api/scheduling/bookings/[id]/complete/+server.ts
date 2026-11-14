@@ -61,14 +61,20 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
       finProductId: booking.productId ?? null,
       partyId: booking.partyId ?? null,
       note: `Booking: ${booking.title}`,
-      actor: { id: ctx.profileId ?? null, name: locals.user?.displayName ?? locals.user?.email ?? null },
+      actor: {
+        id: ctx.profileId ?? null,
+        name: locals.user?.displayName ?? locals.user?.email ?? null,
+      },
     });
     return json({ ok: true, entryId: r.entry?.id ?? null, stockWarning: r.stockWarning });
   } catch (e) {
     return json({
       ok: true,
       entryId: null,
-      stockWarning: { code: 'realize_failed', message: e instanceof Error ? e.message : 'stock realize failed' },
+      stockWarning: {
+        code: 'realize_failed',
+        message: e instanceof Error ? e.message : 'stock realize failed',
+      },
     });
   }
 };
