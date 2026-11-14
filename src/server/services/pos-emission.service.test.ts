@@ -21,7 +21,12 @@ const fakeTx = {
     },
   }),
   update: () => ({
-    set: (row: Record<string, unknown>) => ({ where: async () => updated.push(row) }),
+    set: (row: Record<string, unknown>) => ({
+      where: async (where: unknown) => {
+        updated.push(row);
+        updatedWhere.push(where);
+      },
+    }),
   }),
 };
 const txSelectRows = () =>
@@ -29,6 +34,7 @@ const txSelectRows = () =>
 let ticketLineRows: Array<Record<string, unknown>> = [];
 let inserted: Array<Record<string, unknown>> = [];
 let updated: Array<Record<string, unknown>> = [];
+let updatedWhere: unknown[] = [];
 const detached: Array<Promise<unknown>> = [];
 
 vi.mock('$server/db/with-org-core', () => ({
@@ -365,6 +371,7 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
     ticketLineRows = [{ description: 'Servicio', qty: '1', total: '118' }];
     inserted = [];
     updated = [];
+    updatedWhere = [];
     detached.length = 0;
     vi.mocked(getSource).mockResolvedValue({
       enabled: true,
@@ -418,6 +425,26 @@ describe('triggerShadowEmission — an unusable configured rate is recorded, not
     expect(emitToBeta).toHaveBeenCalledTimes(1);
     expect(vi.mocked(emitToBeta).mock.calls[0][0]).toMatchObject({ igvRate: 0.1 });
     expect(updated[0]).toMatchObject({ status: 'accepted', responseCode: '0' });
+  });
+
+  it.each([
+    ['the provider result', false],
+    ['a failure', true],
+  ])('%s is written only to a row still pending', async (_label, fails) => {
+    vi.mocked(getFinSettings).mockResolvedValue({
+      taxRate: 0.18,
+    } as Awaited<ReturnType<typeof getFinSettings>>);
+    if (fails) vi.mocked(emitToBeta).mockRejectedValue(new Error('beta down'));
+
+    await triggerShadowEmission(ctx, ticket, settings);
+    await Promise.all(detached);
+
+    expect(updated[0]).toMatchObject({ status: fails ? 'error' : 'accepted' });
+    const { sql, params } = dialect.sqlToQuery(
+      updatedWhere[0] as Parameters<PgDialect['sqlToQuery']>[0],
+    );
+    expect(sql).toContain('"pos_emissions"."status" = $');
+    expect(params).toEqual(['emission-1', 'org-1', 'pending']);
   });
 });
 

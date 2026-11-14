@@ -173,7 +173,8 @@ function loadBetaCert(): { certPem: string; keyPem: string } | null {
  * (waitUntil / fire-and-forget), so a caller has nothing to catch; a failure
  * degrades the row to `status='error'` instead, which the ticket-detail
  * endpoint surfaces (spec §4 step 3 — rows stuck 'pending' are the loss
- * measure for a frozen/crashed runtime).
+ * measure for a frozen/crashed runtime; the jobs tick now turns them into
+ * `error` / `stale_pending` after 15 minutes, see stale-sends.service.ts).
  */
 async function runBetaEmission(
   ctx: CoreCtx,
@@ -199,7 +200,14 @@ async function runBetaEmission(
           xmlHash: result.xmlHash,
           updatedAt: new Date(),
         })
-        .where(and(eq(posEmissions.id, emissionId), eq(posEmissions.orgId, ctx.tenantId))),
+        .where(
+          and(
+            eq(posEmissions.id, emissionId),
+            eq(posEmissions.orgId, ctx.tenantId),
+            // A row the stale-send sweep already failed keeps its error.
+            eq(posEmissions.status, 'pending'),
+          ),
+        ),
     );
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -208,7 +216,14 @@ async function runBetaEmission(
       tx
         .update(posEmissions)
         .set({ status: 'error', responseDescription: message.slice(0, 500), updatedAt: new Date() })
-        .where(and(eq(posEmissions.id, emissionId), eq(posEmissions.orgId, ctx.tenantId))),
+        .where(
+          and(
+            eq(posEmissions.id, emissionId),
+            eq(posEmissions.orgId, ctx.tenantId),
+            // A row the stale-send sweep already failed keeps its error.
+            eq(posEmissions.status, 'pending'),
+          ),
+        ),
     ).catch((updateErr) =>
       console.error('[pos-emission] failed to record error status', emissionId, updateErr),
     );

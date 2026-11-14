@@ -81,6 +81,9 @@ function fakeDb(orgs: string[], candidates: Cand[], enabledAt?: string) {
     if (text.includes('update crm_door_followups')) {
       // params: status, recipient, content, error, [sent_at handled in SQL], org, door, contact
       const key = `${params.at(-3)}|${params.at(-2)}|${params.at(-1)}`;
+      // The guarded final write: a row no longer `sending` (reaped) is left alone.
+      if (text.includes("and status = 'sending'") && claims.get(key)?.status !== 'sending')
+        return [];
       claims.set(key, { ...claims.get(key)!, status: String(params[0]), error: params[3] });
       return [];
     }
@@ -245,6 +248,20 @@ describe('runDoorFollowUps', () => {
     });
     await runDoorFollowUps();
     expect(h.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('a late result never overwrites a claim the stale-send sweep already failed', async () => {
+    const f = fakeDb(['org-1'], [cand('c1')]);
+    h.db = f.db;
+    const key = `org-1|${DOOR}|c1`;
+    h.send.mockImplementationOnce(async () => {
+      f.claims.set(key, { ...f.claims.get(key)!, status: 'failed', error: 'stale_claim' });
+      return { ok: true };
+    });
+    await runDoorFollowUps();
+    const final = f.statements.find((t) => t.includes('update crm_door_followups'));
+    expect(final).toContain("and status = 'sending'");
+    expect(f.claims.get(key)).toMatchObject({ status: 'failed', error: 'stale_claim' });
   });
 
   it('a send that reached the person but missed the timeline stays sent and is logged', async () => {
