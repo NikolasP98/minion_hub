@@ -33,6 +33,11 @@ vi.mock('$server/services/support.service', () => ({
   createIssue: vi.fn(),
   PRIORITIES: ['urgent', 'high', 'medium', 'low'],
 }));
+const mockSetOrderStatus = vi.fn();
+vi.mock('$server/services/sales.service', () => ({
+  setOrderStatus: (...args: unknown[]) => mockSetOrderStatus(...args),
+  ORDER_STATUSES: ['draft', 'confirmed', 'invoiced', 'cancelled'],
+}));
 vi.mock('$server/services/errors', () => ({
   StaleWriteError: class StaleWriteError extends Error {},
   staleGuard: vi.fn(),
@@ -74,6 +79,7 @@ vi.mock('$server/services/builder.service', () => ({
 
 import { POST as bookingCreatePOST } from './booking-create/+server';
 import { POST as ticketUpdatePOST } from './ticket-update/+server';
+import { POST as orderUpdateStatusPOST } from './order-update-status/+server';
 import { POST as stockEntryCreatePOST } from './stock-entry-create/+server';
 import { POST as stockIssueFromInvoicePOST } from './stock-issue-from-invoice/+server';
 import { POST as noteCreatePOST } from './note-create/+server';
@@ -201,6 +207,86 @@ describe('POST /api/gateway/actions/ticket-update', () => {
     expect(body.preview.action).toBe('ticket-update');
     expect(body.preview.status).toBe('resolved');
     expect(mockUpdateIssue).not.toHaveBeenCalled();
+  });
+});
+
+/** The assistant's workflow actor: the member's identity with no role (open transitions only). */
+const noRoleActor = { id: 'u1', name: 'Jane (via agent)', email: 'jane@example.com', role: null };
+
+describe('POST /api/gateway/actions/order-update-status', () => {
+  it('confirm:true passes a no-role workflow actor to setOrderStatus', async () => {
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps({ 'sales.edit': true }),
+    });
+    mockSetOrderStatus.mockResolvedValue({ id: 'so1', status: 'confirmed' });
+    const res = await orderUpdateStatusPOST(
+      makeEvent('/api/gateway/actions/order-update-status', {
+        confirm: true,
+        orderId: 'so1',
+        status: 'confirmed',
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockSetOrderStatus).toHaveBeenCalledTimes(1);
+    expect(mockSetOrderStatus.mock.calls[0][5]).toEqual(noRoleActor);
+  });
+
+  it('a workflow refusal (409) propagates', async () => {
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps({ 'sales.edit': true }),
+    });
+    mockSetOrderStatus.mockRejectedValue({ status: 409, body: { message: 'transition' } });
+    await expect(
+      orderUpdateStatusPOST(
+        makeEvent('/api/gateway/actions/order-update-status', {
+          confirm: true,
+          orderId: 'so1',
+          status: 'draft',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe('POST /api/gateway/actions/ticket-update (workflow)', () => {
+  it('confirm:true passes a no-role workflow actor to updateIssue', async () => {
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps({ 'support.edit': true }),
+    });
+    mockUpdateIssue.mockResolvedValue({ id: 'tk1', status: 'resolved' });
+    const res = await ticketUpdatePOST(
+      makeEvent('/api/gateway/actions/ticket-update', {
+        confirm: true,
+        issueId: 'tk1',
+        status: 'resolved',
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(mockUpdateIssue.mock.calls[0][5]).toEqual(noRoleActor);
+  });
+
+  it('a workflow refusal (409) propagates', async () => {
+    mockResolveAssistantPrincipal.mockResolvedValue({
+      principalId: 'u1',
+      orgId: 'org1',
+      capabilities: makeCaps({ 'support.edit': true }),
+    });
+    mockUpdateIssue.mockRejectedValue({ status: 409, body: { message: 'transition' } });
+    await expect(
+      ticketUpdatePOST(
+        makeEvent('/api/gateway/actions/ticket-update', {
+          confirm: true,
+          issueId: 'tk1',
+          status: 'closed',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 409 });
   });
 });
 

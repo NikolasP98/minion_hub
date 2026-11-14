@@ -705,8 +705,16 @@ export async function decideLeaveRequest(
     const [updated] = await tx
       .update(hrLeaveRequests)
       .set({ status, decidedBy: ctx.profileId ?? null, decidedAt: new Date() })
-      .where(eq(hrLeaveRequests.id, id))
+      // Compare-and-set: a concurrent decision since the read matches no row.
+      .where(
+        and(
+          eq(hrLeaveRequests.id, id),
+          eq(hrLeaveRequests.orgId, ctx.tenantId),
+          eq(hrLeaveRequests.status, row.req.status),
+        ),
+      )
       .returning();
+    if (!updated) throw new HrRuleError('bad_transition', 'This request was already decided.');
     return updated;
   });
 }

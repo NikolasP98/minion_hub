@@ -167,4 +167,21 @@ describe('direct status PATCH validates the current locked state inside the muta
     await def('sales_order', [{ action: 'Unused', from: 'draft', to: 'confirmed' }]);
     expect((await setOrderStatus(ctx, id, 'cancelled', actor))?.status).toBe('cancelled');
   });
+  it('a no-role actor (the assistant) takes only open transitions', async () => {
+    const assistant = { ...actor, role: null };
+    await def('sales_order', [
+      { action: 'Confirm', from: 'draft', to: 'confirmed' },
+      { action: 'Cancel', from: 'draft', to: 'cancelled', role: 'manager' },
+    ]);
+    await expect(
+      setOrderStatus(ctx, id, 'invoiced', actor, undefined, assistant),
+    ).rejects.toMatchObject({ status: 409 });
+    await expect(
+      setOrderStatus(ctx, id, 'cancelled', actor, undefined, assistant),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(await status('sales_orders')).toBe('draft');
+    expect((await setOrderStatus(ctx, id, 'confirmed', actor, undefined, assistant))?.status).toBe(
+      'confirmed',
+    );
+  });
 });
