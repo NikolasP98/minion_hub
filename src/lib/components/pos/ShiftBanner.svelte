@@ -197,31 +197,53 @@
   let note = $state('');
   let expected = $state<Record<string, number>>({});
   let pendingEmit = $state(0);
+  // Confirm stays off until THIS opening's totals arrive (spec 116 FR-007).
+  let totals = $state<'loading' | 'ready' | 'error'>('loading');
+  let closing = $state(false);
+  // Bumped per load: an answer that belongs to an earlier opening is dropped.
+  let closeGen = 0;
 
-  async function startClose() {
+  function startClose() {
     counted = zeroedByMethod();
     note = '';
     closeModal = true;
-    // Fresh read so the expected totals reflect any sale that landed after the
-    // page's own load (another register tab, a delayed POST, etc).
-    const res = await fetch('/api/pos/shifts/current');
-    const data = (await res.json().catch(() => ({}))) as {
-      shift?: PosShiftLike;
-      summary?: ShiftSummaryLike;
-    };
-    if (!data.shift || !data.summary) {
-      // Shift already closed elsewhere between opening this menu and now.
-      closeModal = false;
-      await invalidate('pos:shift');
-      return;
-    }
-    const byMethod = data.summary.byMethod ?? {};
-    const float = data.shift.openingFloat ?? {};
-    pendingEmit = data.summary.unemitted ?? 0;
-    expected = { ...byMethod };
-    for (const mth of settings.methods) {
-      if (!mth.takesTendered) continue;
-      expected[mth.id] = (expected[mth.id] ?? 0) + Number(float[mth.id] ?? 0);
+    void loadTotals();
+  }
+
+  // Fresh read so the expected totals reflect any sale that landed after the
+  // page's own load (another register tab, a delayed POST, etc). Retry calls
+  // this alone, so the counts already typed survive a failed load.
+  async function loadTotals() {
+    const gen = ++closeGen;
+    expected = {};
+    pendingEmit = 0;
+    totals = 'loading';
+    try {
+      const res = await fetch('/api/pos/shifts/current');
+      if (!res.ok) throw new Error(String(res.status));
+      const data = (await res.json()) as {
+        shift?: PosShiftLike | null;
+        summary?: ShiftSummaryLike;
+      };
+      if (gen !== closeGen) return;
+      if (!data.shift || !data.summary) {
+        // Shift already closed elsewhere between opening this menu and now.
+        closeModal = false;
+        await invalidate('pos:shift');
+        return;
+      }
+      const byMethod = data.summary.byMethod ?? {};
+      const float = data.shift.openingFloat ?? {};
+      pendingEmit = data.summary.unemitted ?? 0;
+      const next = { ...byMethod };
+      for (const mth of settings.methods) {
+        if (!mth.takesTendered) continue;
+        next[mth.id] = (next[mth.id] ?? 0) + Number(float[mth.id] ?? 0);
+      }
+      expected = next;
+      totals = 'ready';
+    } catch {
+      if (gen === closeGen) totals = 'error';
     }
   }
 
@@ -230,16 +252,24 @@
   }
 
   async function submitClose() {
-    await toastAsync(
+    if (closing || totals !== 'ready') return;
+    closing = true;
+    try {
+      await sendClose();
+    } finally {
+      closing = false;
+    }
+  }
+
+  function sendClose() {
+    return toastAsync(
       (async () => {
         const res = await fetch('/api/pos/shifts/close', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          // Recorded methods are filled in by the server from its own totals.
           body: JSON.stringify({
-            counted: {
-              ...counted,
-              ...Object.fromEntries(recordedMethods.map((mth) => [mth.id, expected[mth.id] ?? 0])),
-            },
+            counted: Object.fromEntries(countedMethods.map((mth) => [mth.id, counted[mth.id]])),
             note: note || null,
           }),
         });
@@ -475,6 +505,12 @@
 
   <Modal bind:open={closeModal} title={m.pos_shift_close_cta()} size="lg">
     <div class="form">
+      {#if totals === 'error'}
+        <div class="totals-failed">
+          <p role="alert">{m.pos_shift_totals_failed()}</p>
+          <Button type="button" size="sm" onclick={loadTotals}>{m.common_retry()}</Button>
+        </div>
+      {/if}
       {#each countedMethods as mth (mth.id)}
         <div class="close-row">
           <span class="method">{mth.label}</span>
@@ -518,8 +554,11 @@
       {/if}
     </div>
     {#snippet footer()}
-      <Button type="button" class="act primary" onclick={submitClose}
-        >{m.pos_shift_close_cta()}</Button
+      <Button
+        type="button"
+        class="act primary"
+        disabled={totals !== 'ready' || closing}
+        onclick={submitClose}>{m.pos_shift_close_cta()}</Button
       >
     {/snippet}
   </Modal>
@@ -834,6 +873,17 @@
   }
   .recorded-title {
     margin: var(--space-2) 0 0;
+  }
+  .totals-failed {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font-size: var(--font-size-caption);
+    color: var(--color-danger-fg);
+  }
+  .totals-failed p {
+    margin: 0;
   }
   .recorded {
     display: grid;

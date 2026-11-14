@@ -6998,6 +6998,7 @@
   "pos_tender_err_emitted": "Emitido a SUNAT: requiere nota de crédito",
   "pos_tender_err_manage": "Corregir un turno cerrado requiere un gerente",
   "pos_tender_err_generic": "No se pudo cambiar el método de pago",
+  "pos_shift_totals_failed": "No se pudieron cargar los totales del turno. Reintenta antes de cerrar.",
   "pos_shift_close_emit": "Se emitirán {count} comprobantes a SUNAT al cerrar el turno",
   "pos_shift_closed_emitted": "{count} comprobantes enviados a SUNAT",
   "pos_emit_now": "Emitir ahora",
