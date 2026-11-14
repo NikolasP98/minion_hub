@@ -102,6 +102,25 @@ describe('calendarMenuEntries', () => {
   });
 });
 
+describe('calendarMenuEntries: the sale of a charged visit (spec 120)', () => {
+  const sold = { paid: true, tickets: [{ id: 't1', humanId: 'POS-1' }] };
+
+  it('a completed, charged visit offers its sale next to the detail', () => {
+    expect(kinds(box(member({ id: 'b1', status: 'completed', ...sold })))).toEqual([
+      'detail',
+      'sale',
+    ]);
+  });
+
+  it('an active, charged visit offers its sale before the destructive entry', () => {
+    expect(kinds(box(member({ id: 'b1', ...sold })))).toEqual(['sale', 'cancel-paid']);
+  });
+
+  it('a visit with no sale does not', () => {
+    expect(kinds(box(member({ id: 'b1', status: 'completed' })))).toEqual(['detail']);
+  });
+});
+
 describe('calendarMenuEntries: void gate', () => {
   it('offers no destructive entry on a paid event when the host cannot void (pos:manage)', () => {
     const b = box(member({ id: 'b1', paid: true }));

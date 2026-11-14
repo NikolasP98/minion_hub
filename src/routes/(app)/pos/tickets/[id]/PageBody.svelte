@@ -288,6 +288,14 @@
   ><title>{t.humanId ?? m.pos_ticket_title()} — {m.pos_ticket_title()}</title></svelte:head
 >
 
+{#snippet swapAction(row: Line)}
+  {#if row.kind === 'product' && row.finProductId}
+    <Button variant="outline" size="xs" type="button" onclick={() => openSwap(row)}
+      >{m.pos_swap_action()}</Button
+    >
+  {/if}
+{/snippet}
+
 <PageShell archetype="record-detail" scroll="region" labelledBy="pos-ticket-title">
   <PageHeader
     titleId="pos-ticket-title"
@@ -328,7 +336,17 @@
             >
           {/if}
         </header>
-        <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
+        <!-- The correction sits at the end of its row, always visible: staff must
+             not have to hover to find it. -->
+        <DataTable
+          variant="plain"
+          data={data.lines}
+          columns={lineColumns}
+          getRowId={(l) => l.id}
+          rowActions={canSwap ? swapAction : undefined}
+          rowActionsMode="always"
+          rowActionsWidth={156}
+        >
           {#snippet cell(row: Line, col: DataColumn<Line>)}
             {#if col.key === 'description'}
               <span class="pay-method">
@@ -347,11 +365,6 @@
                 <!-- TODO(handoff): a swap is recorded in the audit log but this
                      page does not show it ("Cambiado de X a Y por …"); see meta
                      proposals/2026-11-14-hub-till-corrections-followups.md item 10. -->
-                {#if canSwap && row.kind === 'product' && row.finProductId}
-                  <Button variant="ghost" size="xs" type="button" onclick={() => openSwap(row)}
-                    >{m.pos_swap_action()}</Button
-                  >
-                {/if}
               </span>
             {:else if col.key === 'unitPrice'}
               {money(row.unitPrice)}

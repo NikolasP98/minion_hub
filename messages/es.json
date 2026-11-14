@@ -7491,5 +7491,6 @@
   "pos_swap_err_generic": "No se pudo cambiar el producto. Vuelve a intentar.",
   "pos_ticket_stock_link": "Movimiento de stock",
   "pos_ticket_stock_warning": "El stock de esta venta no se registró por completo. Revísalo en Inventario.",
-  "pos_swap_err_reconciled": "Esta venta está conciliada con una factura. Deshaz la conciliación en Finanzas y vuelve a intentar."
+  "pos_swap_err_reconciled": "Esta venta está conciliada con una factura. Deshaz la conciliación en Finanzas y vuelve a intentar.",
+  "pos_appt_ctx_sale": "Corregir venta"
 }

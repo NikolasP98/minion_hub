@@ -7491,5 +7491,6 @@
   "pos_swap_err_generic": "The product could not be changed. Try again.",
   "pos_ticket_stock_link": "Stock movement",
   "pos_ticket_stock_warning": "Stock for this sale was not fully recorded. Check it in Stock.",
-  "pos_swap_err_reconciled": "This sale is reconciled to an invoice. Undo the reconciliation in Finances and try again."
+  "pos_swap_err_reconciled": "This sale is reconciled to an invoice. Undo the reconciliation in Finances and try again.",
+  "pos_appt_ctx_sale": "Correct the sale"
 }

@@ -50,7 +50,7 @@ export interface EventMenuDetail {
 }
 
 export type CalendarMenuKind =
-  'detail' | 'charge' | 'split' | 'splitAll' | 'splitOne' | 'delete' | 'cancel-paid';
+  'detail' | 'charge' | 'sale' | 'split' | 'splitAll' | 'splitOne' | 'delete' | 'cancel-paid';
 
 export interface CalendarMenuEntry {
   /** Stable key — also the DOM id the host keys its `{#each}` on. */
@@ -103,7 +103,12 @@ export function calendarMenuEntries(input: {
   canVoid: boolean;
 }): CalendarMenuEntry[] {
   const members = input.box.members;
-  if (!members.some(isActive)) return [{ id: 'detail', kind: 'detail' }];
+  // A charged visit opens its sale, where a wrong product is corrected (meta
+  // spec 120). Completed visits too: that is when the mistake is found.
+  const sale: CalendarMenuEntry[] = cancelPaidTickets(members).length
+    ? [{ id: 'sale', kind: 'sale' }]
+    : [];
+  if (!members.some(isActive)) return [{ id: 'detail', kind: 'detail' }, ...sale];
 
   const entries: CalendarMenuEntry[] = [];
 
@@ -116,6 +121,8 @@ export function calendarMenuEntries(input: {
     members.some((m) => isActive(m) && (m.funding ?? 'cash') === 'cash' && !m.paid)
   )
     entries.push({ id: 'charge', kind: 'charge' });
+
+  entries.push(...sale);
 
   if (input.canEdit && members.length > 1)
     entries.push({
