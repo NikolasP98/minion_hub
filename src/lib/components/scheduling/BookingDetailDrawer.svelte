@@ -240,7 +240,7 @@
     committed: () => detail?.booking.notes ?? '',
     scope: () => `${mutationScope}:${bookingId}`,
     prepare: (v, isCurrent) => {
-      const id = anchorId;
+      const id = detailIsCurrent ? anchorId : null;
       const baseUrl = apiBase;
       return async () => {
         if (!id) return;
@@ -357,7 +357,7 @@
   });
 
   async function saveTags(ids: string[]) {
-    if (!detail) return false;
+    if (!detail || !detailIsCurrent) return false;
     const id = anchorId;
     const { tags } = await fetchJson<{ tags: CalTag[] }>(`/api/tags/booking/${id}`, {
       method: 'PUT',
@@ -431,6 +431,16 @@
 
   /** Every write targets the event's LEAD service, never the clicked row. */
   const anchorId = $derived(visitAnchorId(detail) ?? bookingId);
+  /** The loaded detail belongs to the selected booking. Until it does the body
+   *  shows the loading state and every writer below does nothing (spec 116
+   *  FR-008). Members of one visit share one detail (`loadDetail` swaps to the
+   *  lead), so switching between them stays current. */
+  const detailIsCurrent = $derived(
+    !!detail &&
+      !loading &&
+      (detail.booking.id === bookingId ||
+        (detail.visit?.members ?? []).some((mb) => mb.id === bookingId)),
+  );
   /** What the event reads as: its first ACTIVE service, falling back to the
    *  lead when every one of them is closed — the same rule the calendar box
    *  uses (`statusLead`, booking-groups.ts), so badge and box agree. */
@@ -453,8 +463,11 @@
   async function reloadDetail() {
     const id = anchorId;
     if (!id) return;
+    // `gen` moves only when the selection changes: a reload of the previous
+    // booking must not replace the one now open.
+    const token = gen;
     const next = await loadDetail(id).catch(() => null);
-    if (next) detail = next;
+    if (next && token === gen) detail = next;
     await onchanged?.();
   }
 
@@ -467,7 +480,7 @@
    */
   async function patchStatus(status: string, extra: Record<string, unknown> = {}) {
     const id = anchorId;
-    if (!id) return;
+    if (!id || !detailIsCurrent) return;
     busy = true;
     err = null;
     statusApplied = null;
@@ -518,7 +531,7 @@
   }
   async function applyEdit() {
     const id = anchorId;
-    if (!id || !detail) return;
+    if (!id || !detail || !detailIsCurrent) return;
     if (
       !editScope ||
       editScope.mutationScope !== mutationScope ||
@@ -629,7 +642,7 @@
   let svcBusyId = $state<string | null>(null);
 
   async function reorderService(idx: number, dir: -1 | 1) {
-    if (!detail) return;
+    if (!detail || !detailIsCurrent) return;
     const ids = svcRows.map((r) => r.id);
     const next = nextOrder(ids, idx, dir);
     if (next === ids) return; // already at that edge
@@ -651,6 +664,7 @@
   }
 
   async function separateService(row: VisitRow) {
+    if (!detailIsCurrent) return;
     svcBusyId = row.id;
     err = null;
     try {
@@ -679,7 +693,7 @@
     removeOpen = true;
   }
   async function confirmRemoveService() {
-    if (!removeRow) return;
+    if (!removeRow || !detailIsCurrent) return;
     const removedId = removeRow.id;
     const res = await fetch(`${apiBase}/${removedId}/group`, {
       method: 'POST',
@@ -734,7 +748,7 @@
     }
   }
   async function addService(eventTypeId: string) {
-    if (!detail) return;
+    if (!detail || !detailIsCurrent) return;
     svcBusyId = 'add';
     err = null;
     try {
@@ -765,7 +779,7 @@
   let conflictEventTypeId = $state<string | null>(null);
   let conflictMessage = $state('');
   async function confirmAddOverride() {
-    if (!detail || !conflictEventTypeId) return;
+    if (!detail || !detailIsCurrent || !conflictEventTypeId) return;
     const res = await fetch(`${apiBase}/${anchorId}/group`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -834,7 +848,7 @@
     }
   }
   async function addProduct(productId: string) {
-    if (!detail) return;
+    if (!detail || !detailIsCurrent) return;
     productBusyId = 'add';
     err = null;
     try {
@@ -852,6 +866,7 @@
     }
   }
   async function removeProduct(productId: string) {
+    if (!detailIsCurrent) return;
     productBusyId = productId;
     err = null;
     try {
@@ -869,7 +884,7 @@
     }
   }
   async function setProductQty(productId: string, qty: number) {
-    if (qty < 1) return;
+    if (qty < 1 || !detailIsCurrent) return;
     productBusyId = productId;
     err = null;
     try {
@@ -988,7 +1003,7 @@
   placement="right"
   {onclose}
 >
-  {#if loading}
+  {#if loading || (detail && !detailIsCurrent)}
     <div class="center"><Spinner /></div>
   {:else if !detail}
     <EmptyState title={err ?? m.sched_detail_not_found()} />
@@ -1434,6 +1449,7 @@
               loading={busy}
               title={canAct('pos', 'create') ? undefined : m.no_permission()}
               onclick={() =>
+                detailIsCurrent &&
                 onpay(
                   payableEventFrom({
                     booking: d.booking,
@@ -1538,6 +1554,7 @@
           rows="3"
           bind:value={notes.value}
           onblur={() => {
+            if (!detailIsCurrent) return;
             const scope = `${mutationScope}:${bookingId}`;
             void notes.flush().then(() => {
               if (scope === `${mutationScope}:${bookingId}` && notes.status === 'saved')
@@ -1612,7 +1629,7 @@
   {/if}
 
   {#snippet footer()}
-    {#if detail && isLive}
+    {#if detail && detailIsCurrent && isLive}
       <!-- The wrapper only exists to be the query container: an element cannot
            query its own inline size, and the Sheet owns the footer root. -->
       <div class="acts-wrap">
@@ -1734,10 +1751,10 @@
   bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}
   members={completeOpen && detail?.visit
-    ? // `/complete` refuses a cancelled/rejected booking (400) — one closed
-      // member must not fail the whole visit's confirmation.
+    ? // Only the members still live: `/complete` refuses a cancelled/rejected
+      // booking, and a no-show or already-completed member is left alone.
       detail.visit.members
-        .filter((mb) => mb.status !== 'cancelled' && mb.status !== 'rejected')
+        .filter((mb) => !isInactiveMemberStatus(mb.status) && mb.status !== 'completed')
         .map((mb) => ({
           bookingId: mb.id,
           productId: mb.productId,

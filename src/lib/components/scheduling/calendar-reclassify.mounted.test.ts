@@ -15,6 +15,9 @@
  *      both back (the server rolled the value back with the move); the conflict
  *      dialog's "Move anyway" retries with the SAME `properties` — the lane is
  *      never dropped from the retry, and never written on its own.
+ *   4. spec 116 FR-014: a move request that THROWS (network drop) on the drop,
+ *      on "Move anyway" or on the merge confirm leaves nothing painted and says
+ *      the move failed.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor, type RenderResult } from '@testing-library/svelte';
@@ -88,7 +91,7 @@ const bundle = (subjectValue: string, ids: string[]) => ({
 });
 
 const calendarScope = calendarWindowScope('org-a', FIXTURE_TIME_ZONE);
-const data = () =>
+const data = (bookings = EVENTS) =>
   ({
     view: 'day',
     pageView: 'day',
@@ -104,7 +107,7 @@ const data = () =>
     categories: [],
     hours: {},
     tagOptions: TAG_OPTIONS,
-    bookings: EVENTS,
+    bookings,
   }) as unknown as ComponentProps<typeof Calendar>['data'];
 
 type Hold = { resolve: (r: Response) => void };
@@ -113,7 +116,7 @@ interface Net {
   puts: number;
   /** What the server holds for the subject — refetched after every command. */
   serverValue: string;
-  outcome: 'ok' | 'property' | 'conflict';
+  outcome: 'ok' | 'property' | 'conflict' | 'throw';
   hold: Hold | null;
 }
 let net: Net;
@@ -153,6 +156,12 @@ beforeEach(() => {
         return json({ definitions: [definition], canManage: false, canEdit: true });
       if (url.startsWith('/api/scheduling/calendar'))
         return json({ calendarScope, bookings: [], tagOptions: [] });
+      if (
+        url.startsWith('/api/scheduling/bookings/') &&
+        net.outcome === 'throw' &&
+        method !== 'GET'
+      )
+        throw new TypeError('Failed to fetch');
       if (url.startsWith('/api/scheduling/bookings/') && method === 'PATCH') {
         const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
         net.patches.push({ url, body });
@@ -238,8 +247,8 @@ function subjectBox(view: RenderResult<typeof Calendar>): HTMLElement {
 const laneOf = (box: HTMLElement) => Number(box.dataset.sub);
 const topOf = (box: HTMLElement) => parseFloat(box.style.top);
 
-async function mountWithLanes() {
-  const view = render(Calendar, { data: data() });
+async function mountWithLanes(bookings = EVENTS) {
+  const view = render(Calendar, { data: data(bookings) });
   // Two lane heads under every column once the definition and values landed.
   await waitFor(() => {
     expect(
@@ -266,7 +275,7 @@ function laneLabels(view: RenderResult<typeof Calendar>): string[] {
  *  `label` one hour lower, release. The stubbed column rects are 100px wide at
  *  `i * 100`, split evenly across the lanes, so the target x is that lane's
  *  centre — never a hardcoded fraction. */
-async function dragAcrossLane(view: RenderResult<typeof Calendar>, label = 'Room B') {
+async function dragAcrossLane(view: RenderResult<typeof Calendar>, label = 'Room B', hours = 1) {
   const box = subjectBox(view);
   const col = box.closest<HTMLElement>('.col')!;
   const i = Array.prototype.indexOf.call(col.parentElement!.children, col);
@@ -277,8 +286,9 @@ async function dragAcrossLane(view: RenderResult<typeof Calendar>, label = 'Room
   const handle = box.querySelector<HTMLElement>('.evt-in')!;
   const y = 300;
   await fireEvent.pointerDown(handle, { button: 0, clientX: i * 100 + 10, clientY: y });
-  await fireEvent.pointerMove(window, { clientX: x, clientY: y + DEFAULT_PX_PER_HOUR });
-  await fireEvent.pointerUp(window, { clientX: x, clientY: y + DEFAULT_PX_PER_HOUR });
+  const dy = hours * DEFAULT_PX_PER_HOUR;
+  await fireEvent.pointerMove(window, { clientX: x, clientY: y + dy });
+  await fireEvent.pointerUp(window, { clientX: x, clientY: y + dy });
 }
 
 const hourLater = (iso: string) => new Date(new Date(iso).getTime() + 3_600_000).toISOString();
@@ -367,5 +377,67 @@ describe('reclassifying drag is one command (HC-011)', () => {
     });
     await waitFor(() => expect(laneOf(subjectBox(view))).toBe(1));
     expect(net.puts).toBe(0);
+  });
+});
+
+describe('a move request that throws snaps back and says so (spec 116 FR-014)', () => {
+  const moveFailed = (view: RenderResult<typeof Calendar>) =>
+    view
+      .getAllByRole('alert')
+      .some((el) => el.textContent?.includes('Could not move the appointment'));
+
+  it('drop: lane and time back, the move-failed message shown', async () => {
+    net.outcome = 'throw';
+    const view = await mountWithLanes();
+    const before = topOf(subjectBox(view));
+
+    await dragAcrossLane(view);
+
+    await waitFor(() => expect(moveFailed(view)).toBe(true));
+    expect(laneOf(subjectBox(view))).toBe(0);
+    expect(topOf(subjectBox(view))).toBe(before);
+  });
+
+  it('"Move anyway": lane and time back, the move-failed message shown', async () => {
+    net.outcome = 'conflict';
+    const view = await mountWithLanes();
+    const before = topOf(subjectBox(view));
+    await dragAcrossLane(view);
+    const dialogButton = await view.findByRole('button', { name: 'Move anyway' });
+    await waitFor(() => expect(laneOf(subjectBox(view))).toBe(0));
+
+    net.outcome = 'throw';
+    await fireEvent.click(dialogButton);
+
+    await waitFor(() => expect(moveFailed(view)).toBe(true));
+    expect(laneOf(subjectBox(view))).toBe(0);
+    expect(topOf(subjectBox(view))).toBe(before);
+  });
+
+  it('merge confirm: nothing painted, the dialog keeps the failure and its retry', async () => {
+    // The subject's client also holds r1-1 on the same chair, so dropping onto
+    // it asks to merge the two into one visit.
+    const bookings = EVENTS.map((b) =>
+      b.id === 'r1-1' ? { ...b, attendeeName: seeded.attendeeName } : b,
+    );
+    const target = EVENTS.find((b) => b.id === 'r1-1')!;
+    const hours = (Date.parse(target.start) - Date.parse(seeded.start)) / 3_600_000;
+    net.outcome = 'throw';
+    const view = await mountWithLanes(bookings);
+    const before = topOf(subjectBox(view));
+
+    await dragAcrossLane(view, 'Room A', hours);
+    await fireEvent.click(await view.findByRole('button', { name: 'Merge' }));
+
+    await waitFor(() =>
+      expect(
+        view
+          .getAllByRole('alert')
+          .some((el) => el.textContent?.includes('Could not merge these appointments')),
+      ).toBe(true),
+    );
+    expect(view.getByRole('button', { name: 'Merge' })).toBeTruthy();
+    expect(topOf(subjectBox(view))).toBe(before);
+    expect(laneOf(subjectBox(view))).toBe(0);
   });
 });

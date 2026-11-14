@@ -72,15 +72,16 @@
   let loading = $state(false);
   let busy = $state(false);
   let err = $state<string | null>(null);
+  /** The rows could not be read: confirming now would post an empty list. */
+  let loadError = $state(false);
 
-  /** Both reads 404 when the stock module is off — an absent map is not an error. */
+  /** Both reads 404 when the stock module is off (403 without stock access) —
+   *  an absent map is not an error. Any other failure throws. */
   async function readJson<T>(url: string, fallback: T): Promise<T> {
-    try {
-      const res = await fetch(url);
-      return res.ok ? ((await res.json()) as T) : fallback;
-    } catch {
-      return fallback;
-    }
+    const res = await fetch(url);
+    if (res.status === 404 || res.status === 403) return fallback;
+    if (!res.ok) throw new Error(String(res.status));
+    return (await res.json()) as T;
   }
 
   type AccrualRow = Record<string, unknown>;
@@ -133,32 +134,44 @@
   }
 
   let gen = 0;
+  function load(ms: ConfirmMember[]) {
+    const token = ++gen;
+    loading = true;
+    loadError = false;
+    err = null;
+    void (async () => {
+      try {
+        const loaded = (
+          await Promise.all(
+            ms.map(async (mb) => {
+              const memberRows = await loadRows(mb.bookingId, mb.productId);
+              return memberRows.map((r) => ({ ...r, bookingId: mb.bookingId }));
+            }),
+          )
+        ).flat();
+        if (token !== gen) return;
+        rows = loaded;
+      } catch {
+        if (token !== gen) return;
+        rows = [];
+        loadError = true;
+      } finally {
+        if (token === gen) loading = false;
+      }
+    })();
+  }
   $effect(() => {
     const id = bookingId;
-    const token = ++gen;
     if (!id) {
+      ++gen;
       rows = [];
       err = null;
+      loadError = false;
       return;
     }
     // Snapshot: `members` is re-derived from props on every parent render, and
     // only the open/close transition (`bookingId`) should re-trigger the reads.
-    const ms = untrack(() => members);
-    loading = true;
-    err = null;
-    void (async () => {
-      const loaded = (
-        await Promise.all(
-          ms.map(async (mb) => {
-            const memberRows = await loadRows(mb.bookingId, mb.productId);
-            return memberRows.map((r) => ({ ...r, bookingId: mb.bookingId }));
-          }),
-        )
-      ).flat();
-      if (token !== gen) return;
-      rows = loaded;
-      loading = false;
-    })();
+    load(untrack(() => members));
   });
 
   const unitOf = (r: ConsumptionRow) => r.consumptionUom ?? r.uom;
@@ -172,7 +185,7 @@
       : 0;
 
   async function confirm() {
-    if (members.length === 0) return;
+    if (members.length === 0 || loading || loadError) return;
     busy = true;
     err = null;
     try {
@@ -207,6 +220,11 @@
   <div class="body">
     {#if loading}
       <div class="center"><Spinner /></div>
+    {:else if loadError}
+      <div class="acts">
+        <p class="t-caption bad" role="alert">{m.common_error()}</p>
+        <Button size="sm" variant="ghost" onclick={() => load(members)}>{m.common_retry()}</Button>
+      </div>
     {:else if rows.length === 0}
       <p class="t-caption">{m.sched_complete_no_defaults()}</p>
     {:else}
@@ -266,7 +284,7 @@
   </div>
   {#snippet footer()}
     <div class="acts">
-      <Button disabled={busy} loading={busy} onclick={confirm}>
+      <Button disabled={busy || loading || loadError} loading={busy} onclick={confirm}>
         {rows.length === 0 ? m.sched_mark_complete() : m.sched_complete_confirm()}
       </Button>
       <Button variant="ghost" disabled={busy} onclick={onclose}>{m.sched_cancel()}</Button>
