@@ -195,6 +195,7 @@ const posRuntimeExports = [
   'setBundleComponent',
   'setPackageValidityDays',
   'setPeriodLock',
+  'swapTicketLineProduct',
   'shiftSummary',
   'slugifyCode',
   'submitTicket',

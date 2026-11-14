@@ -43,6 +43,13 @@ const STATUS_BY_CODE: Record<string, number> = {
   line_already_scheduled: 409,
   // book-and-link (POST /api/pos/tickets/:id/schedule) refusals
   ticket_void: 409,
+  // A correction the sale's current state does not allow (spec 120).
+  line_changed: 409,
+  line_not_product: 409,
+  price_differs: 409,
+  stock_drift: 409,
+  no_stock_entry: 409,
+  negative_stock: 409,
   line_not_service: 400,
   slot_unavailable: 409,
   // seedShadowSeries (pos-emission.service.ts) belt-and-suspenders: the row
