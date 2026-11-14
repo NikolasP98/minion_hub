@@ -1164,6 +1164,179 @@ export async function postTicketStock(
   }
 }
 
+// ---- rebuild a sale's stock movement (meta spec 120, S2) ----
+
+export interface RepostPreview {
+  /** The live movement the sale is stamped with. */
+  entryId: string;
+  stockWarning: StockWarning | null;
+  /** What the live movement issued, by item, in stock units. */
+  oldByItem: Map<string, number>;
+  /** What the current rule would issue, by item, in stock units. */
+  newByItem: Map<string, number>;
+  /** Every item a treatment line of this sale consumes through its recipe. */
+  serviceItemIds: Set<string>;
+}
+
+export interface RepostChange {
+  itemId: string;
+  old: number;
+  new: number;
+  diff: number;
+}
+
+const REPOST_TOLERANCE = 0.0001;
+
+/** Pure: what a rebuild would change, and which of those changes it must not
+ *  make. A decrease is allowed only on `allowedItemIds`; an increase only on
+ *  `allowIncreaseItemIds` (a swap's new product). */
+export function planRepost(
+  oldByItem: Map<string, number>,
+  newByItem: Map<string, number>,
+  opts: { allowedItemIds: Set<string>; allowIncreaseItemIds?: Set<string> },
+): { changes: RepostChange[]; drift: RepostChange[] } {
+  const changes: RepostChange[] = [];
+  const drift: RepostChange[] = [];
+  for (const itemId of new Set([...oldByItem.keys(), ...newByItem.keys()])) {
+    const old = oldByItem.get(itemId) ?? 0;
+    const next = newByItem.get(itemId) ?? 0;
+    const diff = round4(next - old);
+    if (Math.abs(diff) <= REPOST_TOLERANCE) continue;
+    const change = { itemId, old, new: next, diff };
+    changes.push(change);
+    const allowed =
+      diff > 0
+        ? Boolean(opts.allowIncreaseItemIds?.has(itemId))
+        : opts.allowedItemIds.has(itemId) || Boolean(opts.allowIncreaseItemIds?.has(itemId));
+    if (!allowed) drift.push(change);
+  }
+  return { changes, drift };
+}
+
+/** Read-only: the sale's live movement against what the current rule issues. */
+export async function previewTicketRepost(ctx: CoreCtx, ticketId: string): Promise<RepostPreview> {
+  const ticket = await loadTicketRow(ctx, ticketId);
+  if (!ticket) throw new PosError('ticket not found', 'not_found');
+  if (ticket.status === 'void') throw new PosError('ticket is void', 'already_void');
+  const live = ticket.stockEntryId ? await getEntry(ctx, ticket.stockEntryId) : null;
+  if (!live || live.entry.status !== 'submitted')
+    throw new PosError('the sale has no live stock movement', 'no_stock_entry');
+
+  const lines = await withOrgCore(ctx, (tx) =>
+    tx
+      .select()
+      .from(posTicketLines)
+      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticketId))),
+  );
+  const issueLines = await resolveIssueLines(ctx, lines);
+
+  const serviceLines = lines.filter((l) => l.kind !== 'product' && l.finProductId);
+  const serviceItemIds = new Set<string>();
+  if (serviceLines.length) {
+    const res = await loadIssueResolution(ctx, [
+      ...new Set(serviceLines.map((l) => l.finProductId as string)),
+    ]);
+    for (const l of serviceLines) {
+      const ex = explodeLineForIssue(l.finProductId as string, Number(l.qty), [], res);
+      for (const id of ex.stockQtyByItem.keys()) serviceItemIds.add(id);
+      for (const id of ex.consumptionQtyByItem.keys()) serviceItemIds.add(id);
+    }
+  }
+
+  const convertIds = [
+    ...new Set(issueLines.filter((l) => l.qtyConsumption != null).map((l) => l.itemId)),
+  ];
+  const items = convertIds.length
+    ? await withOrgCore(ctx, (tx) =>
+        tx
+          .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+          .from(stkItems)
+          .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, convertIds))),
+      )
+    : [];
+  const unitsByItem = new Map(
+    items.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]),
+  );
+
+  const oldByItem = new Map<string, number>();
+  for (const l of live.lines)
+    oldByItem.set(l.itemId, round4((oldByItem.get(l.itemId) ?? 0) + Number(l.qty)));
+  const newByItem = new Map<string, number>();
+  for (const l of issueLines) {
+    const qty =
+      l.qtyConsumption != null
+        ? consumptionToStockQty(
+            { unitsPerStockUom: unitsByItem.get(l.itemId) ?? null },
+            l.qtyConsumption,
+          )
+        : l.qty;
+    newByItem.set(l.itemId, round4((newByItem.get(l.itemId) ?? 0) + qty));
+  }
+  return {
+    entryId: live.entry.id,
+    stockWarning: (ticket.stockWarning as StockWarning | null) ?? null,
+    oldByItem,
+    newByItem,
+    serviceItemIds,
+  };
+}
+
+/**
+ * Rebuild a sale's stock movement under the current rule: claim the stamp,
+ * cancel the old movement, post again. Refuses (`stock_drift`) any change the
+ * caller did not name, so a recipe edited since the sale is never applied
+ * silently. A rebuild interrupted after the cancel leaves a `repost_pending`
+ * warning; the next `postTicketStock` completes it.
+ */
+export async function repostTicketStock(
+  ctx: CoreCtx,
+  ticketId: string,
+  actor: Actor,
+  opts: { allowedItemIds: Set<string>; allowIncreaseItemIds?: Set<string> },
+): Promise<{ entryId: string | null; stockWarning: StockWarning | null; changes: RepostChange[] }> {
+  const preview = await previewTicketRepost(ctx, ticketId);
+  const { changes, drift } = planRepost(preview.oldByItem, preview.newByItem, opts);
+  if (drift.length)
+    throw new PosError(
+      `stock would change outside this correction: ${drift.map((d) => `${d.itemId} ${d.diff > 0 ? '+' : ''}${d.diff}`).join(', ')}`,
+      'stock_drift',
+    );
+  if (!changes.length)
+    return { entryId: preview.entryId, stockWarning: preview.stockWarning, changes };
+
+  // Claim: only one rebuild (or void) may take the stamp it read.
+  const claimed = await withOrgCore(ctx, (tx) =>
+    tx
+      .update(posTickets)
+      .set({
+        stockEntryId: null,
+        stockWarning: { code: 'repost_pending', message: `rebuilding ${preview.entryId}` },
+      })
+      .where(
+        and(
+          eq(posTickets.id, ticketId),
+          eq(posTickets.orgId, ctx.tenantId),
+          eq(posTickets.stockEntryId, preview.entryId),
+          ne(posTickets.status, 'void'),
+        ),
+      )
+      .returning({ id: posTickets.id }),
+  );
+  if (!claimed.length)
+    throw new PosError('the sale changed while it was being corrected', 'operation_conflict');
+
+  try {
+    await cancelEntry(ctx, preview.entryId, actor);
+  } catch (e) {
+    await stampTicketStock(ctx, ticketId, {
+      stockEntryId: preview.entryId,
+      stockWarning: preview.stockWarning,
+    });
+    throw e;
+  }
+  return { ...(await postTicketStock(ctx, ticketId, actor)), changes };
+}
+
 // ---- packages, plans, client credit (spec §3) ----
 
 /**
@@ -2084,6 +2257,30 @@ export async function voidTicket(
   // to `open` — settlePlanIfPaid only ever settles. Harmless today (the derived
   // progress on every read is correct); the stored status can lie. See meta
   // proposals/2026-09-13-pos-packages-plans-s1-followups.md.
+
+  // A rebuild (spec 120) that raced this void may have posted a new movement
+  // after the cancel above. The void is committed: this never fails it.
+  // TODO(handoff): a rebuild that read the sale before the void committed and
+  // posts after this lookup still leaves a live movement on a void sale. The
+  // close is a one-live-movement-per-sale constraint; see meta
+  // proposals/2026-11-14-hub-till-corrections-followups.md.
+  try {
+    const live = await findEntryBySource(ctx, 'pos', id);
+    const alreadyFailed = stockWarning && live?.id === ticket.stockEntryId;
+    if (live?.status === 'submitted' && !alreadyFailed) await cancelEntry(ctx, live.id, actor);
+  } catch (e) {
+    const warning: StockWarning = {
+      code: 'void_stock_failed',
+      message: e instanceof Error ? e.message : String(e),
+    };
+    await withOrgCore(ctx, (tx) =>
+      tx
+        .update(posTickets)
+        .set({ stockWarning: warning })
+        .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId))),
+    ).catch(() => {});
+    return { ...row, stockWarning: warning };
+  }
   return row;
 }
 

@@ -27,13 +27,15 @@ const submitEntryMock =
   vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
 const cancelEntryMock =
   vi.fn<(ctx: unknown, id: string, actor: unknown) => Promise<{ id: string }>>();
-const getEntryMock =
-  vi.fn<
-    (
-      ctx: unknown,
-      id: string,
-    ) => Promise<{ entry: { id: string; status: string }; lines: [] } | null>
-  >();
+const getEntryMock = vi.fn<
+  (
+    ctx: unknown,
+    id: string,
+  ) => Promise<{
+    entry: { id: string; status: string };
+    lines: Array<{ itemId: string; qty: string }>;
+  } | null>
+>();
 const listAllComponentEdgesMock =
   vi.fn<
     (ctx: unknown) => Promise<Array<{ parentItemId: string; childItemId: string; qty: number }>>
@@ -62,6 +64,8 @@ vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
 import {
   submitTicket as submitTicketService,
   postTicketStock,
+  planRepost,
+  repostTicketStock,
   voidTicket,
   computeTicketTotals,
   DEFAULT_POS_SETTINGS,
@@ -1064,6 +1068,184 @@ describe('submitTicket — stock shortfall integrity', () => {
   });
 });
 
+describe('planRepost — what a rebuild may change (spec 120)', () => {
+  const m = (o: Record<string, number>) => new Map(Object.entries(o));
+
+  it('a decrease on an allowed item is a change, not drift', () => {
+    const out = planRepost(m({ a: 1, s: 1 }), m({ a: 1 }), { allowedItemIds: new Set(['s']) });
+    expect(out.changes).toEqual([{ itemId: 's', old: 1, new: 0, diff: -1 }]);
+    expect(out.drift).toEqual([]);
+  });
+
+  it('a change on an item nobody named is drift', () => {
+    const out = planRepost(m({ a: 1, x: 2 }), m({ a: 1 }), { allowedItemIds: new Set(['s']) });
+    expect(out.drift.map((d) => d.itemId)).toEqual(['x']);
+  });
+
+  it('an increase is drift even on an allowed item, unless it is the swap target', () => {
+    const grow = [m({ a: 0.5 }), m({ a: 1 })] as const;
+    expect(planRepost(...grow, { allowedItemIds: new Set(['a']) }).drift).toHaveLength(1);
+    expect(
+      planRepost(...grow, { allowedItemIds: new Set(), allowIncreaseItemIds: new Set(['a']) })
+        .drift,
+    ).toEqual([]);
+  });
+
+  it('differences inside the tolerance plan nothing', () => {
+    const out = planRepost(m({ a: 1 }), m({ a: 1.00005 }), { allowedItemIds: new Set() });
+    expect(out).toEqual({ changes: [], drift: [] });
+  });
+});
+
+describe('repostTicketStock — rebuild a sale under the current rule (spec 120)', () => {
+  const productLine = {
+    id: 'l1',
+    orgId: 'org-1',
+    ticketId: 'ticket-1',
+    kind: 'product',
+    finProductId: 'fp-prod',
+    bookingId: null,
+    redemptionId: null,
+    qty: '1',
+    unitPrice: '10',
+  };
+  const serviceLine = { ...productLine, id: 'l2', kind: 'service', finProductId: 'fp-svc' };
+  /** The read-only half: sale, lines, rule, recipes. */
+  const previewSequence = (stockEntryId = 'entry-old') => [
+    [ticketRow({ stockEntryId })], // loadTicketRow
+    [productLine, serviceLine], // ticket lines
+    [], // bundle lookup: fp-svc is not a bundle
+    [{ finProductId: 'fp-prod', itemId: 'item-a', qtyPerUnit: '1' }], // recipe of what issues
+    [{ finProductId: 'fp-svc', itemId: 'item-s', qtyPerUnit: '1' }], // recipe of the treatment
+    [{ id: 'item-a', unitsPerStockUom: null }], // unit conversion
+  ];
+  const liveEntry = (lines: Array<{ itemId: string; qty: string }>) =>
+    getEntryMock.mockResolvedValueOnce({ entry: { id: 'entry-old', status: 'submitted' }, lines });
+  const treatmentOnly = { allowedItemIds: new Set(['item-s']) };
+
+  it('refuses a void sale', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[ticketRow({ status: 'void', stockEntryId: 'entry-old' })]]);
+    await expect(
+      repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly),
+    ).rejects.toMatchObject({ code: 'already_void' });
+  });
+
+  it('refuses a sale with no live movement and never posts one', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[ticketRow({ stockEntryId: null })]]);
+    await expect(
+      repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly),
+    ).rejects.toMatchObject({ code: 'no_stock_entry' });
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a change outside the named items and touches nothing', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry([
+      { itemId: 'item-a', qty: '1' },
+      { itemId: 'item-s', qty: '1' },
+      { itemId: 'item-x', qty: '1' }, // not in any recipe today
+    ]);
+    resolveSequence(previewSequence());
+    await expect(
+      repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly),
+    ).rejects.toMatchObject({ code: 'stock_drift' });
+    expect(db.update).not.toHaveBeenCalled();
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses an increase', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry([{ itemId: 'item-a', qty: '0.5' }]);
+    resolveSequence(previewSequence());
+    await expect(
+      repostTicketStock(ctx(db), 'ticket-1', actor, { allowedItemIds: new Set(['item-a']) }),
+    ).rejects.toMatchObject({ code: 'stock_drift' });
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('plans nothing for a sale that is already right', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry([{ itemId: 'item-a', qty: '1' }]);
+    resolveSequence(previewSequence());
+    const out = await repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly);
+    expect(out).toMatchObject({ entryId: 'entry-old', changes: [] });
+    expect(db.update).not.toHaveBeenCalled();
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+  });
+
+  const doubled = [
+    { itemId: 'item-a', qty: '1' },
+    { itemId: 'item-s', qty: '1' },
+  ];
+
+  it('refuses when the stamp moved since it was read', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry(doubled);
+    resolveSequence([...previewSequence(), []]); // claim matches no row
+    await expect(
+      repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly),
+    ).rejects.toMatchObject({ code: 'operation_conflict' });
+    expect(cancelEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('restores the stamp when the cancel fails', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry(doubled);
+    resolveSequence([...previewSequence(), [{ id: 'ticket-1' }], []]); // claim, restore
+    cancelEntryMock.mockRejectedValueOnce(new MockStockError('locked', 'not_submitted'));
+    await expect(
+      repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly),
+    ).rejects.toMatchObject({ code: 'not_submitted' });
+    expect(db.update).toHaveBeenCalledTimes(2);
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
+  });
+
+  /** postTicketStock after the claim: the stamp is gone, the product issues. */
+  const repostSequence = [
+    [{ id: 'ticket-1' }], // claim
+    [ticketRow({ stockEntryId: null })], // loadTicketRow
+    [productLine, serviceLine], // ticket lines
+    [], // bundle lookup
+    [{ finProductId: 'fp-prod', itemId: 'item-a', qtyPerUnit: '1' }], // recipe
+    [{ itemId: 'item-a', qty: 5 }], // bins
+    [], // item names
+    [], // stampTicketStock
+  ];
+
+  it('cancels the old movement and posts the product only', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry(doubled);
+    resolveSequence([...previewSequence(), ...repostSequence]);
+    cancelEntryMock.mockResolvedValue({ id: 'entry-old' });
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockResolvedValue({ id: 'entry-new' });
+
+    const out = await repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly);
+
+    expect(cancelEntryMock).toHaveBeenCalledWith(expect.anything(), 'entry-old', actor);
+    expect(out.entryId).toBe('entry-new');
+    expect(out.changes).toEqual([{ itemId: 'item-s', old: 1, new: 0, diff: -1 }]);
+    const issued = createSourcedIssueMock.mock.calls[0][1] as { lines: { itemId: string }[] };
+    expect(issued.lines.map((l) => l.itemId)).toEqual(['item-a']);
+  });
+
+  it('a post that fails after the cancel leaves a warning for the retry', async () => {
+    const { db, resolveSequence } = createMockDb();
+    liveEntry(doubled);
+    resolveSequence([...previewSequence(), ...repostSequence]);
+    cancelEntryMock.mockResolvedValue({ id: 'entry-old' });
+    resolveDefaultWarehouseMock.mockResolvedValue('wh-1');
+    createSourcedIssueMock.mockRejectedValue(new MockStockError('bin locked', 'bin_locked'));
+
+    const out = await repostTicketStock(ctx(db), 'ticket-1', actor, treatmentOnly);
+
+    expect(out.entryId).toBeNull();
+    expect(out.stockWarning).toMatchObject({ code: 'bin_locked' });
+  });
+});
+
 describe('voidTicket', () => {
   it.each([
     { facet: 'grant', grants: [{ id: 'g1', unitValue: 'NaN' }], lines: [], payments: [] },
@@ -1117,6 +1299,55 @@ describe('voidTicket', () => {
     const result = await voidTicket(ctx(db), 't1', actor);
     expect(cancelEntryMock).toHaveBeenCalledWith(expect.anything(), 'entry-1', actor);
     expect(result.status).toBe('void');
+  });
+
+  it('cancels a movement a racing rebuild posted after the void read the sale (spec 120)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 't1', stockEntryId: null })], // loadTicketRow: stamp claimed by the rebuild
+      [], // no accounting lock
+      [{ id: 'shift-1' }], // the actor's open shift
+      [], // live redemptions
+      [], // grants
+      [], // ledger money preflight
+      [], // ticket line preflight
+      [], // payment preflight
+      [{ id: 'shift-1' }], // the refund shift, re-read inside the money tx
+      [], // client-ledger rows to reverse
+      [ticketRow({ id: 't1', status: 'void', stockEntryId: null })], // update returning
+    ]);
+    findEntryBySourceMock.mockResolvedValue({ id: 'entry-raced', status: 'submitted' });
+    cancelEntryMock.mockResolvedValue({ id: 'entry-raced' });
+
+    const result = await voidTicket(ctx(db), 't1', actor);
+
+    expect(cancelEntryMock).toHaveBeenCalledWith(expect.anything(), 'entry-raced', actor);
+    expect(result.status).toBe('void');
+  });
+
+  it('a failing final lookup never fails a committed void: it stores a warning', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [ticketRow({ id: 't1', stockEntryId: null })],
+      [],
+      [{ id: 'shift-1' }],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [{ id: 'shift-1' }],
+      [],
+      [ticketRow({ id: 't1', status: 'void', stockEntryId: null })],
+      [], // warning update
+    ]);
+    findEntryBySourceMock.mockResolvedValue({ id: 'entry-raced', status: 'submitted' });
+    cancelEntryMock.mockRejectedValue(new MockStockError('no ledger', 'no_ledger'));
+
+    const result = await voidTicket(ctx(db), 't1', actor);
+
+    expect(result.status).toBe('void');
+    expect(result.stockWarning).toMatchObject({ code: 'void_stock_failed' });
   });
 
   it('a sale that moved no stock (services only, spec 120) voids cleanly: nothing to cancel, no warning', async () => {
