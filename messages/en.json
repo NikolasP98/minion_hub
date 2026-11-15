@@ -7672,5 +7672,8 @@
   "pos_funnel_stage_leads": "Leads",
   "pos_funnel_stage_first": "First-time customers",
   "pos_funnel_stage_repeat": "Repeat customers",
-  "pos_funnel_stages_note": "Counts per stage for the range, not a tracked cohort: leads are not yet linked to customers."
+  "pos_funnel_stages_note": "Counts per stage for the range, not a tracked cohort: leads are not yet linked to customers.",
+  "floatingAssistant_usingTool": "Using {tool}…",
+  "floatingAssistant_writing": "Writing the reply…",
+  "floatingAssistant_failed": "Didn't finish — open the chat to retry"
 }

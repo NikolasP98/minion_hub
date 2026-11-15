@@ -58,6 +58,26 @@
       openAssistant();
     };
 
+  // Collapsed pill with the chat seeded, its hover bubble forced open via focus.
+  const pill =
+    (chatPatch?: Partial<AgentChatState>) =>
+    async ({ canvasElement }: { canvasElement: HTMLElement }) => {
+      Object.assign(ensureAgentChat(ID), { messages: thread }, chatPatch);
+      conn.connected = true;
+      await new Promise((r) => setTimeout(r, 50));
+      const doc = canvasElement.ownerDocument;
+      doc.querySelector<HTMLElement>('.fa-launcher')?.focus({ focusVisible: true } as FocusOptions);
+    };
+  const toolTurn: ChatMessage[] = [
+    ...thread,
+    { role: 'user', content: 'Book Ana Torres for a cleaning next Friday', timestamp: t0 + 90_000 },
+    {
+      role: 'assistant',
+      content: [{ type: 'toolCall', id: 'c1', name: 'crm_search_contacts', arguments: '{}' }],
+      timestamp: t0 + 92_000,
+    } as unknown as ChatMessage,
+  ];
+
   const { Story } = defineMeta({
     title: 'Components/Agents/FloatingAssistant',
     component: FloatingAssistant,
@@ -139,5 +159,28 @@
   globals={{ viewport: { value: 'phone', isRotated: false } }}
   play={seed()}
 >
+  {#snippet template()}<FloatingAssistant />{/snippet}
+</Story>
+
+<Story name="Pill bubble · empty chat" play={async (ctx) => (await seed()(), pill({ messages: [] })(ctx))}>
+  {#snippet template()}<FloatingAssistant />{/snippet}
+</Story>
+
+<Story
+  name="Pill bubble · using a tool"
+  play={async (ctx) => (await seed()(), pill({ messages: toolTurn, sending: true })(ctx))}
+>
+  {#snippet template()}<FloatingAssistant />{/snippet}
+</Story>
+
+<Story
+  name="Pill bubble · writing"
+  play={async (ctx) =>
+    (await seed()(), pill({ sending: true, stream: 'Looking at Thursday now.' })(ctx))}
+>
+  {#snippet template()}<FloatingAssistant />{/snippet}
+</Story>
+
+<Story name="Pill bubble · last reply" play={async (ctx) => (await seed()(), pill()(ctx))}>
   {#snippet template()}<FloatingAssistant />{/snippet}
 </Story>
