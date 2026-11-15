@@ -1042,7 +1042,6 @@
       addDisabled={contactCreation.busy || !canAct('crm', 'edit')}
       emptyMessage={m.crm_empty_title()}
     >
-
       {#snippet actions()}
         <Button
           variant="outline"

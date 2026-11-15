@@ -77,7 +77,11 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
 /** Old bookmarks: `?tag=<id>` / `?reserved=1` / `?awaiting=1` were toolbar
  *  toggles; they are column filters now. `null` when nothing to rewrite. */
 export function _legacyFilterRedirect(url: URL): string | null {
-  const legacy: Record<string, string> = { tag: 'tags', reserved: 'reserved', awaiting: 'awaiting' };
+  const legacy: Record<string, string> = {
+    tag: 'tags',
+    reserved: 'reserved',
+    awaiting: 'awaiting',
+  };
   if (!Object.keys(legacy).some((k) => url.searchParams.has(k))) return null;
   const p = new URLSearchParams(url.search);
   for (const [from, column] of Object.entries(legacy)) {
