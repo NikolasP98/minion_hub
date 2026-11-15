@@ -218,6 +218,7 @@ export interface RankFilters {
   channel?: string;
   minScore?: number;
   maxScore?: number;
+  /** One tag id, or several comma-separated (matches ANY). */
   tagId?: string;
   /** Restrict to a single contact (used by the detail page to get its score). */
   contactId?: string;
@@ -887,7 +888,7 @@ async function runRankQuery(
     }
     if (f.tagId)
       conds.push(
-        sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id = ${f.tagId})`,
+        sql`exists (select 1 from crm_contact_tags ct where ct.contact_id = c.id and ct.tag_id::text = any(string_to_array(${f.tagId}, ',')))`,
       );
 
     const outer = [sql`true`];
