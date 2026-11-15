@@ -162,7 +162,10 @@
   {#snippet template()}<FloatingAssistant />{/snippet}
 </Story>
 
-<Story name="Pill bubble · empty chat" play={async (ctx) => (await seed()(), pill({ messages: [] })(ctx))}>
+<Story
+  name="Pill bubble · empty chat"
+  play={async (ctx) => (await seed()(), pill({ messages: [] })(ctx))}
+>
   {#snippet template()}<FloatingAssistant />{/snippet}
 </Story>
 
@@ -175,8 +178,10 @@
 
 <Story
   name="Pill bubble · writing"
-  play={async (ctx) =>
-    (await seed()(), pill({ sending: true, stream: 'Looking at Thursday now.' })(ctx))}
+  play={async (ctx) => (
+    await seed()(),
+    pill({ sending: true, stream: 'Looking at Thursday now.' })(ctx)
+  )}
 >
   {#snippet template()}<FloatingAssistant />{/snippet}
 </Story>

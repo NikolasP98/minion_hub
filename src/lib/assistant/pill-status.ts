@@ -68,6 +68,11 @@ export function pillStatus(
     return { ...base, phase: tools.length ? 'reviewing' : 'thinking' };
   }
   if (o.error) return { ...base, phase: 'error' };
-  const reply = turn.filter((m) => !isUser(m) && !isToolResultOnly(m)).map(textOf).filter((t) => t.trim()).at(-1) ?? '';
+  const reply =
+    turn
+      .filter((m) => !isUser(m) && !isToolResultOnly(m))
+      .map(textOf)
+      .filter((t) => t.trim())
+      .at(-1) ?? '';
   return { ...base, phase: 'done', reply: clip(clean(reply), 120) };
 }

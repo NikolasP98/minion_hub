@@ -40,10 +40,22 @@ describe('pillStatus', () => {
 
   it('counts only the latest turn and quotes the finished reply', () => {
     const s = pillStatus(
-      [user('old'), call('x', 't'), result('x'), reply('old answer'), user('new'), reply('  Done:\nAna is booked.  ')],
+      [
+        user('old'),
+        call('x', 't'),
+        result('x'),
+        reply('old answer'),
+        user('new'),
+        reply('  Done:\nAna is booked.  '),
+      ],
       idle,
     );
-    expect(s).toMatchObject({ task: 'new', phase: 'done', toolUses: 0, reply: 'Done: Ana is booked.' });
+    expect(s).toMatchObject({
+      task: 'new',
+      phase: 'done',
+      toolUses: 0,
+      reply: 'Done: Ana is booked.',
+    });
   });
 
   it('reports a failed turn', () => {
