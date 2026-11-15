@@ -748,6 +748,22 @@
     min-height: var(--control-height-touch);
     min-width: var(--control-height-touch);
   }
+  /* The "…" appears on the row being hovered (or focused, or while its menu is
+     open); it keeps its slot so labels never reflow. Touch has no hover. */
+  .nav-context-host > :global(button[aria-haspopup='menu']) {
+    opacity: 0;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .nav-context-host:hover > :global(button[aria-haspopup='menu']),
+  .nav-context-host:has(:global(:focus-visible)) > :global(button[aria-haspopup='menu']),
+  .nav-context-host > :global(button[aria-expanded='true']) {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .nav-context-host > :global(button[aria-haspopup='menu']) {
+      opacity: 1;
+    }
+  }
   .nav-context-host.compact:not(.header) {
     display: contents;
   }
