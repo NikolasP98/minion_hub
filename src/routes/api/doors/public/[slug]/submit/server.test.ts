@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ submitFormDoor: vi.fn() }));
+const mocks = vi.hoisted(() => ({ submitFormDoor: vi.fn(), doorCaller: vi.fn() }));
 vi.mock('$server/services/doors-form.service', () => ({ submitFormDoor: mocks.submitFormDoor }));
+// The real caller by default; the key cases below swap in a stub.
+vi.mock('$server/doors/caller', async (orig) => {
+  const real = await orig<typeof import('$server/doors/caller')>();
+  mocks.doorCaller.mockImplementation(real.doorCaller);
+  return { doorCaller: (...a: Parameters<typeof real.doorCaller>) => mocks.doorCaller(...a) };
+});
 // No database here: the shared limiter falls back to the per-instance one. The
 // shared store itself is proven in doors-hardening.sql.integration.test.ts.
 vi.mock('$server/db/pg-client', () => ({
@@ -100,6 +106,26 @@ describe('POST /api/doors/public/[slug]/submit', () => {
     expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
     expect(mocks.submitFormDoor).toHaveBeenCalledTimes(5);
     expect((await call({ values }, { ip: '203.0.113.9', slug: 'otra-puerta' })).status).toBe(200);
+  });
+
+  it('a key refusal is answered before the body is read; a valid key reaches the service', async () => {
+    const real = mocks.doorCaller.getMockImplementation()!;
+    mocks.doorCaller.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }),
+    );
+    expect((await call('not json')).status).toBe(401);
+    expect(mocks.submitFormDoor).not.toHaveBeenCalled();
+
+    mocks.doorCaller.mockResolvedValueOnce({ keyId: 'key-1' });
+    expect((await call({ values, consent: true })).status).toBe(200);
+    expect(mocks.submitFormDoor).toHaveBeenCalledWith('qa-intake', {
+      values,
+      consent: true,
+      attribution: undefined,
+      keyId: 'key-1',
+    });
+    expect(mocks.doorCaller.mock.calls.at(-1)?.slice(1)).toEqual(['qa-intake', 'submit']);
+    mocks.doorCaller.mockImplementation(real);
   });
 
   it('an unexpected failure → 500 with no detail, and the log carries no value', async () => {

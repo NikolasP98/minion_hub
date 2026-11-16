@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ uploadDoorFile: vi.fn() }));
+const mocks = vi.hoisted(() => ({ uploadDoorFile: vi.fn(), doorCaller: vi.fn() }));
 vi.mock('$server/services/doors-form.service', () => ({ uploadDoorFile: mocks.uploadDoorFile }));
+// The real caller by default; the key cases below swap in a stub.
+vi.mock('$server/doors/caller', async (orig) => {
+  const real = await orig<typeof import('$server/doors/caller')>();
+  mocks.doorCaller.mockImplementation(real.doorCaller);
+  return { doorCaller: (...a: Parameters<typeof real.doorCaller>) => mocks.doorCaller(...a) };
+});
 // No database here: the shared limiter falls back to the per-instance one.
 vi.mock('$server/db/pg-client', () => ({
   getCoreDb: () => {
@@ -82,6 +88,19 @@ describe('POST /api/doors/public/[slug]/upload', () => {
     const res = await call('field=foto&name=secreto.jpg');
     expect(res.status).toBe(500);
     expect(await res.text()).not.toContain('secreto');
+  });
+
+  it('a key refusal is answered before the body is read; a valid key uploads as usual', async () => {
+    const real = mocks.doorCaller.getMockImplementation()!;
+    mocks.doorCaller.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401 }),
+    );
+    expect((await call('field=Bad Key')).status).toBe(401);
+    expect(mocks.uploadDoorFile).not.toHaveBeenCalled();
+    mocks.doorCaller.mockResolvedValueOnce({ keyId: 'key-1' });
+    expect((await call('field=foto&name=a.jpg')).status).toBe(200);
+    expect(mocks.doorCaller.mock.calls.at(-1)?.slice(1)).toEqual(['qa-intake', 'upload']);
+    mocks.doorCaller.mockImplementation(real);
   });
 
   it('limits uploads per address and door', async () => {

@@ -1,15 +1,14 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
-import { checkSharedRateLimit } from '$server/auth/shared-rate-limit';
+import { doorCaller } from '$server/doors/caller';
 import { submitFormDoor } from '$server/services/doors-form.service';
 import { attributionSchema } from '$lib/doors/attribution';
 
 // Unauthenticated write of personal (possibly clinical) data. This handler is
 // the trust boundary: the body is re-validated against the door's stored
 // config, and no response, log line or error ever carries a submitted value.
-// Shared across lambda instances (public_rate_limits): 5 per minute per visitor per door.
-const SUBMIT_LIMIT = 5;
+// Who is calling (organization key or anonymous) and the rate limits: `doorCaller`.
 
 const bodySchema = z
   .object({
@@ -25,14 +24,8 @@ const fail = (status: number, code: string) => json({ error: code }, { status })
 /** POST /api/doors/public/[slug]/submit — public form door submission. */
 export const POST: RequestHandler = async (event) => {
   const { params, request } = event;
-  let ip = 'unknown';
-  try {
-    ip = event.getClientAddress();
-  } catch {
-    // unavailable in some test/adapter contexts
-  }
-  if (!(await checkSharedRateLimit(`door-submit:${ip}:${params.slug}`, SUBMIT_LIMIT)))
-    return fail(429, 'too_many');
+  const caller = await doorCaller(event, params.slug ?? '', 'submit');
+  if (caller instanceof Response) return caller;
 
   let raw: unknown;
   try {
@@ -52,6 +45,7 @@ export const POST: RequestHandler = async (event) => {
       values: body.data.values,
       consent: body.data.consent,
       attribution: body.data.attribution,
+      ...(caller.keyId ? { keyId: caller.keyId } : {}),
     });
     if (result.status === 'not_found') return fail(404, 'not_found');
     if (result.status === 'invalid')

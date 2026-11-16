@@ -63,6 +63,8 @@ export const crmDoorSubmissions = pgTable(
     /** Snapshot of the consent text the visitor agreed to. */
     consentText: text('consent_text'),
     attribution: jsonb('attribution').notNull().default({}),
+    /** org_api_keys.id that sent it (spec 121); null without a key. No FK: keys are never deleted. */
+    apiKeyId: uuid('api_key_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

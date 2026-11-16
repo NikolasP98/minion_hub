@@ -155,6 +155,7 @@ export const SEEDED_TABLES: readonly string[] = [
   'crm_door_followups',
   'crm_door_stats_daily',
   'public_rate_limits',
+  'org_api_keys',
   'org_plans',
 ];
 

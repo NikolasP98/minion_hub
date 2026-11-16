@@ -360,6 +360,11 @@
     "class": "todo"
   },
   {
+    "file": "src/server/doors/caller.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
     "file": "src/server/identity/channel-claim.service.ts",
     "calls": ["supabaseAdmin"],
     "class": "todo"
@@ -536,6 +541,11 @@
   },
   {
     "file": "src/server/services/notif.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "todo"
+  },
+  {
+    "file": "src/server/services/org-api-keys.service.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
   },

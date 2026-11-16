@@ -141,6 +141,7 @@ export const ROUTE_ACCESS_POLICY_OVERRIDES: Readonly<Record<string, RouteAccessP
   '/pos/appointments/new': 'org-capability:pos:create',
   '/stock/entries/new': 'org-capability:stock:create',
   '/settings/backups': 'org-capability:settings:manage',
+  '/settings/developers': 'org-capability:settings:manage',
   '/settings/gateways': 'role:admin',
   '/settings/modules': 'org-capability:settings:manage',
   '/settings/notifications': 'org-capability:comms:manage',

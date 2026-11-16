@@ -43,6 +43,8 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/settings/backups': 'respaldo copia de seguridad export',
   '/settings/modules': 'modulos features',
   '/settings/tables': 'tablas prefijos id columnas campos tables prefixes columns fields',
+  '/settings/developers':
+    'desarrolladores developers api keys claves api llaves tokens integraciones integrations',
   '/users': 'usuarios usuario accounts cuentas',
   '/channels': 'whatsapp telegram integraciones canales',
   '/channels/gmail': 'gmail correo',

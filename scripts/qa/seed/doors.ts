@@ -1,6 +1,7 @@
 /**
  * Doors — collection points (spec 041 S0, pairs with migration
- * 20261025100000_crm_doors.sql and, for the shared rate limit, 20261025110000_public_rate_limits.sql).
+ * 20261025100000_crm_doors.sql and, for the shared rate limit, 20261025110000_public_rate_limits.sql;
+ * the revoked organization API key pairs with 20261116100000_org_api_keys.sql, spec 121 S1).
  * One active booking link (the scheduling seed
  * has only an expired one), one door per kind, a switched-off door, one form
  * submission, three days of anonymous counters and one contact whose
@@ -10,7 +11,7 @@
  */
 import { createHash } from 'node:crypto';
 import { matrixUuid, humanId } from './ids';
-import { ORG_BUSINESS } from './tenancy';
+import { ORG_BUSINESS, userId } from './tenancy';
 import { EVENT_TYPE_PLAIN } from './scheduling';
 import { PRODUCT_SERVICE_PLAIN, PRODUCT_TRACKED } from './catalog';
 import type { SeedContext } from './db';
@@ -22,6 +23,7 @@ export const DOOR_OFFER = matrixUuid('doors.offer.two-products');
 export const DOOR_OFF = matrixUuid('doors.door.inactive');
 export const DOOR_CONTACT = matrixUuid('doors.contact.first-touch');
 export const DOOR_SUBMISSION = matrixUuid('doors.submission.one');
+export const DOOR_API_KEY_REVOKED = matrixUuid('doors.api-key.revoked');
 
 const FORM_CONFIG = {
   fields: [
@@ -173,4 +175,18 @@ export async function seed(ctx: SeedContext): Promise<void> {
     on conflict (bucket) do update set window_start = excluded.window_start, hits = excluded.hits
   `;
   register('doors.rate-limit.stale-window', { table: 'public_rate_limits', where: { bucket } });
+
+  // Spec 121: a revoked key, so Settings → Developers lists one on a fresh stack. Its text is a
+  // fixed dummy that never worked; only the prefix and the hash are stored, as for a real key.
+  const owner = userId('tenancy.user.owner');
+  const keyHash = createHash('sha256')
+    .update('mk_0a11ce00_qa-revoked-key-dummy-0000000000000000000000')
+    .digest('hex');
+  await sql`
+    insert into org_api_keys (id, org_id, name, prefix, key_hash, created_by, created_at, revoked_by, revoked_at)
+    values (${DOOR_API_KEY_REVOKED}, ${ORG_BUSINESS}, 'QA old site key', '0a11ce00', ${keyHash},
+      ${owner}, ${new Date(now.getTime() - 30 * 86_400_000)}, ${owner}, ${new Date(now.getTime() - 2 * 86_400_000)})
+    on conflict (id) do update set revoked_at = excluded.revoked_at, revoked_by = excluded.revoked_by
+  `;
+  register('doors.api-key.revoked', { table: 'org_api_keys', where: { id: DOOR_API_KEY_REVOKED } });
 }
