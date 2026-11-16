@@ -191,6 +191,17 @@ export async function issueGatewayJwt(
     .where(and(eq(userAgents.userId, userId), eq(servers.tenantId, ctx.tenantId)));
   const agentIds = [...new Set(agentRows.map((r) => r.agentId))];
 
+  // Spec 117: the gateway gives a person only their own assistant's sessions, so
+  // the list names the caller's stored assistant id, lower-cased like the
+  // gateway's agent ids. A lookup failure must not block issuance.
+  try {
+    const { getPersonalAssistantId } = await import('./personal-agent.service');
+    const assistantId = (await getPersonalAssistantId(userId))?.toLowerCase();
+    if (assistantId && !agentIds.includes(assistantId)) agentIds.push(assistantId);
+  } catch (err) {
+    console.warn('[gateway-jwt] personal assistant lookup failed; token keeps assignments', err);
+  }
+
   // 3. Sign with the standalone key.
   const { privateKey, kid } = await loadActiveSigningKey();
   const nowSeconds = Math.floor(Date.now() / 1000);

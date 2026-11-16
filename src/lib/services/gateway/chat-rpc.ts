@@ -22,6 +22,14 @@ import { sendRequest, gwTrace, getClient, requestReconnect } from '../gateway-rp
 /** Client-side request timeout: the gateway acks `chat.send` in ~100 ms, so 15 s of silence is a dead socket. */
 const isAckTimeout = (e: unknown) => (e as { code?: unknown } | null)?.code === 'TIMEOUT';
 
+/** The gateway refuses a person a conversation that isn't theirs (spec 117). */
+function isSessionForbidden(e: unknown): boolean {
+  const err = e as { code?: unknown; message?: unknown } | null;
+  return err?.code === 'FORBIDDEN' && err.message === 'access denied to session';
+}
+const chatErrorText = (e: unknown) =>
+  isSessionForbidden(e) ? m.chat_session_forbidden() : String(e);
+
 export function loadChatHistory(
   agentId: string,
   sessionKey?: string,
@@ -71,7 +79,11 @@ export function loadChatHistory(
         if (chat.lastError === m.floatingAssistant_connectionLost()) chat.lastError = null;
       }
     })
-    .catch(() => {})
+    .catch((e) => {
+      // Opening someone else's conversation: say so instead of an empty thread.
+      if (isSessionForbidden(e) && current() && chat.sessionKey === targetSessionKey)
+        chat.lastError = m.chat_session_forbidden();
+    })
     .finally(() => {
       if (current() && chat.sessionKey === targetSessionKey) chat.loading = false;
     });
@@ -163,7 +175,7 @@ export function sendChatMsg(agentId: string) {
     chat.stream = null;
     chat.streamMessage = null;
     chat.sending = false;
-    chat.lastError = String(e);
+    chat.lastError = chatErrorText(e);
     // Sync in case the message was processed despite the error
     loadChatHistory(agentId);
   });
@@ -433,7 +445,7 @@ export function sendAssistantTurn(
         requestReconnect();
       } else {
         clearTimeout(guard);
-        chat.lastError = String(e);
+        chat.lastError = chatErrorText(e);
       }
       void loadChatHistory(agentId, sessionKey, current);
     });
@@ -473,7 +485,7 @@ export function sendVoiceTurn(agentId: string, transcript: string) {
       chat.runId = null;
       chat.stream = null;
       chat.sending = false;
-      chat.lastError = String(e);
+      chat.lastError = chatErrorText(e);
       loadChatHistory(agentId);
     });
 }

@@ -6,11 +6,13 @@ import {
 } from '$server/services/chat.service';
 import type { ChatMessageInput } from '$server/services/chat.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
+import { assertCanAccessStoredSession } from '$server/auth/authorize';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = await requireCoreCtx(locals);
 
   const sessionKey = decodeURIComponent(params.sessionKey!);
+  await assertCanAccessStoredSession(locals, { sessionKey });
   const messages = await listChatMessagesBySessionKey(ctx, params.id!, sessionKey);
   return json({ messages });
 };
@@ -22,6 +24,13 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const incoming: unknown[] = Array.isArray(body.messages) ? body.messages : [];
 
   const sessionKey = decodeURIComponent(params.sessionKey!);
+  await assertCanAccessStoredSession(locals, { sessionKey });
+  // chat-history reads rows by agent id: a member may not file rows under another agent.
+  for (const agentId of new Set(
+    incoming.map((m) => (m as { agentId?: unknown } | null)?.agentId),
+  )) {
+    if (typeof agentId === 'string') await assertCanAccessStoredSession(locals, { agentId });
+  }
   const serverId = params.id!;
 
   const messages: ChatMessageInput[] = incoming
