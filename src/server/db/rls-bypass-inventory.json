@@ -566,7 +566,7 @@
   },
   {
     "file": "src/server/services/personal-agent.service.ts",
-    "calls": ["getDb"],
+    "calls": ["getCoreDb", "getDb"],
     "class": "user-scoped"
   },
   {
