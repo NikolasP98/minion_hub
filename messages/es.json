@@ -6388,7 +6388,7 @@
   "settings_developers_col_status": "Estado",
   "settings_developers_never": "Nunca",
   "settings_developers_status_active": "Activa",
-  "settings_developers_status_revoked": "Revocada",
+  "settings_developers_status_revoked": "Revocado",
   "settings_developers_revoked_by": "{date} por {name}",
   "settings_developers_revoke": "Revocar",
   "settings_developers_revoke_title": "¿Revocar «{name}»?",
