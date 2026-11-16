@@ -1,15 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
-import { checkSharedRateLimit } from '$server/auth/shared-rate-limit';
+import { doorCaller } from '$server/doors/caller';
 import { uploadDoorFile } from '$server/services/doors-form.service';
 import { ATTACHMENT_LIMITS } from '$lib/attachments/limits';
 import { FORM_KEY_RE } from '$lib/doors/kinds/form';
 
 // Unauthenticated file upload for a form door's `file` fields. The body is the raw file;
 // the field key and file name travel in the query. No response, log line or error carries
-// the file name or content.
-// A site that posts from its own server shares one address, so this is per door, not per person.
-const UPLOAD_LIMIT = 40;
+// the file name or content. Who is calling and the rate limits: `doorCaller`.
 
 const STATUS = {
   not_found: 404,
@@ -24,14 +22,9 @@ const fail = (status: number, code: string) => json({ error: code }, { status })
 /** POST /api/doors/public/[slug]/upload?field=<key>&name=<file name> — body = the file. */
 export const POST: RequestHandler = async (event) => {
   const { params, request, url } = event;
-  let ip = 'unknown';
-  try {
-    ip = event.getClientAddress();
-  } catch {
-    // unavailable in some test/adapter contexts
-  }
-  if (!(await checkSharedRateLimit(`door-upload:${ip}:${params.slug}`, UPLOAD_LIMIT)))
-    return fail(429, 'too_many');
+  // Uploads are not marked with the key: the submission that claims the file is.
+  const caller = await doorCaller(event, params.slug ?? '', 'upload');
+  if (caller instanceof Response) return caller;
 
   const field = url.searchParams.get('field') ?? '';
   const fileName = (url.searchParams.get('name') ?? '').slice(0, 500);

@@ -39,9 +39,10 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /orgs/plans added (spec 043 hub org entitlements S1 — platform-admin plans
   // page) — 1 more screen+endpoint.
   // /account/home adds the personal section catalog under an already-reserved prefix.
-  endpoints: 165,
+  // /settings/developers added (spec 121 S1 — organization API keys) — 1 more screen+endpoint.
+  endpoints: 166,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 154,
+  screens: 155,
   redirects: 11,
   fixtures: 30,
   viewports: ['compact', 'medium', 'wide'] as const,

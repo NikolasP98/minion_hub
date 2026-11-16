@@ -46,6 +46,8 @@ export interface SubmitFormInput {
   values: unknown;
   consent: boolean;
   attribution?: Attribution | null;
+  /** org_api_keys.id that sent it (spec 121); absent for an anonymous call. */
+  keyId?: string;
 }
 
 /**
@@ -116,6 +118,8 @@ export async function submitFormDoor(
       consent: input.consent,
       consentText: input.consent ? config.consentText : null,
       attribution,
+      // Absent without a key, so the column keeps its null default.
+      apiKeyId: input.keyId,
     });
     return { contactId: contact?.id ?? null };
   }).catch((e) => {

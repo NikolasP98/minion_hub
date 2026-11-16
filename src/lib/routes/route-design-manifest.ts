@@ -403,6 +403,7 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
   screen('/settings', 'Settings', 'organization', 'form-settings'),
   screen('/settings/appearance', 'Appearance', 'organization', 'form-settings'),
   screen('/settings/backups', 'Backups', 'organization', 'form-settings'),
+  screen('/settings/developers', 'Developers', 'organization', 'form-settings'),
   screen('/settings/gateways', 'Gateways', 'organization', 'form-settings'),
   screen('/settings/modules', 'Modules', 'organization', 'form-settings'),
   screen('/settings/notifications', 'Notification settings', 'organization', 'form-settings'),

@@ -832,6 +832,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'doors',
     why: 'public_rate_limits bucket at the 5-hit cap but with an expired window: the next qa-intake submit from that visitor resets it instead of answering 429',
   },
+  {
+    id: 'doors.api-key.revoked',
+    domain: 'doors',
+    why: 'revoked organization API key (spec 121 S1): Settings → Developers lists it with revoker and time; it never authenticates',
+  },
   // ── Org entitlements (spec 043 S1) ───────────────────────────────────
   {
     id: 'entitlements.org.premium',

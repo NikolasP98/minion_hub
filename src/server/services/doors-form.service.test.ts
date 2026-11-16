@@ -435,6 +435,12 @@ describe('submitFormDoor', () => {
     expect((await submitFormDoor('qa-intake', { values, consent: false })).status).toBe('ok');
     expect(inserted()).toMatchObject({ contactId: null, consent: false, consentText: null });
   });
+
+  it('a submission sent with an organization key records the key (spec 121)', async () => {
+    const KEY_ID = '33333333-2222-4333-8444-555555555555';
+    await submitFormDoor('qa-intake', { values, consent: true, keyId: KEY_ID }, NOW);
+    expect(inserted().apiKeyId).toBe(KEY_ID);
+  });
 });
 
 describe('maskSubmissionValues', () => {

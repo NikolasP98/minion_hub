@@ -890,6 +890,8 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   // nav config (spec 037); GET resolve is a read and stays ungated
   ['/api/nav', 'settings'],
   ['/api/plugins', 'settings'],
+  // Organization API keys (spec 121); the handlers also call requireOrgCapability.
+  ['/api/settings/api-keys', 'settings'],
   // Sandbox element writes are already `requireAdmin` at each handler; this
   // prefix is the central belt-and-suspenders if that is ever relaxed
   // (spec 010 D6 — a dedicated `sandbox` module comes with the non-POC slice).

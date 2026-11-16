@@ -18,6 +18,7 @@
     Building2,
     Activity,
     Table2,
+    Code,
   } from 'lucide-svelte';
   import { page } from '$app/state';
   import { goto } from '$lib/navigation';
@@ -65,6 +66,7 @@
     Building2,
     Activity,
     Table2,
+    Code,
   };
 
   type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
@@ -122,6 +124,13 @@
       label: m.settings_nav_tables(),
       icon: 'Table2',
       href: '/settings/tables',
+      adminOnly: false,
+    },
+    {
+      id: 'developers',
+      label: m.settings_nav_developers(),
+      icon: 'Code',
+      href: '/settings/developers',
       adminOnly: false,
     },
     {
