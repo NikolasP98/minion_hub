@@ -7528,5 +7528,19 @@
   "pos_ticket_stock_link": "Movimiento de stock",
   "pos_ticket_stock_warning": "El stock de esta venta no se registró por completo. Revísalo en Inventario.",
   "pos_swap_err_reconciled": "Esta venta está conciliada con una factura. Deshaz la conciliación en Finanzas y vuelve a intentar.",
-  "pos_appt_ctx_sale": "Corregir venta"
+  "pos_appt_ctx_sale": "Corregir venta",
+  "pos_rering_action": "Anular y volver a cobrar",
+  "pos_rering_explain": "Se anulará esta venta y se abrirá la caja con los mismos ítems, precios y cliente, y con el producto que elijas aquí. Elige también qué pasa con el dinero ya cobrado.",
+  "pos_rering_manual": "Esta venta incluye paquetes o cuotas y la caja no se puede llenar sola. Anula la venta desde la agenda y vuelve a cobrarla a mano.",
+  "pos_rering_err_void": "No se pudo anular la venta. No cambió nada; vuelve a intentar.",
+  "pos_rering_err_storage": "La venta se anuló, pero la caja no se pudo llenar. Cóbrala de nuevo a mano en Vender.",
+  "pos_rering_other_price": "El producto correcto tiene otro precio",
+  "pos_rering_to": "Producto correcto",
+  "pos_rering_keep": "Lo elijo en la caja",
+  "pos_rering_err_prepare": "No se pudo preparar la caja para esta venta. No se anuló nada. Anúlala desde la agenda y cóbrala a mano.",
+  "pos_rering_err_inactive": "Estos ítems ya no están activos en el catálogo: {items}. No se anuló nada. Actívalos en el catálogo y vuelve a intentar.",
+  "pos_rering_err_stock": "La venta se anuló, pero su stock no se devolvió. Revisa el movimiento en Inventario antes de volver a cobrar.",
+  "pos_rering_err_no_party": "Esta venta no tiene cliente, así que no puede quedar saldo a favor. Elige efectivo o sin devolución.",
+  "pos_rering_err_package": "Un paquete vendido en esta venta ya se usó en una cita. Cancela esa cita primero y vuelve a intentar.",
+  "pos_rering_err_already_void": "Esta venta ya estaba anulada. Cóbrala de nuevo en Vender."
 }

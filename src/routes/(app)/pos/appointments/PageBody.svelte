@@ -86,6 +86,7 @@
   import { instantDateKey } from '$lib/time/zoned';
   import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
   import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
+  import VoidRefundChoice, { type RefundChoice } from '$lib/components/pos/VoidRefundChoice.svelte';
 
   type PageData = Granted<LoadedPageData['pos']>;
   let { data }: { data: PageData } = $props();
@@ -694,7 +695,6 @@
       y: number;
     }
   >();
-  type RefundChoice = 'cash' | 'credit' | 'none';
   /** Pending confirmation, by verb — the house ConfirmDialog owns the busy
    *  state and the failure line. `cancel-paid` voids every ticket, then (for a
    *  scheduled visit, `id` set) cancels the visit; a tray line has no visit. */
@@ -1367,15 +1367,7 @@
           <dd>{c.services.join(', ')}</dd>
         {/if}
       </dl>
-      <fieldset class="refund">
-        <legend class="t-label">{m.pos_appt_refund_label()}</legend>
-        {#each [['cash', m.pos_appt_refund_cash()], ['credit', m.pos_appt_refund_credit()], ['none', m.pos_appt_refund_none()]] as [value, label] (value)}
-          <label class="refund-opt">
-            <input type="radio" name="refund" {value} bind:group={refund} />
-            {label}
-          </label>
-        {/each}
-      </fieldset>
+      <VoidRefundChoice bind:value={refund} />
     {/snippet}
   </ConfirmDialog>
 {/if}
@@ -1534,24 +1526,5 @@
   .void-facts dd {
     margin: 0;
     color: var(--color-text-primary);
-  }
-  .refund {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-    margin: var(--space-3) 0 0;
-    padding: 0;
-    border: 0;
-  }
-  .refund-opt {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: var(--control-height-sm);
-    color: var(--color-text-primary);
-    cursor: pointer;
-  }
-  .refund-opt input {
-    accent-color: var(--color-accent);
   }
 </style>

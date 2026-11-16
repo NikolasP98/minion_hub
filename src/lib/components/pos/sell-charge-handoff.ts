@@ -16,11 +16,16 @@ export interface SellChargeIdentity {
  * event — but can be any qty ≥ 1, same as the cart's own qty stepper.
  */
 export interface SellChargeLine {
-  bookingId: string;
+  /** v4 (meta spec 120): null = a line that belongs to no appointment. */
+  bookingId: string | null;
   productId: string | null;
   title: string;
   kind: 'service' | 'product';
   qty: number;
+  /** v4: the price and discount a voided sale charged, so charging it again
+   *  starts from what the client paid. Absent = today's catalogue price. */
+  unitPrice?: number;
+  discount?: number;
 }
 
 /** Input shape: `kind`/`qty` are optional — every caller before Slice 4 only
@@ -28,11 +33,13 @@ export interface SellChargeLine {
  *  exact v2 behavior, for both a fresh handoff and (via `normalizedLines`) a
  *  parsed v1/v2 blob that never had the fields at all. */
 export interface SellChargeLineInput {
-  bookingId: string;
+  bookingId: string | null;
   productId: string | null;
   title: string;
   kind?: 'service' | 'product';
   qty?: number;
+  unitPrice?: number;
+  discount?: number;
 }
 
 export interface SellChargeHandoffInput {
@@ -47,7 +54,7 @@ export interface SellChargeHandoffInput {
 }
 
 export interface SellChargeHandoff {
-  version: 3;
+  version: 4;
   actorId: string;
   orgId: string;
   lines: SellChargeLine[];
@@ -134,6 +141,12 @@ function normalizedQty(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+/** `undefined` (absent) stays absent; present, it must be a finite amount ≥ 0. */
+function normalizedAmount(value: unknown): number | null | undefined {
+  if (value === undefined) return null;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
 /** Every line or nothing: a handoff that silently dropped a service or
  *  product would charge the client less than the tray offered. */
 function normalizedLines(value: unknown): SellChargeLine[] | null {
@@ -142,16 +155,22 @@ function normalizedLines(value: unknown): SellChargeLine[] | null {
   for (const entry of value) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
     const record = entry as Record<string, unknown>;
-    const bookingId = requiredString(record.bookingId);
+    // An explicit null is a line with no appointment; absent or empty is malformed.
+    const bookingId =
+      record.bookingId === null ? null : (requiredString(record.bookingId) ?? undefined);
     const productId = optionalString(record.productId);
     const kind = normalizedKind(record.kind);
     const qty = normalizedQty(record.qty);
+    const unitPrice = normalizedAmount(record.unitPrice);
+    const discount = normalizedAmount(record.discount);
     if (
-      !bookingId ||
+      bookingId === undefined ||
       productId === undefined ||
       typeof record.title !== 'string' ||
       !kind ||
-      qty === undefined
+      qty === undefined ||
+      unitPrice === undefined ||
+      discount === undefined
     )
       return null;
     lines.push({
@@ -160,6 +179,8 @@ function normalizedLines(value: unknown): SellChargeLine[] | null {
       title: record.title.trim().slice(0, MAX_NAME_LENGTH),
       kind,
       qty,
+      ...(unitPrice === null ? {} : { unitPrice }),
+      ...(discount === null ? {} : { discount }),
     });
   }
   return lines;
@@ -186,7 +207,7 @@ export function createSellChargeHandoff(
     return null;
   }
   return {
-    version: 3,
+    version: 4,
     ...normalized,
     lines,
     partyId,
@@ -211,7 +232,7 @@ export function parseSellChargeHandoff(
   // v3 lines carry kind/qty; a v2 blob's lines lack both, and `normalizedLines`
   // (via `createSellChargeHandoff`, below) defaults them to service/1 — the
   // exact v2 behavior, so a v2 blob still parses with no special-casing here.
-  if (record.version !== 1 && record.version !== 2 && record.version !== 3) return null;
+  if (![1, 2, 3, 4].includes(record.version as number)) return null;
   const actorId = requiredString(record.actorId);
   const orgId = requiredString(record.orgId);
   if (actorId !== identity.actorId.trim() || orgId !== identity.orgId.trim()) return null;
@@ -269,8 +290,8 @@ export function stageSellChargeHandoff(
               {
                 sellable,
                 qty: line.qty,
-                unitPrice: sellable.unitPrice,
-                discount: 0,
+                unitPrice: line.unitPrice ?? sellable.unitPrice,
+                discount: line.discount ?? 0,
                 bookingId: line.bookingId,
               },
             ]

@@ -56,6 +56,20 @@
   export function lineKey(l: CartLine): string {
     return l.redemptionId ?? l.planId ?? (l.bookingId ? `b:${l.bookingId}` : l.sellable.productId);
   }
+
+  /** One key per cart row. Two rows can share `lineKey`: the same product sold
+   *  and gifted in one sale (meta spec 120 re-charges such a sale), or a
+   *  visit's treatment and a product charged with it. A repeat gets `#n`, so
+   *  the `{#each}` never sees a duplicate key. */
+  export function lineKeys(lines: readonly CartLine[]): string[] {
+    const seen = new Map<string, number>();
+    return lines.map((l) => {
+      const key = lineKey(l);
+      const n = seen.get(key) ?? 0;
+      seen.set(key, n + 1);
+      return n ? `${key}#${n}` : key;
+    });
+  }
 </script>
 
 <script lang="ts">
@@ -82,10 +96,13 @@
   // field stays visible for the rest of the session (typing 0 leaves the input
   // on screen). Fine at the till, but a "clear discount" verb is missing. See
   // meta proposals/2026-09-13-pos-packages-plans-s1-followups.md §29.
+  const keys = $derived(lineKeys(lines));
   let discountOpen = $state<Record<string, boolean>>({});
   function showDiscount(l: CartLine): boolean {
     const state = checkoutLineState(l);
-    return (state.ok && state.value.discountMinor > 0n) || discountOpen[lineKey(l)] === true;
+    return (
+      (state.ok && state.value.discountMinor > 0n) || discountOpen[keys[lines.indexOf(l)]] === true
+    );
   }
 
   function priceEditable(l: CartLine): boolean {
@@ -128,7 +145,7 @@
     <div class="lines">
       <!-- Key by the line's own identity: two sessions of the SAME service (or a
            redeemed line plus a paid one) share a productId and would collide. -->
-      {#each lines as l, i (lineKey(l))}
+      {#each lines as l, i (keys[i])}
         {@const money = checkoutLineState(l)}
         <div class="line" class:warn={!money.ok}>
           <div class="line-top">
@@ -219,7 +236,7 @@
                   class="disc-btn"
                   title={m.pos_sell_discount()}
                   aria-label={m.pos_sell_discount()}
-                  onclick={() => (discountOpen[lineKey(l)] = true)}
+                  onclick={() => (discountOpen[keys[i]] = true)}
                   ><Percent size={iconSizes.xs} /></Button
                 >
               {/if}
