@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 // Spec 117 D8: a member lists only their assistant's stored sessions.
 const mocks = vi.hoisted(() => ({
   listSessions: vi.fn(),
+  upsertSession: vi.fn(),
   getPersonalAssistantId: vi.fn(),
 }));
 
@@ -11,13 +12,13 @@ vi.mock('$server/auth/core-ctx', () => ({
 }));
 vi.mock('$server/services/session.service', () => ({
   listSessions: mocks.listSessions,
-  upsertSession: vi.fn(),
+  upsertSession: mocks.upsertSession,
 }));
 vi.mock('$server/services/personal-agent.service', () => ({
   getPersonalAssistantId: mocks.getPersonalAssistantId,
 }));
 
-import { GET } from './+server';
+import { GET, POST } from './+server';
 
 const admin = { id: 'admin-1', role: 'admin', supabaseId: 'p-admin' };
 const member = { id: 'u-1', role: 'user', supabaseId: 'p-1' };
@@ -51,5 +52,37 @@ describe('GET /api/servers/[id]/sessions', () => {
   test('a member without an assistant lists nothing', async () => {
     mocks.getPersonalAssistantId.mockResolvedValue(null);
     expect(await ids(await GET(event(member)))).toEqual([]);
+  });
+});
+
+describe('POST /api/servers/[id]/sessions', () => {
+  const post = (user: object, body: object) =>
+    POST({
+      locals: { user },
+      params: { id: 'server-1' },
+      request: { json: async () => body },
+    } as never);
+  const own = { agentId: 'personal-legacy-abc', sessionKey: 'agent:personal-legacy-abc:main' };
+
+  test('a member files a session under their own assistant', async () => {
+    mocks.upsertSession.mockResolvedValue('s9');
+    expect(await (await post(member, own)).json()).toEqual({ ok: true, id: 's9' });
+  });
+
+  test.each([
+    { agentId: 'personal-other', sessionKey: 'agent:personal-other:main' },
+    { agentId: 'personal-other', sessionKey: own.sessionKey },
+    { agentId: own.agentId, sessionKey: 'agent:main:main' },
+    {},
+  ])('a member is refused %o and nothing is written', async (body) => {
+    await expect(post(member, body)).rejects.toMatchObject({ status: 403 });
+    expect(mocks.upsertSession).not.toHaveBeenCalled();
+  });
+
+  test('a platform admin files any session', async () => {
+    mocks.upsertSession.mockResolvedValue('s9');
+    expect((await post(admin, { agentId: 'main', sessionKey: 'agent:main:main' })).status).toBe(
+      200,
+    );
   });
 });

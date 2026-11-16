@@ -10,6 +10,10 @@ export const POST: RequestHandler = async ({ locals, params }) => {
   if (!locals.tenantCtx) throw error(401);
   const ctx = await getGroupchatRun(locals.tenantCtx.tenantId, params.id!);
   if (!ctx) throw error(404);
+  // Spec 117 FR-010: a member stops only a run they created.
+  if (locals.user?.role !== 'admin' && (!locals.user || ctx.run.userId !== locals.user.id)) {
+    throw error(403, "This role cannot stop another person's group chat");
+  }
   await cancelJobsByRef(params.id!);
   await setRunStatus(params.id!, 'cancelled');
   return json({ ok: true });
