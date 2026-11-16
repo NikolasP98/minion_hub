@@ -7477,5 +7477,6 @@
   "roles_noAssignmentsChanged": "New roles start without members.",
   "pos_calendar_products": "Products",
   "pos_calendar_gift": "gift",
-  "pos_calendar_products_marker": "Has products"
+  "pos_calendar_products_marker": "Has products",
+  "chat_session_forbidden": "This conversation isn't yours to open. You can chat with your own assistant."
 }

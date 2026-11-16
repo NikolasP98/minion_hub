@@ -7,7 +7,7 @@ vi.mock('../gateway-rpc', () => ({
   requestReconnect: vi.fn(),
 }));
 
-import { sendAssistantTurn } from './chat-rpc';
+import { loadChatHistory, sendAssistantTurn } from './chat-rpc';
 import { getClient, requestReconnect, sendRequest } from '../gateway-rpc';
 import { conn } from '$lib/state/gateway/connection.svelte';
 import { ensureAgentChat } from '$lib/state/chat/chat.svelte';
@@ -95,5 +95,27 @@ describe('sendAssistantTurn — lost acknowledgement', () => {
     );
     expect(chat.lastError).toBe('Error: boom');
     expect(requestReconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('spec 117: the gateway refuses a conversation that is not yours', () => {
+  const refused = Object.assign(new Error('access denied to session'), { code: 'FORBIDDEN' });
+
+  it('a refused send shows the translated message, not the raw error', async () => {
+    const { chat } = send(refused);
+    await vi.waitFor(() => expect(chat.lastError).toBe(m.chat_session_forbidden()));
+  });
+
+  it('another FORBIDDEN keeps the raw error', async () => {
+    const { chat } = send(Object.assign(new Error('missing scope'), { code: 'FORBIDDEN' }));
+    await vi.waitFor(() => expect(chat.lastError).toBe('Error: missing scope'));
+  });
+
+  it('a refused history load says so instead of showing an empty thread', async () => {
+    const chat = ensureAgentChat('agent-foreign');
+    chat.lastError = null;
+    vi.mocked(sendRequest).mockRejectedValueOnce(refused);
+    await loadChatHistory('agent-foreign');
+    expect(chat.lastError).toBe(m.chat_session_forbidden());
   });
 });

@@ -9,5 +9,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   if (!locals.tenantCtx) throw error(401);
   const ctx = await getGroupchatRun(locals.tenantCtx.tenantId, params.id!);
   if (!ctx) throw error(404);
+  // Spec 117 FR-010: a run records its creator; a member reads only their own.
+  if (locals.user?.role !== 'admin' && (!locals.user || ctx.run.userId !== locals.user.id)) {
+    throw error(403, "This role cannot open another person's group chat");
+  }
   return json(ctx);
 };

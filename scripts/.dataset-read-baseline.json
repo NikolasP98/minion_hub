@@ -110,7 +110,6 @@
     "src/routes/api/servers/[id]/missions/[missionId]/+server.ts": 1,
     "src/routes/api/servers/[id]/missions/[missionId]/tasks/+server.ts": 1,
     "src/routes/api/servers/[id]/missions/[missionId]/tasks/[taskId]/+server.ts": 1,
-    "src/routes/api/servers/[id]/sessions/+server.ts": 1,
     "src/routes/api/servers/[id]/sessions/[sessionKey]/messages/+server.ts": 1,
     "src/routes/api/servers/[id]/sessions/[sessionKey]/tasks/+server.ts": 1,
     "src/routes/api/servers/[id]/settings/+server.ts": 1,

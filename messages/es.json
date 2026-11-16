@@ -7477,5 +7477,6 @@
   "roles_noAssignmentsChanged": "Los nuevos roles comienzan sin miembros.",
   "pos_calendar_products": "Productos",
   "pos_calendar_gift": "regalo",
-  "pos_calendar_products_marker": "Con productos"
+  "pos_calendar_products_marker": "Con productos",
+  "chat_session_forbidden": "Esta conversación no es tuya. Puedes chatear con tu propio asistente."
 }

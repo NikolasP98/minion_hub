@@ -39,6 +39,28 @@ export function requireAdmin(locals: App.Locals): AuthUser {
 }
 
 /**
+ * Spec 117 FR-010: stored chat rows belong to the person whose assistant they
+ * are. Platform admins (the same test the gateway token uses) pass; anyone else
+ * only when the session key `agent:<agentId>:…`, or the agent id, names their
+ * own stored personal assistant (compared lower-cased).
+ */
+export async function assertCanAccessStoredSession(
+  locals: App.Locals,
+  target: { sessionKey: string } | { agentId: string },
+): Promise<void> {
+  const user = requireAuth(locals);
+  if (user.role === 'admin') return;
+  const [kind, agentId] =
+    'sessionKey' in target ? target.sessionKey.split(':') : ['agent', target.agentId];
+  // Lazy for the same reason as isGatewayOrgMember: keep the pg pool out of every route graph.
+  const { getPersonalAssistantId } = await import('$server/services/personal-agent.service');
+  const own = user.supabaseId ? await getPersonalAssistantId(user.supabaseId) : null;
+  if (kind !== 'agent' || !own || agentId?.toLowerCase() !== own.toLowerCase()) {
+    throw error(403, "This role cannot open another person's conversation");
+  }
+}
+
+/**
  * Require tenant context (set by session auth, Bearer token, or AUTH_DISABLED fallback).
  */
 export function requireTenantCtx(locals: App.Locals): TenantContext {
