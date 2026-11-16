@@ -3,7 +3,7 @@
   import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { iconSizes, Badge, Button, Card, EmptyState, Input } from '$lib/components/ui';
+  import { iconSizes, Badge, Button, Card, EmptyState, Input, Tooltip } from '$lib/components/ui';
   import { ConfirmDialog, Dialog, FormField } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { jsonMutation } from '$lib/api/json-mutation';
@@ -164,14 +164,14 @@
 {#snippet lastUsedCell(r: ApiKeyRow)}{when(r.lastUsedAt)}{/snippet}
 {#snippet statusCell(r: ApiKeyRow)}
   {#if r.revokedAt}
-    <span class="status">
+    <!-- When and by whom sits in a tooltip: inline it overflowed the column. -->
+    <Tooltip
+      label={r.revokedByName
+        ? m.settings_developers_revoked_by({ date: when(r.revokedAt), name: r.revokedByName })
+        : when(r.revokedAt)}
+    >
       <Badge size="sm">{m.settings_developers_status_revoked()}</Badge>
-      <span class="t-caption muted">
-        {r.revokedByName
-          ? m.settings_developers_revoked_by({ date: when(r.revokedAt), name: r.revokedByName })
-          : when(r.revokedAt)}
-      </span>
-    </span>
+    </Tooltip>
   {:else}
     <span class="status">
       <Badge variant="semantic" value="success" size="sm"
