@@ -20,6 +20,7 @@ import {
   fileIdsFromValues,
   FORM_IMAGE_TYPES,
   profileFromValues,
+  readFormConfig,
   validateSubmission,
   type ContactProfile,
   type FieldErrorCode,
@@ -60,7 +61,8 @@ export async function submitFormDoor(
   const resolved = await resolvePublicDoor(slug);
   if (!resolved || resolved.door.kind !== 'form') return { status: 'not_found' };
   const { ctx, door } = resolved;
-  const config = configSchema.parse(door.config);
+  const config = readFormConfig(door.config);
+  if (!config) return { status: 'not_found' };
 
   const checked = validateSubmission(config, input.values, input.consent);
   if (!checked.ok) return { status: 'invalid', errors: checked.errors };
@@ -305,9 +307,9 @@ export async function uploadDoorFile(
   const resolved = await resolvePublicDoor(slug);
   if (!resolved || resolved.door.kind !== 'form') return { status: 'not_found' };
   const { ctx, door } = resolved;
-  const field = configSchema
-    .parse(door.config)
-    .fields.find((f) => f.key === input.field && f.type === 'file');
+  const config = readFormConfig(door.config);
+  if (!config) return { status: 'not_found' };
+  const field = config.fields.find((f) => f.key === input.field && f.type === 'file');
   if (!field) return { status: 'invalid_field' };
 
   const contentType = input.contentType.split(';')[0].trim().toLowerCase();
