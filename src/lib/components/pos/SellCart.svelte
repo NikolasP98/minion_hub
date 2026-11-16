@@ -100,7 +100,9 @@
   let discountOpen = $state<Record<string, boolean>>({});
   function showDiscount(l: CartLine): boolean {
     const state = checkoutLineState(l);
-    return (state.ok && state.value.discountMinor > 0n) || discountOpen[keys[lines.indexOf(l)]] === true;
+    return (
+      (state.ok && state.value.discountMinor > 0n) || discountOpen[keys[lines.indexOf(l)]] === true
+    );
   }
 
   function priceEditable(l: CartLine): boolean {
