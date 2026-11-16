@@ -14,6 +14,7 @@
     GripVertical,
     Eye,
     Receipt,
+    ReceiptText,
     Scissors,
     Split,
     Trash2,
@@ -740,6 +741,7 @@
   const CTX_ICON: Record<CalendarMenuEntry['kind'], ContextMenuItem['icon']> = {
     detail: Eye,
     charge: Receipt,
+    sale: ReceiptText,
     split: Scissors,
     splitAll: Scissors,
     splitOne: Split,
@@ -752,6 +754,8 @@
         return m.pos_appt_ctx_detail();
       case 'charge':
         return m.pos_appt_ctx_charge();
+      case 'sale':
+        return m.pos_appt_ctx_sale();
       case 'split':
         return m.pos_appt_ctx_split();
       case 'splitAll':
@@ -907,6 +911,11 @@
       case 'charge':
         void chargeEvent(anchorId);
         return;
+      case 'sale': {
+        const [ticket] = cancelPaidTickets(box.members);
+        if (ticket) void goto(`/pos/tickets/${ticket.id}`);
+        return;
+      }
       case 'splitAll':
         // The lead keeps the container; every other member leaves it.
         void splitMembers(box.members.slice(1).map((mb) => mb.id));
