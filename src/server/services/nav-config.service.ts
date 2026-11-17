@@ -33,6 +33,7 @@ export async function readNavConfig(ctx: CoreCtx): Promise<NavConfig> {
 
 /** Replace and prune atomically under the same lock as contextual/legacy policy writes. */
 export async function writeNavConfig(ctx: CoreCtx, config: NavConfig): Promise<NavConfig> {
+  // TODO(handoff): use getOrgTransactionDb(ctx.db).transaction here (pg-pool.ts requires the RLS client for SET LOCAL).
   await ctx.db.transaction(async (tx) => {
     await lockNavigationPolicy(tx, ctx.tenantId);
     // Preserve non-bypass RLS on the navigation document while the privileged

@@ -285,6 +285,8 @@ describe('stock corrections against PostgreSQL', () => {
       has_table_privilege('app_ledger','public.stk_corrections','INSERT') as ins,
       has_table_privilege('app_ledger','public.stk_corrections','UPDATE') as upd,
       has_table_privilege('app_ledger','public.stk_corrections','DELETE') as del,
+      has_table_privilege('service_role','public.stk_corrections','SELECT') as svc_sel,
+      has_table_privilege('service_role','public.stk_corrections','INSERT') as svc_ins,
       has_table_privilege('anon','public.stk_corrections','SELECT') as anon,
       has_table_privilege('authenticated','public.stk_corrections','SELECT') as auth,
       (select relrowsecurity and relforcerowsecurity from pg_class where oid='public.stk_corrections'::regclass) as forced`;
@@ -293,6 +295,8 @@ describe('stock corrections against PostgreSQL', () => {
       ins: true,
       upd: false,
       del: false,
+      svc_sel: false,
+      svc_ins: false,
       anon: false,
       auth: false,
       forced: true,
@@ -1048,6 +1052,12 @@ describe('stock corrections against PostgreSQL', () => {
       );
     };
     // A non-owner may not change stock VALUE; the quantity is theirs to fix.
+    const ownerOnly = await previewStockCorrection(mgrCtx, request('10', '3'), 'typo');
+    expect(ownerOnly.eligible).toBe(false);
+    expect(ownerOnly.blockers).toContain('owner_required');
+    expect(
+      (await previewStockCorrection(mgrCtx, request('9', '2'), 'typo')).blockers,
+    ).not.toContain('owner_required');
     expect(await refusal(run(mgrCtx, request('10', '3')))).toBe('forbidden');
     expect(await bin(wd.org, fresh)).toBe('10');
     // Locked current month: refused with zero effects.

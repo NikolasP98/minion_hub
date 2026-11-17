@@ -7570,6 +7570,7 @@
   "stock_corr_storage": "Este navegador no puede guardar la referencia de la corrección, así que no se puede confirmar aquí. Permite el almacenamiento del sitio e inténtalo de nuevo.",
   "stock_corr_previewing": "Revisando…",
   "stock_corr_err_forbidden": "Tu rol no puede hacer esta corrección. Pídesela a alguien con acceso a stock y costos.",
+  "stock_corr_err_owner_required": "Solo un propietario puede corregir el valor del stock. Pídele a un propietario que revise y aplique esta corrección.",
   "stock_corr_err_cost_visibility_required": "Tu rol no puede ver los costos que cambia esta corrección. Pídesela a alguien con acceso a finanzas.",
   "stock_corr_err_not_found": "Este registro ya no existe o no está disponible para ti. Recarga la página.",
   "stock_corr_err_stale_preview": "El registro cambió después de la revisión. Revisa el cambio de nuevo.",

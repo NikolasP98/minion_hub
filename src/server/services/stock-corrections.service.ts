@@ -12,6 +12,7 @@
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import { getOrgTransactionDb } from '$server/db/pg-client';
 import { withOrgCore, withOrgCoreTransaction, type CoreTx } from '$server/db/with-org-core';
 import {
   stkCorrections,
@@ -21,14 +22,17 @@ import {
   stkItems,
 } from '$server/db/pg-schema/stock';
 import { finSettings } from '$server/db/pg-finance-schema';
-import { posPeriodLocks } from '$server/db/pg-pos-schema';
+import { posPeriodLocks, posTicketLines } from '$server/db/pg-pos-schema';
 import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 import {
   resolveFreshCapabilitiesReadOnlyInTransaction,
   resolveFreshOperatorCapabilitiesForWriteInTransaction,
   type FreshCapabilitySnapshot,
 } from './rbac.service';
-import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
+import {
+  OperatorAuthorityError,
+  sqlStateOf as sqlState,
+} from '$server/auth/active-operator-principal';
 import { recordAuditInTx } from './activity.service';
 import {
   StockError,
@@ -110,11 +114,16 @@ export type CorrectionResult =
   | { schemaVersion: 1; outcome: 'not_found' };
 
 /** A deleting principal or an inactive organization is refused by the authority bridge: a plain 403, no private data. */
-async function active<T>(p: Promise<T>): Promise<T> {
+export async function active<T>(p: Promise<T>): Promise<T> {
   try {
     return await p;
   } catch (e) {
-    if (e instanceof OperatorAuthorityError) throw new CorrectionError('not allowed', 'forbidden');
+    if (e instanceof OperatorAuthorityError) {
+      // Only a definite refusal is a 403; limit/inconsistent/unavailable are not the caller's fault (503).
+      if (e.code === 'operator_principal_inactive' || e.code === 'operator_scope_invalid')
+        throw new CorrectionError('not allowed', 'forbidden');
+      throw new CorrectionError('authority is unavailable, try again', 'unavailable');
+    }
     throw e;
   }
 }
@@ -486,17 +495,6 @@ async function plan(
 // ── transactions ─────────────────────────────────────────────────────────────────────────
 
 const RETRY_CODES = new Set(['40001', '40P01', '55P03']);
-const sqlState = (e: unknown): string | null => {
-  for (
-    let c = e, i = 0;
-    c && typeof c === 'object' && i < 5;
-    c = (c as { cause?: unknown }).cause, i += 1
-  ) {
-    const code = (c as { code?: unknown }).code;
-    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
-  }
-  return null;
-};
 
 /** One owned write transaction: lock_timeout 1 s, statement_timeout 12 s, 60 s overall, 3 attempts (40 ms, 80 ms) on confirmed rollbacks only. */
 async function writeTransaction<T>(
@@ -525,7 +523,7 @@ async function writeTransaction<T>(
 
 /** READ ONLY REPEATABLE READ snapshot (preview/status): the bridge's nonlocking mode requires it. */
 function readSnapshot<T>(ctx: CoreCtx, fn: (tx: CoreTx) => Promise<T>): Promise<T> {
-  return ctx.db.transaction(async (tx) => {
+  return getOrgTransactionDb(ctx.db).transaction(async (tx) => {
     await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`);
     return withOrgCoreTransaction(ctx, tx as unknown as CoreTx, fn);
   });
@@ -632,6 +630,7 @@ export async function previewStockCorrection(
     );
     const blockers: string[] = [];
     if (p.movesStock && !costVisible && !scope) blockers.push('cost_visibility_required');
+    if (p.valueChange && caps.membershipRole !== 'owner') blockers.push('owner_required');
     const d = describe(p, costVisible);
     return {
       schemaVersion: 1,
@@ -853,10 +852,47 @@ export async function applyStockCorrection(
     });
   } catch (e) {
     // A unique violation on (org, operation_key) is a concurrent same-key attempt that lost the race.
-    if (sqlState(e) === '23505')
+    if (sqlState(e) === '23505' && constraintOf(e) === 'stk_corrections_org_operation_key_uniq')
       throw new CorrectionError('another request holds this operation key', 'operation_conflict');
     throw e;
   }
+}
+
+export function constraintOf(e: unknown): string | null {
+  for (
+    let c = e, i = 0;
+    c && typeof c === 'object' && i < 5;
+    c = (c as { cause?: unknown }).cause, i += 1
+  ) {
+    const n = c as { constraint_name?: unknown; constraint?: unknown };
+    const v = n.constraint_name ?? n.constraint;
+    if (typeof v === 'string') return v;
+  }
+  return null;
+}
+
+/** Swapping a line to the product it already carries is a successful no-op (legacy till behavior): no write, no receipt. */
+export async function isSwapNoOp(
+  ctx: CoreCtx,
+  ticketId: string,
+  lineId: string,
+  productId: string,
+): Promise<boolean> {
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: posTicketLines.id })
+      .from(posTicketLines)
+      .where(
+        and(
+          eq(posTicketLines.id, lineId),
+          eq(posTicketLines.ticketId, ticketId),
+          eq(posTicketLines.orgId, ctx.tenantId),
+          eq(posTicketLines.finProductId, productId),
+        ),
+      )
+      .limit(1),
+  );
+  return rows.length > 0;
 }
 
 /** Authoritative status for a lost response: the recorded outcome for a known key, or not_found. */

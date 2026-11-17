@@ -82,5 +82,5 @@ begin
   end if;
 end $$;
 
-revoke all on public.stk_corrections from public, anon, authenticated;
+revoke all on public.stk_corrections from public, anon, authenticated, service_role;
 grant select, insert on public.stk_corrections to app_ledger;

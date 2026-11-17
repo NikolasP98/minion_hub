@@ -4,6 +4,7 @@ import * as m from '$lib/paraglide/messages';
 const BY_CODE: Record<string, () => string> = {
   forbidden: m.stock_corr_err_forbidden,
   cost_visibility_required: m.stock_corr_err_cost_visibility_required,
+  owner_required: m.stock_corr_err_owner_required,
   not_found: m.stock_corr_err_not_found,
   stale_preview: m.stock_corr_err_stale_preview,
   operation_conflict: m.stock_corr_err_operation_conflict,
