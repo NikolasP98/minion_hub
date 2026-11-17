@@ -44,6 +44,7 @@
   const fmtMoney = (n: string | number) => formatMoney(Number(n));
 
   const kpis = $derived([
+    // TODO(handoff): qualify historical stock denomination before currency formatting; see proposals/2026-11-16-faces-stock-cash-crm-meeting-followups.md, Existing valuation-display follow-up.
     { id: 'k-valuation', label: m.stock_kpi_valuation(), value: fmtMoney(data.totalValuation) },
     {
       id: 'k-items',

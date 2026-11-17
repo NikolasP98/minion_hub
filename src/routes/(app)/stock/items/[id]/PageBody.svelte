@@ -142,6 +142,7 @@
       value: Number(b.qty) * Number(b.valuationRate),
     })),
   );
+  // TODO(handoff): qualify historical stock denomination before currency formatting; see proposals/2026-11-16-faces-stock-cash-crm-meeting-followups.md, Existing valuation-display follow-up.
   const valuationTotal = $derived(valuationRows.reduce((s, r) => s + r.value, 0));
   const stockColumns: DataColumn<StockRow>[] = [
     {
