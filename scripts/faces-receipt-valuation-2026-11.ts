@@ -610,6 +610,8 @@ function realReadSnapshot(admit: Admit): CliDeps['readSnapshot'] {
   };
 }
 
+// TODO(handoff): the wiring below (GoTrue principal, closed loader rbac/stockLogic keys, drizzle over the owned transaction) has not been run
+// end to end; F7's operator-bootstrap smoke is not on this branch. Unit tests inject every port.
 if (import.meta.main) {
   void (async () => {
     let loader:

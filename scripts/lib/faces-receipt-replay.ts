@@ -1268,6 +1268,8 @@ function ratToDecimal(r: Rat, maxScale = 12): string | null {
 }
 
 // ───────────────────────────── receipt rate / basis ─────────────────────────────
+// TODO(handoff): decimal.ts DecimalInputError (decimal_limit/invalid_decimal) is not mapped to an input-stage Code/exit 2 here; see
+// spec 123 diagnostic-wire.md 'Implementation decisions'.
 /** Exact four-decimal receipt rate boundary: divideDecimalToMinor then minorToDecimal (half away from zero). */
 export function receiptRateBasis(totalValuation: string, stockQty: string) {
   const receiptRate = minorToDecimal(divideDecimalToMinor(totalValuation, stockQty, 4), 4);
