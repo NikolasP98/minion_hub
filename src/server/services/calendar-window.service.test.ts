@@ -14,6 +14,11 @@ const state = vi.hoisted(() => ({
   categoryCalls: [] as string[][],
   ticketLinks: new Map<string, { id: string; humanId: string | null; products?: unknown[] }[]>(),
   ticketLinkCalls: [] as string[][],
+  anchors: new Map<string, unknown>(),
+  anchorCalls: [] as string[][],
+  anchorFail: '' as string,
+  tickets: [] as unknown[],
+  ticketsFail: false,
 }));
 
 vi.mock('$server/services/rbac.service', () => ({
@@ -32,7 +37,11 @@ vi.mock('$server/services/finance-products.service', () => ({
   },
 }));
 vi.mock('$server/services/stock-accruals.service', () => ({
-  accrualSummaryForSources: () => Promise.resolve([]),
+  stockAnchorForBookings: (_c: unknown, ids: string[]) => {
+    state.anchorCalls.push(ids);
+    if (state.anchorFail) return Promise.reject(new Error(state.anchorFail));
+    return Promise.resolve(state.anchors);
+  },
 }));
 vi.mock('$server/services/tag-links.service', () => ({
   getTagLinks: () => Promise.resolve(new Map()),
@@ -42,7 +51,8 @@ vi.mock('$server/services/crm-contacts.service', () => ({
   listTags: () => Promise.resolve([]),
 }));
 vi.mock('$server/services/pos-accounts.service', () => ({
-  listTicketsForCalendar: () => Promise.resolve([]),
+  listTicketsForCalendar: () =>
+    state.ticketsFail ? Promise.reject(new Error('x')) : Promise.resolve(state.tickets),
   bookingTicketLinks: (_ctx: unknown, ids: string[]) => {
     state.ticketLinkCalls.push(ids);
     return Promise.resolve(state.ticketLinks);
@@ -82,6 +92,11 @@ beforeEach(() => {
   state.categoryCalls = [];
   state.ticketLinks = new Map();
   state.ticketLinkCalls = [];
+  state.anchors = new Map();
+  state.anchorCalls = [];
+  state.anchorFail = '';
+  state.tickets = [];
+  state.ticketsFail = false;
 });
 
 const window = { from: new Date('2026-09-07T05:00:00Z'), to: new Date('2026-09-14T05:00:00Z') };
@@ -100,6 +115,7 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
       ...window,
       eventTypes,
       pos: true,
+      canReadFinancialFields: true,
     });
     expect(Object.fromEntries(bookings.map((b) => [b.id, [b.paid, b.funding, b.tickets]]))).toEqual(
       {
@@ -121,11 +137,21 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
       eventTypes,
       pos: false,
     });
-    expect(bookings[0]).toMatchObject({ paid: false, tickets: [] });
+    // The scheduling host: no money, sold or stock facet, and no legacy alias at all.
+    expect(bookings[0]!.productFacets).toEqual({
+      version: 1,
+      sold: { state: 'unavailable', reason: 'not_in_slice' },
+      payment: { state: 'unavailable', reason: 'not_in_slice' },
+      stock: { state: 'unavailable', reason: 'not_in_slice' },
+    });
+    expect(bookings[0]).not.toHaveProperty('paid');
+    expect(bookings[0]).not.toHaveProperty('funding');
+    expect(bookings[0]).not.toHaveProperty('tickets');
     expect(state.ticketLinkCalls).toEqual([]);
+    expect(state.anchorCalls).toEqual([]);
   });
 
-  it('fails soft when the ticket-link read throws: unpaid, calendar still answers', async () => {
+  it('a failed ticket-link read is unavailable, never unpaid; the calendar still answers', async () => {
     const { loadCalendarWindow } = await import('./calendar-window.service');
     state.bookings = [booking('b1', {})];
     state.ticketLinks = {
@@ -135,8 +161,14 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
       ...window,
       eventTypes,
       pos: true,
+      canReadFinancialFields: true,
     });
-    expect(bookings[0]).toMatchObject({ id: 'b1', paid: false, tickets: [] });
+    expect(bookings[0]).toMatchObject({ id: 'b1' });
+    expect(bookings[0]!.productFacets!.payment).toEqual({
+      state: 'unavailable',
+      reason: 'read_failed',
+    });
+    expect(bookings[0]).not.toHaveProperty('paid');
   });
 });
 
@@ -225,8 +257,8 @@ describe('loadCalendarWindow sold facet (spec 126)', () => {
       canReadFinancialFields: true,
     });
     const byId = Object.fromEntries(bookings.map((b) => [b.id, b]));
-    expect(byId.second!.sold).toEqual(byId.lead!.sold);
-    const lead = byId.lead!.sold as {
+    expect(byId.second!.productFacets!.sold).toEqual(byId.lead!.productFacets!.sold);
+    const lead = byId.lead!.productFacets!.sold as {
       value: { rows: { description: string; relation: string; gift: boolean }[] };
     };
     expect(lead.value.rows.map((r) => [r.description, r.relation, r.gift])).toEqual([
@@ -246,22 +278,126 @@ describe('loadCalendarWindow sold facet (spec 126)', () => {
       loadCalendarWindow(ctx, locals, { ...window, eventTypes, ...opts, foreign } as never);
     const gift = await run({ pos: true });
     expect(
-      (gift.bookings[0]!.sold as { value: { rows: { gift: unknown }[] } }).value.rows[0]!.gift,
+      (gift.bookings[0]!.productFacets!.sold as { value: { rows: { gift: unknown }[] } }).value
+        .rows[0]!.gift,
     ).toBeNull();
-    expect((await run({ pos: false })).bookings[0]!.sold).toEqual({
+    expect((await run({ pos: false })).bookings[0]!.productFacets!.sold).toEqual({
       state: 'unavailable',
       reason: 'not_in_slice',
     });
     expect(
       (await run({ pos: true }, { pos: { denied: 'pos', verb: 'view' }, stock: ctx, crm: ctx }))
-        .bookings[0]!.sold,
+        .bookings[0]!.productFacets!.sold,
     ).toEqual({ state: 'denied' });
     state.ticketLinks = {
       then: (_ok: unknown, fail: (e: Error) => unknown) => fail(new Error('pos off')),
     } as never;
-    expect((await run({ pos: true })).bookings[0]!.sold).toEqual({
+    expect((await run({ pos: true })).bookings[0]!.productFacets!.sold).toEqual({
       state: 'unavailable',
       reason: 'read_failed',
     });
+  });
+});
+
+describe('loadCalendarWindow payment, stock and overlay facets (spec 126)', () => {
+  const run = (opts: Record<string, unknown>, foreign?: unknown) =>
+    import('./calendar-window.service').then((m) =>
+      m.loadCalendarWindow(ctx, locals, { ...window, eventTypes, ...opts, foreign } as never),
+    );
+  const denied = (module: string) => ({ denied: module, verb: 'view' });
+
+  it('without finance admission: payment denied, NO paid/funding/tickets alias, overlay denied', async () => {
+    state.bookings = [booking('b1', {})];
+    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: 'P-1', products: [] }]]]);
+    const out = await run({ pos: true, canReadFinancialFields: false });
+    expect(out.bookings[0]!.productFacets!.payment).toEqual({ state: 'denied' });
+    expect(out.bookings[0]).not.toHaveProperty('paid');
+    expect(out.bookings[0]).not.toHaveProperty('tickets');
+    expect(out.ticketOverlay).toEqual({ state: 'denied' });
+    expect(JSON.stringify(out)).not.toContain('invoices');
+    expect(JSON.stringify(out)).not.toContain('accrualSummaries');
+  });
+
+  it('with admission: reduced payment facet and aliases come from the SAME admitted facts', async () => {
+    state.bookings = [booking('b1', { packageGrantId: 'g1' }), booking('b2', {})];
+    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: 'P-1', products: [] }]]]);
+    const out = await run({ pos: true, canReadFinancialFields: true });
+    expect(out.bookings[0]!.productFacets!.payment).toEqual({
+      state: 'available',
+      value: { paid: true, funding: 'grant', tickets: [{ id: 't1', humanId: 'P-1' }] },
+    });
+    expect(out.bookings[1]).toMatchObject({ paid: false, funding: 'cash', tickets: [] });
+  });
+
+  it('stock facet: anchor counts keyed by the server-resolved anchor, one read, cost-free', async () => {
+    state.bookings = [
+      booking('lead', { metadata: { groupId: 'g', groupSeq: 0 } }),
+      booking('second', { metadata: { groupId: 'g', groupSeq: 1 } }),
+    ];
+    state.anchors = new Map([
+      ['lead', { open: 2, realized: 0, released: 0, realizedEntryId: null }],
+    ]);
+    const out = await run({ pos: true, canReadFinancialFields: true });
+    expect(state.anchorCalls).toEqual([['lead']]);
+    for (const b of out.bookings)
+      expect(b.productFacets!.stock).toEqual({
+        state: 'available',
+        value: { anchorAccrual: { open: 2, realized: 0, released: 0, realizedEntryId: null } },
+      });
+  });
+
+  it('stock denied / failed / over capacity are their own states, never "no accrual"', async () => {
+    state.bookings = [booking('b1', {})];
+    expect(
+      (await run({ pos: true }, { pos: ctx, stock: denied('stock'), crm: ctx })).bookings[0]!
+        .productFacets!.stock,
+    ).toEqual({ state: 'denied' });
+    state.anchorFail = 'boom';
+    expect((await run({ pos: true })).bookings[0]!.productFacets!.stock).toEqual({
+      state: 'unavailable',
+      reason: 'read_failed',
+    });
+    state.anchorFail = 'capacity';
+    const out = await run({ pos: true });
+    expect(out.bookings).toHaveLength(1); // the bookings are never truncated
+    expect(out.bookings[0]!.productFacets!.stock).toEqual({
+      state: 'unavailable',
+      reason: 'capacity',
+    });
+  });
+
+  it('carries the version and the overlay key; the old namespaces are gone', async () => {
+    state.bookings = [];
+    const out = await run({ pos: true, canReadFinancialFields: true });
+    expect(out.productProjectionVersion).toBe(1);
+    expect(Object.keys(out).sort()).toEqual([
+      'bookings',
+      'productProjectionVersion',
+      'tagOptions',
+      'ticketOverlay',
+    ]);
+  });
+
+  it('ticketOverlay: empty, rows, capacity and a failed read are four different answers', async () => {
+    const t = (i: number) => ({
+      id: `t${i}`,
+      humanId: null,
+      submittedAt: new Date('2026-09-08T14:00:00Z'),
+      total: '10.00',
+      currency: 'PEN',
+      customerName: null,
+      lines: [],
+    });
+    const ov = async () => (await run({ pos: true, canReadFinancialFields: true })).ticketOverlay;
+    expect(await ov()).toEqual({ state: 'empty' });
+    state.tickets = [t(1)];
+    expect(await ov()).toMatchObject({
+      state: 'available',
+      value: { rows: [{ id: 't1', total: 10 }] },
+    });
+    state.tickets = Array.from({ length: 2000 }, (_, i) => t(i));
+    expect(await ov()).toEqual({ state: 'unavailable', reason: 'capacity' });
+    state.ticketsFail = true;
+    expect(await ov()).toEqual({ state: 'unavailable', reason: 'read_failed' });
   });
 });

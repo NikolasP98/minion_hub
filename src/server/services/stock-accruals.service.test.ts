@@ -10,11 +10,21 @@ import {
   stockRecoveryForBookings,
   listRecoveryOpenAccrualsInTx,
   RecoveryPreviewStaleError,
+  RecoveryForbiddenError,
   availableToPromise,
 } from './stock-accruals.service';
 
+const caps = vi.hoisted(() => ({ granted: new Set<string>(), fresh: vi.fn() }));
+vi.mock('./rbac.service', () => ({
+  resolveFreshCapabilitiesInTransaction: (...a: unknown[]) => caps.fresh(...a),
+}));
+
 beforeEach(() => {
   vi.clearAllMocks();
+  caps.granted = new Set(['scheduling:edit', 'pos:edit', 'stock:view', 'stock:manage']);
+  caps.fresh.mockImplementation(async () => ({
+    capabilities: { can: (m: string, a: string) => caps.granted.has(`${m}:${a}`) },
+  }));
 });
 
 const ctx = (db: unknown) => ({ db: db as never, tenantId: 'org-1' });
@@ -556,13 +566,10 @@ describe('realizeAccruals recovery precondition', () => {
   ) => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence(sequence);
-    const result = realizeAccruals(ctx(db), {
-      source: 'booking',
-      sourceId: 'b1',
-      lines: [],
-      actor,
-      recovery,
-    });
+    const result = realizeAccruals(
+      { ...ctx(db), profileId: 'p1' },
+      { source: 'booking', sourceId: 'b1', lines: [], actor, recovery },
+    );
     return { db, result };
   };
   const fingerprintOf = async (rows: unknown[]) => {
@@ -605,9 +612,45 @@ describe('realizeAccruals recovery precondition', () => {
         [], // findEntryBySource
         [], // release update
       ],
-      { expectedOpenCount: 1, expectedOpenFingerprint: fingerprint },
+      { expectedOpenCount: 1, expectedOpenFingerprint: fingerprint, host: 'scheduling' },
     );
     expect(await result).toEqual({ entry: null, realized: 0, stockWarning: null });
     expect(db.update).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['scheduling', 'pos:edit', 'scheduling'],
+    ['pos', 'scheduling:edit', 'pos'],
+  ] as const)(
+    'refuses with no effect when the %s host edit right was lost in the transaction (%s alone does not count)',
+    async (_h, _other, host) => {
+      caps.granted = new Set([_other, 'stock:view', 'stock:manage']);
+      const { db, result } = await run([[{ status: 'completed' }]], {
+        expectedOpenCount: 1,
+        expectedOpenFingerprint: 'x',
+        host,
+      });
+      await expect(result).rejects.toBeInstanceOf(RecoveryForbiddenError);
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['stock:view', 'stock:manage'])('refuses without %s, with no effect', async (missing) => {
+    caps.granted.delete(missing);
+    const { db, result } = await run([[{ status: 'completed' }]]);
+    await expect(result).rejects.toBeInstanceOf(RecoveryForbiddenError);
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('a platform admin skips the capability read (the booking is still re-read)', async () => {
+    const { result } = await run([[{ status: 'accepted' }]], {
+      expectedOpenCount: 1,
+      expectedOpenFingerprint: 'x',
+      host: 'pos',
+      platformAdmin: true,
+    });
+    await expect(result).rejects.toBeInstanceOf(RecoveryPreviewStaleError); // reached the booking read
+    expect(caps.fresh).not.toHaveBeenCalled();
   });
 });

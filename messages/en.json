@@ -7623,5 +7623,13 @@
   "sched_recover_warning": "Not posted yet: {message}",
   "sched_recover_error": "Failed. Reload and try again.",
   "sched_recover_unknown": "Unknown outcome. Reload before trying again.",
-  "sched_recover_stale": "The stock changed after you reviewed it. It was reloaded; review it again."
+  "sched_recover_stale": "The stock changed after you reviewed it. It was reloaded; review it again.",
+  "sched_stock_open_qty": "{n} to post",
+  "sched_stock_posted_qty": "{n} posted",
+  "sched_stock_cost_unavailable": "Stock cost unavailable",
+  "pos_appt_charge_unavailable": "Payment details are not available for this appointment. Reload and try again.",
+  "pos_appt_charge_nothing": "Nothing left to charge on this appointment.",
+  "pos_appt_refresh_required": "This page is out of date. Reload it to continue.",
+  "sched_detail_payment_denied": "Your role cannot see the payment details of this appointment.",
+  "sched_detail_payment_unavailable": "The payment details could not be loaded. Reload to try again."
 }

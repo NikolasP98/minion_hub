@@ -3461,6 +3461,8 @@ export interface BookingDetail {
   /** Spec 126: product lines SOLD with this visit (non-void sales), one projection
    *  shared with the POS calendar hover. Independent of `products` (planned). */
   sold: SoldFacet;
+  /** Recorded line totals of the sold rows (payment facet only; empty without finance admission). */
+  soldTotals: { ticketId: string; lineId: string; total: number }[];
   /** Spec 126: cost-free accrual counts of the server-resolved visit ANCHOR (never the clicked member). */
   stockAnchor: BookingReadFacet<{ anchorId: string; accrual: AnchorAccrual | null }>;
   /** Spec 126 US2: per-member recovery facts (eligibility + the reviewable open set) of the visit. */
@@ -4000,15 +4002,25 @@ export async function getBookingDetail(
   const memberIds = new Set(eventIds);
   // Failure mapping (spec 126 FR-004): a thrown read is `unavailable`, never
   // `empty`; the legacy facets above keep their fail-soft + corrupt-money rethrow.
+  const soldTotals: BookingDetail['soldTotals'] = [];
   const sold: SoldFacet = isDenied(foreign.pos)
     ? { state: 'denied' }
     : await bookingTicketLinks(foreign.pos, eventIds).then(
-        (links) =>
-          soldRowsForVisit(
-            [...links.values()].flatMap((l) => l.flatMap((t) => t.products)),
+        (links) => {
+          const lines = [...links.values()].flatMap((l) => l.flatMap((t) => t.products));
+          const facet = soldRowsForVisit(
+            lines,
             { anchorId, memberIds },
             opts.canReadFinancialFields === true,
-          ),
+          );
+          // Line totals belong to the payment facet only, and only with finance admission.
+          if (facet.state === 'available' && opts.canReadFinancialFields === true)
+            for (const r of facet.value.rows) {
+              const l = lines.find((x) => x.ticketId === r.ticketId && x.lineId === r.lineId);
+              if (l) soldTotals.push({ ticketId: l.ticketId, lineId: l.lineId, total: l.total });
+            }
+          return facet;
+        },
         (e: unknown): SoldFacet => {
           console.error('[scheduling] sold products facet failed (detail stands)', e);
           return { state: 'unavailable', reason: 'read_failed' };
@@ -4119,6 +4131,7 @@ export async function getBookingDetail(
       : null,
     accrual: accruals[0] ?? null,
     sold,
+    soldTotals,
     stockAnchor,
     stockRecovery,
     tickets,

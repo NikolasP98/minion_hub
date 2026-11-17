@@ -3,6 +3,7 @@ import {
   canRemoveService,
   nextOrder,
   chargeableRows,
+  payableEventFrom,
   visitAnchorId,
   visitHeaderStatus,
   visitHeaderTitle,
@@ -450,5 +451,68 @@ describe('chargeableRows ungrouped fallback price', () => {
     expect(rows(80)).toHaveLength(1);
     expect(rows(null)).toHaveLength(1);
     expect(rows()).toHaveLength(1);
+  });
+});
+
+describe('payableEventFrom allowServiceFallback (spec 126)', () => {
+  const booking = {
+    id: 'b1',
+    eventTypeId: 'et1',
+    productId: 'p-svc',
+    partyId: null,
+    attendeeName: 'Ana',
+    attendeePhone: null,
+  };
+  const row = (over: Partial<Parameters<typeof payableEventFrom>[0]['rows'][number]> = {}) => ({
+    id: 'b1',
+    eventTypeId: 'et1',
+    title: 'Botox',
+    status: 'completed',
+    paid: false,
+    price: 100,
+    funding: 'cash' as const,
+    ...over,
+  });
+  const base = { booking, anchorId: 'b1' };
+
+  it('keeps the legacy first-row fallback by default (existing callers)', () => {
+    const e = payableEventFrom({ ...base, rows: [row({ paid: true })] });
+    expect(e.lines.map((l) => l.bookingId)).toEqual(['b1']);
+  });
+
+  it('with the fallback off: no chargeable service and no product is NO handoff', () => {
+    expect(
+      payableEventFrom({ ...base, rows: [row({ paid: true })], allowServiceFallback: false }),
+    ).toBeNull();
+    expect(
+      payableEventFrom({ ...base, rows: [row({ price: 0 })], allowServiceFallback: false }),
+    ).toBeNull();
+  });
+
+  it('with the fallback off: unpaid products hand off as products only, with no fabricated service', () => {
+    const e = payableEventFrom({
+      ...base,
+      rows: [row({ paid: true })],
+      products: [
+        { productId: 'p1', name: 'Crema', unitPrice: 5, qty: 2, paid: false },
+        { productId: 'p2', name: 'Paid', unitPrice: 5, qty: 1, paid: true },
+      ],
+      allowServiceFallback: false,
+    });
+    expect(e?.lines).toEqual([]);
+    expect(e?.products).toEqual([{ bookingId: 'b1', productId: 'p1', title: 'Crema', qty: 2 }]);
+  });
+
+  it('a chargeable service hands off the same either way', () => {
+    const on = payableEventFrom({ ...base, rows: [row()] });
+    const off = payableEventFrom({ ...base, rows: [row()], allowServiceFallback: false });
+    expect(off).toEqual(on);
+  });
+
+  it('works on money-field-only rows (no `referenced`): the guarded paths never construct one', () => {
+    expect(chargeableRows([row(), row({ id: 'b2', funding: 'grant' })]).map((r) => r.id)).toEqual([
+      'b1',
+    ]);
+    expect(visitSummary([row(), row({ paid: true, paidAmount: 7 } as never)]).n).toBe(2);
   });
 });

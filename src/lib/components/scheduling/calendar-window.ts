@@ -13,9 +13,9 @@
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 import { instantDateKey } from '$lib/time/zoned';
 import {
-  decodeSoldFacet,
+  decodeCalendarFacets,
   soldRows,
-  type SoldFacet,
+  type CalendarProductFacets,
   type SoldProductBasic,
 } from './booking-product-facets';
 
@@ -199,9 +199,10 @@ export interface CalendarBooking {
   funding?: 'cash' | 'grant' | 'plan';
   /** The non-void tickets that charged this booking (POS calendar only). */
   tickets?: { id: string; humanId: string | null }[];
-  /** Spec 126: what the visit SOLD (server projection shared with the detail drawer).
-   *  Missing or malformed means unavailable, never "nothing sold". */
-  sold?: SoldFacet;
+  /** Spec 126 (reduced calendar variant): sold (shared with the detail drawer), payment (paid/funding/
+   *  tickets) and stock-anchor facets. Missing or malformed means unavailable, never "nothing sold",
+   *  unpaid or cash. The `paid`/`funding`/`tickets` aliases above exist only from an available payment. */
+  productFacets?: CalendarProductFacets;
 }
 
 /** A product line of a sale that belongs to the visit. */
@@ -210,12 +211,12 @@ export type SoldProduct = SoldProductBasic;
 /** Products sold with a visit: the available sold rows of its members, deduplicated
  *  by (ticketId, lineId) — every member of a visit carries the same facet. */
 export function productsForVisit(
-  members: ReadonlyArray<Pick<CalendarBooking, 'sold'>>,
+  members: ReadonlyArray<Pick<CalendarBooking, 'productFacets'>>,
 ): SoldProduct[] {
   const seen = new Set<string>();
   const out: SoldProduct[] = [];
   for (const m of members)
-    for (const r of soldRows(decodeSoldFacet(m.sold))) {
+    for (const r of soldRows(decodeCalendarFacets(m.productFacets)?.sold)) {
       const key = `${r.ticketId}:${r.lineId}`;
       if (seen.has(key)) continue;
       seen.add(key);

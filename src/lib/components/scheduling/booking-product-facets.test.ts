@@ -184,3 +184,235 @@ describe('decodeRecoveryFacet', () => {
     expect(decodeRecoveryFacet(input)).toEqual(bad);
   });
 });
+
+// ── versioned envelope (spec 126 wire) ───────────────────────────────────────
+import { basicMember, facetsOf } from './__fixtures__/detail-wire';
+import {
+  availableTicketOverlayRows,
+  decodeBookingCalendarProjection,
+  decodeBookingDetailWire,
+  decodeCalendarFacets,
+  decodeProductFacets,
+  financialVisitRows,
+  paymentReady,
+  visitAnchorIdFromFacets,
+  type BookingProductFacets,
+} from './booking-product-facets';
+
+const wire = (f: BookingProductFacets) => JSON.parse(JSON.stringify(f));
+
+describe('decodeProductFacets', () => {
+  it('round-trips a complete envelope and keeps each facet independent', () => {
+    const f = facetsOf([basicMember('a'), basicMember('b', 1)], {}, 'g1');
+    expect(decodeProductFacets(wire(f))).toEqual(f);
+  });
+
+  it.each([[undefined], [{}], [{ version: 2 }], [{ version: 1 }]])(
+    'refuses a missing or other version (%o) as a whole (old protocol: refresh)',
+    (input) => {
+      const out = decodeProductFacets(input);
+      // version 1 with no facets decodes to per-facet unavailable, never to empty/available
+      if (out) {
+        expect(out.basic.state).toBe('unavailable');
+        expect(out.payment.state).toBe('unavailable');
+      } else expect(out).toBeNull();
+      if (
+        !(input as { version?: number } | undefined)?.version ||
+        (input as { version: number }).version !== 1
+      )
+        expect(out).toBeNull();
+    },
+  );
+
+  it('a malformed facet is unavailable on its own; the others survive', () => {
+    const raw = wire(facetsOf([basicMember('a')]));
+    raw.payment = { state: 'available', value: { services: [{ bookingId: 'a' }] } };
+    const out = decodeProductFacets(raw)!;
+    expect(out.payment).toEqual({ state: 'unavailable', reason: 'invalid_projection' });
+    expect(out.basic.state).toBe('available');
+  });
+
+  it('rejects more than 8 members, duplicate ids, and an anchor that is not the first member', () => {
+    const many = Array.from({ length: 9 }, (_, i) => basicMember(`m${i}`, i));
+    expect(decodeProductFacets(wire(facetsOf(many)))!.basic.state).toBe('unavailable');
+    const dup = wire(facetsOf([basicMember('a'), basicMember('a', 1)]));
+    expect(decodeProductFacets(dup)!.basic.state).toBe('unavailable');
+    const anchor = wire(facetsOf([basicMember('a'), basicMember('b', 1)]));
+    anchor.basic.value.anchorId = 'b';
+    expect(decodeProductFacets(anchor)!.basic.state).toBe('unavailable');
+  });
+
+  it('the stock-cost facet is a closed non-value union', () => {
+    const raw = wire(facetsOf([basicMember('a')]));
+    for (const bad of [
+      { state: 'unavailable', reason: 'valuation_currency_unverified', estValue: 5 },
+      { state: 'available', value: 0 },
+      { state: 'empty', currency: 'USD' },
+    ]) {
+      const r = structuredClone(raw);
+      r.payment.value.accrualCost = bad;
+      expect(decodeProductFacets(r)!.payment.state).toBe('unavailable');
+    }
+    const ok = structuredClone(raw);
+    ok.payment.value.accrualCost = {
+      state: 'unavailable',
+      reason: 'valuation_currency_unverified',
+    };
+    expect(decodeProductFacets(ok)!.payment.state).toBe('available');
+  });
+
+  it('a void or voided ticket never decodes', () => {
+    const raw = wire(facetsOf([basicMember('a')]));
+    const t = {
+      ticketId: 't',
+      humanId: null,
+      submittedAt: null,
+      status: 'voided',
+      currency: 'PEN',
+      lineTotal: '1',
+      subtotal: '1',
+      discount: '0',
+      total: '1',
+      note: null,
+      payments: [],
+      otherLines: [],
+      lineCount: 1,
+      emission: null,
+      createdByName: null,
+      invoiceId: null,
+    };
+    raw.payment.value.tickets = [t];
+    expect(decodeProductFacets(raw)!.payment.state).toBe('unavailable');
+    raw.payment.value.tickets = [{ ...t, status: 'submitted' }];
+    expect(decodeProductFacets(raw)!.payment.state).toBe('available');
+  });
+});
+
+describe('financialVisitRows', () => {
+  const money = (f: BookingProductFacets) => financialVisitRows(f);
+  const rowOf = (f: BookingProductFacets, id: string) => {
+    const r = money(f);
+    return r.state === 'available' ? r.value.rows.find((x) => x.id === id) : undefined;
+  };
+
+  it('joins structure and money; keeps a real 0 paid amount, a real free price 0 and an unknown price null', () => {
+    const f = facetsOf([basicMember('a'), basicMember('b', 1)], {}, 'g');
+    if (f.payment.state !== 'available') throw new Error('fixture');
+    f.payment.value.services[0] = { ...f.payment.value.services[0]!, price: 0, paidAmount: 0 };
+    f.payment.value.services[1] = { ...f.payment.value.services[1]!, price: null };
+    expect(rowOf(f, 'a')).toMatchObject({
+      price: 0,
+      paidAmount: 0,
+      paid: false,
+      title: 'Consulta',
+    });
+    expect(rowOf(f, 'b')!.price).toBeNull();
+    expect(rowOf(f, 'a')).not.toHaveProperty('referenced');
+  });
+
+  it.each([
+    ['denied payment', { payment: { state: 'denied' } }, 'denied'],
+    [
+      'unavailable payment',
+      { payment: { state: 'unavailable', reason: 'read_failed' } },
+      'unavailable',
+    ],
+    ['empty payment for a nonempty visit', { payment: { state: 'empty' } }, 'unavailable'],
+    [
+      'unavailable planned',
+      { planned: { state: 'unavailable', reason: 'read_failed' } },
+      'unavailable',
+    ],
+    ['denied basic', { basic: { state: 'denied' } }, 'denied'],
+  ])('%s never yields rows', (_n, over, state) => {
+    const out = money(facetsOf([basicMember('a')], over as never));
+    expect(out.state).toBe(state);
+    expect(out).not.toHaveProperty('value');
+  });
+
+  it('a service row for an unknown booking, a missing member row or a planned mismatch is invalid_projection', () => {
+    const f = facetsOf([basicMember('a'), basicMember('b', 1)], {}, 'g');
+    if (f.payment.state !== 'available') throw new Error('fixture');
+    f.payment.value.services[1]!.bookingId = 'zzz';
+    expect(money(f)).toEqual({ state: 'unavailable', reason: 'invalid_projection' });
+    const g = facetsOf([basicMember('a')], {
+      planned: { state: 'available', value: { rows: [{ productId: 'p', name: 'X', qty: 1 }] } },
+    });
+    expect(money(g)).toEqual({ state: 'unavailable', reason: 'invalid_projection' });
+  });
+});
+
+describe('visitAnchorIdFromFacets / calendar projection / overlay', () => {
+  it('anchors only from a validated basic facet', () => {
+    expect(visitAnchorIdFromFacets(facetsOf([basicMember('a')]))).toBe('a');
+    expect(
+      visitAnchorIdFromFacets(facetsOf([basicMember('a')], { basic: { state: 'denied' } })),
+    ).toBeNull();
+    expect(visitAnchorIdFromFacets(null)).toBeNull();
+  });
+
+  it('decodeBookingDetailWire refuses an envelope without the version', () => {
+    expect(decodeBookingDetailWire({ booking: {}, productFacets: { version: 1 } })).not.toBeNull();
+    expect(decodeBookingDetailWire({ booking: {}, tickets: [] })).toBeNull();
+  });
+
+  const proj = (over: Record<string, unknown> = {}) => ({
+    productProjectionVersion: 1,
+    bookings: [],
+    tagOptions: [],
+    ticketOverlay: { state: 'empty' },
+    ...over,
+  });
+  it('the window decoder refuses an old protocol and any legacy money namespace', () => {
+    expect(decodeBookingCalendarProjection(proj())).not.toBeNull();
+    expect(decodeBookingCalendarProjection(proj({ productProjectionVersion: 2 }))).toBeNull();
+    expect(decodeBookingCalendarProjection(proj({ invoices: [] }))).toBeNull();
+    expect(decodeBookingCalendarProjection(proj({ accrualSummaries: [] }))).toBeNull();
+    expect(decodeBookingCalendarProjection({ bookings: [], tagOptions: [] })).toBeNull();
+  });
+
+  it('the overlay is a facet: malformed rows, duplicate ids and a missing key are unavailable, not []', () => {
+    const row = {
+      id: 't',
+      humanId: null,
+      at: '2026-09-08T14:00:00Z',
+      total: 5,
+      currency: 'PEN',
+      customerName: null,
+      lines: [],
+    };
+    expect(availableTicketOverlayRows({ state: 'available', value: { rows: [row] } }).state).toBe(
+      'available',
+    );
+    for (const bad of [
+      undefined,
+      { state: 'available', value: { rows: [{ ...row, total: '5' }] } },
+      { state: 'available', value: { rows: [row, row] } },
+      { state: 'available', value: { rows: [{ ...row, at: 'nope' }] } },
+    ])
+      expect(availableTicketOverlayRows(bad)).toEqual({
+        state: 'unavailable',
+        reason: 'invalid_projection',
+      });
+  });
+
+  it('paymentReady needs an available payment facet on EVERY member', () => {
+    const ok = {
+      version: 1,
+      sold: { state: 'empty' },
+      payment: { state: 'available', value: { paid: false, funding: 'cash', tickets: [] } },
+      stock: { state: 'denied' },
+    };
+    expect(decodeCalendarFacets(ok)!.payment.state).toBe('available');
+    expect(paymentReady([{ productFacets: ok as never }, { productFacets: ok as never }])).toBe(
+      true,
+    );
+    expect(paymentReady([{ productFacets: ok as never }, {}])).toBe(false);
+    expect(paymentReady([])).toBe(false);
+    expect(
+      paymentReady([
+        { productFacets: { ...ok, payment: { state: 'available', value: { paid: 1 } } } as never },
+      ]),
+    ).toBe(false);
+  });
+});

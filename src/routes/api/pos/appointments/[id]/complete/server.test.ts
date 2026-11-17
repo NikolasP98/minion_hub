@@ -39,6 +39,7 @@ describe('POST /api/pos/appointments/[id]/complete', () => {
       { user: { id: 'u1' } },
       expect.any(Request),
       'b1',
+      'pos', // literal, never taken from the request
     );
   });
 

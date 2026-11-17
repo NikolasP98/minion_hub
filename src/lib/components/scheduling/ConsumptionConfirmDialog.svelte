@@ -38,7 +38,10 @@
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import * as m from '$lib/paraglide/messages';
   import {
-    decodeRecoveryFacet,
+    BOOKING_PRODUCTS_VERSION,
+    BOOKING_PRODUCTS_VERSION_HEADER,
+    basicMembers,
+    decodeBookingDetailWire,
     type RecoveryFacet,
     type StockRecoveryMemberWire,
   } from './booking-product-facets';
@@ -184,21 +187,29 @@
     loadError = false;
     err = null;
     try {
-      const res = await fetch(`${apiBase}/${id}`);
+      const res = await fetch(`${apiBase}/${id}`, {
+        headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+      });
       if (res.status === 403) {
         if (token === gen) facet = { state: 'denied' };
         return;
       }
       if (!res.ok) throw new Error(String(res.status));
-      const d = (await res.json()) as {
-        stockRecovery?: unknown;
-        eventType?: { title?: string } | null;
-        visit?: { members?: { id: string; eventTypeTitle: string }[] } | null;
-      };
+      const d = decodeBookingDetailWire<object>(await res.json());
       if (token !== gen) return;
-      const next = decodeRecoveryFacet(d.stockRecovery);
-      titles = Object.fromEntries((d.visit?.members ?? []).map((x) => [x.id, x.eventTypeTitle]));
-      if (!d.visit && d.eventType?.title) titles = { [id]: d.eventType.title };
+      if (!d) throw new Error('refresh_required');
+      // The recovery facts ride the stock facet of the versioned envelope; an unavailable or denied
+      // stock facet is never "nothing to recover".
+      const stock = d.productFacets.stock;
+      const next: RecoveryFacet =
+        stock.state === 'available'
+          ? stock.value.recovery
+          : stock.state === 'denied'
+            ? { state: 'denied' }
+            : { state: 'unavailable', reason: 'invalid_projection' };
+      titles = Object.fromEntries(
+        basicMembers(d.productFacets).map((x) => [x.id, x.eventTypeTitle]),
+      );
       rows = (next.state === 'available' ? next.value : [])
         .filter((r) => r.eligibility === 'confirm_open' && r.confirmation)
         .flatMap((r) =>

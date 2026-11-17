@@ -7,6 +7,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
+import { basicMember, facetsOf } from './__fixtures__/detail-wire';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -146,14 +147,19 @@ describe('ConsumptionConfirmDialog mode="recover_stock" (spec 126)', () => {
         if (method === 'POST') return post(url);
         if (url === '/api/pos/appointments/m-a')
           return Response.json({
-            stockRecovery,
-            eventType: null,
-            visit: {
-              members: [
-                { id: 'm-a', eventTypeTitle: 'Botox' },
-                { id: 'm-b', eventTypeTitle: 'Peeling' },
+            productFacets: facetsOf(
+              [
+                basicMember('m-a', 0, { eventTypeTitle: 'Botox' }),
+                basicMember('m-b', 1, { eventTypeTitle: 'Peeling' }),
               ],
-            },
+              {
+                stock: {
+                  state: 'available',
+                  value: { anchorAccrual: null, recovery: stockRecovery as never },
+                },
+              },
+              'g1',
+            ),
           });
         return new Response(null, { status: 404 });
       }),

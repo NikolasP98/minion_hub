@@ -50,6 +50,16 @@
     type EventMenuDetail,
   } from '$lib/components/scheduling/calendar-context-menu';
   import { payableEventFrom, type PayableEvent } from '$lib/components/scheduling/visit';
+  import {
+    BOOKING_PRODUCTS_VERSION_HEADER,
+    BOOKING_PRODUCTS_VERSION,
+    decodeBookingCalendarProjection,
+    decodeBookingDetailWire,
+    decodeCalendarFacets,
+    visitAnchorIdFromFacets,
+    type CalendarTicketOverlay,
+    type TicketOverlayFacet,
+  } from '$lib/components/scheduling/booking-product-facets';
   import BookingCreateDrawer, {
     type BookingCreateTarget,
   } from '$lib/components/scheduling/BookingCreateDrawer.svelte';
@@ -105,33 +115,63 @@
   // seed data, visible-range commands fetch missing neighbours through
   // `GET /api/pos/appointments`, and distant weeks are dropped so an hour of
   // scrolling can't grow the tab without bound.
-  type WindowPayload = Pick<PageData, 'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions'>;
+  type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions'> & {
+    ticketOverlay: TicketOverlayFacet;
+  };
+
+  /** Several weeks' overlay facets as ONE: any denied → denied; else any unavailable → unavailable;
+   *  else the admitted rows (a repeated ticket id must match, otherwise the facet is unavailable);
+   *  all empty → empty. A partial list is never presented as complete. */
+  function mergeOverlay(parts: TicketOverlayFacet[]): TicketOverlayFacet {
+    if (parts.some((p) => p.state === 'denied')) return { state: 'denied' };
+    const bad = parts.find((p) => p.state === 'unavailable');
+    if (bad) return bad;
+    const rows = new Map<string, CalendarTicketOverlay>();
+    for (const p of parts) {
+      if (p.state !== 'available') continue;
+      for (const r of p.value.rows) {
+        const seen = rows.get(r.id);
+        if (seen && JSON.stringify(seen) !== JSON.stringify(r))
+          return { state: 'unavailable', reason: 'invalid_projection' };
+        rows.set(r.id, r);
+      }
+    }
+    return rows.size
+      ? { state: 'available', value: { rows: [...rows.values()] } }
+      : { state: 'empty' };
+  }
 
   const winCache = createCalendarWindowCache<WindowPayload>({
     fetchWindow: async (from, to, signal) => {
-      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`, { signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { calendarScope, ...payload } = (await res.json()) as WindowPayload & {
-        calendarScope: string | null;
+      const res = await fetch(`/api/pos/appointments?from=${from}&to=${to}`, {
+        signal,
+        headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+      });
+      if (!res.ok) throw new Error(res.status === 409 ? 'refresh_required' : `HTTP ${res.status}`);
+      const json = (await res.json()) as { calendarScope: string | null };
+      // Decode BEFORE the cache sees it: an old or malformed protocol never becomes cached rows.
+      const projection = decodeBookingCalendarProjection<WindowPayload['bookings'][number]>(json);
+      if (!projection) throw new Error('refresh_required');
+      return {
+        calendarScope: json.calendarScope,
+        payload: {
+          bookings: projection.bookings,
+          tagOptions: projection.tagOptions as WindowPayload['tagOptions'],
+          ticketOverlay: projection.ticketOverlay,
+        },
       };
-      return { calendarScope, payload };
     },
     merge: (parts) => {
       const bookings: WindowPayload['bookings'] = [];
-      const invoices: WindowPayload['invoices'] = [];
-      const accruals = new Map<string, WindowPayload['accrualSummaries'][number]>();
       const tags = new Map<string, WindowPayload['tagOptions'][number]>();
       for (const week of parts) {
         bookings.push(...week.bookings);
-        invoices.push(...week.invoices);
-        for (const a of week.accrualSummaries) accruals.set(a.sourceId, a);
         for (const t of week.tagOptions) if (!tags.has(t.id)) tags.set(t.id, t);
       }
       return {
         bookings,
-        invoices,
-        accrualSummaries: [...accruals.values()],
         tagOptions: [...tags.values()],
+        ticketOverlay: mergeOverlay(parts.map((w) => w.ticketOverlay)),
       };
     },
   });
@@ -160,9 +200,13 @@
         // These are window-wide lists; merge deduplicates them across buckets.
         week = {
           bookings: [],
-          invoices: [],
-          accrualSummaries: current.accrualSummaries,
           tagOptions: current.tagOptions,
+          // A non-available overlay is carried as-is (never turned into "no tickets"); rows of an
+          // available one are bucketed below, so a week without rows is genuinely empty.
+          ticketOverlay:
+            current.ticketOverlay.state === 'available'
+              ? { state: 'empty' }
+              : current.ticketOverlay,
         };
         out.set(key, week);
       }
@@ -170,8 +214,14 @@
     };
     for (const booking of current.bookings)
       bucket(instantDateKey(new Date(booking.start), current.orgTz)).bookings.push(booking);
-    for (const invoice of current.invoices)
-      bucket(instantDateKey(new Date(invoice.at), current.orgTz)).invoices.push(invoice);
+    if (current.ticketOverlay.state === 'available')
+      for (const invoice of current.ticketOverlay.value.rows) {
+        const week = bucket(instantDateKey(new Date(invoice.at), current.orgTz));
+        week.ticketOverlay =
+          week.ticketOverlay.state === 'available'
+            ? { state: 'available', value: { rows: [...week.ticketOverlay.value.rows, invoice] } }
+            : { state: 'available', value: { rows: [invoice] } };
+      }
     return out;
   }
 
@@ -582,8 +632,6 @@
     refresh,
   });
 
-  const accrualBySource = $derived(new Map(cal.accrualSummaries.map((s) => [s.sourceId, s])));
-
   // ── Complete → confirm consumption. `ConsumptionConfirmDialog` owns the
   //    accrual/defaults reads, the editable rows and the POST; this page only
   //    remembers which booking is open and the per-booking stock warning.
@@ -684,15 +732,19 @@
     });
   }
 
-  /** The calendar's own per-box Charge: one booking, its one service. */
-  function chargeOne(b: Booking) {
-    chargeBooking({
-      booking: b,
-      partyId: b.partyId ?? null,
-      lines: [
-        { bookingId: b.id, productId: b.productId ?? null, eventTypeId: b.eventTypeId, title: '' },
-      ],
-    });
+  /** The visit's lead booking (`groupSeq` 0 / first of the group) — what the server resolves as the
+   *  anchor; `chargeEvent` re-reads it from the detail and never trusts this id for authority. */
+  function anchorOf(b: Booking): string {
+    if (!b.groupId) return b.id;
+    const group = cal.bookings.filter((x) => x.groupId === b.groupId);
+    return (
+      [...group].sort(
+        (x, y) =>
+          (x.groupSeq ?? Number.MAX_SAFE_INTEGER) - (y.groupSeq ?? Number.MAX_SAFE_INTEGER) ||
+          x.start.localeCompare(y.start) ||
+          x.id.localeCompare(y.id),
+      )[0]?.id ?? b.id
+    );
   }
 
   // ── Event context menu (owner ask 2026-10-10: "calendar should have a context
@@ -832,24 +884,36 @@
     await refresh();
   }
 
-  /** Charge reads the drawer's detail ON PICK (not on open): the till handoff
-   *  needs the event's rows, products and plan, which the window payload
-   *  does not carry. */
+  /** Charge reads the versioned detail ON PICK (not on open) and decides from IT, never from a cached
+   *  offer: the till handoff needs the event's rows, products and plan, which the window payload does
+   *  not carry. Any denied, unavailable, mixed or old-protocol answer opens nothing. */
   async function chargeEvent(anchorId: string) {
     try {
-      const res = await fetch(`/api/pos/appointments/${anchorId}`);
+      const res = await fetch(`/api/pos/appointments/${anchorId}`, {
+        headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+      });
+      if (res.status === 409) return void toastError(m.pos_appt_refresh_required());
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = (await res.json()) as EventMenuDetail;
-      chargeBooking(
-        payableEventFrom({
-          booking: d.booking,
-          contactPartyId: d.contact?.partyId ?? null,
-          anchorId,
-          rows: eventServiceRows(d),
-          products: d.products,
-        }),
-        d.plan?.plan.id ?? null,
-      );
+      const d = decodeBookingDetailWire<Omit<EventMenuDetail, 'productFacets'>>(await res.json());
+      const anchor = d ? visitAnchorIdFromFacets(d.productFacets) : null;
+      const fin = d ? eventServiceRows(d as EventMenuDetail) : null;
+      if (!d || !anchor || fin?.state !== 'available')
+        return void toastError(m.pos_appt_charge_unavailable());
+      const { rows, products, plan } = fin.value;
+      const base = {
+        booking: d.booking,
+        contactPartyId: d.contact?.partyId ?? null,
+        anchorId: anchor,
+        rows,
+        products,
+      };
+      // The instalment-plan fallback is the one place a missing chargeable service still hands off.
+      const openPlan = rows[0]?.funding === 'plan' && plan != null && !plan.isPaid;
+      const offer = openPlan
+        ? payableEventFrom({ ...base, allowServiceFallback: true })
+        : payableEventFrom({ ...base, allowServiceFallback: false });
+      if (!offer) return void toastError(m.pos_appt_charge_nothing());
+      chargeBooking(offer, plan?.plan.id ?? null);
     } catch (e) {
       toastError(m.pos_appt_ctx_load_failed(), e instanceof Error ? e.message : undefined);
     }
@@ -1217,7 +1281,11 @@
           hours={data.hours}
           onmove={canSchedule ? mover.moveBooking : undefined}
           ondropexternal={canSchedule ? dropLine : undefined}
-          invoices={cal.invoices}
+          invoices={cal.ticketOverlay.state === 'available'
+            ? cal.ticketOverlay.value.rows
+            : cal.ticketOverlay.state === 'empty'
+              ? []
+              : undefined}
           split={prefs.split}
           onsplit={prefs.setSplit}
         >
@@ -1238,22 +1306,31 @@
           {/snippet}
           <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
           {#snippet chips(b)}
-            {@const acc = accrualBySource.get(b.id)}
-            <!-- TODO(handoff): spec 126 T022 — these chips still read the raw `accrualSummaries` (with
-                 estimated/realized money) per MEMBER; the anchor stock facet, the guarded direct Charge
-                 (`chargeOne`, `!b.paid`) and the versioned window payload are not built. -->
-            {#if acc}
+            {@const facets = decodeCalendarFacets(b.productFacets)}
+            {@const lead = !b.groupId || (b.groupSeq ?? 0) === 0}
+            <!-- Quantity only (spec 126): no estimated/realized money chip. The stock facet is the visit
+                 ANCHOR's, so only the lead row of a visit shows it; the per-member retry below is unchanged. -->
+            {#if lead && facets?.stock.state === 'available' && facets.stock.value.anchorAccrual}
+              {@const acc = facets.stock.value.anchorAccrual}
               {#if acc.open > 0}
-                <Badge variant="semantic" value="warning" size="sm"
-                  >{m.sched_stock_committed({ value: formatMoney(acc.estValue) })}</Badge
+                <Badge
+                  variant="semantic"
+                  value="warning"
+                  size="sm"
+                  title={m.sched_stock_cost_unavailable()}
+                  >{m.sched_stock_open_qty({ n: String(acc.open) })}</Badge
                 >
               {:else if acc.realized > 0}
                 <a
                   href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
                   class="no-underline"
                 >
-                  <Badge variant="semantic" value="success" size="sm"
-                    >{m.sched_stock_realized({ value: formatMoney(acc.realizedValue) })}</Badge
+                  <Badge
+                    variant="semantic"
+                    value="success"
+                    size="sm"
+                    title={m.sched_stock_cost_unavailable()}
+                    >{m.sched_stock_posted_qty({ n: String(acc.realized) })}</Badge
                   >
                 </a>
               {:else}
@@ -1275,8 +1352,8 @@
           {#snippet actions(b)}
             <!-- Same gate as the context menu: a booking a ticket already charged is not
                  offered for charging again (FACES report 2026-11-03). -->
-            {#if b.status === 'completed' && !b.paid && canAct('pos', 'edit')}
-              <Button variant="outline" size="sm" onclick={() => chargeOne(b as Booking)}>
+            {#if b.status === 'completed' && canAct('pos', 'edit') && decodeCalendarFacets(b.productFacets)?.payment.state === 'available'}
+              <Button variant="outline" size="sm" onclick={() => void chargeEvent(anchorOf(b))}>
                 <ShoppingCart size={iconSizes.sm} />
                 {m.pos_appt_charge()}
               </Button>

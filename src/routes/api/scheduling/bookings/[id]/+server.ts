@@ -11,9 +11,9 @@ import {
 import { bookingDetailResponse, patchBookingResponse } from '../_handlers';
 
 /** GET /api/scheduling/bookings/[id] — the booking detail drawer's payload (§4.1). */
-export const GET: RequestHandler = async ({ locals, params }) => {
+export const GET: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await requireSchedulingRead(locals);
-  return bookingDetailResponse(ctx, locals, params.id!);
+  return bookingDetailResponse(ctx, locals, params.id!, request);
 };
 
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {

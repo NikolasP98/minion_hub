@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   listTicketsForCalendar: vi.fn(),
   getContact: vi.fn(),
   accrualSummaryForSources: vi.fn(),
+  stockAnchorForBookings: vi.fn(),
 }));
 
 vi.mock('$server/auth/core-ctx', () => ({
@@ -84,6 +85,7 @@ vi.mock('$server/services/attachments.service', () => ({
 vi.mock('$server/services/stock-accruals.service', () => ({
   accrualSummaryForSources: (ctx: unknown, source: unknown, ids: unknown) =>
     mocks.accrualSummaryForSources(ctx, source, ids),
+  stockAnchorForBookings: (ctx: unknown, ids: unknown) => mocks.stockAnchorForBookings(ctx, ids),
 }));
 
 // Loads return `{ <dataset>: body }` (spec 039): unwrap the single slot.
@@ -181,6 +183,7 @@ beforeEach(() => {
   mocks.listEventTypes.mockResolvedValue(EVENT_TYPES);
   mocks.getContact.mockResolvedValue(null);
   mocks.accrualSummaryForSources.mockResolvedValue(ACCRUALS);
+  mocks.stockAnchorForBookings.mockResolvedValue(new Map());
 });
 
 afterEach(() => {
@@ -326,13 +329,13 @@ describe('/pos/appointments load — pinned key set', () => {
         'resources',
         'eventTypes',
         'stockEnabled',
-        'accrualSummaries',
+        'productProjectionVersion',
+        'ticketOverlay',
         'day',
         'view',
         'pageView',
         'hours',
         'pending',
-        'invoices',
         'tagOptions',
         'kinds',
         'categories',
@@ -391,14 +394,22 @@ describe('/pos/appointments load — pinned key set', () => {
         categoryColor: null,
         // Spec 2026-10-13 D3: anchored paid-ness, funding source and the
         // non-void tickets that charged the booking (context menu + cancel dialog).
-        paid: false,
-        funding: 'cash',
-        tickets: [],
-        sold: { state: 'empty' },
+        productFacets: {
+          version: 1,
+          sold: { state: 'empty' },
+          // no finance admission in this fixture: payment denied and NO paid/funding/tickets alias
+          payment: { state: 'denied' },
+          stock: { state: 'available', value: { anchorAccrual: null } },
+        },
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);
-    expect(result.accrualSummaries).toEqual(ACCRUALS);
+    // Spec 126: the raw `invoices` / `accrualSummaries` namespaces are gone from the POS page data;
+    // the overlay is a read facet and stock counts ride each booking's facets.
+    expect(result).not.toHaveProperty('invoices');
+    expect(result).not.toHaveProperty('accrualSummaries');
+    expect(result.productProjectionVersion).toBe(1);
+    expect(result.ticketOverlay).toEqual({ state: 'denied' }); // this fixture has no finance admission
     // POS-only: inactive resources are filtered out before reaching the view.
     // `color` rides along now — the calendar tints each staff column with it.
     expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair', color: '#abcdef' }]);
@@ -490,7 +501,7 @@ describe('/pos/appointments load — pinned key set', () => {
     expect(result.stockEnabled).toBe(true);
   });
 
-  it('always attempts the accrual read (unconditional try/catch, no stock-enabled short-circuit)', async () => {
+  it('always attempts the cost-free anchor stock read (no stock-enabled short-circuit)', async () => {
     const { load } = await import('../../pos/appointments/+page.server');
 
     await load({
@@ -499,7 +510,8 @@ describe('/pos/appointments load — pinned key set', () => {
       url: POS_URL(),
     } as never);
 
-    expect(mocks.accrualSummaryForSources).toHaveBeenCalledWith(CTX, 'booking', ['b1']);
+    expect(mocks.stockAnchorForBookings).toHaveBeenCalledWith(CTX, ['b1']);
+    expect(mocks.accrualSummaryForSources).not.toHaveBeenCalled();
   });
 });
 
@@ -608,10 +620,11 @@ describe('/scheduling/calendar load — pinned key set', () => {
     expect(result.view).toBe('week');
     // `pos: false` ⇒ the POS-only reads never happen here.
     expect(mocks.listTicketsForCalendar).not.toHaveBeenCalled();
+    expect(mocks.stockAnchorForBookings).not.toHaveBeenCalled();
     expect(mocks.accrualSummaryForSources).not.toHaveBeenCalled();
 
-    // The key set this page hands `BookingCalendar` + the shared page kit. No
-    // `invoices`/`accrualSummaries`/`stockEnabled`/`pending` (POS only), no
+    // The key set this page hands `BookingCalendar` + the shared page kit. The versioned projection
+    // keys are present (overlay `denied`); no `stockEnabled`/`pending` (POS only), no
     // `from`/`to`/`events` (the retired `loadCalendarEvents` payload).
     expect(Object.keys(result).sort()).toEqual(
       [
@@ -622,6 +635,8 @@ describe('/scheduling/calendar load — pinned key set', () => {
         'kindId',
         'showInheritedTags',
         'tagOptions',
+        'productProjectionVersion',
+        'ticketOverlay',
         'bookings',
         'resources',
         'hours',
@@ -657,10 +672,12 @@ describe('/scheduling/calendar load — pinned key set', () => {
         categoryColor: null,
         // Spec 2026-10-13 D3: anchored paid-ness, funding source and the
         // non-void tickets that charged the booking (context menu + cancel dialog).
-        paid: false,
-        funding: 'cash',
-        tickets: [],
-        sold: { state: 'unavailable', reason: 'not_in_slice' },
+        productFacets: {
+          version: 1,
+          sold: { state: 'unavailable', reason: 'not_in_slice' },
+          payment: { state: 'unavailable', reason: 'not_in_slice' },
+          stock: { state: 'unavailable', reason: 'not_in_slice' },
+        },
       },
     ]);
     // Off-hours envelope, same collapse rule as POS.

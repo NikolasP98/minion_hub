@@ -355,7 +355,24 @@ export interface RealizeInput {
    * count and fingerprint), the booking still completed and no source entry present —
    * else `RecoveryPreviewStaleError`, with no effect at all. Never inferred from `lines`.
    */
-  recovery?: { expectedOpenCount: number; expectedOpenFingerprint: string };
+  recovery?: {
+    expectedOpenCount: number;
+    expectedOpenFingerprint: string;
+    /** SERVER-derived literal of the route family that received the request (never from a body). The
+     *  host's edit capability plus `stock:view`/`stock:manage` are re-checked inside the write
+     *  transaction, after the F3 gate, from fresh (locked) authority rows. */
+    host: 'pos' | 'scheduling';
+    /** True for a platform admin (the route-level bypass); capabilities are then not consulted. */
+    platformAdmin?: boolean;
+  };
+}
+
+/** The caller no longer holds the host edit right or stock view/manage at write time. */
+export class RecoveryForbiddenError extends Error {
+  readonly code = 'stock_forbidden';
+  constructor() {
+    super('stock:manage and the host edit right are required to recover stock');
+  }
 }
 
 /** The reviewed open set changed (or the booking/source did) between preview and confirm. */
@@ -874,6 +891,23 @@ async function assertRecoveryPreviewInTx(
   input: RealizeInput,
 ): Promise<void> {
   const want = input.recovery!;
+  // Fresh authority after both gates (the org authority lock is held, so a concurrent role or module
+  // change cannot slip past): the host's own edit right, plus stock view and manage.
+  if (!want.platformAdmin) {
+    const { resolveFreshCapabilitiesInTransaction } = await import('./rbac.service');
+    const profileId = ctx.profileId;
+    const caps = profileId
+      ? (await resolveFreshCapabilitiesInTransaction(tx, ctx.tenantId, profileId)).capabilities
+      : null;
+    const hostModule = want.host === 'pos' ? 'pos' : 'scheduling';
+    if (
+      !caps ||
+      !caps.can(hostModule, 'edit') ||
+      !caps.can('stock', 'view') ||
+      !caps.can('stock', 'manage')
+    )
+      throw new RecoveryForbiddenError();
+  }
   const [booking] = await tx
     .select({ status: schedBookings.status })
     .from(schedBookings)

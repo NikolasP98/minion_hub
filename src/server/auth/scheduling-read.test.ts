@@ -163,10 +163,40 @@ beforeEach(() => {
   boundary.context.mockResolvedValue({ db: {}, tenantId: 'org-fixture' });
   boundary.enabled.mockResolvedValue(true);
   boundary.bookings.mockResolvedValue([{ id: 'booking-fixture' }]);
-  boundary.detail.mockResolvedValue({ booking: { id: 'booking-fixture' } });
+  boundary.detail.mockResolvedValue({
+    booking: {
+      id: 'booking-fixture',
+      status: 'accepted',
+      eventTypeId: 'event-fixture',
+      productId: null,
+      title: null,
+      startTime: new Date('2026-10-01T10:00:00Z'),
+      endTime: new Date('2026-10-01T11:00:00Z'),
+    },
+    eventType: null,
+    resource: null,
+    contact: null,
+    tags: { own: [], contact: [], service: [] },
+    statusHistory: [],
+    series: null,
+    visit: null,
+    products: [],
+    tickets: [],
+    grant: null,
+    plan: null,
+    sold: { state: 'denied' },
+    soldTotals: [],
+    stockAnchor: { state: 'denied' },
+    stockRecovery: { state: 'denied' },
+  });
   boundary.resources.mockResolvedValue([{ timezone: 'America/Lima' }]);
   boundary.eventTypes.mockResolvedValue([]);
-  boundary.calendar.mockResolvedValue({ bookings: [], tagOptions: [] });
+  boundary.calendar.mockResolvedValue({
+    productProjectionVersion: 1,
+    bookings: [],
+    tagOptions: [],
+    ticketOverlay: { state: 'denied' },
+  });
   boundary.slots.mockResolvedValue({
     resourceIds: ['resource-fixture'],
     slots: [
@@ -231,13 +261,30 @@ describe('scheduling read authority inventory', () => {
     it(`preserves authorized ${suffix} reads`, async () => {
       allow('scheduling');
       const handler = handlers.get(`/src/routes/api/scheduling/${suffix}/+server.ts`)!;
-      const response = await handler(event(`/api/scheduling/${suffix}`));
+      const versioned = event(`/api/scheduling/${suffix}`, {
+        request: new Request(`http://localhost/api/scheduling/${suffix}`, {
+          headers: { 'X-Minion-Booking-Products-Version': '1' },
+        }),
+      });
+      if (suffix !== 'bookings') {
+        // Spec 126: an old tab (no version header) is refused AFTER admission, with no payload.
+        const stale = await handler(event(`/api/scheduling/${suffix}`));
+        expect(stale.status).toBe(409);
+        expect(await stale.json()).toEqual({ error: 'refresh_required' });
+        expect(boundary.detail).not.toHaveBeenCalled();
+        expect(boundary.calendar).not.toHaveBeenCalled();
+        boundary.context.mockClear();
+        boundary.enabled.mockClear();
+      }
+      const response = await handler(versioned);
       expect(response.status).toBe(200);
       if (suffix === 'calendar') {
         expect(await response.json()).toEqual({
+          calendarScope: JSON.stringify(['org-fixture', 'America/Lima']),
+          productProjectionVersion: 1,
           bookings: [],
           tagOptions: [],
-          calendarScope: JSON.stringify(['org-fixture', 'America/Lima']),
+          ticketOverlay: { state: 'denied' },
         });
       }
       // The detail resolves its POS/stock/finance handles independently (spec 126).

@@ -17,42 +17,28 @@ vi.mock('$app/state', async (original) => {
   const { reactivePage } = await import('./__fixtures__/reactive-page.svelte');
   return { ...actual, page: reactivePage({ ...actual.page }) };
 });
+import { basicMember, facetsOf, wireDetail } from './__fixtures__/detail-wire';
+import type { BasicVisitMember, BookingProductFacets } from './booking-product-facets';
 const { default: BookingDetailDrawer } = await import('./BookingDetailDrawer.svelte');
 
 const TZ = 'America/Lima';
-const detailOf = (id: string, attendeeName: string, extra: Record<string, unknown> = {}) => ({
-  booking: {
+/** `extra.facets` overrides facets; `extra.booking` overrides booking fields. */
+const detailOf = (
+  id: string,
+  attendeeName: string,
+  extra: {
+    facets?: Partial<BookingProductFacets>;
+    booking?: Record<string, unknown>;
+    members?: BasicVisitMember[];
+    groupId?: string;
+  } = {},
+) =>
+  wireDetail(
     id,
-    status: 'accepted',
-    title: null,
-    eventTypeId: 'et1',
-    resourceId: 'r1',
-    productId: null,
-    partyId: null,
-    startTime: '2026-10-07T14:00:00.000Z',
-    endTime: '2026-10-07T15:00:00.000Z',
     attendeeName,
-    attendeeEmail: null,
-    attendeePhone: null,
-    crmContactId: null,
-    notes: `${attendeeName} note`,
-    clientNote: null,
-    updatedAt: '2026-10-07T00:00:00.000Z',
-  },
-  eventType: { id: 'et1', title: 'Consulta' },
-  resource: { id: 'r1', name: 'Leiva', profileId: null },
-  contact: null,
-  statusHistory: [],
-  grant: null,
-  plan: null,
-  series: null,
-  accrual: null,
-  tickets: [],
-  tags: { own: [], contact: [], service: [] },
-  visit: null,
-  products: [],
-  ...extra,
-});
+    facetsOf(extra.members ?? [basicMember(id)], extra.facets, extra.groupId ?? null),
+    extra.booking,
+  );
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -155,32 +141,21 @@ describe('BookingDetailDrawer acts on the booking it shows (spec 116 FR-008)', (
   });
 
   it('completing a visit leaves no-show and completed members alone (FR-012b)', async () => {
-    const member = (id: string, seq: number, status: string) => ({
-      id,
-      seq,
-      eventTypeId: `et-${id}`,
-      eventTypeTitle: `Service ${id}`,
-      productId: null,
-      minutes: 30,
-      status,
-      paid: false,
-      price: null,
-      paidAmount: 0,
-      currency: null,
-      funding: 'cash',
-      ticketIds: [],
-      referenced: [],
-    });
+    const member = (id: string, seq: number, status: string) =>
+      basicMember(id, seq, {
+        eventTypeId: `et-${id}`,
+        eventTypeTitle: `Service ${id}`,
+        minutes: 30,
+        status,
+      });
     net.details.V1 = detailOf('V1', 'Ana', {
-      visit: {
-        groupId: 'g1',
-        members: [
-          member('V1', 0, 'accepted'),
-          member('V2', 1, 'no_show'),
-          member('V3', 2, 'completed'),
-          member('V4', 3, 'cancelled'),
-        ],
-      },
+      groupId: 'g1',
+      members: [
+        member('V1', 0, 'accepted'),
+        member('V2', 1, 'no_show'),
+        member('V3', 2, 'completed'),
+        member('V4', 3, 'cancelled'),
+      ],
     });
     const view = render(BookingDetailDrawer, props('V1'));
     await fireEvent.click(await view.findByRole('button', { name: 'Mark completed' }));
@@ -210,7 +185,7 @@ describe('BookingDetailDrawer sold facet (spec 126)', () => {
 
   it('shows the unassigned Faja M as SOLD on its sale, never as planned, with the gift label', async () => {
     net.details.A = detailOf('A', 'Ana', {
-      sold: { state: 'available', value: { rows: [soldRow()] } },
+      facets: { sold: { state: 'available', value: { rows: [soldRow()] } } },
     });
     const view = render(BookingDetailDrawer, props('A'));
     await view.findByText('Sold with this visit');
@@ -225,13 +200,15 @@ describe('BookingDetailDrawer sold facet (spec 126)', () => {
 
   it('keeps two same-description lines, and hides the gift label when the server sent null', async () => {
     net.details.A = detailOf('A', 'Ana', {
-      sold: {
-        state: 'available',
-        value: {
-          rows: [
-            soldRow({ gift: null }),
-            soldRow({ lineId: 'l2', gift: null, relation: 'direct' }),
-          ],
+      facets: {
+        sold: {
+          state: 'available',
+          value: {
+            rows: [
+              soldRow({ gift: null }),
+              soldRow({ lineId: 'l2', gift: null, relation: 'direct' }),
+            ],
+          },
         },
       },
     });
@@ -248,13 +225,16 @@ describe('BookingDetailDrawer sold facet (spec 126)', () => {
     ['missing', undefined, 'could not be loaded'],
     ['malformed', { state: 'available', value: { rows: [{}] } }, 'could not be loaded'],
   ])('renders %s as its own state, not as an empty list', async (_n, sold, expected) => {
-    net.details.A = detailOf('A', 'Ana', { sold });
+    net.details.A = detailOf('A', 'Ana', { facets: { sold: sold as never } });
     const view = render(BookingDetailDrawer, props('A'));
     await view.findByText('Sold with this visit');
     expect(view.container.textContent).toContain(expected);
     expect(view.container.querySelectorAll('.sold-row')).toHaveLength(0);
   });
 });
+
+const recoveryStock = (recovery: unknown) =>
+  ({ state: 'available', value: { anchorAccrual: null, recovery } }) as never;
 
 describe('BookingDetailDrawer stock recovery action (spec 126 US2)', () => {
   const member = (bookingId: string, over: Record<string, unknown> = {}) => ({
@@ -278,8 +258,9 @@ describe('BookingDetailDrawer stock recovery action (spec 126 US2)', () => {
 
   it('offers the action after a reload from persisted facts, and retries without touching the status', async () => {
     net.details.A = detailOf('A', 'Ana', {
-      booking: { ...detailOf('A', 'Ana').booking, status: 'completed' },
-      stockRecovery: { state: 'available', value: [saved] },
+      booking: { status: 'completed' },
+      members: [basicMember('A', 0, { status: 'completed' })],
+      facets: { stock: recoveryStock({ state: 'available', value: [saved] }) },
     });
     const view = render(BookingDetailDrawer, props('A'));
     await fireEvent.click(await view.findByRole('button', { name: 'Recover stock' }));
@@ -307,16 +288,96 @@ describe('BookingDetailDrawer stock recovery action (spec 126 US2)', () => {
       { state: 'available', value: [member('A', { eligibility: 'manual_review' })] },
     ],
   ])('offers no action for %s', async (_n, stockRecovery) => {
-    net.details.A = detailOf('A', 'Ana', { stockRecovery });
+    net.details.A = detailOf('A', 'Ana', { facets: { stock: recoveryStock(stockRecovery) } });
     const view = render(BookingDetailDrawer, props('A'));
     await view.findByText('Sold with this visit');
     expect(recoverBtn(view)).toBeNull();
   });
 
   it('offers no action to a viewer who cannot edit', async () => {
-    net.details.A = detailOf('A', 'Ana', { stockRecovery: { state: 'available', value: [saved] } });
+    net.details.A = detailOf('A', 'Ana', {
+      facets: { stock: recoveryStock({ state: 'available', value: [saved] }) },
+    });
     const view = render(BookingDetailDrawer, { ...props('A'), canEdit: false });
     await view.findByText('Sold with this visit');
     expect(recoverBtn(view)).toBeNull();
+  });
+});
+
+describe('BookingDetailDrawer versioned wire and payment facet (spec 126)', () => {
+  const paid = {
+    state: 'available',
+    value: {
+      services: [
+        {
+          bookingId: 'A',
+          paid: true,
+          price: 100,
+          paidAmount: 100,
+          currency: 'PEN',
+          funding: 'cash',
+          ticketIds: ['t1'],
+        },
+      ],
+      planned: [],
+      soldTotals: [],
+      tickets: [],
+      bookingInvoiceId: null,
+      grant: null,
+      plan: null,
+      accrualCost: { state: 'empty' },
+    },
+  } as never;
+
+  it('sends the version header on every detail GET', async () => {
+    const seen: (string | null)[] = [];
+    net.details.A = detailOf('A', 'Ana');
+    const inner = globalThis.fetch;
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/A'))
+        seen.push(new Headers(init?.headers).get('X-Minion-Booking-Products-Version'));
+      return inner(input, init);
+    });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByText('Sold with this visit');
+    expect(seen).toEqual(['1']);
+  });
+
+  it('shows the real money and paid badge only from an available payment facet', async () => {
+    net.details.A = detailOf('A', 'Ana', { facets: { payment: paid } });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByText('Sold with this visit');
+    expect(view.container.querySelector('.svc-money')!.textContent).toContain('100');
+    expect(view.container.textContent).toContain('Paid');
+  });
+
+  it.each([
+    ['denied', { state: 'denied' }, 'cannot see the payment details'],
+    ['unavailable', { state: 'unavailable', reason: 'read_failed' }, 'could not be loaded'],
+    ['empty for a nonempty visit', { state: 'empty' }, 'could not be loaded'],
+    ['malformed', { state: 'available', value: { services: [] } }, 'could not be loaded'],
+  ])(
+    '%s payment: no money, no paid/unpaid badge, no charge, structure intact',
+    async (_n, payment, text) => {
+      net.details.A = detailOf('A', 'Ana', { facets: { payment: payment as never } });
+      const view = render(BookingDetailDrawer, { ...props('A'), onpay: vi.fn() });
+      await view.findByText('Sold with this visit');
+      const t = view.container.textContent!;
+      expect(t).toContain(text);
+      expect(view.container.querySelector('.svc-money')!.textContent!.trim()).toBe('');
+      expect(t).not.toContain('Unpaid');
+      expect(t).not.toContain('Take payment');
+      expect(t).toContain('Consulta'); // basic names stay
+    },
+  );
+
+  it('an old protocol answer (409) shows nothing of the source and no writer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ error: 'refresh_required' }, { status: 409 })),
+    );
+    const view = render(BookingDetailDrawer, props('A'));
+    await waitFor(() => expect(view.container.textContent).not.toContain('Ana'));
+    expect(view.queryByRole('button', { name: 'Mark no-show' })).toBeNull();
   });
 });

@@ -209,22 +209,26 @@ describe('productsForVisit (spec 120, 126)', () => {
     ...over,
   });
   const facet = (...rows: ReturnType<typeof row>[]) => ({
-    state: 'available' as const,
-    value: { rows },
+    version: 1 as const,
+    sold: { state: 'available' as const, value: { rows } },
+    payment: { state: 'denied' as const },
+    stock: { state: 'denied' as const },
   });
 
   it('lists the sold rows of the visit', () => {
-    const out = productsForVisit([{ sold: facet(row('l1'), row('l2', { description: 'Crema' })) }]);
+    const out = productsForVisit([
+      { productFacets: facet(row('l1'), row('l2', { description: 'Crema' })) },
+    ]);
     expect(out.map((r) => r.description)).toEqual(['Faja L', 'Crema']);
   });
 
   it('counts a line once when several members of the visit carry the same facet', () => {
-    const sold = facet(row('l1'));
-    expect(productsForVisit([{ sold }, { sold }])).toHaveLength(1);
+    const productFacets = facet(row('l1'));
+    expect(productsForVisit([{ productFacets }, { productFacets }])).toHaveLength(1);
   });
 
   it('keeps two lines with the same description (distinct line ids)', () => {
-    expect(productsForVisit([{ sold: facet(row('l1'), row('l2')) }])).toHaveLength(2);
+    expect(productsForVisit([{ productFacets: facet(row('l1'), row('l2')) }])).toHaveLength(2);
   });
 
   it('is empty for an unpaid visit, a missing facet and a malformed one', () => {

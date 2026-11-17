@@ -3,7 +3,9 @@ import { z } from 'zod';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { hasOrgCapability, shouldMaskSensitive } from '$server/services/rbac.service';
-import { canReadFinancialFields, datasetCtx } from '$server/auth/dataset-ctx';
+import { canReadFinancialFields, datasetCtx, isDenied } from '$server/auth/dataset-ctx';
+import { requireProductsVersion } from '$server/api/booking-products-version';
+import { bookingDetailBody } from '$server/services/booking-product-wire';
 import {
   createBooking,
   createBookingGroup,
@@ -34,6 +36,7 @@ import {
 import {
   listAccruals,
   realizeAccruals,
+  RecoveryForbiddenError,
   RecoveryPreviewStaleError,
 } from '$server/services/stock-accruals.service';
 import { listConsumption } from '$server/services/stock.service';
@@ -212,10 +215,13 @@ export async function bookingDetailResponse(
   ctx: CoreCtx,
   locals: Locals,
   id: string,
+  request: Request,
 ): Promise<Response> {
+  const stale = requireProductsVersion(request);
+  if (stale) return stale;
   // Spec 126: POS and stock facets come through THEIR dataset handles (a denied
-  // one is a `denied` facet, not a scheduling-handle read); the gift flag reveals
-  // a money fact, so it needs finance view AND the finance field tier.
+  // one is a `denied` facet, not a scheduling-handle read); money needs finance view
+  // AND the finance field tier, never a POS or stock permission.
   const [pos, stock, canReadMoney] = await Promise.all([
     datasetCtx(locals, 'pos'),
     datasetCtx(locals, 'stock'),
@@ -227,7 +233,13 @@ export async function bookingDetailResponse(
     canReadFinancialFields: canReadMoney,
   });
   if (!detail) throw error(404, 'booking not found');
-  return json(detail);
+  return json(
+    bookingDetailBody(detail, {
+      pos: !isDenied(pos),
+      stock: !isDenied(stock),
+      money: !isDenied(pos) && canReadMoney,
+    }),
+  );
 }
 
 /** Trimmed nullable string: '' and missing both collapse to null (spec S5 —
@@ -801,17 +813,13 @@ const completeSchema = z
  * realization runs behind a precondition that the reviewed open set is unchanged (409
  * `recovery_preview_stale`, no effect) — before the generic stockWarning catch, so no HTTP 200
  * `realize_failed` can hide the conflict.
- *
- * TODO(handoff): contracts/admission-recovery.md also wants a server-derived `recoveryHost`
- * ('pos' | 'scheduling') re-checking that host's edit capability inside the write transaction;
- * today the central API gate decides edit rights per path before this runs, and `stock:view` +
- * `stock:manage` are checked here, not in-transaction. proposals/2026-11-16-faces-stock-cash-crm-meeting-followups.md.
  */
 export async function completeBookingResponse(
   ctx: CoreCtx,
   locals: Locals,
   request: Request,
   id: string,
+  host: 'pos' | 'scheduling',
 ): Promise<Response> {
   const b = await parseBody(request, completeSchema);
 
@@ -858,6 +866,10 @@ export async function completeBookingResponse(
             recovery: {
               expectedOpenCount: b.recovery.expectedOpenCount,
               expectedOpenFingerprint: b.recovery.expectedOpenFingerprint,
+              // Server-derived; the body cannot set it. The write transaction re-checks the host's
+              // edit right and stock:view/manage from fresh authority.
+              host,
+              platformAdmin: locals.user?.role === 'admin',
             },
           }
         : {}),
@@ -866,6 +878,8 @@ export async function completeBookingResponse(
   } catch (e) {
     if (e instanceof RecoveryPreviewStaleError)
       return json({ error: e.code, message: e.message }, { status: 409 });
+    if (e instanceof RecoveryForbiddenError)
+      return json({ error: e.code, message: e.message }, { status: 403 });
     return json({
       ok: true,
       entryId: null,

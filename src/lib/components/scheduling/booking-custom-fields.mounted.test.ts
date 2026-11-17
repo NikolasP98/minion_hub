@@ -61,6 +61,7 @@ const DEF: CustomPropertyDefinition = {
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-01T00:00:00.000Z',
 };
+import { basicMember, facetsOf } from './__fixtures__/detail-wire';
 const DETAIL = {
   booking: {
     id: BOOKING,
@@ -83,12 +84,9 @@ const DETAIL = {
   resource: { id: 'r1', name: 'Leiva', profileId: null },
   contact: null,
   statusHistory: [],
-  grant: null,
-  plan: null,
   series: null,
-  accrual: null,
-  tickets: [],
   tags: { own: [], contact: [], service: [] },
+  productFacets: facetsOf([basicMember(BOOKING)]),
 };
 const CALENDAR_BOOKING = {
   id: BOOKING,
@@ -275,6 +273,7 @@ describe('BookingDetailDrawer', () => {
           return Response.json({
             ...DETAIL,
             booking: { ...DETAIL.booking, id: 'b2', notes: 'Second record' },
+            productFacets: facetsOf([basicMember('b2')]),
           });
         return originalFetch(input, init);
       }),

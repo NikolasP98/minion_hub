@@ -31,9 +31,13 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
 class FakeStale extends Error {
   readonly code = 'recovery_preview_stale';
 }
+class FakeForbidden extends Error {
+  readonly code = 'stock_forbidden';
+}
 vi.mock('$server/services/stock-accruals.service', () => ({
   realizeAccruals: (...a: unknown[]) => h.realizeAccruals(...a),
   RecoveryPreviewStaleError: FakeStale,
+  RecoveryForbiddenError: FakeForbidden,
   listAccruals: vi.fn(),
 }));
 vi.mock('$server/services/rbac.service', () => ({
@@ -122,7 +126,13 @@ describe('POST …/complete with `recovery` (spec 126 confirm_open)', () => {
       expect.anything(),
       expect.objectContaining({
         lines: [{ itemId: 'i1', qty: 1 }],
-        recovery: { expectedOpenCount: 2, expectedOpenFingerprint: 'a'.repeat(64) },
+        recovery: {
+          expectedOpenCount: 2,
+          expectedOpenFingerprint: 'a'.repeat(64),
+          // forwarded from the wrapper's literal; a body cannot set it
+          host: 'scheduling',
+          platformAdmin: false,
+        },
       }),
     );
   });
@@ -160,6 +170,23 @@ describe('POST …/complete with `recovery` (spec 126 confirm_open)', () => {
     const res = await call({ lines: [], recovery });
     expect(res.status).toBe(403);
     expect(h.realizeAccruals).not.toHaveBeenCalled();
+  });
+
+  it('a body-supplied host or admin flag is ignored', async () => {
+    h.getBooking.mockResolvedValue(booking('completed'));
+    await call({ lines: [], recovery: { ...recovery, host: 'pos', platformAdmin: true } });
+    expect(h.realizeAccruals.mock.calls[0]![1].recovery).toMatchObject({
+      host: 'scheduling',
+      platformAdmin: false,
+    });
+  });
+
+  it('a capability lost inside the write transaction answers 403, not a 200 warning', async () => {
+    h.getBooking.mockResolvedValue(booking('completed'));
+    h.realizeAccruals.mockRejectedValue(new FakeForbidden('lost'));
+    const res = await call({ lines: [], recovery });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('stock_forbidden');
   });
 
   it('a stale preview answers HTTP 409, not a 200 realize_failed warning', async () => {

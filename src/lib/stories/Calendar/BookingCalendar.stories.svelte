@@ -124,34 +124,42 @@
       attendeeName: 'Paid visit',
       paid: true,
       tickets: [{ id: 'tk1', humanId: 'F001-000123' }],
-      sold: {
-        state: 'available',
-        value: {
-          rows: [
-            {
-              ticketId: 'tk1',
-              lineId: 'tk1-l1',
-              productId: null,
-              bookingId: null,
-              ticketHumanId: 'F001-000123',
-              description: 'Faja post-operatoria L',
-              qty: 1,
-              relation: 'co_ticket_unassigned',
-              gift: true,
-            },
-            {
-              ticketId: 'tk1',
-              lineId: 'tk1-l2',
-              productId: null,
-              bookingId: null,
-              ticketHumanId: 'F001-000123',
-              description: 'Crema cicatrizante',
-              qty: 2,
-              relation: 'co_ticket_unassigned',
-              gift: false,
-            },
-          ],
+      productFacets: {
+        version: 1,
+        sold: {
+          state: 'available',
+          value: {
+            rows: [
+              {
+                ticketId: 'tk1',
+                lineId: 'tk1-l1',
+                productId: null,
+                bookingId: null,
+                ticketHumanId: 'F001-000123',
+                description: 'Faja post-operatoria L',
+                qty: 1,
+                relation: 'co_ticket_unassigned',
+                gift: true,
+              },
+              {
+                ticketId: 'tk1',
+                lineId: 'tk1-l2',
+                productId: null,
+                bookingId: null,
+                ticketHumanId: 'F001-000123',
+                description: 'Crema cicatrizante',
+                qty: 2,
+                relation: 'co_ticket_unassigned',
+                gift: false,
+              },
+            ],
+          },
         },
+        payment: {
+          state: 'available',
+          value: { paid: true, funding: 'cash', tickets: [{ id: 'tk1', humanId: 'F001-000123' }] },
+        },
+        stock: { state: 'denied' },
       },
     }),
     booking(DAYS[5], '10:00', 240, {

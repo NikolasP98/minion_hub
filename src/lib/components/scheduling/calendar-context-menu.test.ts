@@ -2,7 +2,23 @@ import { describe, expect, it } from 'vitest';
 import { calendarMenuEntries, cancelPaidTickets, voidRefusalKey } from './calendar-context-menu';
 import type { CalendarBooking } from './calendar-window';
 
-const member = (over: Partial<CalendarBooking> & { id: string }): CalendarBooking => ({
+/** A window row whose payment facet is AVAILABLE and agrees with its paid/funding/tickets aliases. */
+const member = (over: Partial<CalendarBooking> & { id: string }): CalendarBooking => {
+  const row = base(over);
+  return {
+    ...row,
+    productFacets: over.productFacets ?? {
+      version: 1,
+      sold: { state: 'empty' },
+      payment: {
+        state: 'available',
+        value: { paid: !!row.paid, funding: row.funding ?? 'cash', tickets: row.tickets ?? [] },
+      },
+      stock: { state: 'unavailable', reason: 'not_in_slice' },
+    },
+  };
+};
+const base = (over: Partial<CalendarBooking> & { id: string }): CalendarBooking => ({
   resourceId: 'r1',
   eventTypeId: `et-${over.id}`,
   start: '2026-10-10T15:00:00.000Z',
@@ -76,9 +92,51 @@ describe('calendarMenuEntries', () => {
     expect(kinds(box(member({ id: 'b1', funding: 'plan' })))).toEqual(['delete']);
   });
 
-  it('reads a missing paid/funding flag as unpaid cash (scheduling calendar payload)', () => {
-    const b = box(member({ id: 'b1', paid: undefined, funding: undefined }));
-    expect(kinds(b)).toEqual(['charge', 'delete']);
+  it.each([
+    ['denied', { state: 'denied' }],
+    ['unavailable', { state: 'unavailable', reason: 'read_failed' }],
+    ['not in this slice (scheduling calendar)', { state: 'unavailable', reason: 'not_in_slice' }],
+    ['malformed', { state: 'available', value: { paid: 'yes' } }],
+  ])(
+    'never infers unpaid cash from %s payment: no charge, sale, delete or cancel-paid',
+    (_n, payment) => {
+      const facets = {
+        version: 1,
+        sold: { state: 'empty' },
+        payment,
+        stock: { state: 'denied' },
+      } as never;
+      const open = member({ id: 'b1', productFacets: facets, paid: undefined, funding: undefined });
+      const second = member({ id: 'b2', productFacets: facets });
+      expect(kinds(box(open))).toEqual([]);
+      expect(kinds(box(open, second))).toEqual(['split']);
+    },
+  );
+
+  it('a missing facet (old cached row) is blocked too', () => {
+    const row = { ...base({ id: 'b1', paid: true, tickets: [{ id: 't', humanId: null }] }) };
+    expect(kinds(box(row))).toEqual([]);
+    expect(
+      calendarMenuEntries({
+        box: box({ ...row, status: 'completed' }),
+        canPay: true,
+        canEdit: true,
+        canVoid: true,
+      }).map((e) => e.kind),
+    ).toEqual(['detail']);
+  });
+
+  it('one blocked member blocks the payment actions of the whole box', () => {
+    const blocked = member({
+      id: 'b2',
+      productFacets: {
+        version: 1,
+        sold: { state: 'empty' },
+        payment: { state: 'denied' },
+        stock: { state: 'denied' },
+      } as never,
+    });
+    expect(kinds(box(member({ id: 'b1' }), blocked))).toEqual(['split']);
   });
 
   it('withholds charge without pay capability and mutations without edit capability', () => {
