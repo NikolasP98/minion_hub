@@ -1193,6 +1193,21 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'stock corrections against PostgreSQL rejects deleting principals and inactive organizations before correction admission',
       ],
     },
+    {
+      file: 'src/server/services/faces-stock-reconciliation.sql.integration.test.ts',
+      minimumAssertions: 8,
+      exactAssertions: true,
+      requiredBehaviors: [
+        'FACES stock cutover against PostgreSQL diagnostic and both previews keep the same read only principal snapshot and never call a writer',
+        'FACES stock cutover against PostgreSQL duplicate joins and mixed discrepancies cannot create an eligible garment repair',
+        'FACES stock cutover against PostgreSQL mapping waits for the prior poster and the next poster resolves the corrected M item',
+        'FACES stock cutover against PostgreSQL persisted old M draft or open accrual refuses mapping and leaves every record unchanged',
+        'FACES stock cutover against PostgreSQL mapping receipt audit and recipe commit atomically and repeat without writes',
+        'FACES stock cutover against PostgreSQL two garment cases require a fresh approved second manifest after shared bins change',
+        'FACES stock cutover against PostgreSQL stale unauthorized foreign and numeric out of range cases produce no repair effect',
+        'FACES stock cutover against PostgreSQL lost response recovers the same immutable operation and finally compensation preserves the ledger trail',
+      ],
+    },
   ],
 } as const satisfies Record<NativePostgresLane, readonly NativePostgresAdmission[]>;
 
