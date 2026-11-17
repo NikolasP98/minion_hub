@@ -60,6 +60,8 @@ export class CorrectionError extends Error {
     message: string,
     readonly code: CorrectionRefusalCode,
     readonly detail?: unknown,
+    /** The legacy POS refusal code folded into this one (swap routes keep their old wire codes). */
+    readonly posCode?: string,
   ) {
     super(message);
     this.name = 'CorrectionError';

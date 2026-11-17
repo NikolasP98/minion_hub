@@ -69,6 +69,15 @@ export interface CorrectionCommand {
   reason: string;
 }
 
+/**
+ * Server-only option for the existing till swap routes (never read from a request body): the swap keeps
+ * today's POS-edit-only authority and binds the path ticket to the line's ticket. Mixed and stock-moving
+ * swaps therefore keep working for a POS user exactly as before; value-changing receipts never use it.
+ */
+export interface PosScope {
+  ticketId: string;
+}
+
 export interface CorrectionPreview {
   schemaVersion: 1;
   domain: 'sale_variant' | 'receipt_replace';
@@ -118,10 +127,13 @@ function sourceAuthority(
   movesStock: boolean,
   valueChange: boolean,
   apply: boolean,
+  posScope = false,
 ): { costVisible: boolean } {
   const deny = (why: string) => new CorrectionError(why, 'forbidden');
   if (domain === 'sale_variant') {
     if (!can(caps, 'pos', 'view') || !can(caps, 'pos', 'edit')) throw deny('needs POS edit');
+    // The existing till swap keeps its POS-edit-only authority (orchestrator decision 1/2).
+    if (posScope) return { costVisible: false };
     if (!movesStock) return { costVisible: false };
     if (!can(caps, 'stock', 'view'))
       throw new CorrectionError(
@@ -265,6 +277,7 @@ function mapPos(e: unknown): never {
       e.message,
       (direct.includes(e.code) ? e.code : 'dependent_history') as CorrectionError['code'],
       e.items,
+      e.code,
     );
   }
   throw e;
@@ -274,7 +287,7 @@ async function plan(
   tx: CoreTx,
   ctx: CoreCtx,
   request: PreviewRequest,
-  opts: { lock: boolean; now: Date },
+  opts: { lock: boolean; now: Date; ticketId?: string },
 ): Promise<Planned> {
   if (request.mode === 'variant_swap') {
     let p: SaleVariantPlan;
@@ -288,6 +301,9 @@ async function plan(
     } catch (e) {
       return mapPos(e);
     }
+    // The swap routes bind the path ticket to the line's real ticket; a foreign pair is a plain 404.
+    if (opts.ticketId && p.ticket.id !== opts.ticketId)
+      throw new CorrectionError('line not found', 'not_found');
     const ledger = p.liveEntryId ? await ledgerSnapshot(tx, ctx, [p.liveEntryId]) : [];
     const bins = await binSnapshot(tx, ctx, [
       ...p.frozenOriginal.map((l) => ({ itemId: l.itemId, warehouseId: l.fromWarehouseId })),
@@ -509,7 +525,8 @@ function requireProfile(ctx: CoreCtx): string {
   return ctx.profileId;
 }
 
-function modulesFor(p: { domain: Planned['domain']; movesStock: boolean }) {
+function modulesFor(p: { domain: Planned['domain']; movesStock: boolean }, posScope = false) {
+  if (posScope) return ['pos'] as const;
   return p.domain === 'receipt_replace'
     ? (['stock', 'finances'] as const)
     : p.movesStock
@@ -576,6 +593,7 @@ export async function previewStockCorrection(
   ctx: CoreCtx,
   rawRequest: unknown,
   rawReason: unknown,
+  scope?: PosScope,
 ): Promise<CorrectionPreview> {
   const actor = requireProfile(ctx);
   const request = parsePreviewRequest(rawRequest);
@@ -586,13 +604,20 @@ export async function previewStockCorrection(
     // A POS-only caller may have a stockless swap checked; nonempty stock intent needs stock access.
     let p: Planned;
     try {
-      p = await plan(tx, ctx, request, { lock: false, now: new Date() });
+      p = await plan(tx, ctx, request, { lock: false, now: new Date(), ticketId: scope?.ticketId });
     } catch (e) {
       return mapPos(e);
     }
-    const { costVisible } = sourceAuthority(caps, p.domain, p.movesStock, p.valueChange, false);
+    const { costVisible } = sourceAuthority(
+      caps,
+      p.domain,
+      p.movesStock,
+      p.valueChange,
+      false,
+      !!scope,
+    );
     const blockers: string[] = [];
-    if (p.movesStock && !costVisible) blockers.push('cost_visibility_required');
+    if (p.movesStock && !costVisible && !scope) blockers.push('cost_visibility_required');
     const d = describe(p, costVisible);
     return {
       schemaVersion: 1,
@@ -625,6 +650,7 @@ export async function applyStockCorrection(
   ctx: CoreCtx,
   command: CorrectionCommand,
   actor: Actor,
+  scope?: PosScope,
 ): Promise<CorrectionResult> {
   const profile = requireProfile(ctx);
   if (actor.id !== profile)
@@ -682,13 +708,13 @@ export async function applyStockCorrection(
       const now = new Date();
       let p: Planned;
       try {
-        p = await plan(tx, ctx, request, { lock: true, now });
+        p = await plan(tx, ctx, request, { lock: true, now, ticketId: scope?.ticketId });
       } catch (e) {
         return mapPos(e);
       }
-      sourceAuthority(caps, p.domain, p.movesStock, p.valueChange, true);
+      sourceAuthority(caps, p.domain, p.movesStock, p.valueChange, true, !!scope);
       try {
-        await assertStockModulesEnabledInTx(tx, ctx, guard, modulesFor(p));
+        await assertStockModulesEnabledInTx(tx, ctx, guard, modulesFor(p, !!scope));
       } catch (e) {
         return mapPos(e);
       }
