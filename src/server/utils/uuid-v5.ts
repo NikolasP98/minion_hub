@@ -6,7 +6,9 @@ export function uuidv5(name: string, namespace: string): string {
     throw new Error('uuidv5 namespace must be a canonical UUID');
   }
   const hash = createHash('sha1')
-    .update(Buffer.concat([Buffer.from(namespace.replace(/-/g, ''), 'hex'), Buffer.from(name, 'utf8')]))
+    .update(
+      Buffer.concat([Buffer.from(namespace.replace(/-/g, ''), 'hex'), Buffer.from(name, 'utf8')]),
+    )
     .digest();
   const bytes = hash.subarray(0, 16);
   bytes[6] = (bytes[6]! & 0x0f) | 0x50; // version 5
