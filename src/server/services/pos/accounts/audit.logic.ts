@@ -256,6 +256,9 @@ function sortedKeys(value: unknown): unknown {
   return value;
 }
 
+/** Canonical JSON (recursively sorted keys, no whitespace) of any plain value. */
+export const canonicalIntentValue = (value: unknown): string => JSON.stringify(sortedKeys(value));
+
 /** Canonical UTF-8 JSON of an intent: set-like evidence arrays sorted and deduped, keys sorted, no whitespace. */
 export function canonicalIntentJson(intent: LinkIntent): string {
   const normalized: LinkIntent = {

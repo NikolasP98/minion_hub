@@ -14,10 +14,15 @@ import {
   composeFreshCapabilitiesFromAuthorityRows,
   resolveFreshCapabilitiesInTransaction,
 } from '$server/services/rbac.service';
-import { invoiceLinkBlocksProposal, loadAuditInvoiceLinks, runAuditInventory } from './audit';
+import {
+  buildLinkIntent,
+  invoiceLinkBlocksProposal,
+  loadAuditInvoiceLinks,
+  runAuditInventory,
+} from './audit';
 import type { AuditScope, AuditSink, ResidualRecord, AuditSubject } from './audit.types';
 import { admitEvidence, bookingEvidenceFacts, EvidenceInputError } from './audit.evidence';
-import { classifyBooking } from './audit.logic';
+import { buildProposal, classifyBooking } from './audit.logic';
 import { createHash } from 'node:crypto';
 import { migrationSql, openAuditNativeChild, type AuditNativeChild } from './audit.native-setup';
 
@@ -781,5 +786,83 @@ describe('faces receivables audit against PostgreSQL', () => {
       });
     }
   });
-  it('produces stable proposal hashes and UUIDs across fresh runs', () => pending('T020-T022'));
+  it('produces stable proposal hashes and UUIDs across fresh runs', async () => {
+    // The paid line of client p4 plus a new unbilled booking of the same client form one exact pair.
+    const booking = randomUUID();
+    await owner.unsafe('set session_replication_role = replica');
+    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id)
+      values ('${booking}','${FORG}','pair',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}',md5('p4')::uuid)`);
+    await owner.unsafe('set session_replication_role = origin');
+    const evidence = {
+      assertionIds: [randomUUID()],
+      documentHashes: ['a'.repeat(64)],
+      assertionsHash: 'b'.repeat(64),
+    };
+    const build = (b = booking) =>
+      asApp(FORG, FPROFILE, 'ro', (tx) =>
+        buildLinkIntent(tx, {
+          orgId: FORG,
+          sourceGitSha: 'c'.repeat(40),
+          ticketLineId: ids.paid,
+          bookingMemberId: b,
+          evidence,
+        }),
+      );
+    try {
+      const first = buildProposal(
+        await build(),
+        { runId: randomUUID(), observedAt: '2026-11-17T00:00:00.000Z' },
+        ['/private/a.json'],
+      );
+      const second = buildProposal(
+        await build(),
+        { runId: randomUUID(), observedAt: '2026-12-31T00:00:00.000Z' },
+        ['/elsewhere/b.json'],
+      );
+      // Fresh runs, fresh snapshots, different run metadata and relocated private evidence: same identity.
+      expect(second.proposalHash).toBe(first.proposalHash);
+      expect(second.proposalId).toBe(first.proposalId);
+      expect(JSON.stringify(second.intent)).toBe(JSON.stringify(first.intent));
+      expect(first.status).toBe('pending_owner_approval');
+      // Exact effects of the counterfactual: only the paid-unscheduled and unbilled contributions move; wallet and money do not.
+      expect(first.intent.effects).toMatchObject({
+        paidUnscheduledDelta: -1,
+        unbilledBookingDelta: -1,
+        paymentMinorDelta: '0',
+        stockQuantityDelta: '0',
+      });
+      expect(first.intent.effects.accountDisplay.before.pendingScheduling).toBe(2); // paid + legacy-voided line of client p4;
+      expect(first.intent.effects.accountDisplay.after.pendingScheduling).toBe(1);
+      expect(first.intent.effects.wallet.before).toEqual(first.intent.effects.wallet.after);
+      expect(first.intent.change).toEqual({
+        field: 'pos_ticket_lines.booking_id',
+        from: null,
+        to: booking,
+      });
+      // A changed business fact changes the approval identity.
+      await owner.unsafe(
+        `update public.sched_bookings set status='pending', updated_at = now() + interval '1 minute' where id='${booking}'`,
+      );
+      const changed = buildProposal(await build(), {
+        runId: randomUUID(),
+        observedAt: '2026-11-17T00:00:00.000Z',
+      });
+      expect(changed.proposalHash).not.toBe(first.proposalHash);
+      expect(changed.proposalId).not.toBe(first.proposalId);
+      // An already-linked line is not an eligible pair.
+      await expect(
+        asApp(FORG, FPROFILE, 'ro', (tx) =>
+          buildLinkIntent(tx, {
+            orgId: FORG,
+            sourceGitSha: 'c'.repeat(40),
+            ticketLineId: ids.linked,
+            bookingMemberId: booking,
+            evidence,
+          }),
+        ),
+      ).rejects.toMatchObject({ name: 'AuditIncompleteError' });
+    } finally {
+      await owner.unsafe(`delete from public.sched_bookings where id='${booking}'`);
+    }
+  });
 });

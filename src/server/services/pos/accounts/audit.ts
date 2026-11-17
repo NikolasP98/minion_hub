@@ -1,12 +1,19 @@
+import { createHash } from 'node:crypto';
 import { sql, type SQL } from 'drizzle-orm';
 import type { CoreTx } from '$server/db/with-org-core';
-import { assertInterval, ControlAccumulator, intervalContained } from './audit.logic';
+import {
+  assertInterval,
+  canonicalIntentValue,
+  ControlAccumulator,
+  intervalContained,
+} from './audit.logic';
 import {
   AuditAdmissionError,
   AuditIncompleteError,
   type AuditControlName,
   type AuditInvoiceRef,
   type BookingInvoiceLink,
+  type LinkIntent,
   type TicketInvoiceLink,
   type AuditInterval,
   type AuditScope,
@@ -340,4 +347,175 @@ export function invoiceLinkBlocksProposal(
     link.providerMatches.length > 0 ||
     (ticket !== undefined && ticket.state !== 'none')
   );
+}
+
+const sha256 = (value: unknown) =>
+  createHash('sha256').update(canonicalIntentValue(value), 'utf8').digest('hex');
+/** Decimal text ("10.00", "1.5") to integer minor-unit string with two places; refuses sub-minor precision. */
+export function toMinorString(value: string | number): string {
+  const text = String(value).trim();
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!m) throw new Error('invalid money value');
+  const frac = (m[3] ?? '').replace(/0+$/, '');
+  if (frac.length > 2) throw new Error('sub-minor money value');
+  const minor = BigInt(m[2]) * 100n + BigInt(frac.padEnd(2, '0') || '0');
+  return `${m[1] && minor !== 0n ? '-' : ''}${minor}`;
+}
+
+interface PairRow extends Record<string, unknown> {
+  line_id: string;
+  ticket_id: string;
+  line_booking: string | null;
+  product: string | null;
+  qty: string;
+  line_total: string;
+  plan: string | null;
+  redemption: string | null;
+  status: string;
+  submitted_at: Date | string;
+  currency: string;
+  ticket_total: string;
+  provider_ref: string | null;
+  client_key: string | null;
+  b_id: string;
+  b_updated: Date | string;
+  b_status: string;
+  b_product: string | null;
+  b_start: Date | string;
+  b_invoice: string | null;
+  b_grant: string | null;
+  b_plan: string | null;
+  b_unbilled: boolean;
+}
+
+/**
+ * Immutable line->existing-booking LinkIntent for one exact pair, from same-snapshot rows only. It never
+ * calls bookAndLinkTicketLine and writes nothing. Wallet and account display are a PURE counterfactual:
+ * only the line's bookingId changes, so wallet is unchanged and the pending counts move by the pair's own contribution.
+ * TODO(handoff): sourceFingerprint omits the FinancialSourceRows/stock facets and logicalRowPresent ignores
+ * plan/grant/ledger facets (T017 closure loader is not built); proposals are therefore not yet eligible output.
+ */
+export async function buildLinkIntent(
+  tx: CoreTx,
+  input: {
+    orgId: string;
+    sourceGitSha: string;
+    ticketLineId: string;
+    bookingMemberId: string;
+    evidence: { assertionIds: string[]; documentHashes: string[]; assertionsHash: string };
+  },
+): Promise<LinkIntent> {
+  const { orgId } = input;
+  const [row] = await tx.execute<PairRow>(sql`
+    select tl.id::text as line_id, tl.ticket_id::text, tl.booking_id::text as line_booking, tl.fin_product_id::text as product,
+           tl.qty::text, tl.total::text as line_total, tl.plan_id::text as plan, tl.redemption_id::text as redemption,
+           t.status, t.submitted_at, t.currency, t.total::text as ticket_total, nullif(t.invoice_provider_ref,'') as provider_ref,
+           case when t.party_id is not null or t.crm_contact_id is not null then ${clientKeySql('t')} end as client_key,
+           b.id::text as b_id, b.updated_at as b_updated, b.status as b_status, b.product_id::text as b_product, b.start_time as b_start,
+           b.invoice_id::text as b_invoice, b.package_grant_id::text as b_grant, b.payment_plan_id::text as b_plan,
+           (${UNBILLED_BOOKING_WHERE}) as b_unbilled
+    from public.pos_ticket_lines tl
+    join public.pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+    left join public.crm_contacts c on c.id = t.crm_contact_id and c.org_id = t.org_id
+    join public.sched_bookings b on b.id = ${input.bookingMemberId}::uuid and b.org_id = tl.org_id
+    where tl.org_id = ${orgId} and tl.id = ${input.ticketLineId}::uuid`);
+  if (!row || row.line_booking !== null || row.plan !== null || !row.client_key)
+    throw new AuditIncompleteError('pair_not_eligible');
+  const [counts] = await tx.execute<{ pending: string; unbilled: string }>(sql`
+    select
+      (select count(*) from public.pos_ticket_lines tl join public.pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+         left join public.crm_contacts c on c.id = t.crm_contact_id and c.org_id = t.org_id
+        where tl.org_id = ${orgId} and ${LIST_PENDING_LINE_WHERE} and ${clientKeySql('t')} = ${row.client_key})::text as pending,
+      (select count(*) from public.sched_bookings b left join public.crm_contacts c on c.id = b.crm_contact_id and c.org_id = b.org_id
+        where b.org_id = ${orgId} and (b.party_id is not null or b.crm_contact_id is not null) and ${UNBILLED_BOOKING_WHERE}
+          and ${clientKeySql('b')} = ${row.client_key})::text as unbilled`);
+  const wallet = await tx.execute<{ currency: string; total: string }>(sql`
+    select l.currency, sum(l.amount)::text as total from public.pos_client_ledger l
+      left join public.crm_contacts c on c.id = l.crm_contact_id and c.org_id = l.org_id
+     where l.org_id = ${orgId} and ${clientKeySql('l')} = ${row.client_key}
+     group by l.currency order by l.currency collate "C"`);
+  const balances = wallet.map((w) => ({
+    currency: w.currency,
+    balanceMinor: toMinorString(w.total),
+  }));
+  const posCurrency = row.currency;
+  const displayBalance = balances.find((b) => b.currency === posCurrency)?.balanceMinor ?? '0';
+  const unbilledDelta: -1 | 0 = row.b_unbilled ? -1 : 0;
+  const pending = Number(counts.pending);
+  const unbilled = Number(counts.unbilled);
+  const before = {
+    pendingScheduling: pending,
+    pendingInvoice: unbilled,
+    logicalRowPresent: pending + unbilled > 0 || balances.some((b) => b.balanceMinor !== '0'),
+    posCurrency,
+    displayBalanceMinor: displayBalance,
+  };
+  const after = {
+    ...before,
+    pendingScheduling: pending - 1,
+    pendingInvoice: unbilled + unbilledDelta,
+  };
+  after.logicalRowPresent =
+    after.pendingScheduling + after.pendingInvoice > 0 ||
+    balances.some((b) => b.balanceMinor !== '0');
+  const iso = (v: Date | string) => new Date(v).toISOString();
+  const ticket = {
+    id: row.ticket_id,
+    status: row.status,
+    submittedAt: iso(row.submitted_at),
+    currency: row.currency,
+    total: toMinorString(row.ticket_total),
+    invoiceProviderRef: row.provider_ref,
+  };
+  const line = {
+    id: row.line_id,
+    ticketId: row.ticket_id,
+    bookingId: null,
+    productId: row.product,
+    quantity: String(row.qty),
+    total: toMinorString(row.line_total),
+    planId: null,
+    redemptionId: row.redemption,
+  };
+  const booking = {
+    id: row.b_id,
+    updatedAt: iso(row.b_updated),
+    status: row.b_status,
+    productId: row.b_product,
+    startTime: iso(row.b_start),
+    invoiceId: row.b_invoice,
+    grantId: row.b_grant,
+    planId: row.b_plan,
+  };
+  return {
+    schemaVersion: 1,
+    orgId,
+    sourceGitSha: input.sourceGitSha,
+    pair: { ticketLineId: input.ticketLineId, bookingMemberId: input.bookingMemberId },
+    before: {
+      ticket,
+      line,
+      booking,
+      identityKey: row.client_key,
+      sourceFingerprint: sha256({ ticket, line, booking, balances, pending, unbilled }),
+    },
+    evidence: input.evidence,
+    change: { field: 'pos_ticket_lines.booking_id', from: null, to: input.bookingMemberId },
+    effects: {
+      paidUnscheduledDelta: -1,
+      unbilledBookingDelta: unbilledDelta,
+      paymentMinorDelta: '0',
+      stockQuantityDelta: '0',
+      lifecycleChanges: [],
+      wallet: { before: balances, after: balances, ledgerRowsDelta: 0 },
+      accountDisplay: {
+        before,
+        after,
+        visibleCappedRow: null,
+        visibilityReason: 'not_predicted_limit_or_sort',
+      },
+    },
+    accountControlSha256: sha256({ before, after, balances }),
+    blockers: [],
+  };
 }
