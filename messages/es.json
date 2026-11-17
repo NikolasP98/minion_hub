@@ -7608,5 +7608,20 @@
   "sched_detail_sold_denied": "Tu rol no puede ver las ventas vinculadas a esta visita.",
   "sched_detail_sold_unavailable": "No se pudieron cargar los productos vendidos. Recarga para reintentar.",
   "sched_detail_sold_unassigned": "sin servicio asignado",
-  "sched_detail_sold_sale": "Venta {ticket}"
+  "sched_detail_sold_sale": "Venta {ticket}",
+  "sched_recover_title": "Recuperar registro de stock",
+  "sched_recover_action": "Recuperar stock",
+  "sched_recover_hint": "Estas citas completadas tienen stock que nunca se registró. Revisa cada una y reintenta. La cita sigue completada.",
+  "sched_recover_saved": "Se reintentará el movimiento de stock guardado ({status}) tal como está.",
+  "sched_recover_open_hint": "El consumo esperado nunca se registró. Confirma lo que se usó realmente; 0 confirma que no se usó nada.",
+  "sched_recover_manual": "Requiere revisión manual en Stock; no se puede reintentar desde aquí.",
+  "sched_recover_none": "Nada que recuperar: el stock ya se registró o se liberó.",
+  "sched_recover_unavailable": "No se pudieron cargar los datos de recuperación de stock.",
+  "sched_recover_denied": "Tu rol no puede recuperar stock.",
+  "sched_recover_confirm": "Reintentar registro de stock",
+  "sched_recover_resolved": "Registrado",
+  "sched_recover_warning": "Aún sin registrar: {message}",
+  "sched_recover_error": "Falló. Recarga e inténtalo de nuevo.",
+  "sched_recover_unknown": "Resultado desconocido. Recarga antes de reintentar.",
+  "sched_recover_stale": "El stock cambió después de tu revisión. Se recargó; revísalo de nuevo."
 }

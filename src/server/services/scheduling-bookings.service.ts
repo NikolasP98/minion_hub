@@ -3878,7 +3878,10 @@ export async function getBookingDetail(
   opts: {
     maskAttendeePii?: boolean;
     /** Spec 126: each foreign dataset through its own handle; a denied one yields a
-     *  `denied` facet and no query. Omitted → the scheduling handle (legacy callers). */
+     *  `denied` facet and no query. Omitted → the scheduling handle (legacy callers).
+     *  TODO(handoff): contracts/admission-recovery.md makes this REQUIRED and routes the legacy
+     *  ticket/money/accrual facets through `foreign.pos`/`finance` too; only the new sold,
+     *  stock-anchor and recovery facets honour it today. */
     foreign?: { pos: CoreCtx | DatasetDenied; stock: CoreCtx | DatasetDenied };
     /** `finance:view` + the finance field tier; gates the sold rows' `gift` flag. */
     canReadFinancialFields?: boolean;

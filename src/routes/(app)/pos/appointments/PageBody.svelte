@@ -589,6 +589,21 @@
   //    remembers which booking is open and the per-booking stock warning.
   let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
+  // Stock-only retry of an ALREADY completed visit (spec 126): the chip below must never
+  // re-open the ordinary completion dialog, which falls back to default consumption.
+  let recoverFor = $state<string | null>(null);
+
+  async function afterRecover(id: string, results: Record<string, string>) {
+    if (
+      Object.values(results).length > 0 &&
+      Object.values(results).every((r) => r === 'resolved')
+    ) {
+      const next = { ...stockWarnings };
+      delete next[id];
+      stockWarnings = next;
+    }
+    await refresh();
+  }
 
   /** The clicked booking's visit siblings, if any (a status chip on a visit
    *  completes the whole visit). Cancelled/rejected members are excluded —
@@ -1224,6 +1239,9 @@
           <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
           {#snippet chips(b)}
             {@const acc = accrualBySource.get(b.id)}
+            <!-- TODO(handoff): spec 126 T022 — these chips still read the raw `accrualSummaries` (with
+                 estimated/realized money) per MEMBER; the anchor stock facet, the guarded direct Charge
+                 (`chargeOne`, `!b.paid`) and the versioned window payload are not built. -->
             {#if acc}
               {#if acc.open > 0}
                 <Badge variant="semantic" value="warning" size="sm"
@@ -1245,10 +1263,7 @@
             {#if stockWarnings[b.id]}
               <span class="t-caption warn">
                 {stockWarnings[b.id]}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
+                <Button variant="ghost" size="sm" onclick={() => (recoverFor = b.id)}
                   >{m.sched_stock_retry_post()}</Button
                 >
               </span>
@@ -1403,6 +1418,14 @@
   apiBase="/api/pos/appointments"
   onclose={() => (completeFor = null)}
   oncompleted={(result) => afterComplete(completeFor?.id ?? '', result)}
+/>
+
+<ConsumptionConfirmDialog
+  mode="recover_stock"
+  bookingId={recoverFor}
+  apiBase="/api/pos/appointments"
+  onclose={() => (recoverFor = null)}
+  onrecovered={(results) => afterRecover(recoverFor ?? '', results)}
 />
 
 <style>

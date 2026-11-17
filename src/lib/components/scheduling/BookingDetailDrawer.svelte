@@ -41,7 +41,7 @@
   import { resolveCalendarInstant } from './calendar-time';
   import { canAct } from '$lib/access/can.svelte';
   import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
-  import { decodeSoldFacet } from './booking-product-facets';
+  import { decodeRecoveryFacet, decodeSoldFacet } from './booking-product-facets';
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
@@ -180,6 +180,8 @@
     unitPrice?: number | null;
     /** Spec 126: what the visit SOLD — decoded strictly (`decodeSoldFacet`), never trusted as typed. */
     sold?: unknown;
+    /** Spec 126 US2: per-member stock recovery facts — decoded strictly (`decodeRecoveryFacet`). */
+    stockRecovery?: unknown;
   };
 
   type Props = {
@@ -279,6 +281,8 @@
 
   // "Mark completed" → confirm the consumed stock first (owner 2026-09-25).
   let completeOpen = $state(false);
+  // Stock-only retry of already-completed members (spec 126) — never the ordinary completion.
+  let recoverOpen = $state(false);
 
   // Cancel confirmation, inline inside the drawer.
   let cancelOpen = $state(false);
@@ -330,6 +334,7 @@
     editOpen = false;
     cancelOpen = false;
     completeOpen = false;
+    recoverOpen = false;
     cancelReason = '';
     cancelScope = 'one';
     statusApplied = null;
@@ -806,6 +811,16 @@
   const productRows = $derived(detail?.products ?? []);
   // Spec 126: sold lines of the visit — the same projection the POS hover shows.
   const soldFacet = $derived(decodeSoldFacet(detail?.sold));
+  // Offered only from FRESH persisted facts: an unavailable or denied facet is no proof
+  // that anything is unposted, so it offers nothing.
+  const recoveryFacet = $derived(decodeRecoveryFacet(detail?.stockRecovery));
+  const canRecover = $derived(
+    canEdit &&
+      recoveryFacet.state === 'available' &&
+      recoveryFacet.value.some(
+        (r) => r.eligibility === 'retry_saved' || r.eligibility === 'confirm_open',
+      ),
+  );
   let productBusyId = $state<string | null>(null);
 
   type ProductOption = { productId: string; name: string; unitPrice: number | null };
@@ -1538,6 +1553,19 @@
         </section>
       {/if}
 
+      <!-- Stock recovery (spec 126): a completed visit whose stock was never posted keeps
+           this action after reload — it retries the stock only, never the status. -->
+      {#if canRecover}
+        <section class="blk">
+          <h4 class="t-label">{m.sched_detail_stock()}</h4>
+          <div class="row">
+            <Button size="sm" variant="outline" onclick={() => (recoverOpen = true)}>
+              {m.sched_recover_action()}
+            </Button>
+          </div>
+        </section>
+      {/if}
+
       <!-- Series siblings -->
       {#if d.series}
         <section class="blk">
@@ -1784,6 +1812,14 @@
 <!-- Sibling of the Sheet, never a child: a second native dialog stacks above
      it in the top layer, while nesting it inside the drawer's <dialog> would
      trap it in the drawer's scroll box. -->
+<ConsumptionConfirmDialog
+  mode="recover_stock"
+  bookingId={recoverOpen ? anchorId : null}
+  {apiBase}
+  onclose={() => (recoverOpen = false)}
+  onrecovered={() => reloadDetail()}
+/>
+
 <ConsumptionConfirmDialog
   bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}

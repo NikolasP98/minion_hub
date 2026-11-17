@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  decodeRecoveryFacet,
   decodeSoldFacet,
   soldRows,
   soldRowsForVisit,
@@ -85,5 +86,101 @@ describe('decodeSoldFacet', () => {
       bad,
     );
     expect(decodeSoldFacet({ state: 'available', value: { rows: [] } })).toEqual(bad);
+  });
+});
+
+describe('decodeRecoveryFacet', () => {
+  const row = (accrualId: string) => ({
+    accrualId,
+    itemId: `i-${accrualId}`,
+    itemName: 'Serum',
+    uom: 'bottle',
+    consumptionUom: 'ml',
+    unitsPerStockUom: 50,
+    subunitsPerStockUom: null,
+    diagramEnabled: false,
+    qty: 0.2,
+    qtyConsumption: 10,
+  });
+  const member = (over: Record<string, unknown> = {}) => ({
+    bookingId: 'm1',
+    status: 'completed',
+    openCount: 1,
+    realizedCount: 0,
+    releasedCount: 0,
+    sourceEntry: null,
+    eligibility: 'confirm_open',
+    confirmation: {
+      state: 'available',
+      value: { openCount: 1, rows: [row('a1')], expectedOpenFingerprint: 'a'.repeat(64) },
+    },
+    ...over,
+  });
+  const bad = { state: 'unavailable', reason: 'invalid_projection' };
+
+  it('accepts a complete confirm_open member and the closed states', () => {
+    expect(decodeRecoveryFacet({ state: 'available', value: [member()] }).state).toBe('available');
+    expect(decodeRecoveryFacet({ state: 'denied' })).toEqual({ state: 'denied' });
+    expect(decodeRecoveryFacet({ state: 'empty' })).toEqual({ state: 'empty' });
+    expect(decodeRecoveryFacet({ state: 'unavailable', reason: 'capacity' })).toEqual({
+      state: 'unavailable',
+      reason: 'capacity',
+    });
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['unknown reason', { state: 'unavailable', reason: 'open_rows_overflow' }],
+    [
+      'a duplicate accrual id (not constructible in PostgreSQL, so a decoder vector)',
+      {
+        state: 'available',
+        value: [
+          member({
+            openCount: 2,
+            confirmation: {
+              state: 'available',
+              value: {
+                openCount: 2,
+                rows: [row('a1'), row('a1')],
+                expectedOpenFingerprint: 'a'.repeat(64),
+              },
+            },
+          }),
+        ],
+      },
+    ],
+    [
+      'a count that disagrees with the rows',
+      {
+        state: 'available',
+        value: [member({ openCount: 3 })],
+      },
+    ],
+    [
+      'a short fingerprint',
+      {
+        state: 'available',
+        value: [
+          member({
+            confirmation: {
+              state: 'available',
+              value: { openCount: 1, rows: [row('a1')], expectedOpenFingerprint: 'abc' },
+            },
+          }),
+        ],
+      },
+    ],
+    [
+      'confirm_open without its open set',
+      { state: 'available', value: [member({ confirmation: null })] },
+    ],
+    [
+      'an unknown eligibility',
+      { state: 'available', value: [member({ eligibility: 'retry_all' })] },
+    ],
+    ['an empty available list', { state: 'available', value: [] }],
+  ])('rejects %s as unavailable, never as nothing to recover', (_n, input) => {
+    expect(decodeRecoveryFacet(input)).toEqual(bad);
   });
 });

@@ -3,9 +3,11 @@
  * POS calendar hover and the detail drawer render one projection. Pure — no
  * server import — so the serializer used by both read paths lives here.
  *
- * shortcut: only the sold and stock-anchor facets are typed here; the full
- * `BookingProductFacets` envelope of contracts/wire.md is not built (see the
- * deviations in specs/126-booking-product-consistency/tasks.md).
+ * TODO(handoff): only the sold facet and the stock-recovery facet are typed here. The full
+ * versioned `BookingProductFacets` envelope of contracts/wire.md (payment facet, header
+ * `X-Minion-Booking-Products-Version`, HTTP 409, removal of the legacy top-level detail
+ * fields, guarded Charge/context-menu handoff) is NOT built — see "Implementation deviations"
+ * in specs/126-booking-product-consistency/tasks.md.
  */
 
 export type BookingReadFacet<T> =
@@ -133,4 +135,145 @@ export function decodeSoldFacet(input: unknown): SoldFacet {
 /** Rows of an available sold facet; empty for every other state (callers that must tell them apart read `state`). */
 export function soldRows(f: SoldFacet | undefined): SoldProductBasic[] {
   return f?.state === 'available' ? f.value.rows : [];
+}
+
+// ── US2: persistent stock-recovery facet (decoded client side) ───────────────
+
+export type RecoveryEligibility = 'retry_saved' | 'confirm_open' | 'not_needed' | 'manual_review';
+
+export interface RecoveryOpenRowWire {
+  accrualId: string;
+  itemId: string;
+  itemName: string;
+  uom: string;
+  consumptionUom: string | null;
+  unitsPerStockUom: number | null;
+  subunitsPerStockUom: number | null;
+  diagramEnabled: boolean;
+  qty: number;
+  qtyConsumption: number;
+}
+
+export interface StockRecoveryMemberWire {
+  bookingId: string;
+  status: string;
+  openCount: number;
+  realizedCount: number;
+  releasedCount: number;
+  sourceEntry: { id: string; status: 'draft' | 'submitted' } | null;
+  eligibility: RecoveryEligibility;
+  /** Only `confirm_open` carries it; `null` otherwise or when the open set cannot be offered. */
+  confirmation: {
+    openCount: number;
+    rows: RecoveryOpenRowWire[];
+    expectedOpenFingerprint: string;
+  } | null;
+}
+
+export type RecoveryFacet = BookingReadFacet<StockRecoveryMemberWire[]>;
+
+const ELIGIBILITY = new Set<string>(['retry_saved', 'confirm_open', 'not_needed', 'manual_review']);
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isNumOrNull = (v: unknown): v is number | null => v === null || isNum(v);
+const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+
+function isOpenRow(v: unknown): v is RecoveryOpenRowWire {
+  const r = v as Record<string, unknown> | null;
+  return (
+    !!r &&
+    isStr(r.accrualId) &&
+    isStr(r.itemId) &&
+    typeof r.itemName === 'string' &&
+    typeof r.uom === 'string' &&
+    (r.consumptionUom === null || typeof r.consumptionUom === 'string') &&
+    isNumOrNull(r.unitsPerStockUom) &&
+    isNumOrNull(r.subunitsPerStockUom) &&
+    typeof r.diagramEnabled === 'boolean' &&
+    isNum(r.qty) &&
+    isNum(r.qtyConsumption)
+  );
+}
+
+/** A member whose shape or confirmation set is inconsistent is rejected whole. */
+function decodeRecoveryMember(v: unknown): StockRecoveryMemberWire | null {
+  const r = v as Record<string, unknown> | null;
+  if (
+    !r ||
+    !isStr(r.bookingId) ||
+    typeof r.status !== 'string' ||
+    !isNum(r.openCount) ||
+    !isNum(r.realizedCount) ||
+    !isNum(r.releasedCount) ||
+    typeof r.eligibility !== 'string' ||
+    !ELIGIBILITY.has(r.eligibility)
+  )
+    return null;
+  const entry = r.sourceEntry as { id?: unknown; status?: unknown } | null;
+  if (
+    entry !== null &&
+    !(isStr(entry?.id) && (entry?.status === 'draft' || entry?.status === 'submitted'))
+  )
+    return null;
+  let confirmation: StockRecoveryMemberWire['confirmation'] = null;
+  const c = r.confirmation as {
+    state?: unknown;
+    value?: { openCount?: unknown; rows?: unknown; expectedOpenFingerprint?: unknown };
+  } | null;
+  if (c && c.state === 'available') {
+    const v2 = c.value;
+    const rows = v2?.rows;
+    if (
+      !v2 ||
+      !Array.isArray(rows) ||
+      !rows.every(isOpenRow) ||
+      !isNum(v2.openCount) ||
+      v2.openCount !== rows.length ||
+      new Set(rows.map((x) => x.accrualId)).size !== rows.length ||
+      typeof v2.expectedOpenFingerprint !== 'string' ||
+      !/^[0-9a-f]{64}$/.test(v2.expectedOpenFingerprint)
+    )
+      return null;
+    confirmation = {
+      openCount: v2.openCount,
+      rows,
+      expectedOpenFingerprint: v2.expectedOpenFingerprint,
+    };
+  }
+  // confirm_open without a complete, agreeing open set is never actionable.
+  if (
+    r.eligibility === 'confirm_open' &&
+    (!confirmation || confirmation.openCount < 1 || confirmation.openCount !== r.openCount)
+  )
+    return null;
+  return {
+    bookingId: r.bookingId,
+    status: r.status,
+    openCount: r.openCount,
+    realizedCount: r.realizedCount,
+    releasedCount: r.releasedCount,
+    sourceEntry:
+      entry === null
+        ? null
+        : { id: entry.id as string, status: entry.status as 'draft' | 'submitted' },
+    eligibility: r.eligibility as RecoveryEligibility,
+    confirmation,
+  };
+}
+
+/** Strict: anything malformed is `unavailable`, never "nothing to recover". */
+export function decodeRecoveryFacet(input: unknown): RecoveryFacet {
+  const f = input as { state?: unknown; value?: unknown; reason?: unknown } | null;
+  if (!f || typeof f !== 'object') return { state: 'unavailable', reason: 'invalid_projection' };
+  if (f.state === 'empty') return { state: 'empty' };
+  if (f.state === 'denied') return { state: 'denied' };
+  if (f.state === 'unavailable')
+    return typeof f.reason === 'string' && REASONS.has(f.reason)
+      ? { state: 'unavailable', reason: f.reason as never }
+      : { state: 'unavailable', reason: 'invalid_projection' };
+  if (f.state === 'available' && Array.isArray(f.value) && f.value.length > 0) {
+    const members = f.value.map(decodeRecoveryMember);
+    if (members.every((m): m is StockRecoveryMemberWire => m !== null))
+      return { state: 'available', value: members };
+  }
+  return { state: 'unavailable', reason: 'invalid_projection' };
 }

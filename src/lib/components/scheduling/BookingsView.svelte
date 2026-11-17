@@ -98,6 +98,21 @@
   //    reads, the rows and the POST; this view only remembers which booking is open.
   let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
+  // Stock-only retry of an ALREADY completed booking (spec 126): never the ordinary
+  // completion dialog, which falls back to the service's default consumption.
+  let recoverFor = $state<string | null>(null);
+
+  async function afterRecover(id: string, results: Record<string, string>) {
+    if (
+      Object.values(results).length > 0 &&
+      Object.values(results).every((r) => r === 'resolved')
+    ) {
+      const next = { ...stockWarnings };
+      delete next[id];
+      stockWarnings = next;
+    }
+    await invalidate(invalidateKey);
+  }
 
   function openComplete(id: string) {
     const et = data.eventTypes.find(
@@ -214,7 +229,7 @@
                     variant="ghost"
                     size="sm"
                     class="underline"
-                    onclick={() => openComplete(b.id)}>{m.sched_stock_retry_post()}</Button
+                    onclick={() => (recoverFor = b.id)}>{m.sched_stock_retry_post()}</Button
                   >
                 </span>
               {/if}
@@ -334,6 +349,14 @@
   apiBase="/api/scheduling/bookings"
   onclose={() => (completeFor = null)}
   oncompleted={(result) => afterComplete(completeFor?.id ?? '', result)}
+/>
+
+<ConsumptionConfirmDialog
+  mode="recover_stock"
+  bookingId={recoverFor}
+  apiBase="/api/scheduling/bookings"
+  onclose={() => (recoverFor = null)}
+  onrecovered={(results) => afterRecover(recoverFor ?? '', results)}
 />
 
 <style>

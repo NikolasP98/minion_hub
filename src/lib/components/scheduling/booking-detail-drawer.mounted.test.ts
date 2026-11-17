@@ -255,3 +255,68 @@ describe('BookingDetailDrawer sold facet (spec 126)', () => {
     expect(view.container.querySelectorAll('.sold-row')).toHaveLength(0);
   });
 });
+
+describe('BookingDetailDrawer stock recovery action (spec 126 US2)', () => {
+  const member = (bookingId: string, over: Record<string, unknown> = {}) => ({
+    bookingId,
+    status: 'completed',
+    openCount: 0,
+    realizedCount: 0,
+    releasedCount: 0,
+    sourceEntry: null,
+    eligibility: 'not_needed',
+    confirmation: null,
+    ...over,
+  });
+  const saved = member('A', {
+    eligibility: 'retry_saved',
+    sourceEntry: { id: 'entry-1', status: 'draft' },
+  });
+  const recoverBtn = (view: {
+    queryByRole: (r: 'button', o: { name: string }) => HTMLElement | null;
+  }) => view.queryByRole('button', { name: 'Recover stock' });
+
+  it('offers the action after a reload from persisted facts, and retries without touching the status', async () => {
+    net.details.A = detailOf('A', 'Ana', {
+      booking: { ...detailOf('A', 'Ana').booking, status: 'completed' },
+      stockRecovery: { state: 'available', value: [saved] },
+    });
+    const view = render(BookingDetailDrawer, props('A'));
+    await fireEvent.click(await view.findByRole('button', { name: 'Recover stock' }));
+    await view.findByRole('button', { name: 'Retry stock posting' });
+    await waitFor(() =>
+      expect(
+        (view.getByRole('button', { name: 'Retry stock posting' }) as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    await fireEvent.click(view.getByRole('button', { name: 'Retry stock posting' }));
+    await waitFor(() => expect(net.writes).toEqual(['POST /api/scheduling/bookings/A/complete']));
+    // The visit status endpoint (PATCH) was never called, and the detail was re-read.
+    expect(net.writes.some((w) => w.startsWith('PATCH'))).toBe(false);
+    expect(net.gets.filter((u) => u.endsWith('/A')).length).toBeGreaterThan(2);
+  });
+
+  it.each([
+    ['nothing to recover', { state: 'available', value: [member('A', { realizedCount: 1 })] }],
+    ['denied', { state: 'denied' }],
+    ['unavailable', { state: 'unavailable', reason: 'read_failed' }],
+    ['missing', undefined],
+    ['malformed', { state: 'available', value: [{ bookingId: 'A' }] }],
+    [
+      'manual review only',
+      { state: 'available', value: [member('A', { eligibility: 'manual_review' })] },
+    ],
+  ])('offers no action for %s', async (_n, stockRecovery) => {
+    net.details.A = detailOf('A', 'Ana', { stockRecovery });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByText('Sold with this visit');
+    expect(recoverBtn(view)).toBeNull();
+  });
+
+  it('offers no action to a viewer who cannot edit', async () => {
+    net.details.A = detailOf('A', 'Ana', { stockRecovery: { state: 'available', value: [saved] } });
+    const view = render(BookingDetailDrawer, { ...props('A'), canEdit: false });
+    await view.findByText('Sold with this visit');
+    expect(recoverBtn(view)).toBeNull();
+  });
+});
