@@ -4,7 +4,6 @@ import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  bridgeMigrationSql,
   correctionMigrationSql,
   openCorrectionNativeChild,
   type CorrectionNativeChild,
@@ -87,9 +86,7 @@ beforeAll(async () => {
   owner = child.owner;
   appClient = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => undefined });
   app = drizzle(appClient);
-  await owner.unsafe(bridgeMigrationSql());
-  await owner.unsafe(correctionMigrationSql());
-}, 180_000);
+}, 240_000);
 
 afterAll(async () => {
   await appClient?.end({ timeout: 5 });
