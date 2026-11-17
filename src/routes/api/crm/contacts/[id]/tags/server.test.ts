@@ -58,7 +58,7 @@ describe('/api/crm/contacts/[id]/tags', () => {
       body: { message: 'Contact not found' },
     });
     mocks.applyTag.mockRejectedValueOnce(new Error('invalid input syntax for type uuid'));
-    const err = await post({ tagId: TAG }).catch((e) => e);
+    const err = await Promise.resolve(post({ tagId: TAG })).catch((e: unknown) => e);
     expect(JSON.stringify(err)).not.toContain('invalid input syntax');
   });
 });
