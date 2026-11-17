@@ -17,7 +17,15 @@ import {
   getStockCorrectionByOperationKey,
   previewStockCorrection,
 } from './stock-corrections.service';
-import { createEntry, submitEntry, rebuildBins, lockStockWrite } from './stock.service';
+import {
+  createEntry,
+  submitEntry,
+  rebuildBins,
+  lockStockWrite,
+  createEntryInTx,
+  submitEntryInTx,
+  cancelEntryInTx,
+} from './stock.service';
 import { setModuleEnabled } from './modules.service';
 import { realizeAccruals } from './stock-accruals.service';
 import { postTicketStock } from './pos.service';
@@ -822,6 +830,59 @@ describe('stock corrections against PostgreSQL', () => {
     await blocker;
     await Promise.all([s1, s2, rb]);
     expect(await bin(wd.org, fresh)).toBe('7');
+    // Approved posting time (spec 124 T031): in range it dates the entry and every appended ledger row;
+    // cancel dates only the reversal rows; earlier than the newest ledger row or in the future refuses.
+    const at = new Date();
+    const post = (postedAt: Date, qty: number) =>
+      withOrgCore(holder, async (tx) => {
+        const g = await lockStockWrite(tx, holder);
+        const e = await createEntryInTx(
+          tx,
+          holder,
+          g,
+          { type: 'receipt', lines: [{ itemId: fresh, qty, rate: 2, toWarehouseId: wd.wh }] },
+          actorOf(wd.boss),
+        );
+        return submitEntryInTx(tx, holder, g, e.id, actorOf(wd.boss), { postedAt });
+      });
+    const okEntry = await post(at, 1);
+    expect(okEntry.transitioned).toBe(true);
+    const [posted] =
+      await owner`select posted_at from public.stk_entries where id=${okEntry.entry.id}`;
+    expect(new Date(posted.posted_at as string).getTime()).toBe(at.getTime());
+    expect(
+      (
+        await owner`select count(*)::int n from public.stk_ledger where entry_id=${okEntry.entry.id} and posted_at=${at}`
+      )[0].n,
+    ).toBe(1);
+    const entriesBefore = await count('stk_entries', wd.org);
+    await expect(post(new Date(at.getTime() - 3_600_000), 1)).rejects.toMatchObject({
+      code: 'posted_at_out_of_order',
+    });
+    await expect(post(new Date(Date.now() + 3_600_000), 1)).rejects.toMatchObject({
+      code: 'posted_at_out_of_order',
+    });
+    expect(await count('stk_entries', wd.org)).toBe(entriesBefore);
+    const cancelAt = new Date();
+    await withOrgCore(holder, async (tx) =>
+      cancelEntryInTx(
+        tx,
+        holder,
+        await lockStockWrite(tx, holder),
+        okEntry.entry.id,
+        actorOf(wd.boss),
+        { postedAt: cancelAt },
+      ),
+    );
+    expect(
+      (await owner`select posted_at from public.stk_entries where id=${okEntry.entry.id}`)[0]
+        .posted_at,
+    ).toEqual(posted.posted_at);
+    expect(
+      (
+        await owner`select count(*)::int n from public.stk_ledger where entry_id=${okEntry.entry.id} and posted_at=${cancelAt}`
+      )[0].n,
+    ).toBe(1);
     // Rebuild from the ledger agrees with the cache (no lost bin write).
     const rebuilt =
       await owner`select qty::text from public.stk_bins where org_id=${wd.org} and item_id=${fresh}`;

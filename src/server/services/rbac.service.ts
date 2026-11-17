@@ -973,6 +973,9 @@ export function apiReadCapability(pathname: string): {
     pathname === '/api/plugins/ui-list'
   )
     return null;
+  // Known-key correction status: the service itself admits pos:view OR stock:view (a POS-only
+  // operator recovering a stockless swap needs no stock access) and answers uniformly otherwise.
+  if (pathname === '/api/stock/corrections') return null;
   if (pathname === '/api/nav/access' || pathname === '/api/roles/overrides')
     return { module: 'roles', action: 'edit' };
   // Parties are shared customer/supplier records, used outside CRM too.

@@ -824,5 +824,9 @@ describe('stock corrections admission (spec 124)', () => {
       module: 'stock',
     });
     expect(apiWriteCapability('/api/stock/entries', 'POST')).toMatchObject({ module: 'stock' });
+    // Status GET: no central stock:view (service-level pos OR stock view); siblings keep the gate.
+    expect(apiReadCapability('/api/stock/corrections')).toBeNull();
+    expect(apiReadCapability('/api/stock/corrections/preview')).toMatchObject({ module: 'stock' });
+    expect(apiReadCapability('/api/stock/entries')).toMatchObject({ module: 'stock' });
   });
 });
