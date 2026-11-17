@@ -735,7 +735,7 @@
 
   /** The visit's lead booking (`groupSeq` 0 / first of the group) — what the server resolves as the
    *  anchor; `chargeEvent` re-reads it from the detail and never trusts this id for authority. */
-  function anchorOf(b: Pick<Booking, 'id' | 'groupId'>): string {
+  function anchorOf(b: { id: string; groupId?: string | null }): string {
     if (!b.groupId) return b.id;
     const group = cal.bookings.filter((x) => x.groupId === b.groupId);
     return (

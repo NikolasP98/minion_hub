@@ -979,7 +979,7 @@ export async function stockRecoveryForBookings(
       const active = entries.filter((e) => e.sourceId === mb.bookingId);
       const entry = active.length === 1 ? active[0]! : null;
       const entryStatus = entry?.status;
-      const sourceEntry =
+      const sourceEntry: StockRecoveryMember['sourceEntry'] =
         entry && (entryStatus === 'draft' || entryStatus === 'submitted')
           ? { id: entry.id, status: entryStatus }
           : null;
