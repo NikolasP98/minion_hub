@@ -2029,3 +2029,28 @@ function negateRaw(r: Raw): Raw {
   if (r.startsWith('-')) return r.slice(1);
   return /^0(\.0+)?$/.test(r) ? r : `-${r}`;
 }
+
+/** Strict-decoding combinators shared with the pure US3 logic module (no second schema vocabulary). */
+export const wire = {
+  str,
+  label,
+  re,
+  uuid,
+  digest,
+  codeSha,
+  seq,
+  utc,
+  raw,
+  posDec,
+  engine,
+  currency,
+  bool,
+  int,
+  lit,
+  nul,
+  arr,
+  obj,
+  union,
+  target: targetV,
+};
+export { ratToDecimal as ratToDecimalString, eng as engineString };
