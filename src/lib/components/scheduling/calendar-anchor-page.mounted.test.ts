@@ -73,7 +73,13 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (input: RequestInfo | URL) =>
       String(input).startsWith('/api/scheduling/calendar')
-        ? Response.json({ calendarScope, bookings: [], tagOptions: [] })
+        ? Response.json({
+            calendarScope,
+            productProjectionVersion: 1,
+            bookings: [],
+            tagOptions: [],
+            ticketOverlay: { state: 'denied' },
+          })
         : new Response(null, { status: 404 }),
     ),
   );

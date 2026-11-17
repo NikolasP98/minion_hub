@@ -108,14 +108,14 @@ describe('calendarMenuEntries', () => {
       } as never;
       const open = member({ id: 'b1', productFacets: facets, paid: undefined, funding: undefined });
       const second = member({ id: 'b2', productFacets: facets });
-      expect(kinds(box(open))).toEqual([]);
-      expect(kinds(box(open, second))).toEqual(['split']);
+      expect(kinds(box(open))).toEqual(['detail']);
+      expect(kinds(box(open, second))).toEqual(['detail', 'split']);
     },
   );
 
   it('a missing facet (old cached row) is blocked too', () => {
     const row = { ...base({ id: 'b1', paid: true, tickets: [{ id: 't', humanId: null }] }) };
-    expect(kinds(box(row))).toEqual([]);
+    expect(kinds(box(row))).toEqual(['detail']);
     expect(
       calendarMenuEntries({
         box: box({ ...row, status: 'completed' }),
@@ -136,7 +136,7 @@ describe('calendarMenuEntries', () => {
         stock: { state: 'denied' },
       } as never,
     });
-    expect(kinds(box(member({ id: 'b1' }), blocked))).toEqual(['split']);
+    expect(kinds(box(member({ id: 'b1' }), blocked))).toEqual(['detail', 'split']);
   });
 
   it('withholds charge without pay capability and mutations without edit capability', () => {

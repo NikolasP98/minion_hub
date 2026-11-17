@@ -138,6 +138,9 @@ export function calendarMenuEntries(input: {
     else if (input.canVoid) entries.push({ id: 'cancel-paid', kind: 'cancel-paid', danger: true });
   }
 
+  // A blocked payment facet still leaves the event openable: never an empty mounted menu.
+  if (!money) entries.unshift({ id: 'detail', kind: 'detail' });
+
   return entries;
 }
 
