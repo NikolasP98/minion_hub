@@ -11,6 +11,7 @@
 
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { Button } from '$lib/components/ui';
   type B = { id: string; groupId?: string | null; [key: string]: unknown };
   let {
     bookings = [],
@@ -37,15 +38,16 @@
   }
 </script>
 
-<button type="button" data-range onclick={() => onrange?.('2026-12-01', '2026-12-07')}>range</button
+<Button variant="ghost" data-range onclick={() => onrange?.('2026-12-01', '2026-12-07')}
+  >range</Button
 >
 <div data-probe data-invoices={invoices === undefined ? 'none' : String(invoices.length)}>
   {#each bookings as b (b.id)}
     <div data-b={b.id}>
       {#if chips}{@render chips(b)}{/if}
       {#if actions}{@render actions(b)}{/if}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         data-ctx={b.id}
         onclick={() =>
           oncontextmenu?.(
@@ -54,7 +56,7 @@
               lead: b,
             },
             { x: 1, y: 1 },
-          )}>menu</button
+          )}>menu</Button
       >
     </div>
   {/each}
