@@ -73,6 +73,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
         dob: body.dob,
       },
       body.expectedUpdatedAt,
+      { canWriteSensitiveFields: !maskSensitive },
     );
     if (!contact) throw error(404, 'Contact not found');
     // Same principal-aware sanitizer as GET/getContact — a masked/unowned

@@ -1,12 +1,20 @@
+import { error } from '@sveltejs/kit';
 import {
   simulatedMutationOwner,
-  assertSimulatedRecordAccess,
+  simulatedMutationPredicate,
 } from '$server/auth/simulated-record-scope';
-import { sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { crmContacts } from '$server/db/pg-crm-schema';
+import { lockContactsInOrg } from './crm-contacts.service';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
-import { maskPii, sanitizeContactFields } from '$lib/pii';
+import {
+  CRM_MANUAL_INSTAGRAM_FIELD_KEYS,
+  maskPii,
+  omitMaskedFields,
+  sanitizeContactFields,
+} from '$lib/pii';
 import { isReservedMetaKey } from '$lib/components/crm/crm-meta';
 import { proposeName, nameKey, isUnnamed, type NameIssue } from './crm-standardize';
 
@@ -443,15 +451,42 @@ export async function mergeContacts(
   /** Conflict-resolver overrides applied to the survivor AFTER the backfill —
    *  these win over both survivor and loser values. `customFields` is jsonb-merged
    *  (never a wholesale replace), so untouched keys are preserved. */
-  overrides?: { displayName?: string; customFields?: Record<string, unknown> },
+  overrides: { displayName?: string; customFields?: Record<string, unknown> } | undefined,
+  /** Server-derived: field authority and the owner scope (null = unscoped). */
+  options: { canWriteSensitiveFields: boolean; ownerId: string | null },
 ): Promise<void> {
   simulatedMutationOwner(ctx, 'crm', 'delete');
-  const losers = loserIds.filter((id) => id && id !== survivorId);
-  if (losers.length === 0) return;
+  if (options.ownerId && options.ownerId !== ctx.profileId) throw error(404, 'Contact not found');
+  survivorId = survivorId.toLowerCase();
+  const losers = [...new Set(loserIds.filter((id) => id).map((id) => id.toLowerCase()))].filter(
+    (id) => id !== survivorId,
+  );
 
   await withOrgCore(ctx, async (tx) => {
-    for (const id of [...new Set([survivorId, ...losers])].sort())
-      await assertSimulatedRecordAccess(tx, ctx, 'crm', id, 'edit');
+    // Every participant must be a live contact of this org the caller may edit; a
+    // hidden row never changes the response (404 for any mismatch).
+    const ownerPredicate = and(
+      options.ownerId ? eq(crmContacts.ownerId, options.ownerId) : undefined,
+      simulatedMutationPredicate(ctx, 'crm', 'edit', crmContacts.ownerId),
+    );
+    const locked = await lockContactsInOrg(tx, ctx, [survivorId, ...losers], ownerPredicate);
+    if (losers.length === 0) return;
+    if (!options.canWriteSensitiveFields) {
+      const stored = await tx
+        .select({ fields: crmContacts.customFields })
+        .from(crmContacts)
+        .where(inArray(crmContacts.id, locked));
+      if (
+        stored.some((r) =>
+          Object.keys(r.fields ?? {}).some((k) =>
+            CRM_MANUAL_INSTAGRAM_FIELD_KEYS.has(k.toLowerCase()),
+          ),
+        )
+      )
+        throw error(403, 'sensitive_fields_restricted');
+      if (overrides?.customFields)
+        overrides = { ...overrides, customFields: omitMaskedFields(overrides.customFields) };
+    }
     const org = ctx.tenantId;
     const loserArr = sql`(${sql.join(
       losers.map((id) => sql`${id}`),

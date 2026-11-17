@@ -15,7 +15,10 @@ export const GET: RequestHandler = async ({ locals }) => {
     ownerFilter(locals, 'crm'),
     shouldMaskSensitive(locals, 'crm'),
   ]);
-  return json({ groups: await findDuplicates(ctx, { ownerId, maskSensitive }) });
+  return json(
+    { groups: await findDuplicates(ctx, { ownerId, maskSensitive }) },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  );
 };
 
 const postSchema = z.object({
@@ -35,6 +38,13 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
-  await mergeContacts(ctx, body.survivorId, body.loserIds, body.overrides);
+  const [ownerId, maskSensitive] = await Promise.all([
+    ownerFilter(locals, 'crm'),
+    shouldMaskSensitive(locals, 'crm'),
+  ]);
+  await mergeContacts(ctx, body.survivorId, body.loserIds, body.overrides, {
+    canWriteSensitiveFields: !maskSensitive,
+    ownerId: ownerId ?? null,
+  });
   return json({ ok: true });
 };

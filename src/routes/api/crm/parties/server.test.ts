@@ -9,7 +9,10 @@ const mocks = vi.hoisted(() => ({
   ensureContactFacetForParty: vi.fn(),
 }));
 
-vi.mock('$server/services/rbac.service', () => ({ hasOrgCapability: async () => false }));
+vi.mock('$server/services/rbac.service', () => ({
+  hasOrgCapability: async () => false,
+  shouldMaskSensitive: async () => false,
+}));
 
 vi.mock('$server/services/ruc-registry', () => ({
   lookupRucConfigured: mocks.lookupRucConfigured,
@@ -204,9 +207,11 @@ describe('POST /api/crm/parties document defaults', () => {
       { tenantId: 'org-1' },
       expect.objectContaining({ dob: '2015-06-04', sex: 'F', dedupByPhone: false }),
     );
-    expect(mocks.ensureContactFacetForParty).toHaveBeenCalledWith({ tenantId: 'org-1' }, 'p1', {
-      displayName: 'x',
-      customFields: { distrito: 'Lince', sexo: 'F' },
-    });
+    expect(mocks.ensureContactFacetForParty).toHaveBeenCalledWith(
+      { tenantId: 'org-1' },
+      'p1',
+      { displayName: 'x', customFields: { distrito: 'Lince', sexo: 'F' } },
+      { canWriteSensitiveFields: true },
+    );
   });
 });

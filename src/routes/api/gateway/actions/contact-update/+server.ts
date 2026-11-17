@@ -1,6 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
+import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
+import { sanitizeContactFields } from '$lib/pii';
 import { parseBody } from '$server/api/validate';
 import { requireAssistantCapability } from '../../_shared/action-auth';
 import { updateContact, setFunnelStage, addNote } from '$server/services/crm-contacts.service';
@@ -47,8 +49,22 @@ const bodySchema = z
  * key silently dropped. The patch form has no read to go stale.
  */
 export const POST: RequestHandler = async ({ locals, url, request }) => {
-  const { ctx } = await requireAssistantCapability(locals, url, 'crm', 'edit');
+  const { ctx, capabilities } = await requireAssistantCapability(locals, url, 'crm', 'edit');
   const b = await parseBody(request, bodySchema);
+  const canWriteSensitiveFields = capabilities.fieldLevel('crm') >= SENSITIVE_FIELD_LEVEL;
+  // Phone and email are masked for this principal: refuse rather than write a mask.
+  if (!canWriteSensitiveFields && (b.phone !== undefined || b.email !== undefined))
+    throw error(403, 'sensitive_fields_restricted');
+  const sanitize = <T extends { customFields?: unknown } | null>(row: T): T =>
+    row
+      ? {
+          ...row,
+          customFields: sanitizeContactFields(
+            row.customFields as Record<string, unknown> | null,
+            !canWriteSensitiveFields,
+          ),
+        }
+      : row;
 
   if (!b.confirm) {
     return json({
@@ -75,10 +91,14 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
         b.contactId,
         { displayName: b.name, phone: b.phone, customFieldsPatch },
         b.expectedUpdatedAt,
+        { canWriteSensitiveFields },
       );
     } catch (e) {
       if (e instanceof StaleWriteError)
-        return json({ error: 'stale', current: e.current }, { status: 409 });
+        return json(
+          { error: 'stale', current: sanitize(e.current as { customFields?: unknown }) },
+          { status: 409 },
+        );
       throw e;
     }
     if (!updatedContact) throw error(404, 'contact not found');
@@ -96,5 +116,5 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
     await addNote(ctx, b.contactId, b.notes, ctx.profileId ?? null);
   }
 
-  return json({ contact: updatedContact, funnel });
+  return json({ contact: sanitize(updatedContact as { customFields?: unknown } | null), funnel });
 };

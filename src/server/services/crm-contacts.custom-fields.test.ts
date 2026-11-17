@@ -153,7 +153,9 @@ const ctxFor = (db: ReturnType<typeof drizzle>) => ({ db: db as never, tenantId:
 
 describe('customFieldsPatchSql (S2 — partial merge, no application-side read)', () => {
   it("merges the caller's keys OVER the pre-update row, in one statement with no SELECT", () => {
-    const query = dialect.sqlToQuery(customFieldsPatchSql({ email: 'ana@example.com' }));
+    const query = dialect.sqlToQuery(
+      customFieldsPatchSql({ email: 'ana@example.com' }, { canWriteSensitiveFields: true }),
+    );
     // The left operand is the stored column read inside the UPDATE's own SET
     // expression — that is what makes the merge atomic instead of a snapshot.
     expect(query.sql).toContain('custom_fields');
@@ -164,14 +166,19 @@ describe('customFieldsPatchSql (S2 — partial merge, no application-side read)'
   });
 
   it('binds the payload as a param — never string-interpolated into the SQL text', () => {
-    const query = dialect.sqlToQuery(customFieldsPatchSql({ email: "o'brien@example.com" }));
+    const query = dialect.sqlToQuery(
+      customFieldsPatchSql({ email: "o'brien@example.com" }, { canWriteSensitiveFields: true }),
+    );
     expect(query.sql).not.toContain('example.com');
     expect(query.params).toContain(JSON.stringify({ email: "o'brien@example.com" }));
   });
 
   it('strips a caller-supplied `_`-reserved key before it reaches SQL', () => {
     const query = dialect.sqlToQuery(
-      customFieldsPatchSql({ email: 'ana@example.com', _funnel: { stage: 'customer' } }),
+      customFieldsPatchSql(
+        { email: 'ana@example.com', _funnel: { stage: 'customer' } },
+        { canWriteSensitiveFields: true },
+      ),
     );
     const payload = query.params.find((p) => typeof p === 'string' && p.includes('email'));
     expect(String(payload)).not.toContain('_funnel');
@@ -180,8 +187,12 @@ describe('customFieldsPatchSql (S2 — partial merge, no application-side read)'
   it('differs from customFieldsMergeSql in exactly one way: omission is not deletion', () => {
     // The whole-namespace form has to enumerate the stored reserved keys to
     // rebuild them; the patch form does not, because it never drops anything.
-    expect(dialect.sqlToQuery(customFieldsMergeSql({ a: 1 })).sql).toContain('jsonb_each');
-    expect(dialect.sqlToQuery(customFieldsPatchSql({ a: 1 })).sql).not.toContain('jsonb_each');
+    expect(
+      dialect.sqlToQuery(customFieldsMergeSql({ a: 1 }, { canWriteSensitiveFields: true })).sql,
+    ).toContain('jsonb_each');
+    expect(
+      dialect.sqlToQuery(customFieldsPatchSql({ a: 1 }, { canWriteSensitiveFields: true })).sql,
+    ).not.toContain('jsonb_each');
   });
 });
 
@@ -200,9 +211,15 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
       const ctx = ctxFor(db);
 
       // Overwrite `distrito`, ADD `email`, OMIT `edad`.
-      await updateContact(ctx, contactId, {
-        customFields: { distrito: 'San Isidro', email: 'ana@example.com' },
-      });
+      await updateContact(
+        ctx,
+        contactId,
+        {
+          customFields: { distrito: 'San Isidro', email: 'ana@example.com' },
+        },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
 
       const fields = await readFields(db, contactId);
       expect(fields.distrito).toBe('San Isidro'); // overwrite
@@ -221,9 +238,15 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
     try {
       const contactId = await seedContact(client, { _funnel: { stage: 'lead', auto: true } });
 
-      await updateContact(ctxFor(db), contactId, {
-        customFields: { _funnel: { stage: 'customer', auto: false } },
-      });
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        {
+          customFields: { _funnel: { stage: 'customer', auto: false } },
+        },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
 
       expect((await readFields(db, contactId))._funnel).toEqual({ stage: 'lead', auto: true });
     } finally {
@@ -240,9 +263,15 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
         edad: '34',
       });
 
-      await updateContact(ctxFor(db), contactId, {
-        customFieldsPatch: { email: 'ana@example.com' },
-      });
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        {
+          customFieldsPatch: { email: 'ana@example.com' },
+        },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
 
       const fields = await readFields(db, contactId);
       expect(fields.email).toBe('ana@example.com');
@@ -262,10 +291,18 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
       const contactId = await seedContact(client, { email: 'old@example.com', edad: '34' });
       const ctx = ctxFor(db);
 
-      await updateContact(ctx, contactId, { customFieldsPatch: { email: 'new@example.com' } });
+      await updateContact(
+        ctx,
+        contactId,
+        { customFieldsPatch: { email: 'new@example.com' } },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
       expect((await readFields(db, contactId)).email).toBe('new@example.com');
 
-      await updateContact(ctx, contactId, { customFieldsPatch: { email: null } });
+      await updateContact(ctx, contactId, { customFieldsPatch: { email: null } }, undefined, {
+        canWriteSensitiveFields: true,
+      });
       const cleared = await readFields(db, contactId);
       expect(cleared.email).toBeNull();
       expect(cleared.edad).toBe('34');
@@ -279,10 +316,16 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
     try {
       const contactId = await seedContact(client, { edad: '34' });
       await expect(
-        updateContact(ctxFor(db), contactId, {
-          customFields: { distrito: 'Lima' },
-          customFieldsPatch: { email: 'ana@example.com' },
-        }),
+        updateContact(
+          ctxFor(db),
+          contactId,
+          {
+            customFields: { distrito: 'Lima' },
+            customFieldsPatch: { email: 'ana@example.com' },
+          },
+          undefined,
+          { canWriteSensitiveFields: true },
+        ),
       ).rejects.toThrow(/customFields.*customFieldsPatch|not both/);
       // Nothing was written.
       expect((await readFields(db, contactId)).edad).toBe('34');
@@ -296,11 +339,17 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
     try {
       const contactId = await seedContact(client, { edad: '34' });
 
-      const row = await updateContact(ctxFor(db), contactId, {
-        displayName: 'Ana María',
-        lifecycleOverride: 'vip',
-        customFieldsPatch: { email: 'ana@example.com' },
-      });
+      const row = await updateContact(
+        ctxFor(db),
+        contactId,
+        {
+          displayName: 'Ana María',
+          lifecycleOverride: 'vip',
+          customFieldsPatch: { email: 'ana@example.com' },
+        },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
 
       expect(row?.displayName).toBe('Ana María');
       expect(row?.lifecycleOverride).toBe('vip');
@@ -317,12 +366,24 @@ describe('updateContact custom_fields contracts against a real Postgres engine',
       const otherOrg = { db: db as never, tenantId: 'org-2' };
 
       expect(
-        await updateContact(otherOrg, contactId, { customFieldsPatch: { email: 'x@y.z' } }),
+        await updateContact(
+          otherOrg,
+          contactId,
+          { customFieldsPatch: { email: 'x@y.z' } },
+          undefined,
+          { canWriteSensitiveFields: true },
+        ),
       ).toBeNull();
       expect(
-        await updateContact(ctxFor(db), crypto.randomUUID(), {
-          customFieldsPatch: { email: 'x@y.z' },
-        }),
+        await updateContact(
+          ctxFor(db),
+          crypto.randomUUID(),
+          {
+            customFieldsPatch: { email: 'x@y.z' },
+          },
+          undefined,
+          { canWriteSensitiveFields: true },
+        ),
       ).toBeNull();
       // The org-scoped write did not leak across the tenant boundary.
       expect(await readFields(db, contactId)).toEqual({ edad: '34' });
@@ -355,7 +416,13 @@ describe('a user-field write and a `_funnel` write on the same contact both surv
       const ctx = ctxFor(db);
 
       await setFunnelStage(ctx, contactId, 'customer', { by: 'user' });
-      await updateContact(ctx, contactId, { customFieldsPatch: { favoriteColor: 'blue' } });
+      await updateContact(
+        ctx,
+        contactId,
+        { customFieldsPatch: { favoriteColor: 'blue' } },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
 
       const fields = await readFields(db, contactId);
       expect(fields._funnel).toMatchObject({ stage: 'customer', auto: false });
@@ -371,7 +438,13 @@ describe('a user-field write and a `_funnel` write on the same contact both surv
       const contactId = await seedContact(client, { _funnel: { stage: 'lead', auto: true } });
       const ctx = ctxFor(db);
 
-      await updateContact(ctx, contactId, { customFieldsPatch: { favoriteColor: 'blue' } });
+      await updateContact(
+        ctx,
+        contactId,
+        { customFieldsPatch: { favoriteColor: 'blue' } },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
       await setFunnelStage(ctx, contactId, 'customer', { by: 'user' });
 
       const fields = await readFields(db, contactId);
@@ -411,7 +484,13 @@ describe('a user-field write and a `_funnel` write on the same contact both surv
         return reentrantWithOrgCore(scope, fn);
       });
 
-      await updateContact(ctx, contactId, { customFieldsPatch: { favoriteColor: 'blue' } });
+      await updateContact(
+        ctx,
+        contactId,
+        { customFieldsPatch: { favoriteColor: 'blue' } },
+        undefined,
+        { canWriteSensitiveFields: true },
+      );
 
       const fields = await readFields(db, contactId);
       expect(fields._funnel).toEqual({ stage: 'customer', auto: false });
@@ -421,4 +500,154 @@ describe('a user-field write and a `_funnel` write on the same contact both surv
       await client.close();
     }
   }, 30_000);
+});
+
+describe('restricted principals cannot overwrite masked fields (canWriteSensitiveFields: false)', () => {
+  const stored = {
+    instagram_handle: 'synthetic_handle_123',
+    telefono: '999111222',
+    email: 'a@example.test',
+    distrito: 'old',
+    _funnel: { stage: 'lead' },
+  };
+  const masked = {
+    instagram_handle: '•••••e_123',
+    telefono: '•••••1222',
+    email: '•••••.test',
+  };
+  const restricted = { canWriteSensitiveFields: false };
+  const identity = (client: PGlite) =>
+    client.query<{ external_id: string }>(
+      `select external_id from crm_contact_identities where channel='phone'`,
+    );
+  async function setup() {
+    const { client, db } = await createContactsDb();
+    const contactId = await seedContact(client, stored);
+    await client.query(
+      `insert into crm_contact_identities (org_id, contact_id, channel, external_id) values ($1,$2,'phone','999111222')`,
+      [ORG, contactId],
+    );
+    return { client, db, contactId };
+  }
+
+  it('whole-namespace save of the masked projection changes only the unrelated key', async () => {
+    const { client, db, contactId } = await setup();
+    try {
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        {
+          customFields: { ...masked, distrito: 'new', _funnel: { stage: 'forged' } },
+          phone: '•••••1222',
+        },
+        undefined,
+        restricted,
+      );
+      expect(await readFields(db, contactId)).toEqual({ ...stored, distrito: 'new' });
+      expect((await identity(client)).rows).toEqual([{ external_id: '999111222' }]);
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+
+  it.each([
+    ['omitted', { distrito: 'new' }],
+    ['null', { distrito: 'new', instagram_handle: null, telefono: null, email: null }],
+    ['empty', { distrito: 'new', instagram_handle: '', telefono: '', email: '' }],
+    [
+      'case-variant',
+      { distrito: 'new', Instagram_Handle: 'forged', EMAIL: 'x@y.z', Telefono: '1' },
+    ],
+    ['a new variant key', { distrito: 'new', instagram: 'forged', DNI: '12345678' }],
+  ])(
+    'whole namespace with %s masked inputs keeps every stored masked key',
+    async (_n, input) => {
+      const { client, db, contactId } = await setup();
+      try {
+        await updateContact(ctxFor(db), contactId, { customFields: input }, undefined, restricted);
+        expect(await readFields(db, contactId)).toEqual({ ...stored, distrito: 'new' });
+      } finally {
+        await client.close();
+      }
+    },
+    30_000,
+  );
+
+  it('an absent stored masked key stays absent', async () => {
+    const { client, db } = await createContactsDb();
+    try {
+      const contactId = await seedContact(client, { distrito: 'old' });
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        { customFields: { distrito: 'new', instagram_handle: 'forged' } },
+        undefined,
+        restricted,
+      );
+      expect(await readFields(db, contactId)).toEqual({ distrito: 'new' });
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+
+  it('partial patch applies other keys and drops masked ones', async () => {
+    const { client, db, contactId } = await setup();
+    try {
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        {
+          customFieldsPatch: {
+            distrito: 'new',
+            instagram_handle: null,
+            Email: 'x@y.z',
+            _funnel: 1,
+          },
+        },
+        undefined,
+        restricted,
+      );
+      expect(await readFields(db, contactId)).toEqual({ ...stored, distrito: 'new' });
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+
+  it('an authorized principal still replaces, removes and nulls masked keys', async () => {
+    const { client, db, contactId } = await setup();
+    try {
+      const ok = { canWriteSensitiveFields: true };
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        { customFields: { instagram_handle: 'next', distrito: 'new' }, phone: '555666777' },
+        undefined,
+        ok,
+      );
+      expect(await readFields(db, contactId)).toEqual({
+        instagram_handle: 'next',
+        distrito: 'new',
+        _funnel: { stage: 'lead' },
+      });
+      expect((await identity(client)).rows).toEqual([{ external_id: '555666777' }]);
+      await updateContact(
+        ctxFor(db),
+        contactId,
+        { customFieldsPatch: { instagram_handle: null } },
+        undefined,
+        ok,
+      );
+      expect((await readFields(db, contactId)).instagram_handle).toBeNull();
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+
+  it('the restricted SQL preserves masked keys; the authorized SQL text is the pinned one', () => {
+    const d = new PgDialect();
+    const r = d.sqlToQuery(customFieldsMergeSql({ a: 1 }, restricted));
+    const a = d.sqlToQuery(customFieldsMergeSql({ a: 1 }, { canWriteSensitiveFields: true }));
+    expect(r.sql).toContain('lower(key) in');
+    expect(a.sql).not.toContain('lower(key)');
+  });
 });

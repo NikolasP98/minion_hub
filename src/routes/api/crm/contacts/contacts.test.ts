@@ -11,6 +11,7 @@ vi.mock('$server/services/rbac.service', () => ({
 }));
 
 const mockRankContactsPage = vi.fn();
+const mockCreateContact = vi.fn();
 const mockListTags = vi.fn(async () => [] as unknown[]);
 const mockLoadCustomPropertyBundle = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
@@ -18,7 +19,7 @@ vi.mock('$server/services/crm-contacts.service', () => ({
   rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
   rankContactsPageCached: (...a: unknown[]) => mockRankContactsPage(...a),
   listTags: () => mockListTags(),
-  createContact: vi.fn(),
+  createContact: (...a: unknown[]) => mockCreateContact(...a),
 }));
 
 vi.mock('$server/services/crm-scoring', () => ({
@@ -29,7 +30,7 @@ vi.mock('$server/services/custom-property-bundle.service', () => ({
   loadCustomPropertyBundle: (...a: unknown[]) => mockLoadCustomPropertyBundle(...a),
 }));
 
-import { GET } from './+server';
+import { GET, POST } from './+server';
 
 /** A page row shaped like the service's RankedContact (the golden element shape). */
 const row = (id: string) => ({
@@ -224,5 +225,42 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
       expect.anything(),
       expect.objectContaining({ maskSensitive: true }),
     );
+  });
+});
+
+describe('POST /api/crm/contacts (manual Instagram keys)', () => {
+  const post = (body: unknown) =>
+    POST({
+      locals: {},
+      request: new Request('http://localhost/api/crm/contacts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    } as unknown as Parameters<typeof POST>[0]);
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])(
+    'masked=%s passes canWriteSensitiveFields=%s and sanitizes the response',
+    async (masked, can) => {
+      mockShouldMask.mockResolvedValue(masked);
+      mockCreateContact.mockResolvedValue({
+        id: 'c1',
+        customFields: { instagram_handle: 'synthetic_123', distrito: 'x' },
+      });
+      const res = await post({ displayName: 'Ana', customFields: { instagram_handle: 'forged' } });
+      expect(res.status).toBe(201);
+      expect(mockCreateContact.mock.calls[0][2]).toEqual({ canWriteSensitiveFields: can });
+      const { contact } = await res.json();
+      expect(contact.customFields.instagram_handle).toBe(masked ? '••••••••_123' : 'synthetic_123');
+    },
+  );
+  it('ignores a forged canWriteSensitiveFields in the body', async () => {
+    mockShouldMask.mockResolvedValue(true);
+    mockCreateContact.mockResolvedValue({ id: 'c1', customFields: {} });
+    await post({ canWriteSensitiveFields: true, options: { canWriteSensitiveFields: true } });
+    expect(mockCreateContact.mock.calls[0][2]).toEqual({ canWriteSensitiveFields: false });
   });
 });

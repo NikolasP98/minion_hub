@@ -4,6 +4,7 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
+import { shouldMaskSensitive } from '$server/services/rbac.service';
 import {
   applyRucRegistry,
   ensureContactFacetForParty,
@@ -135,10 +136,12 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   if (b.email) customFields.email = b.email;
   if (b.phone) customFields.telefono = b.phone;
   if (b.sex) customFields.sexo = b.sex;
-  const contactId = await ensureContactFacetForParty(ctx, party.id, {
-    displayName: party.name,
-    customFields,
-  });
+  const contactId = await ensureContactFacetForParty(
+    ctx,
+    party.id,
+    { displayName: party.name, customFields },
+    { canWriteSensitiveFields: !(await shouldMaskSensitive(locals, 'crm')) },
+  );
   return json(
     {
       ok: true,

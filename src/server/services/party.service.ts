@@ -1,4 +1,4 @@
-import { maskPii } from '$lib/pii';
+import { maskPii, omitManualInstagramFields } from '$lib/pii';
 import { error } from '@sveltejs/kit';
 import {
   simulatedMutationPredicate,
@@ -183,6 +183,7 @@ export async function ensureContactFacetForParty(
   ctx: CoreCtx,
   partyId: string,
   data: { displayName: string | null; customFields: Record<string, unknown> },
+  options: { canWriteSensitiveFields: boolean },
 ): Promise<string> {
   const ownerId = simulatedRegistrationOwner(ctx);
   return withOrgCore(ctx, async (tx) => {
@@ -209,7 +210,16 @@ export async function ensureContactFacetForParty(
     }
     const [created] = await tx
       .insert(crmContacts)
-      .values({ orgId: ctx.tenantId, partyId, source: 'manual', ...data, ownerId })
+      .values({
+        orgId: ctx.tenantId,
+        partyId,
+        source: 'manual',
+        ...data,
+        customFields: options.canWriteSensitiveFields
+          ? data.customFields
+          : omitManualInstagramFields(data.customFields),
+        ownerId,
+      })
       .returning({ id: crmContacts.id });
     await recordAuditInTx(tx, ctx, {
       refType: 'crm_contact',
