@@ -241,3 +241,18 @@ export function planGarmentRepost(m: GarmentRepostManifestV1, f: GarmentFacts): 
 }
 export const sortLedgerRefs = <T extends { id: string }>(xs: T[]): T[] =>
   [...xs].sort((a, b) => cmpLedgerId(a.id, b.id));
+
+/** A compensation must exactly reverse the forward manifest: swapped items, same qty, warehouse, ticket line. */
+export function isInverseOf(
+  f: GarmentRepostManifestV1 | undefined,
+  m: GarmentRepostManifestV1,
+): boolean {
+  return (
+    !!f &&
+    m.toItemId === f.fromItemId &&
+    m.fromItemId === f.toItemId &&
+    m.qty === f.qty &&
+    m.warehouseId === f.warehouseId &&
+    m.ticketLineId === f.ticketLineId
+  );
+}

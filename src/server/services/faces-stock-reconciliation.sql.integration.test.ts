@@ -503,6 +503,35 @@ describe('FACES stock cutover against PostgreSQL', () => {
       outcome: 'blocked',
       code: 'cutover_pending_sources',
     });
+    // A service-source draft for the M product is pending; an invoice draft with no matching lines is incomplete evidence.
+    await owner.unsafe(`delete from public.stk_accruals where org_id='${w.org}'`);
+    const svc = await createEntry(
+      w.ctx,
+      {
+        type: 'issue',
+        metadata: { source: 'service', finProductId: w.PM },
+        lines: [{ itemId: w.L, qty: 1, fromWarehouseId: w.wh }],
+      },
+      actorOf(w.boss),
+    );
+    const m3 = await draftMappingManifest(w.ctx, draftInput(w));
+    expect(m3.census.pendingDrafts.map((r) => [r.sourceType, r.entryId])).toEqual([
+      ['service', svc.id],
+    ]);
+    await owner.unsafe(`delete from public.stk_entry_lines where entry_id='${svc.id}'`);
+    await owner.unsafe(`delete from public.stk_entries where id='${svc.id}'`);
+    await createEntry(
+      w.ctx,
+      {
+        type: 'issue',
+        metadata: { source: 'invoice', invoiceId: randomUUID() },
+        lines: [{ itemId: w.L, qty: 1, fromWarehouseId: w.wh }],
+      },
+      actorOf(w.boss),
+    );
+    await expect(draftMappingManifest(w.ctx, draftInput(w))).rejects.toMatchObject({
+      code: 'incomplete',
+    });
   });
 
   it('mapping receipt audit and recipe commit atomically and repeat without writes', async () => {
@@ -598,6 +627,7 @@ describe('FACES stock cutover against PostgreSQL', () => {
     const b1 = await draftGarmentRepostManifest(w.ctx, gInput(tB.lineIds[0])); // from the SAME shared-bin snapshot
     const pa = await previewGarmentRepost(w.ctx, a1);
     if (pa.outcome !== 'preview') throw new Error(`blocked ${pa.code}`);
+    expect(pa.cost.replacementValueEstimate).toBe('10.0000'); // exact decimals: rate 10 x qty 1
     expect(pa.effects).toEqual([
       { itemId: w.L, warehouseId: w.wh, qtyDelta: '1.0000' },
       { itemId: w.M, warehouseId: w.wh, qtyDelta: '-1.0000' },

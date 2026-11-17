@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   decodeGarmentRepostManifestV1,
   garmentManifestSha256,
+  isInverseOf,
   planGarmentRepost,
   type GarmentFacts,
 } from './faces-garment-repost';
@@ -224,5 +225,19 @@ describe('planGarmentRepost', () => {
         }),
       ).eligible,
     ).toBe(true);
+  });
+});
+
+describe('isInverseOf', () => {
+  const fwd = decodeGarmentRepostManifestV1(raw());
+  const inv = { ...fwd, fromItemId: fwd.toItemId, toItemId: fwd.fromItemId };
+  it('accepts the exact swap and refuses any other item, qty, warehouse, line or missing manifest', () => {
+    expect(isInverseOf(fwd, inv)).toBe(true);
+    expect(isInverseOf(fwd, fwd)).toBe(false);
+    expect(isInverseOf(fwd, { ...inv, toItemId: id(99) })).toBe(false);
+    expect(isInverseOf(fwd, { ...inv, qty: '2.0000' })).toBe(false);
+    expect(isInverseOf(fwd, { ...inv, warehouseId: id(98) })).toBe(false);
+    expect(isInverseOf(fwd, { ...inv, ticketLineId: id(97) })).toBe(false);
+    expect(isInverseOf(undefined, inv)).toBe(false);
   });
 });

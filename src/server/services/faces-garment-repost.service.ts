@@ -37,6 +37,7 @@ import {
 import {
   decodeGarmentRepostManifestV1,
   garmentManifestSha256,
+  isInverseOf,
   planGarmentRepost,
   type GarmentFacts,
   type GarmentRepostCommand,
@@ -193,14 +194,16 @@ export async function readGarmentFacts(tx: CoreTx, ctx: CoreCtx, id: Ids) {
   if (id.mappingCorrectionId) {
     const [r] = await run(
       tx,
-      sql`select t.after, t.kind, t.source_id::text as source_id from stk_corrections t where t.org_id = ${org} and t.id = ${id.mappingCorrectionId}::uuid`,
+      sql`select t.before, t.after, t.kind, t.source_id::text as source_id from stk_corrections t where t.org_id = ${org} and t.id = ${id.mappingCorrectionId}::uuid`,
     );
     const after = r?.after as { mappingState?: { recipe?: { itemId: string }[] } } | undefined;
+    const before = r?.before as { mappingState?: { recipe?: { itemId: string }[] } } | undefined;
     receiptOk =
       !!r &&
       r.kind === 'product_mapping' &&
       r.source_id === id.productId &&
-      after?.mappingState?.recipe?.[0]?.itemId === id.toItemId;
+      after?.mappingState?.recipe?.[0]?.itemId === id.toItemId &&
+      before?.mappingState?.recipe?.[0]?.itemId === id.fromItemId; // the receipt must describe THIS issued item
   }
   const fingerprintSha256 = canonicalSha256({
     ticket: ticket.h,
@@ -249,7 +252,20 @@ export async function readGarmentFacts(tx: CoreTx, ctx: CoreCtx, id: Ids) {
         : str(bins.find((b) => b.item_id === id.toItemId)!.qty),
     fingerprintSha256,
   };
-  return { facts, entry, entryLines, ledger, bins, latest, ticketHash: str(ticket.h) };
+  return {
+    facts,
+    entry,
+    entryLines,
+    ledger,
+    bins,
+    latest,
+    ticketHash: str(ticket.h),
+    // Untouched-by-repost surfaces, re-hashed after the write (invariant 7).
+    untouchedSha256: canonicalSha256({
+      lines: lines.map((l) => [l.id, l.h]),
+      payments: payments.map((p) => [p.id, p.h]),
+    }),
+  };
 }
 
 export interface GarmentDraftInput {
@@ -451,7 +467,14 @@ export async function previewGarmentRepost(
         currency: m.valuation.currency,
         originalIssueValue: str(original[0]?.v ?? '0'),
         replacementValueEstimate:
-          toRate === undefined ? '0' : String(Number(toRate) * Number(m.qty)),
+          toRate === undefined
+            ? '0'
+            : fixed4(
+                q4({
+                  c: parseDec(str(toRate)).c * parseDec(m.qty).c,
+                  s: parseDec(str(toRate)).s + parseDec(m.qty).s,
+                }),
+              ),
       },
     };
   });
@@ -550,7 +573,11 @@ export async function applyGarmentRepost(
           !fwd ||
           fwd.kind !== 'sale_stock_repost' ||
           fwd.replacementEntryId !== m.originalEntryId ||
-          (fwd.intended as { action?: string }).action !== 'correct'
+          (fwd.intended as { action?: string }).action !== 'correct' ||
+          !isInverseOf(
+            (fwd.intended as { domainManifest?: GarmentRepostManifestV1 }).domainManifest,
+            m,
+          )
         )
           throw new RepostError(
             'inverse names no applied forward repost of this entry',
@@ -626,8 +653,8 @@ export async function applyGarmentRepost(
           'invariant_failed',
         );
       const after = await readGarmentFacts(tx, ctx, { ...idsOf(m), originalEntryId: entry.id });
-      const pay = f.facts.fingerprintSha256 !== after.facts.fingerprintSha256;
-      void pay;
+      if (f.untouchedSha256 !== after.untouchedSha256)
+        throw new RepostError('ticket lines or payments changed', 'invariant_failed');
       const previewHash = command.previewHash;
       const payloadHash = payloadHashOf(ctx.tenantId, profile, manifestSha256, previewHash);
       const correctionId = crypto.randomUUID();
@@ -671,7 +698,7 @@ export async function applyGarmentRepost(
           payloadHash,
         },
         after: { receipt, entryMap: { [m.originalEntryId]: entry.id } },
-        appliedAt: postedAt,
+        appliedAt: new Date(), // commit time; postedAt is the stock ledger date
       });
       await recordAuditInTx(tx, ctx, {
         refType: 'pos_ticket',
