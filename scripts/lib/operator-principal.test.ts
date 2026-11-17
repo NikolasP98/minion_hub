@@ -10,6 +10,7 @@ const target = { databaseIdentity: 'x', authProject: 'proj', authUrl: 'https://a
 const base = {
   accessToken: 't',
   authUrl: target.authUrl,
+  trustedAuthUrl: target.authUrl,
   anonKey: 'k',
   expectedProfileId: PROFILE,
   targetFingerprint: target,
@@ -76,9 +77,18 @@ describe('verifyOperatorPrincipal', () => {
   it.each([
     ['auth url differs from target', { authUrl: 'https://evil.example.org' }],
     [
+      'manifest and target agree on an untrusted url',
+      {
+        authUrl: 'https://evil.example.org',
+        targetFingerprint: { ...target, authUrl: 'https://evil.example.org' },
+      },
+    ],
+    ['no trusted auth url in env', { trustedAuthUrl: undefined }],
+    [
       'plain http remote',
       {
         authUrl: 'http://auth.example.org',
+        trustedAuthUrl: 'http://auth.example.org',
         targetFingerprint: { ...target, authUrl: 'http://auth.example.org' },
       },
     ],

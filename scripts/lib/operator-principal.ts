@@ -65,13 +65,20 @@ export async function verifyOperatorPrincipal(
   input: Readonly<{
     accessToken: string;
     authUrl: string;
+    /** From the operator's private env (FACES_OPERATOR_AUTH_URL), never from a manifest/scope file: the token is only ever sent here. */
+    trustedAuthUrl: string | undefined;
     anonKey: string;
     expectedProfileId: string;
     targetFingerprint: QualifiedOperatorTarget;
   }>,
 ): Promise<VerifiedOperatorPrincipal> {
-  const { accessToken, authUrl, anonKey, expectedProfileId, targetFingerprint } = input;
+  const { accessToken, authUrl, trustedAuthUrl, anonKey, expectedProfileId, targetFingerprint } =
+    input;
   if (!accessToken || !anonKey) throw new OperatorPrincipalError('missing credential');
+  // A file-supplied URL alone must never receive the bearer token (token exfiltration).
+  if (!trustedAuthUrl || authUrl !== trustedAuthUrl) {
+    throw new OperatorPrincipalError('auth url is not the trusted operator auth url');
+  }
   if (!UUID.test(expectedProfileId))
     throw new OperatorPrincipalError('expected profile must be a canonical uuid');
   if (!targetFingerprint?.authProject || authUrl !== targetFingerprint.authUrl) {

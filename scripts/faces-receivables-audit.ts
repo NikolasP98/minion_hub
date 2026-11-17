@@ -2,7 +2,8 @@
 /**
  * FACES receivables and pending-work audit (minion-meta spec 128). READ ONLY: no apply flag, no writer.
  * Run as `bun --no-env-file scripts/faces-receivables-audit.ts --scope <scope.json> --out <dir> [--after D] [--before D]`.
- * Env (private, explicit): FACES_AUDIT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY.
+ * Env (private, explicit): FACES_AUDIT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY,
+ * FACES_OPERATOR_AUTH_URL (the token is only sent to this URL; the scope file's authUrl must equal it).
  * Exit: 0 complete, 2 admission refused (no business read), 3 incomplete/error (incomplete.json, no manifest).
  */
 import { spawnSync } from 'node:child_process';
@@ -289,6 +290,7 @@ async function run(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
     const principal = await verifyOperatorPrincipal({
       accessToken: token,
       authUrl: scopeFile.target.authUrl,
+      trustedAuthUrl: env.FACES_OPERATOR_AUTH_URL,
       anonKey,
       expectedProfileId: scopeFile.actorProfileId,
       targetFingerprint: scopeFile.target,
