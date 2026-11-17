@@ -289,7 +289,7 @@ async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Pro
   const byEntry = <T extends { entry_id: unknown }>(rows: T[], id: string) =>
     rows.filter((r) => String(r.entry_id) === id);
   const originals: FreshChain['originals'] = new Map();
-  const evidence: EntryEvidence[] = ids.map((id) => {
+  const evidence: EntryEvidence[] = ids.map((id, idx) => {
     const e = entries.find((r) => String(r.id) === id)!;
     const meta = (e.metadata ?? {}) as Record<string, unknown>;
     const ls = byEntry(lines, id);
@@ -300,7 +300,8 @@ async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Pro
     const kind = kindOf(meta, String(e.type));
     const srcId =
       kind === 'receipt' ? id : typeof meta.sourceId === 'string' ? meta.sourceId : null;
-    if (!kind || !srcId || (e.type !== 'receipt' && e.type !== 'issue'))
+    // exactly one receipt (first) then ordinary issues: a second receipt/transfer/adjustment is unsupported
+    if (!kind || !srcId || e.type !== (idx === 0 ? 'receipt' : 'issue'))
       fail('unsupported_movement');
     const [l] = ls;
     const [g] = lg;
@@ -383,8 +384,8 @@ function verifyFresh(
   m: ReceiptChainManifestV1,
   f: FreshChain,
 ): { sourceStateSha256: string; stockStateSha256: string; policyStateSha256: string } {
-  if (m.action !== 'correct') fail('unsupported_movement');
   if (canonical(f.entries) !== canonical(m.entries)) fail('stale_preview');
+  if (Number(m.intended.receiptQty) !== Number(m.entries[0].qty)) fail('invariant_failed');
   if (f.rangeLedgerIds.join() !== m.entries.map((e) => e.ledgerId).join()) fail('stale_preview'); // a new movement after preview
   // consumers: same set, same row hashes, same frozen values; replacement ids and intended values are manifest-only
   const approved = m.consumers.map((c) =>
@@ -558,6 +559,105 @@ const monthOf = (iso: string, tz: string): string => {
   }).formatToParts(new Date(iso));
   return `${p.find((x) => x.type === 'year')!.value}-${p.find((x) => x.type === 'month')!.value}`;
 };
+
+type AssembleInput = {
+  target: ReceiptManifestBase['target'];
+  sourceCodeSha: string;
+  operationKey: string;
+  postedAt: string;
+  reason: string;
+  ownerApprovalReference: string;
+  replacementIds?: readonly string[];
+  receiptRate: string;
+  receiptQty: string;
+  stockUom: string;
+  tail:
+    | { action: 'correct'; basis: DocumentBasis }
+    | {
+        action: 'compensate';
+        inverseOfOperationId: string;
+        basis: {
+          policy: 'restore_prior_before_snapshot';
+          priorManifestSha256: string;
+          originalDocumentSha256: string;
+        };
+      };
+};
+/** Shared manifest assembly for both actions: digests and engine effects are derived, never typed. */
+function assemble(
+  ctx: CoreCtx,
+  profile: string,
+  probe: Probe,
+  f: FreshChain,
+  input: AssembleInput,
+): ReceiptChainManifestV1 {
+  if (f.timezone === null) return fail('period_unavailable');
+  const ids = input.replacementIds ?? f.entries.map(() => randomUUID());
+  const entryMap = f.entries.map((e, i) => ({
+    sourceEntryId: e.entryId,
+    replacementEntryId: ids[i],
+  }));
+  const receiptRate = input.receiptRate;
+  const planned = planCorrectEffects({ entries: f.entries, entryMap, receiptRate }, MATH);
+  const consumers = f.consumers.map((c) => {
+    const idx = f.entries.findIndex((e) => e.entryId === c.currentEntryId);
+    const replacementEntryId = entryMap[idx].replacementEntryId;
+    if (c.kind === 'pos_ticket') return { ...c, replacementEntryId } as unknown as ConsumerEvidence;
+    const eff = planned.effects.find(
+      (x) => x.phase === 'issue' && x.entryId === replacementEntryId,
+    )!;
+    return {
+      ...c,
+      replacementEntryId,
+      intendedRealizedValue: String(round4(-Number(eff.valueDelta))),
+    } as unknown as ConsumerEvidence;
+  });
+  const before = {
+    binRowSha256: f.binRowSha256,
+    latestLedgerId: f.latestLedgerId,
+    latestLedgerRowSha256: f.latestLedgerRowSha256,
+    itemRowSha256: f.itemRowSha256,
+    ruleStateSha256: ruleStateDigest(f.entries),
+    sourceStateSha256: sourceStateDigest(f.entries, consumers),
+    financialFiscalSha256: financialStateDigest(consumers),
+    policyStateSha256: policyStateDigest({
+      accountingTimezone: f.timezone,
+      correctionMonth: monthOf(input.postedAt, f.timezone),
+      actorProfileId: profile,
+      lockedPeriods: f.lockedPeriods,
+    }),
+  };
+  return decodeReceiptChainManifestV1(
+    JSON.parse(
+      JSON.stringify({
+        schemaVersion: 1,
+        kind: 'receipt_chain',
+        target: input.target,
+        sourceCodeSha: input.sourceCodeSha,
+        orgId: ctx.tenantId,
+        actorProfileId: profile,
+        operationKey: input.operationKey,
+        sourceReceiptId: probe.entryIds[0],
+        sourceReceiptLineId: f.entries[0].lineId,
+        itemId: probe.itemId,
+        warehouseId: probe.warehouseId,
+        stockUom: input.stockUom,
+        entries: f.entries,
+        consumers,
+        entryMap,
+        opening: f.opening,
+        before,
+        intended: { receiptQty: input.receiptQty, receiptRate, ...planned },
+        postedAt: input.postedAt,
+        accountingTimezone: f.timezone,
+        correctionMonth: monthOf(input.postedAt, f.timezone),
+        reason: input.reason,
+        ownerApprovalReference: input.ownerApprovalReference,
+        ...input.tail,
+      }),
+    ),
+  );
+}
 /**
  * Builds the complete executable manifest of a CORRECT operation from one read-only owned snapshot: discovers the same-key chain,
  * reads every raw-row hash, derives every digest and authors the 2x(1+n) engine effects. The owner reviews and approves the
@@ -597,77 +697,128 @@ export async function draftReceiptCorrectionManifest(
         firstLedgerId: String(own.id),
       };
       const f = await readFresh(tx, ctx, probe, false);
-      if (f.timezone === null) return fail('period_unavailable');
-      const ids = input.replacementIds ?? f.entries.map(() => randomUUID());
-      const entryMap = f.entries.map((e, i) => ({
-        sourceEntryId: e.entryId,
-        replacementEntryId: ids[i],
-      }));
-      const receiptRate = receiptRateBasis(
-        input.basis.totalValuation,
-        input.basis.stockQty,
-      ).receiptRate;
-      const planned = planCorrectEffects({ entries: f.entries, entryMap, receiptRate }, MATH);
-      const consumers = f.consumers.map((c) => {
-        const idx = f.entries.findIndex((e) => e.entryId === c.currentEntryId);
-        const replacementEntryId = entryMap[idx].replacementEntryId;
-        if (c.kind === 'pos_ticket')
-          return { ...c, replacementEntryId } as unknown as ConsumerEvidence;
-        const eff = planned.effects.find(
-          (x) => x.phase === 'issue' && x.entryId === replacementEntryId,
-        )!;
-        return {
-          ...c,
-          replacementEntryId,
-          intendedRealizedValue: String(round4(-Number(eff.valueDelta))),
-        } as unknown as ConsumerEvidence;
+      return assemble(ctx, profile, probe, f, {
+        target: input.target,
+        sourceCodeSha: input.sourceCodeSha,
+        operationKey: input.operationKey,
+        postedAt: input.postedAt,
+        reason: input.reason,
+        ownerApprovalReference: input.ownerApprovalReference,
+        replacementIds: input.replacementIds,
+        receiptRate: receiptRateBasis(input.basis.totalValuation, input.basis.stockQty).receiptRate,
+        receiptQty: input.basis.stockQty,
+        stockUom: input.basis.unitQualification.stockUom,
+        tail: { action: 'correct', basis: input.basis },
       });
-      const before = {
-        binRowSha256: f.binRowSha256,
-        latestLedgerId: f.latestLedgerId,
-        latestLedgerRowSha256: f.latestLedgerRowSha256,
-        itemRowSha256: f.itemRowSha256,
-        ruleStateSha256: ruleStateDigest(f.entries),
-        sourceStateSha256: sourceStateDigest(f.entries, consumers),
-        financialFiscalSha256: financialStateDigest(consumers),
-        policyStateSha256: policyStateDigest({
-          accountingTimezone: f.timezone,
-          correctionMonth: monthOf(input.postedAt, f.timezone),
-          actorProfileId: profile,
-          lockedPeriods: f.lockedPeriods,
-        }),
-      };
-      return decodeReceiptChainManifestV1(
-        JSON.parse(
-          JSON.stringify({
-            schemaVersion: 1,
-            kind: 'receipt_chain',
-            target: input.target,
-            sourceCodeSha: input.sourceCodeSha,
-            orgId: ctx.tenantId,
-            actorProfileId: profile,
-            operationKey: input.operationKey,
-            sourceReceiptId: input.receiptEntryId,
-            sourceReceiptLineId: input.receiptLineId,
-            itemId: probe.itemId,
-            warehouseId: probe.warehouseId,
-            stockUom: input.basis.unitQualification.stockUom,
-            entries: f.entries,
-            consumers,
-            entryMap,
-            opening: f.opening,
-            before,
-            intended: { receiptQty: input.basis.stockQty, receiptRate, ...planned },
-            postedAt: input.postedAt,
-            accountingTimezone: f.timezone,
-            correctionMonth: monthOf(input.postedAt, f.timezone),
-            reason: input.reason,
-            ownerApprovalReference: input.ownerApprovalReference,
-            action: 'correct',
-            basis: input.basis,
-          }),
-        ),
+    });
+  } catch (e) {
+    throw classify(e);
+  }
+}
+
+// ───────────── explicit compensation (action 'compensate') ─────────────
+type PriorOperation = {
+  id: string;
+  manifestSha256: string;
+  manifest: Extract<ReceiptChainManifestV1, { action: 'correct' }>;
+};
+/** The one applied same-org receipt_chain CORRECT operation an inverse may undo; inverse-of-inverse and foreign keys refuse. */
+async function readPrior(tx: CoreTx, ctx: CoreCtx, id: string): Promise<PriorOperation> {
+  const [row] = await tx
+    .select()
+    .from(stkCorrections)
+    .where(and(eq(stkCorrections.orgId, ctx.tenantId), eq(stkCorrections.id, id)));
+  const it = row?.intended as
+    | { action?: string; manifestSha256?: string; domainManifest?: ReceiptChainManifestV1 }
+    | undefined;
+  if (!row || row.kind !== 'receipt_chain' || !it?.domainManifest || !it.manifestSha256)
+    return fail('source_conflict');
+  if (it.action !== 'correct' || it.domainManifest.action !== 'correct')
+    return fail('unsupported_movement');
+  return { id: row.id, manifestSha256: it.manifestSha256, manifest: it.domainManifest };
+}
+/** The inverse manifest must be exactly the prior immutable map and restored rate, never client-edited restoration facts. */
+async function assertPrior(tx: CoreTx, ctx: CoreCtx, m: ReceiptChainManifestV1): Promise<void> {
+  if (m.action !== 'compensate') return;
+  const { manifest: p, manifestSha256 } = await readPrior(tx, ctx, m.inverseOfOperationId);
+  const sameConsumers =
+    canonical(m.consumers.map((c) => c.id).sort()) ===
+    canonical(p.consumers.map((c) => c.id).sort());
+  const ok =
+    m.basis.priorManifestSha256 === manifestSha256 &&
+    m.basis.originalDocumentSha256 === p.basis.sha256 &&
+    canonical(m.entries.map((e) => e.entryId)) ===
+      canonical(p.entryMap.map((x) => x.replacementEntryId)) &&
+    m.itemId === p.itemId &&
+    m.warehouseId === p.warehouseId &&
+    m.stockUom === p.stockUom &&
+    p.entries[0].rate !== null &&
+    String(Number(m.intended.receiptRate)) === String(Number(p.entries[0].rate)) &&
+    Number(m.intended.receiptQty) === Number(p.entries[0].qty) &&
+    sameConsumers;
+  if (!ok) fail('invariant_failed');
+}
+
+export type DraftReceiptCompensationInput = {
+  target: ReceiptManifestBase['target'];
+  sourceCodeSha: string;
+  operationKey: string;
+  inverseOfOperationId: string;
+  postedAt: string;
+  reason: string;
+  ownerApprovalReference: string;
+  replacementIds?: readonly string[];
+};
+/** Producer of the INVERSE manifest from the immutable prior operation; restored facts come from it, never from the caller. */
+export async function draftReceiptCompensationManifest(
+  ctx: CoreCtx,
+  input: DraftReceiptCompensationInput,
+): Promise<ReceiptChainManifestV1> {
+  const profile = requireProfile(ctx);
+  try {
+    return await readSnapshot(ctx, async (tx) => {
+      requireOwnerWithCost(
+        await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile),
+        false,
       );
+      const prior = await readPrior(tx, ctx, input.inverseOfOperationId);
+      const p = prior.manifest;
+      const rate = p.entries[0].rate;
+      if (rate === null) return fail('unsupported_movement');
+      const replacementIds = p.entryMap.map((x) => x.replacementEntryId);
+      const [own] = await run(
+        tx,
+        sql`select min(l.id)::text id from stk_ledger l where l.org_id=${ctx.tenantId} and l.entry_id=${replacementIds[0]}::uuid`,
+      );
+      if (!own?.id) return fail('unsupported_movement');
+      const probe: Probe = {
+        itemId: p.itemId,
+        warehouseId: p.warehouseId,
+        entryIds: replacementIds,
+        firstLedgerId: String(own.id),
+      };
+      const f = await readFresh(tx, ctx, probe, false);
+      return assemble(ctx, profile, probe, f, {
+        target: input.target,
+        sourceCodeSha: input.sourceCodeSha,
+        operationKey: input.operationKey,
+        postedAt: input.postedAt,
+        reason: input.reason,
+        ownerApprovalReference: input.ownerApprovalReference,
+        replacementIds: input.replacementIds,
+        receiptRate: rate,
+        receiptQty: p.intended.receiptQty,
+        stockUom: p.stockUom,
+        tail: {
+          action: 'compensate',
+          inverseOfOperationId: prior.id,
+          basis: {
+            policy: 'restore_prior_before_snapshot',
+            priorManifestSha256: prior.manifestSha256,
+            originalDocumentSha256: p.basis.sha256,
+          },
+        },
+      });
     });
   } catch (e) {
     throw classify(e);
@@ -693,6 +844,7 @@ export async function previewReceiptCorrection(
         await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile),
         false,
       );
+      await assertPrior(tx, ctx, m);
       const digests = verifyFresh(m, await readFresh(tx, ctx, probeOf(m), false));
       const h = hashesOf(m, digests);
       return {
@@ -762,6 +914,7 @@ export async function applyReceiptCorrection(
       );
       await assertStockModulesEnabledInTx(tx, ctx, guard, ['stock', 'finances']);
       // 3. lock + re-read everything the approval covers
+      await assertPrior(tx, ctx, m);
       const fresh = await readFresh(tx, ctx, probeOf(m), true);
       const bins = await lockBinsInTx(tx, ctx, guard, [
         { itemId: m.itemId, warehouseId: m.warehouseId },
@@ -783,8 +936,9 @@ export async function applyReceiptCorrection(
           correctionOf: e.entryId,
           correctionOperationKey: m.operationKey,
           originalPostedAt: o.postedAt,
-          ...(i === 0
-            ? { correctionDocumentSha256: m.action === 'correct' ? m.basis.sha256 : null }
+          ...(m.action === 'compensate' ? { compensatesOperation: m.inverseOfOperationId } : {}),
+          ...(i === 0 && m.action === 'correct'
+            ? { correctionDocumentSha256: m.basis.sha256 }
             : {}),
         };
         const draft = await createEntryInTx(
@@ -890,7 +1044,7 @@ export async function applyReceiptCorrection(
           intended: {
             domain: 'receipt_chain',
             action: m.action,
-            inverseOfOperationId: null,
+            inverseOfOperationId: m.action === 'compensate' ? m.inverseOfOperationId : null,
             domainManifest: m,
             manifestSha256: h.manifestSha256,
             previewHash: h.previewHash,
@@ -995,6 +1149,7 @@ export async function getReceiptCorrectionStatus(
       }
       // no receipt: compare the complete approved before-state in this same snapshot
       try {
+        await assertPrior(tx, ctx, s.manifest);
         verifyFresh(s.manifest, await readFresh(tx, ctx, probeOf(s.manifest), false));
         return {
           schemaVersion: 1,
@@ -1015,7 +1170,3 @@ export async function getReceiptCorrectionStatus(
     throw classify(e);
   }
 }
-
-// TODO(handoff): action 'compensate' (explicit inverse) is decoded/hashed/validated but NOT executable here: verifyFresh refuses it
-// (unsupported_movement). It needs the prior-operation map read (stk_corrections.after.entryMap), the restore_prior_before_snapshot
-// planner and the source_id/source_entry_id = prior replacement receipt rule (see spec 123 deviations). Proposal in meta proposals/.
