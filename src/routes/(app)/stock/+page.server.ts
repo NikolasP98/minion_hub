@@ -4,10 +4,15 @@ import {
   listItems,
   listWarehouses,
   getBins,
-  getRecentLedger,
   itemOnHandInfo,
   getStockDailyFlow,
 } from '$server/services/stock.service';
+import {
+  listRecentMovementRows,
+  resolveMovementAdmission,
+  MovementError,
+} from '$server/services/stock-entries-read.service';
+import { error } from '@sveltejs/kit';
 import { buildLowStockRows, buildStockSeries } from '$server/services/stock.logic';
 
 const SERIES_DAYS = 90;
@@ -17,17 +22,18 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   if (isDenied(ctx)) return { stock: ctx }; // rendered by DataSource (spec 039)
   depends('stock:overview');
 
-  const [items, warehouses, bins, recentLedger, onHand, flow] = await Promise.all([
+  const admission = await resolveMovementAdmission(locals, ctx);
+  const [items, warehouses, bins, recentMovements, onHand, flow] = await Promise.all([
     listItems(ctx, { includeArchived: false }),
     listWarehouses(ctx),
     getBins(ctx),
-    getRecentLedger(ctx, 20),
+    listRecentMovementRows(ctx, admission).catch((e) => {
+      if (e instanceof MovementError) throw error(e.status, e.code);
+      throw e;
+    }),
     itemOnHandInfo(ctx),
     getStockDailyFlow(ctx, SERIES_DAYS),
   ]);
-
-  const itemById = new Map(items.map((i) => [i.id, i]));
-  const warehouseById = new Map(warehouses.map((w) => [w.id, w]));
 
   const totalValuation = bins.reduce((sum, b) => sum + Number(b.qty) * Number(b.valuationRate), 0);
 
@@ -37,14 +43,6 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     items,
     new Map([...onHand].map(([id, v]) => [id, v.qtyOnHand])),
   );
-
-  const recent = recentLedger.map((l) => ({
-    id: l.id,
-    itemName: itemById.get(l.itemId)?.name ?? l.itemId,
-    warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId,
-    qtyDelta: Number(l.qtyDelta),
-    postedAt: l.postedAt,
-  }));
 
   const series = buildStockSeries(totalValuation, flow, SERIES_DAYS, new Date());
 
@@ -56,7 +54,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       itemCount: items.length,
       warehouseCount: warehouses.length,
       lowStock,
-      recent,
+      recentMovements,
       hasData: items.length > 0 || warehouses.length > 0,
     },
   };

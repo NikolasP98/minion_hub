@@ -16,7 +16,28 @@
   type PageData = Granted<LoadedPageData['stock']>;
   let { data }: { data: PageData } = $props();
   type LowStockRow = PageData['lowStock'][number];
-  type RecentRow = PageData['recent'][number];
+  type FullRecentRow = Extract<PageData['recentMovements'], { projection: 'full' }>['rows'][number];
+  type RecentRow = {
+    ledgerId: string;
+    entryId: string;
+    entryHref: string;
+    itemId: string;
+    warehouseId: string;
+  } & Partial<FullRecentRow>;
+  const recentRows = $derived(data.recentMovements.rows as RecentRow[]);
+  const recentFull = $derived(data.recentMovements.projection === 'full');
+  const recentKind = (r: RecentRow) =>
+    r.movementKind === 'receipt'
+      ? m.stock_type_receipt()
+      : r.movementKind === 'issue'
+        ? m.stock_type_issue()
+        : r.movementKind === 'transfer'
+          ? m.stock_type_transfer()
+          : r.movementKind === 'adjustment'
+            ? m.stock_type_adjustment()
+            : m.stock_mv_kind_unknown();
+  const recentItem = (r: RecentRow) =>
+    r.item?.name ?? (recentFull ? r.itemId.slice(0, 8) : m.stock_mv_unavailable_value());
 
   const fmt = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
   // Money vs quantity: `fmt` stays unit-less for qty; money gets its symbol.
@@ -117,18 +138,39 @@
     },
   ];
 
-  const recentColumns: DataColumn<RecentRow>[] = [
-    { key: 'item', label: m.stock_col_item(), accessor: (r) => r.itemName },
-    { key: 'warehouse', label: m.stock_col_warehouse(), accessor: (r) => r.warehouseName },
-    {
-      key: 'qtyDelta',
-      label: m.stock_col_qty(),
-      align: 'right',
-      numeric: true,
-      custom: true,
-      accessor: (r) => r.qtyDelta,
-    },
-  ];
+  /** Exact decimal strings: Number() is only the local ordering key, never the display. */
+  const deltaCmp = (a: RecentRow, b: RecentRow) =>
+    Number(a.qtyDelta ?? 0) - Number(b.qtyDelta ?? 0);
+  const recentColumns = $derived.by((): DataColumn<RecentRow>[] => {
+    const sortable = data.recentMovements.projection !== 'identity_only';
+    const hasValues = data.recentMovements.projection !== 'identity_only';
+    return [
+      { key: 'item', label: m.stock_col_item(), sortable: recentFull, accessor: recentItem },
+      {
+        key: 'warehouse',
+        label: m.stock_col_warehouse(),
+        sortable: recentFull,
+        accessor: (r) => r.warehouseName ?? r.warehouseId.slice(0, 8),
+      },
+      {
+        key: 'qtyDelta',
+        label: m.stock_col_qty(),
+        align: 'right',
+        numeric: true,
+        custom: true,
+        sortable: sortable && hasValues,
+        sortFn: deltaCmp,
+        accessor: (r) => r.qtyDelta ?? '',
+      },
+      {
+        key: 'entry',
+        label: m.stock_col_entry(),
+        sortable: false,
+        custom: true,
+        accessor: (r) => r.entryHumanId ?? r.entryId.slice(0, 8),
+      },
+    ];
+  });
 </script>
 
 <svelte:head><title>{m.nav_stock()}</title></svelte:head>
@@ -208,24 +250,37 @@
   {:else if id === 'recent'}
     <div class="card">
       <div class="card-h">{m.stock_recent_title()}</div>
-      {#if data.recent.length === 0}
+      {#if recentRows.length === 0}
         <p class="t-caption">{m.stock_recent_empty()}</p>
       {:else}
+        <p class="t-caption">
+          {m.stock_mv_recent_notice()}
+          {#if !recentFull}{m.stock_mv_unavailable()}{/if}
+        </p>
         <DataTable
           variant="plain"
-          data={data.recent}
+          data={recentRows}
           columns={recentColumns}
-          getRowId={(r) => String(r.id)}
+          getRowId={(r) => r.ledgerId}
         >
           {#snippet cell(row: RecentRow, col: DataColumn<RecentRow>)}
             {#if col.key === 'qtyDelta'}
-              <span
-                class="tabular-nums"
-                class:delta-in={row.qtyDelta > 0}
-                class:delta-out={row.qtyDelta < 0}
-              >
-                {row.qtyDelta > 0 ? '+' : ''}{fmt(row.qtyDelta)}
-              </span>
+              {#if row.qtyDelta === undefined}
+                <span class="t-caption">{m.stock_mv_unavailable_value()}</span>
+              {:else}
+                <span
+                  class="tabular-nums"
+                  class:delta-in={Number(row.qtyDelta) > 0}
+                  class:delta-out={Number(row.qtyDelta) < 0}
+                >
+                  {Number(row.qtyDelta) > 0 ? '+' : ''}{row.qtyDelta}
+                </span>
+              {/if}
+            {:else if col.key === 'entry'}
+              <a href={row.entryHref} class="hover:underline">
+                ENT-{row.entryHumanId ?? row.entryId.slice(0, 8)}
+              </a>
+              {#if recentFull}<span class="t-caption"> · {recentKind(row)}</span>{/if}
             {/if}
           {/snippet}
         </DataTable>

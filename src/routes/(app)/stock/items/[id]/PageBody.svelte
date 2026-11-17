@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/state';
   import { recordActions } from '$lib/records/actions';
   import { createSaveStatus, saveAndRefresh } from '$lib/records/save-status.svelte';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
@@ -43,7 +44,53 @@
   let { data }: { data: PageData } = $props();
 
   type ConsumedByRow = PageData['consumedBy'][number];
-  type LedgerRow = PageData['ledger'][number];
+  type MovementPage = PageData['movements'];
+  type FullLedgerRow = Extract<MovementPage, { projection: 'full' }>['rows'][number];
+  type LedgerRow = {
+    ledgerId: string;
+    entryId: string;
+    entryHref: string;
+  } & Partial<FullLedgerRow>;
+  const mv = $derived(data.movements);
+  const ledgerRows = $derived(mv.rows as LedgerRow[]);
+  const ledgerFull = $derived(mv.projection === 'full');
+  const ledgerHasValues = $derived(mv.projection !== 'identity_only');
+  const ledgerHasCursor = $derived(page.url.searchParams.has('ledgerCursor'));
+  const ledgerHref = (cursor: string | null) => {
+    const sp = new URLSearchParams(page.url.searchParams);
+    if (cursor) sp.set('ledgerCursor', cursor);
+    else sp.delete('ledgerCursor');
+    const qs = sp.toString();
+    return `${page.url.pathname}${qs ? `?${qs}` : ''}`;
+  };
+  const kindLabel = (l: LedgerRow) =>
+    l.movementKind === 'receipt'
+      ? m.stock_type_receipt()
+      : l.movementKind === 'issue'
+        ? m.stock_type_issue()
+        : l.movementKind === 'transfer'
+          ? m.stock_type_transfer()
+          : l.movementKind === 'adjustment'
+            ? m.stock_type_adjustment()
+            : m.stock_mv_kind_unknown();
+  const sourceKindLabel = (k: string) =>
+    k === 'ticket'
+      ? m.stock_document_ticket()
+      : k === 'invoice'
+        ? m.stock_document_invoice()
+        : k === 'purchase'
+          ? m.stock_document_purchase()
+          : m.stock_document_booking();
+  const sourceText = (l: LedgerRow) => {
+    const d = l.document;
+    if (!d) return l.sourceState === 'denied' ? m.stock_mv_state_denied() : '';
+    const short = (d.href.match(/[0-9a-f]{8}-[0-9a-f-]{27}/i)?.[0] ?? '').slice(0, 8);
+    return d.label ?? m.stock_mv_source_fallback({ kind: sourceKindLabel(d.kind), short });
+  };
+  const counterpartyText = (l: LedgerRow) =>
+    l.counterpartyState === 'denied' ? m.stock_mv_state_denied() : (l.counterpartyLabel ?? '');
+  const stockUnit = $derived(mv.projection === 'full' ? (mv.rows[0]?.stockUnit ?? null) : null);
+  const unavailableText = () => m.stock_mv_unavailable_value();
   let attachmentsRefreshKey = $state(0);
   // ponytail: backend contract fields (consumptionUom/unitsPerStockUom/subunitsPerStockUom/
   // diagramEnabled) are landing via a parallel migration — intersect optionally so this
@@ -338,20 +385,20 @@
       label: m.stock_col_entry(),
       sortable: false,
       custom: true,
-      accessor: (l) => l.entryHumanId ?? '',
+      accessor: (l) => l.entryHumanId ?? l.entryId.slice(0, 8),
     },
     {
       key: 'postedAt',
       label: m.stock_col_posted_at(),
       sortable: false,
       custom: true,
-      accessor: (l) => l.postedAt,
+      accessor: (l) => l.postedAt ?? '',
     },
     {
       key: 'warehouse',
       label: m.stock_col_warehouse(),
       sortable: false,
-      accessor: (l) => l.warehouseName,
+      accessor: (l) => l.warehouseName ?? l.warehouseId.slice(0, 8),
     },
     {
       key: 'delta',
@@ -360,7 +407,7 @@
       numeric: true,
       sortable: false,
       custom: true,
-      accessor: (l) => Number(l.qtyDelta),
+      accessor: (l) => l.qtyDelta ?? '',
     },
     {
       key: 'qtyAfter',
@@ -369,7 +416,7 @@
       numeric: true,
       sortable: false,
       custom: true,
-      accessor: (l) => Number(l.qtyAfter),
+      accessor: (l) => l.qtyAfter ?? '',
     },
     {
       key: 'valuationRate',
@@ -378,7 +425,7 @@
       numeric: true,
       sortable: false,
       custom: true,
-      accessor: (l) => Number(l.valuationRate),
+      accessor: (l) => l.valuationRate ?? '',
     },
   ];
 
@@ -1058,38 +1105,80 @@
           {/if}
         </div>
       {/if}
-      {#if data.ledger.length === 0}
+      {#if ledgerRows.length === 0 && ledgerHasCursor}
+        <p class="t-caption">{m.stock_mv_page_empty()} {m.stock_mv_cursor_empty()}</p>
+      {:else if ledgerRows.length === 0}
         <p class="t-caption">{m.stock_ledger_empty()}</p>
       {:else}
+        {#if !ledgerFull}
+          <p class="t-caption" data-testid="ledger-unavailable">{m.stock_mv_unavailable()}</p>
+        {/if}
+        {#if ledgerHasValues}
+          <p class="t-caption">{m.stock_mv_valuation_unverified()}</p>
+        {/if}
+        {#if stockUnit}
+          <p class="t-caption" data-testid="ledger-unit">
+            {stockUnit.currentState === 'available'
+              ? m.stock_mv_unit_current({ uom: stockUnit.currentItemUom ?? '' })
+              : m.stock_mv_unit_missing()} · {m.stock_mv_unit_unrecorded()}
+          </p>
+        {/if}
         <DataTable
           variant="plain"
-          data={data.ledger}
+          data={ledgerRows}
           columns={ledgerColumns}
-          getRowId={(l) => String(l.id)}
+          getRowId={(l) => l.ledgerId}
         >
           {#snippet cell(row: LedgerRow, col: DataColumn<LedgerRow>)}
             {#if col.key === 'entry'}
-              <PeekLink href={`/stock/entries/${row.entryId}`} mode="modal"
-                >ENT-{row.entryHumanId ?? '—'}</PeekLink
+              <PeekLink href={row.entryHref} mode="modal"
+                >ENT-{row.entryHumanId ?? row.entryId.slice(0, 8)}</PeekLink
               >
+              {#if ledgerFull}
+                <span class="t-caption mv-ctx">
+                  {kindLabel(row)}{#if sourceText(row)}
+                    · {#if row.document}<PeekLink href={row.document.href} mode="modal"
+                        >{sourceText(row)}</PeekLink
+                      >{:else}{sourceText(row)}{/if}{/if}{#if counterpartyText(row)}
+                    · {counterpartyText(row)}{/if}
+                </span>
+              {/if}
             {:else if col.key === 'postedAt'}
-              <span class="t-caption">{new Date(row.postedAt).toLocaleString(appLocale())}</span>
-            {:else if col.key === 'delta'}
-              <span
-                class="tabular-nums"
-                class:delta-in={Number(row.qtyDelta) > 0}
-                class:delta-out={Number(row.qtyDelta) < 0}
+              <span class="t-caption"
+                >{row.postedAt
+                  ? new Date(row.postedAt).toLocaleString(appLocale())
+                  : unavailableText()}</span
               >
-                {Number(row.qtyDelta) > 0 ? '+' : ''}{fmt(row.qtyDelta)}
-              </span>
+            {:else if col.key === 'delta'}
+              {#if row.qtyDelta === undefined}
+                <span class="t-caption">{unavailableText()}</span>
+              {:else}
+                <span
+                  class="tabular-nums"
+                  class:delta-in={Number(row.qtyDelta) > 0}
+                  class:delta-out={Number(row.qtyDelta) < 0}
+                >
+                  {Number(row.qtyDelta) > 0 ? '+' : ''}{row.qtyDelta}
+                </span>
+              {/if}
             {:else if col.key === 'qtyAfter'}
-              <span class="tabular-nums">{fmt(row.qtyAfter)}</span>
+              <span class="tabular-nums">{row.qtyAfter ?? unavailableText()}</span>
             {:else if col.key === 'valuationRate'}
-              <span class="tabular-nums">{fmtMoney(row.valuationRate)}</span>
+              <span class="tabular-nums">{row.valuationRate ?? unavailableText()}</span>
             {/if}
           {/snippet}
         </DataTable>
       {/if}
+      <nav class="mv-nav" aria-label={m.stock_ledger_empty()}>
+        {#if ledgerHasCursor}
+          <Button variant="outline" size="sm" href={ledgerHref(null)}>{m.stock_mv_newest()}</Button>
+        {/if}
+        {#if mv.nextCursor}
+          <Button variant="outline" size="sm" href={ledgerHref(mv.nextCursor)}>
+            {m.stock_mv_older()}
+          </Button>
+        {/if}
+      </nav>
     </div>
     <div class="card">
       <div class="card-h flex items-center justify-between gap-2">
@@ -1108,6 +1197,15 @@
 </div>
 
 <style>
+  .mv-ctx {
+    display: block;
+  }
+  .mv-nav {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding-top: var(--space-2);
+  }
   .tag-chips {
     display: flex;
     flex-wrap: wrap;
