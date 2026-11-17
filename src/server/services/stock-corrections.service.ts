@@ -4,10 +4,11 @@
  * transaction does cancel -> create -> submit -> stamp -> immutable receipt + audit, or nothing.
  *
  * TODO(handoff): (T011) the retry wrapper covers ONLY correction transactions; participant wrappers keep
- * their own timeouts. (T017/T021/T023) no UI, browser-recovery pointer, blocked-evidence projection,
- * GET-by-id detail or operator CLI loader key yet. Owner currency attestation (valuation-qualification.md), private garment
- * `stock_only` entrypoints, browser recovery pointer and the operator CLI loader key are NOT wired;
- * a public `stock_only` is refused (owner_evidence_required) and cost currency is not qualified.
+ * their own timeouts. (T023) no blocked-evidence projection with F1/F2 links, GET-by-id detail or operator
+ * CLI loader key yet. Owner currency attestation (valuation-qualification.md: `valuation` envelope,
+ * owner-only proof, qualified cost currency) is NOT built in the engine or the UI, so cost lines render
+ * unformatted; private garment `stock_only` entrypoints are not wired, and a public `stock_only` is
+ * refused (owner_evidence_required). See meta proposals/2026-11-17-hub-stock-correction-handoff.md.
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -27,6 +28,7 @@ import {
   resolveFreshOperatorCapabilitiesForWriteInTransaction,
   type FreshCapabilitySnapshot,
 } from './rbac.service';
+import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
 import { recordAuditInTx } from './activity.service';
 import {
   StockError,
@@ -106,6 +108,16 @@ export interface CorrectionReceipt {
 export type CorrectionResult =
   | { schemaVersion: 1; outcome: 'applied'; replayed: boolean; receipt: CorrectionReceipt }
   | { schemaVersion: 1; outcome: 'not_found' };
+
+/** A deleting principal or an inactive organization is refused by the authority bridge: a plain 403, no private data. */
+async function active<T>(p: Promise<T>): Promise<T> {
+  try {
+    return await p;
+  } catch (e) {
+    if (e instanceof OperatorAuthorityError) throw new CorrectionError('not allowed', 'forbidden');
+    throw e;
+  }
+}
 
 // ── authority ────────────────────────────────────────────────────────────────────────────
 
@@ -599,7 +611,9 @@ export async function previewStockCorrection(
   const request = parsePreviewRequest(rawRequest);
   const reason = parseReason(rawReason);
   return readSnapshot(ctx, async (tx) => {
-    const caps = await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, actor);
+    const caps = await active(
+      resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, actor),
+    );
     coarseAuthority(caps, request, false);
     // A POS-only caller may have a stockless swap checked; nonempty stock intent needs stock access.
     let p: Planned;
@@ -663,7 +677,7 @@ export async function applyStockCorrection(
   // Refuse before ANY lock or source read: a read-only snapshot answers the coarse check.
   await readSnapshot(ctx, async (tx) =>
     coarseAuthority(
-      await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile),
+      await active(resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile)),
       request,
       true,
     ),
@@ -699,10 +713,8 @@ export async function applyStockCorrection(
         } as CorrectionResult;
       }
       // 2. Fresh authority under both gates, then module state read directly.
-      const caps = await resolveFreshOperatorCapabilitiesForWriteInTransaction(
-        tx,
-        ctx.tenantId,
-        profile,
+      const caps = await active(
+        resolveFreshOperatorCapabilitiesForWriteInTransaction(tx, ctx.tenantId, profile),
       );
       coarseAuthority(caps, request, true);
       const now = new Date();
@@ -856,7 +868,9 @@ export async function getStockCorrectionByOperationKey(
   if (!UUID_RE.test(input.operationKey))
     throw new CorrectionError('operationKey must be a UUID', 'invalid_request');
   return readSnapshot(ctx, async (tx) => {
-    const caps = await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile);
+    const caps = await active(
+      resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile),
+    );
     if (!can(caps, 'pos', 'view') && !can(caps, 'stock', 'view'))
       throw new CorrectionError('not allowed', 'not_found');
     const [row] = await tx
