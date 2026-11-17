@@ -883,3 +883,153 @@ describe('stock corrections against PostgreSQL', () => {
     ).toBe(1);
   });
 });
+
+describe('stock corrections against PostgreSQL', () => {
+  it('serializes period fiscal and void guards before correction', async () => {
+    const wd = await world();
+    const stockMgr = await addProfile(wd.org, 'member', [
+      ['stock', true, true, true, 0],
+      ['finance', true, false, false, 1],
+    ]);
+    const mgrCtx = ctxFor(wd.org, stockMgr);
+    const receipt = async (item: string, qty: number, rate: number) => {
+      const e = await createEntry(
+        wd.ownerCtx,
+        {
+          type: 'receipt',
+          metadata: { purchaseId: randomUUID(), providerRef: 'F-1', currency: 'USD', fxRate: 3.7 },
+          lines: [{ itemId: item, qty, rate, toWarehouseId: wd.wh }],
+        },
+        actorOf(wd.boss),
+      );
+      await submitEntry(wd.ownerCtx, e.id, actorOf(wd.boss));
+      return e.id;
+    };
+    const fresh = randomUUID();
+    await owner.unsafe(
+      `insert into public.stk_items(id,org_id,code,name) values ('${fresh}','${wd.org}','R','R')`,
+    );
+    const id = await receipt(fresh, 10, 2);
+    const [line] = await owner`select id from public.stk_entry_lines where entry_id=${id}`;
+    const request = (qty: string, rate: string) => ({
+      mode: 'receipt_replace' as const,
+      sourceType: 'stock_receipt' as const,
+      sourceId: id,
+      replacement: {
+        lines: [
+          {
+            originalLineId: line.id as string,
+            itemId: fresh,
+            qty,
+            rate,
+            uom: 'unit',
+            toWarehouseId: wd.wh,
+          },
+        ],
+      },
+    });
+    const run = async (ctx: Ctx, req: ReturnType<typeof request>, reason = 'typo') => {
+      const pv = await previewStockCorrection(ctx, req, reason);
+      return applyStockCorrection(
+        ctx,
+        {
+          request: req,
+          operationKey: randomUUID(),
+          previewHash: pv.previewHash,
+          payloadHash: pv.payloadHash,
+          reason,
+        },
+        actorOf(ctx.profileId),
+      );
+    };
+    // A non-owner may not change stock VALUE; the quantity is theirs to fix.
+    expect(await refusal(run(mgrCtx, request('10', '3')))).toBe('forbidden');
+    expect(await bin(wd.org, fresh)).toBe('10');
+    // Locked current month: refused with zero effects.
+    await owner.unsafe(
+      `insert into public.pos_period_locks(org_id,period) values ('${wd.org}', to_char(now() at time zone 'America/Lima','YYYY-MM'))`,
+    );
+    expect(await refusal(run(mgrCtx, request('9', '2')))).toBe('period_locked');
+    await owner.unsafe(`delete from public.pos_period_locks where org_id='${wd.org}'`);
+    // Quantity-only correction by the stock manager: one linked replacement, purchase link and FX kept.
+    const ok = await run(mgrCtx, request('9', '2'));
+    expect(ok).toMatchObject({
+      outcome: 'applied',
+      receipt: { kind: 'receipt_replace', sourceEntryId: id },
+    });
+    expect(await bin(wd.org, fresh)).toBe('9');
+    const repl = ok.outcome === 'applied' ? ok.receipt.replacementEntryId! : '';
+    expect(
+      (await owner`select metadata from public.stk_entries where id=${repl}`)[0].metadata,
+    ).toMatchObject({ correctionOf: id, providerRef: 'F-1', currency: 'USD', fxRate: 3.7 });
+    expect((await owner`select status from public.stk_entries where id=${id}`)[0].status).toBe(
+      'cancelled',
+    );
+    // Already corrected, or consumed downstream: blocked, nothing moves.
+    expect(await refusal(run(mgrCtx, request('8', '2')))).toBe('dependent_history');
+    const id2 = await receipt(fresh, 5, 2);
+    const [line2] = await owner`select id from public.stk_entry_lines where entry_id=${id2}`;
+    const issue = await createEntry(
+      wd.ownerCtx,
+      { type: 'issue', lines: [{ itemId: fresh, qty: 1, fromWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    await submitEntry(wd.ownerCtx, issue.id, actorOf(wd.boss));
+    const consumed = {
+      mode: 'receipt_replace' as const,
+      sourceType: 'stock_receipt' as const,
+      sourceId: id2,
+      replacement: {
+        lines: [
+          {
+            originalLineId: line2.id as string,
+            itemId: fresh,
+            qty: '4',
+            rate: '2',
+            uom: 'unit',
+            toWarehouseId: wd.wh,
+          },
+        ],
+      },
+    };
+    expect(await refusal(run(mgrCtx, consumed))).toBe('dependent_history');
+    // Absent finance settings: policy_unverified (no Lima fallback for receipts).
+    await owner.unsafe(`delete from public.fin_settings where org_id='${wd.org}'`);
+    const id3 = await receipt(fresh, 5, 2);
+    const [line3] = await owner`select id from public.stk_entry_lines where entry_id=${id3}`;
+    expect(
+      await refusal(
+        run(mgrCtx, {
+          ...consumed,
+          sourceId: id3,
+          replacement: {
+            lines: [
+              { ...consumed.replacement.lines[0], originalLineId: line3.id as string, qty: '4' },
+            ],
+          },
+        }),
+      ),
+    ).toBe('policy_unverified');
+    // Sale guards: a locked month and a void ticket refuse the swap before any write.
+    await owner.unsafe(
+      `insert into public.fin_settings(org_id,timezone) values ('${wd.org}','America/Lima')`,
+    );
+    const t = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    await owner.unsafe(
+      `insert into public.pos_period_locks(org_id,period) select '${wd.org}', to_char(submitted_at at time zone 'America/Lima','YYYY-MM') from public.pos_tickets where id='${t.ticketId}'`,
+    );
+    expect(
+      await refusal(
+        previewStockCorrection(wd.ownerCtx, swapRequest(t.lineIds[0], wd.PM, wd.PL), 'x'),
+      ),
+    ).toBe('period_locked');
+    await owner.unsafe(`delete from public.pos_period_locks where org_id='${wd.org}'`);
+    await owner.unsafe(`update public.pos_tickets set status='void' where id='${t.ticketId}'`);
+    expect(
+      await refusal(
+        previewStockCorrection(wd.ownerCtx, swapRequest(t.lineIds[0], wd.PM, wd.PL), 'x'),
+      ),
+    ).toBe('dependent_history');
+  });
+});

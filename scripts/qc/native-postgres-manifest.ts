@@ -1175,7 +1175,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/stock-corrections.sql.integration.test.ts',
-      minimumAssertions: 7,
+      minimumAssertions: 8,
       exactAssertions: true,
       requiredBehaviors: [
         'stock corrections against PostgreSQL preserves POS only no stock swap and rejects unauthorized stock effects',
@@ -1185,6 +1185,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'stock corrections against PostgreSQL enforces tenant scoped five kind schema immutable grants and private source ownership',
         'stock corrections against PostgreSQL repeated concurrent booking completion reuses frozen draft and submitted source once',
         'stock corrections against PostgreSQL absent enabled module can be disabled only before or after the guarded correction',
+        'stock corrections against PostgreSQL serializes period fiscal and void guards before correction',
       ],
     },
   ],

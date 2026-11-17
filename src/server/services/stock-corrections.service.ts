@@ -7,10 +7,16 @@
  * `stock_only` entrypoints, browser recovery pointer and the operator CLI loader key are NOT wired;
  * a public `stock_only` is refused (owner_evidence_required) and cost currency is not qualified.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore, withOrgCoreTransaction, type CoreTx } from '$server/db/with-org-core';
-import { stkCorrections, stkEntries, stkEntryLines, stkBins } from '$server/db/pg-schema/stock';
+import {
+  stkCorrections,
+  stkEntries,
+  stkEntryLines,
+  stkBins,
+  stkItems,
+} from '$server/db/pg-schema/stock';
 import { finSettings } from '$server/db/pg-finance-schema';
 import { posPeriodLocks } from '$server/db/pg-pos-schema';
 import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
@@ -330,6 +336,23 @@ async function plan(
     .limit(1);
   if (prior.length) throw new CorrectionError('receipt was already corrected', 'dependent_history');
 
+  // A line stored without a UOM is in its item's stock UOM (no implicit conversion exists).
+  const itemUoms = new Map(
+    (
+      await tx
+        .select({ id: stkItems.id, uom: stkItems.uom })
+        .from(stkItems)
+        .where(
+          and(
+            eq(stkItems.orgId, ctx.tenantId),
+            inArray(
+              stkItems.id,
+              originalLines.map((l) => l.itemId),
+            ),
+          ),
+        )
+    ).map((i) => [i.id, i.uom]),
+  );
   let deltas: ReceiptDelta[];
   try {
     deltas = validateReceiptReplacement(
@@ -338,7 +361,7 @@ async function plan(
         itemId: l.itemId,
         qty: String(l.qty),
         rate: l.rate == null ? null : String(l.rate),
-        uom: l.uom,
+        uom: l.uom ?? itemUoms.get(l.itemId) ?? null,
         toWarehouseId: l.toWarehouseId,
       })),
       request.replacement.lines,
@@ -400,7 +423,7 @@ async function plan(
         itemId: l.itemId,
         qty: String(l.qty),
         rate: l.rate == null ? null : String(l.rate),
-        uom: l.uom,
+        uom: l.uom ?? itemUoms.get(l.itemId) ?? null,
         toWarehouseId: l.toWarehouseId,
       })),
     },
