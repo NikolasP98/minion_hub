@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CorrectionError } from '$server/services/stock-corrections.logic';
 
-const mocks = vi.hoisted(() => ({ apply: vi.fn(), preview: vi.fn() }));
+const mocks = vi.hoisted(() => ({ apply: vi.fn(), preview: vi.fn(), noop: vi.fn() }));
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1', profileId: 'me' }),
 }));
@@ -11,6 +11,7 @@ vi.mock('$server/services/modules.service', () => ({
 vi.mock('$server/services/rbac.service', () => ({ requireOrgCapability: () => Promise.resolve() }));
 vi.mock('$server/services/stock-corrections.service', () => ({
   applyStockCorrection: (...args: unknown[]) => mocks.apply(...args),
+  isSwapNoOp: (...args: unknown[]) => mocks.noop(...args),
   previewStockCorrection: (...args: unknown[]) => mocks.preview(...args),
 }));
 import { POST } from './+server';
@@ -47,9 +48,19 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.apply.mockResolvedValue({ schemaVersion: 1, outcome: 'applied', replayed: false });
   mocks.preview.mockResolvedValue({ eligible: true });
+  mocks.noop.mockResolvedValue(false);
 });
 
 describe('POST /api/pos/tickets/:id/lines/:lineId/swap', () => {
+  it('swapping to the product already on the line succeeds as a no-op without the engine', async () => {
+    mocks.noop.mockResolvedValue(true);
+    const res = await call(POST, { productId: OLD, expectedProductId: OLD });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, outcome: 'noop' });
+    expect(mocks.noop).toHaveBeenCalledWith(expect.anything(), 't1', LINE, OLD);
+    expect(mocks.apply).not.toHaveBeenCalled();
+  });
+
   it('delegates to the correction engine with the line, the path ticket and the actor', async () => {
     const res = await call(POST, full);
     expect(res.status).toBe(200);

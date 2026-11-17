@@ -7598,6 +7598,7 @@
   "stock_corr_storage": "This browser cannot save the correction reference, so the correction cannot be confirmed here. Allow site storage and try again.",
   "stock_corr_previewing": "Reviewing…",
   "stock_corr_err_forbidden": "Your role cannot make this correction. Ask someone with stock and cost access.",
+  "stock_corr_err_owner_required": "Only an owner can correct a stock value. Ask an owner to review and apply this correction.",
   "stock_corr_err_cost_visibility_required": "Your role cannot see the costs this correction changes. Ask someone with finance access.",
   "stock_corr_err_not_found": "This record no longer exists or is not available to you. Reload the page.",
   "stock_corr_err_stale_preview": "The record changed after the review. Review the change again.",

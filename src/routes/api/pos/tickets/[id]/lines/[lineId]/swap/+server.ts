@@ -5,7 +5,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
-import { applyStockCorrection } from '$server/services/stock-corrections.service';
+import { applyStockCorrection, isSwapNoOp } from '$server/services/stock-corrections.service';
 import { refreshRequired, swapRefusal, swapRequest } from './_swap-correction';
 
 const sha = z.string().regex(/^[0-9a-f]{64}$/);
@@ -28,6 +28,11 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
   await requireOrgCapability(locals, 'pos', 'edit');
   const body = await parseBody(request, swapSchema);
+  if (
+    body.productId === body.expectedProductId &&
+    (await isSwapNoOp(ctx, params.id!, params.lineId!, body.productId))
+  )
+    return json({ ok: true, outcome: 'noop' }, { headers: { 'cache-control': 'no-store' } });
   const { reason, operationKey, previewHash, payloadHash } = body;
   if (reason === undefined || !operationKey || !previewHash || !payloadHash)
     return refreshRequired();

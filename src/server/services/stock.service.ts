@@ -441,7 +441,12 @@ export async function updateItem(
 ): Promise<StkItem | null> {
   return withOrgCore(ctx, async (tx) => {
     // Only a stock-rule change (UOM conversion / bridge) can race a correction's rule snapshot.
-    if ('uom' in patch || 'consumptionUom' in patch || 'unitsPerStockUom' in patch)
+    if (
+      'uom' in patch ||
+      'consumptionUom' in patch ||
+      'unitsPerStockUom' in patch ||
+      'isStockItem' in patch
+    )
       await lockStockWrite(tx, ctx);
     const [cur] = await tx
       .select()

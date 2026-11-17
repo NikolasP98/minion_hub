@@ -13,6 +13,7 @@ export type CorrectionRefusalCode =
   | 'invalid_request'
   | 'forbidden'
   | 'cost_visibility_required'
+  | 'owner_required'
   | 'not_found'
   | 'stale_preview'
   | 'operation_conflict'
@@ -36,6 +37,7 @@ export const CORRECTION_STATUS: Record<CorrectionRefusalCode, number> = {
   invalid_request: 400,
   forbidden: 403,
   cost_visibility_required: 403,
+  owner_required: 403,
   not_found: 404,
   stale_preview: 409,
   operation_conflict: 409,
