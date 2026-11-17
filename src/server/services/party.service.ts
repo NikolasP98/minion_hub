@@ -442,6 +442,28 @@ function projectPartyFields<T extends PartySearchRow>(row: T, scope: PartyReadSc
       }
     : row;
 }
+/** Movement-label batch (spec 125): id + basic name only, inside the caller's snapshot tx.
+ *  Same owner/allowUnlinked predicate as getPartyForRead; name is not PII-masked. At most 50 ids. */
+export async function listPartyLabelsForReadInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  ids: string[],
+  scope: PartyReadScope = {},
+): Promise<Map<string, string | null>> {
+  const unique = [...new Set(ids)].slice(0, 50);
+  if (!unique.length) return new Map();
+  const rows = await tx
+    .select({ id: parties.id, name: parties.name })
+    .from(parties)
+    .where(
+      and(
+        eq(parties.orgId, ctx.tenantId),
+        inArray(parties.id, unique),
+        partyReadPredicate(ctx, scope),
+      ),
+    );
+  return new Map(rows.map((r) => [r.id, r.name]));
+}
 /** Picker API projection: registry metadata and hidden foreign facets never enter its result. */
 export async function getPartyForRead(
   ctx: CoreCtx,
