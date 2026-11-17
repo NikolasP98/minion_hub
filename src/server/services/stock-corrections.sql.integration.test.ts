@@ -2,7 +2,27 @@ import { randomUUID } from 'node:crypto';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import postgres from 'postgres';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+
+// Cache layers are network clients; the native fixture has none.
+vi.mock('@minion-stack/cache', () => ({
+  cached: (_key: unknown, _opts: unknown, fn: () => unknown) => fn(),
+  keys: { hub: () => 'k' },
+  tags: { tenantDomain: () => [] },
+  invalidateTags: async () => undefined,
+}));
+import { CorrectionError } from './stock-corrections.logic';
+import {
+  applyStockCorrection,
+  getStockCorrectionByOperationKey,
+  previewStockCorrection,
+} from './stock-corrections.service';
+import { createEntry, submitEntry, rebuildBins, lockStockWrite } from './stock.service';
+import { setModuleEnabled } from './modules.service';
+import { realizeAccruals } from './stock-accruals.service';
+import { postTicketStock } from './pos.service';
+import { withOrgCore } from '$server/db/with-org-core';
+import { assertStockModulesEnabledInTx } from './stock.service';
 import {
   correctionMigrationSql,
   openCorrectionNativeChild,
@@ -275,5 +295,591 @@ describe('stock corrections against PostgreSQL', () => {
     ]);
     // Re-applying the migration is a no-op (idempotent).
     await owner.unsafe(correctionMigrationSql());
+  });
+});
+
+// ── world fixture ────────────────────────────────────────────────────────────────────────
+
+const actorOf = (id: string) => ({ id, name: 'Native' });
+type Ctx = { db: ReturnType<typeof drizzle>; tenantId: string; profileId: string };
+const extraClients: postgres.Sql[] = [];
+function ctxFor(org: string, profile: string): Ctx {
+  const client = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => undefined });
+  extraClients.push(client);
+  return { db: drizzle(client), tenantId: org, profileId: profile };
+}
+afterAll(async () => {
+  await Promise.all(extraClients.map((c) => c.end({ timeout: 5 }).catch(() => undefined)));
+});
+
+async function addProfile(
+  org: string,
+  role: 'owner' | 'member',
+  rules: Array<[string, boolean, boolean, boolean, number]> = [],
+) {
+  const id = randomUUID();
+  await owner.unsafe(`insert into auth.users(id,email) values ('${id}','${id}@corr.test')`);
+  await owner.unsafe(`insert into public.profiles(id,email) values ('${id}','${id}@corr.test')`);
+  await owner.unsafe(
+    `insert into public.organization_members(organization_id,profile_id,role) values ('${org}','${id}','${role}')`,
+  );
+  if (rules.length) {
+    await owner.unsafe(
+      `insert into public.member_roles(org_id,profile_id,role_key) values ('${org}','${id}','custom')`,
+    );
+    for (const [mod, view, edit, manage, level] of rules)
+      await owner.unsafe(
+        `insert into public.permission_rules(org_id,role_key,module,can_view,can_edit,can_manage,field_level) values ('${org}','custom','${mod}',${view},${edit},${manage},${level})`,
+      );
+  }
+  return id;
+}
+
+interface World {
+  org: string;
+  boss: string;
+  ownerCtx: Ctx;
+  wh: string;
+  M: string;
+  L: string;
+  X: string;
+  PM: string;
+  PL: string;
+  PD: string;
+  PS1: string;
+  PS2: string;
+}
+async function world(): Promise<World> {
+  const org = randomUUID();
+  await owner.unsafe(
+    `insert into public.organizations(id,name) values ('${org}','corr-${org.slice(0, 6)}')`,
+  );
+  const boss = await addProfile(org, 'owner');
+  const w = randomUUID();
+  const mk = async (table: string, cols: string, vals: string) => {
+    const [r] = await owner.unsafe(
+      `insert into public.${table}(${cols}) values (${vals}) returning id`,
+    );
+    return String(r.id);
+  };
+  await owner.unsafe(
+    `insert into public.stk_warehouses(id,org_id,name,is_default) values ('${w}','${org}','W',true)`,
+  );
+  const item = (code: string) =>
+    mk('stk_items', 'org_id,code,name', `'${org}','${code}','${code}'`);
+  const [M, L, X] = [await item('M'), await item('L'), await item('X')];
+  const prod = (code: string, price: number) =>
+    mk(
+      'fin_products',
+      'org_id,code,name,unit_price,kind',
+      `'${org}','${code}','${code}',${price},'product'`,
+    );
+  const [PM, PL, PD, PS1, PS2] = [
+    await prod('PM', 50),
+    await prod('PL', 50),
+    await prod('PD', 60),
+    await prod('PS1', 30),
+    await prod('PS2', 30),
+  ];
+  for (const [p, i] of [
+    [PM, M],
+    [PL, L],
+  ])
+    await owner.unsafe(
+      `insert into public.stk_consumption(org_id,fin_product_id,item_id,qty_per_unit) values ('${org}','${p}','${i}',1)`,
+    );
+  await owner.unsafe(
+    `insert into public.fin_settings(org_id,timezone) values ('${org}','America/Lima')`,
+  );
+  const ownerCtx = ctxFor(org, boss);
+  // Real receipts through the real writers: 5 M @10, 5 L @12, 5 X @1.
+  for (const [it, rate] of [
+    [M, 10],
+    [L, 12],
+    [X, 1],
+  ] as const) {
+    const e = await createEntry(
+      ownerCtx,
+      { type: 'receipt', lines: [{ itemId: it, qty: 5, rate, toWarehouseId: w }] },
+      actorOf(boss),
+    );
+    await submitEntry(ownerCtx, e.id, actorOf(boss));
+  }
+  return { org, boss, ownerCtx, wh: w, M, L, X, PM, PL, PD, PS1, PS2 };
+}
+
+async function sale(wd: World, lines: Array<{ product: string; qty?: number; booking?: string }>) {
+  const open = await owner.unsafe(
+    `select id from public.pos_shifts where org_id='${wd.org}' and status='open'`,
+  );
+  const [shift] = open.length
+    ? open
+    : await owner.unsafe(
+        `insert into public.pos_shifts(org_id,status,opened_by) values ('${wd.org}','open','${wd.boss}') returning id`,
+      );
+  const [t] = await owner.unsafe(
+    `insert into public.pos_tickets(org_id,human_id,shift_id,subtotal,total,created_by) values ('${wd.org}','POS-N-${randomUUID().slice(0, 4)}','${shift.id}',50,50,'${wd.boss}') returning id`,
+  );
+  const ids: string[] = [];
+  let n = 0;
+  for (const l of lines) {
+    const [r] = await owner.unsafe(
+      `insert into public.pos_ticket_lines(org_id,ticket_id,kind,fin_product_id,booking_id,description,qty,unit_price,total,line_no) values ('${wd.org}','${t.id}','product','${l.product}',${l.booking ? `'${l.booking}'` : 'null'},'p',${l.qty ?? 1},50,50,${n++}) returning id`,
+    );
+    ids.push(String(r.id));
+  }
+  await owner.unsafe(
+    `insert into public.pos_payments(org_id,ticket_id,shift_id,method,amount) values ('${wd.org}','${t.id}','${shift.id}','cash',50)`,
+  );
+  return { ticketId: String(t.id), lineIds: ids, shiftId: String(shift.id) };
+}
+
+const bin = async (org: string, item: string) =>
+  (await owner`select qty::text from public.stk_bins where org_id=${org} and item_id=${item}`)[0]
+    ?.qty as string | undefined;
+const count = async (table: string, org: string) =>
+  (await owner.unsafe(`select count(*)::int n from public.${table} where org_id='${org}'`))[0]
+    .n as number;
+const refusal = async (p: Promise<unknown>) => {
+  try {
+    await p;
+  } catch (e) {
+    if (e instanceof CorrectionError) return e.code;
+    throw e;
+  }
+  return null;
+};
+const swapRequest = (line: string, from: string, to: string) => ({
+  mode: 'variant_swap' as const,
+  sourceType: 'pos_ticket_line' as const,
+  sourceId: line,
+  expectedProductId: from,
+  replacement: { productId: to },
+});
+async function applyVariant(
+  ctx: Ctx,
+  line: string,
+  from: string,
+  to: string,
+  reason = 'wrong size',
+  key = randomUUID(),
+) {
+  const request = swapRequest(line, from, to);
+  const pv = await previewStockCorrection(ctx, request, reason);
+  const command = {
+    request,
+    operationKey: key,
+    previewHash: pv.previewHash,
+    payloadHash: pv.payloadHash,
+    reason,
+  };
+  return { pv, command, result: await applyStockCorrection(ctx, command, actorOf(ctx.profileId)) };
+}
+
+describe('stock corrections against PostgreSQL', () => {
+  it('preserves POS only no stock swap and rejects unauthorized stock effects', async () => {
+    const wd = await world();
+    const posOnly = await addProfile(wd.org, 'member', [['pos', true, true, false, 0]]);
+    const posCtx = ctxFor(wd.org, posOnly);
+    // A mixed ticket: line 0 issued stock (M); line 1 is stockless and gets swapped.
+    const t = await sale(wd, [{ product: wd.PM }, { product: wd.PS1 }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    const [{ stock_entry_id: entryBefore }] =
+      await owner`select stock_entry_id from public.pos_tickets where id=${t.ticketId}`;
+    expect(entryBefore).toBeTruthy();
+    const binsBefore =
+      await owner`select * from public.stk_bins where org_id=${wd.org} order by item_id`;
+    const ledgerBefore = await count('stk_ledger', wd.org);
+
+    const { result } = await applyVariant(posCtx, t.lineIds[1], wd.PS1, wd.PS2);
+    expect(result).toMatchObject({
+      outcome: 'applied',
+      receipt: { kind: 'sale_variant', sourceEntryId: null, replacementEntryId: null },
+    });
+    expect(
+      (await owner`select fin_product_id from public.pos_ticket_lines where id=${t.lineIds[1]}`)[0]
+        .fin_product_id,
+    ).toBe(wd.PS2);
+    // Zero ledger/bin effects, the ticket still points at its original movement, money untouched.
+    expect(await count('stk_ledger', wd.org)).toBe(ledgerBefore);
+    expect(
+      await owner`select * from public.stk_bins where org_id=${wd.org} order by item_id`,
+    ).toEqual(binsBefore);
+    expect(
+      (
+        await owner`select stock_entry_id, total::text, subtotal::text from public.pos_tickets where id=${t.ticketId}`
+      )[0],
+    ).toMatchObject({ stock_entry_id: entryBefore, total: '50', subtotal: '50' });
+
+    // The same POS-only actor cannot move stock: refused, nothing written.
+    const t2 = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t2.ticketId, actorOf(wd.boss));
+    const ledger2 = await count('stk_ledger', wd.org);
+    const req = swapRequest(t2.lineIds[0], wd.PM, wd.PL);
+    expect(await refusal(previewStockCorrection(posCtx, req, 'x'))).toBe('stock_scope_required');
+    expect(
+      await refusal(
+        applyStockCorrection(
+          posCtx,
+          {
+            request: req,
+            operationKey: randomUUID(),
+            previewHash: 'a'.repeat(64),
+            payloadHash: 'b'.repeat(64),
+            reason: 'x',
+          },
+          actorOf(posOnly),
+        ),
+      ),
+    ).toBe('stock_scope_required');
+    expect(await count('stk_ledger', wd.org)).toBe(ledger2);
+    expect(
+      (await owner`select fin_product_id from public.pos_ticket_lines where id=${t2.lineIds[0]}`)[0]
+        .fin_product_id,
+    ).toBe(wd.PM);
+    // A different price is refused as price_differs (409), still no writes.
+    expect(
+      await refusal(
+        previewStockCorrection(wd.ownerCtx, swapRequest(t2.lineIds[0], wd.PM, wd.PD), 'x'),
+      ),
+    ).toBe('price_differs');
+  });
+
+  it('rolls back every intermediate write and records one immutable outcome', async () => {
+    const wd = await world();
+    const t = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    const entry = (
+      await owner`select stock_entry_id from public.pos_tickets where id=${t.ticketId}`
+    )[0].stock_entry_id as string;
+    expect([await bin(wd.org, wd.M), await bin(wd.org, wd.L)]).toEqual(['4', '5']);
+    // Fault AFTER cancel, create and submit: the receipt insert fails, so everything must roll back.
+    await owner.unsafe(`create or replace function public.corr_fault() returns trigger language plpgsql as $$ begin raise exception 'injected correction fault'; end $$;
+      create trigger corr_fault before insert on public.stk_corrections for each row execute function public.corr_fault()`);
+    const entriesBefore = await count('stk_entries', wd.org);
+    const ledgerBefore = await count('stk_ledger', wd.org);
+    const key = randomUUID();
+    const request = swapRequest(t.lineIds[0], wd.PM, wd.PL);
+    const pv = await previewStockCorrection(wd.ownerCtx, request, 'wrong size');
+    const command = {
+      request,
+      operationKey: key,
+      previewHash: pv.previewHash,
+      payloadHash: pv.payloadHash,
+      reason: 'wrong size',
+    };
+    await expect(applyStockCorrection(wd.ownerCtx, command, actorOf(wd.boss))).rejects.toThrow();
+    expect(await count('stk_entries', wd.org)).toBe(entriesBefore);
+    expect(await count('stk_ledger', wd.org)).toBe(ledgerBefore);
+    expect((await owner`select status from public.stk_entries where id=${entry}`)[0].status).toBe(
+      'submitted',
+    );
+    expect(
+      (await owner`select fin_product_id from public.pos_ticket_lines where id=${t.lineIds[0]}`)[0]
+        .fin_product_id,
+    ).toBe(wd.PM);
+    expect(
+      (await owner`select stock_entry_id from public.pos_tickets where id=${t.ticketId}`)[0]
+        .stock_entry_id,
+    ).toBe(entry);
+    expect([await bin(wd.org, wd.M), await bin(wd.org, wd.L)]).toEqual(['4', '5']);
+    expect(await count('stk_corrections', wd.org)).toBe(0);
+    await owner.unsafe('drop trigger corr_fault on public.stk_corrections');
+
+    // Retry with the same operation: applies once, M returned and L issued once.
+    const ok = await applyStockCorrection(wd.ownerCtx, command, actorOf(wd.boss));
+    expect(ok).toMatchObject({
+      outcome: 'applied',
+      replayed: false,
+      receipt: { sourceEntryId: entry },
+    });
+    expect([await bin(wd.org, wd.M), await bin(wd.org, wd.L)]).toEqual(['5', '4']);
+    const [row] = await owner`select * from public.stk_corrections where org_id=${wd.org}`;
+    expect(row).toMatchObject({
+      kind: 'sale_variant',
+      reason: 'wrong size',
+      actor_id: wd.boss,
+      status: 'applied',
+    });
+    expect((await owner`select status from public.stk_entries where id=${entry}`)[0].status).toBe(
+      'cancelled',
+    );
+    const replacement = (
+      await owner`select stock_entry_id from public.pos_tickets where id=${t.ticketId}`
+    )[0].stock_entry_id as string;
+    expect(replacement).toBe(row.replacement_entry_id);
+    expect(
+      (await owner`select metadata from public.stk_entries where id=${replacement}`)[0].metadata,
+    ).toMatchObject({
+      source: 'pos',
+      sourceId: t.ticketId,
+      ticketId: t.ticketId,
+      correctionOf: entry,
+      correctionOperationKey: key,
+    });
+    // Payment and totals are byte identical; the original entry and its ledger rows remain.
+    expect(
+      (await owner`select count(*)::int n from public.stk_ledger where entry_id=${entry}`)[0].n,
+    ).toBe(2);
+    expect(
+      (await owner`select total::text from public.pos_tickets where id=${t.ticketId}`)[0].total,
+    ).toBe('50');
+    // The receipt row cannot be edited by the application role (grants proven in the schema test).
+    expect(
+      await rejection(
+        asApp(wd.org, wd.boss, (tx) => tx.execute(sql`delete from public.stk_corrections`)),
+      ),
+    ).toMatch(/permission denied/);
+  });
+
+  it('reconciles lost response and rejects changed intent operation reuse', async () => {
+    const wd = await world();
+    const t = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    const key = randomUUID();
+    const { command, result } = await applyVariant(
+      wd.ownerCtx,
+      t.lineIds[0],
+      wd.PM,
+      wd.PL,
+      'wrong size',
+      key,
+    );
+    expect(result).toMatchObject({ outcome: 'applied', replayed: false });
+    // Lost response: same key + hash returns the recorded outcome, no second reversal.
+    const again = await applyStockCorrection(wd.ownerCtx, command, actorOf(wd.boss));
+    expect(again).toMatchObject({ outcome: 'applied', replayed: true });
+    expect(again.outcome === 'applied' && again.receipt.id).toBe(
+      result.outcome === 'applied' && result.receipt.id,
+    );
+    expect([await bin(wd.org, wd.M), await bin(wd.org, wd.L)]).toEqual(['5', '4']);
+    expect(
+      await getStockCorrectionByOperationKey(wd.ownerCtx, {
+        operationKey: key,
+        payloadHash: command.payloadHash,
+      }),
+    ).toMatchObject({ outcome: 'applied', replayed: true });
+    expect(
+      await getStockCorrectionByOperationKey(wd.ownerCtx, {
+        operationKey: randomUUID(),
+        payloadHash: command.payloadHash,
+      }),
+    ).toEqual({ schemaVersion: 1, outcome: 'not_found' });
+    // Changed intent (different reason => different payload hash) under the used key.
+    const changed = { ...command, reason: 'other reason' };
+    expect(await refusal(applyStockCorrection(wd.ownerCtx, changed, actorOf(wd.boss)))).toBe(
+      'key_reuse',
+    );
+    expect(
+      await refusal(
+        getStockCorrectionByOperationKey(wd.ownerCtx, {
+          operationKey: key,
+          payloadHash: 'c'.repeat(64),
+        }),
+      ),
+    ).toBe('key_reuse');
+    // A stale preview (source moved on) is refused with zero effects.
+    const t2 = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t2.ticketId, actorOf(wd.boss));
+    const req = swapRequest(t2.lineIds[0], wd.PM, wd.PL);
+    const pv = await previewStockCorrection(wd.ownerCtx, req, 'r');
+    await owner`update public.stk_bins set qty = qty + 1 where org_id=${wd.org} and item_id=${wd.L}`;
+    expect(
+      await refusal(
+        applyStockCorrection(
+          wd.ownerCtx,
+          {
+            request: req,
+            operationKey: randomUUID(),
+            previewHash: pv.previewHash,
+            payloadHash: pv.payloadHash,
+            reason: 'r',
+          },
+          actorOf(wd.boss),
+        ),
+      ),
+    ).toBe('stale_preview');
+    // Two concurrent identical confirmations: exactly one net L issue for the unit.
+    const t3 = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t3.ticketId, actorOf(wd.boss));
+    const lBefore = Number(await bin(wd.org, wd.L));
+    const req3 = swapRequest(t3.lineIds[0], wd.PM, wd.PL);
+    const pv3 = await previewStockCorrection(wd.ownerCtx, req3, 'r');
+    const cmd3 = {
+      request: req3,
+      operationKey: randomUUID(),
+      previewHash: pv3.previewHash,
+      payloadHash: pv3.payloadHash,
+      reason: 'r',
+    };
+    const [a, b] = await Promise.allSettled([
+      applyStockCorrection(ctxFor(wd.org, wd.boss), cmd3, actorOf(wd.boss)),
+      applyStockCorrection(ctxFor(wd.org, wd.boss), cmd3, actorOf(wd.boss)),
+    ]);
+    expect([a.status, b.status]).toEqual(['fulfilled', 'fulfilled']);
+    const replayed = [a, b]
+      .map((r) => r.status === 'fulfilled' && r.value.outcome === 'applied' && r.value.replayed)
+      .sort();
+    expect(replayed).toEqual([false, true]);
+    expect(Number(await bin(wd.org, wd.L))).toBe(lBefore - 1);
+    expect(
+      (
+        await owner`select count(*)::int n from public.stk_corrections where org_id=${wd.org} and operation_key=${cmd3.operationKey}`
+      )[0].n,
+    ).toBe(1);
+  });
+
+  it('serializes absent bins normal posting correction and rebuild under the first org gate', async () => {
+    const wd = await world();
+    const holder = ctxFor(wd.org, wd.boss);
+    const waiterA = ctxFor(wd.org, wd.boss);
+    const waiterB = ctxFor(wd.org, wd.boss);
+    const fresh = randomUUID();
+    await owner.unsafe(
+      `insert into public.stk_items(id,org_id,code,name) values ('${fresh}','${wd.org}','N','N')`,
+    );
+    const d1 = await createEntry(
+      waiterA,
+      { type: 'receipt', lines: [{ itemId: fresh, qty: 3, rate: 2, toWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    const d2 = await createEntry(
+      waiterB,
+      { type: 'receipt', lines: [{ itemId: fresh, qty: 4, rate: 2, toWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const holding = new Promise<void>((r) => (held = r));
+    const blocker = withOrgCore(holder, async (tx) => {
+      await lockStockWrite(tx, holder);
+      held();
+      await hold;
+    });
+    await holding;
+    const waiting = async (p: Promise<unknown>) => {
+      let settled = false;
+      void p.then(
+        () => (settled = true),
+        () => (settled = true),
+      );
+      for (let i = 0; i < 40; i += 1) {
+        const [r] =
+          await owner`select count(*)::int n from pg_stat_activity where wait_event_type='Lock' and wait_event='advisory'`;
+        if (r.n >= 1) break;
+        await new Promise((x) => setTimeout(x, 25));
+      }
+      expect(settled).toBe(false);
+    };
+    // Two first writers of an ABSENT bin and a rebuild all queue behind the holder.
+    const s1 = submitEntry(waiterA, d1.id, actorOf(wd.boss));
+    await waiting(s1);
+    const s2 = submitEntry(waiterB, d2.id, actorOf(wd.boss));
+    const rb = rebuildBins(ctxFor(wd.org, wd.boss));
+    release();
+    await blocker;
+    await Promise.all([s1, s2, rb]);
+    expect(await bin(wd.org, fresh)).toBe('7');
+    // Rebuild from the ledger agrees with the cache (no lost bin write).
+    const rebuilt =
+      await owner`select qty::text from public.stk_bins where org_id=${wd.org} and item_id=${fresh}`;
+    expect(rebuilt[0].qty).toBe('7');
+  });
+
+  it('absent enabled module can be disabled only before or after the guarded correction', async () => {
+    const wd = await world();
+    const a = ctxFor(wd.org, wd.boss);
+    const b = ctxFor(wd.org, wd.boss);
+    expect(
+      (await owner`select count(*)::int n from public.app_modules where org_id=${wd.org}`)[0].n,
+    ).toBe(0);
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const holding = new Promise<void>((r) => (held = r));
+    // Correction-first: absent row = enabled, admitted; the disable must wait for the pair.
+    const admitted = withOrgCore(a, async (tx) => {
+      const guard = await lockStockWrite(tx, a);
+      await assertStockModulesEnabledInTx(tx, a, guard, ['stock', 'pos']);
+      held();
+      await hold;
+    });
+    await holding;
+    let disabled = false;
+    const disabling = setModuleEnabled(b, 'stock', false).then(() => (disabled = true));
+    for (let i = 0; i < 40; i += 1) {
+      const [r] =
+        await owner`select count(*)::int n from pg_stat_activity where wait_event_type='Lock' and wait_event='advisory'`;
+      if (r.n >= 1) break;
+      await new Promise((x) => setTimeout(x, 25));
+    }
+    expect(disabled).toBe(false);
+    expect(
+      (await owner`select count(*)::int n from public.app_modules where org_id=${wd.org}`)[0].n,
+    ).toBe(0);
+    release();
+    await admitted;
+    await disabling;
+    // Disable-first: the next correction admission refuses with zero effects.
+    await expect(
+      withOrgCore(a, async (tx) =>
+        assertStockModulesEnabledInTx(tx, a, await lockStockWrite(tx, a), ['stock']),
+      ),
+    ).rejects.toMatchObject({ code: 'module_disabled' });
+    const t = await sale(wd, [{ product: wd.PM }]);
+    await owner`update public.pos_tickets set stock_entry_id = null where id=${t.ticketId}`;
+    expect(
+      await refusal(applyVariant(wd.ownerCtx, t.lineIds[0], wd.PM, wd.PL).then((r) => r.result)),
+    ).not.toBeNull();
+  });
+
+  it('repeated concurrent booking completion reuses frozen draft and submitted source once', async () => {
+    const wd = await world();
+    const booking = randomUUID();
+    await owner`insert into public.stk_accruals(org_id,source,source_id,fin_product_id,item_id,warehouse_id,qty_consumption,qty,status)
+      values (${wd.org},'booking',${booking},${wd.PM},${wd.M},${wd.wh},1,1,'open')`;
+    const input = {
+      source: 'booking',
+      sourceId: booking,
+      finProductId: wd.PM,
+      warehouseId: wd.wh,
+      actor: actorOf(wd.boss),
+    };
+    const runs = await Promise.all(
+      [1, 2, 3].map(() => realizeAccruals(ctxFor(wd.org, wd.boss), input)),
+    );
+    const ids = new Set(runs.map((r) => r.entry?.id));
+    expect(ids.size).toBe(1);
+    expect(
+      (
+        await owner`select count(*)::int n from public.stk_entries where org_id=${wd.org} and metadata->>'sourceId'=${booking}`
+      )[0].n,
+    ).toBe(1);
+    expect(await bin(wd.org, wd.M)).toBe('4');
+    expect(
+      (
+        await owner`select status, realized_entry_id from public.stk_accruals where org_id=${wd.org} and source_id=${booking}`
+      )[0].status,
+    ).toBe('realized');
+    // Frozen draft: a short bin leaves a draft + warning, then the repeated call submits it once.
+    const booking2 = randomUUID();
+    await owner`insert into public.stk_accruals(org_id,source,source_id,fin_product_id,item_id,warehouse_id,qty_consumption,qty,status)
+      values (${wd.org},'booking',${booking2},${wd.PM},${wd.M},${wd.wh},9,9,'open')`;
+    const input2 = { ...input, sourceId: booking2 };
+    const first = await realizeAccruals(ctxFor(wd.org, wd.boss), input2);
+    expect(first.stockWarning).toMatchObject({ code: 'negative_stock' });
+    await owner`update public.stk_bins set qty = 20 where org_id=${wd.org} and item_id=${wd.M}`;
+    const [r1, r2] = await Promise.all([
+      realizeAccruals(ctxFor(wd.org, wd.boss), input2),
+      realizeAccruals(ctxFor(wd.org, wd.boss), input2),
+    ]);
+    expect(r1.entry?.id).toBe(first.entry?.id);
+    expect(r2.entry?.id).toBe(first.entry?.id);
+    expect(
+      (
+        await owner`select count(*)::int n from public.stk_ledger where entry_id=${first.entry!.id}`
+      )[0].n,
+    ).toBe(1);
   });
 });

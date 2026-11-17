@@ -71,6 +71,10 @@ export async function openCorrectionNativeChild(): Promise<CorrectionNativeChild
     // Replay every committed migration newer than the baseline snapshot, in order, so the child has
     // the real current POS / scheduling / stock shape (same set CI's production runner applies).
     await applyMigrationsAfterBaseline(owner);
+    // The role-simulation migration needs auth.sessions the fixture does not model; the audit writer only needs these two columns.
+    await owner.unsafe(`alter table public.doc_audit_log
+      add column if not exists simulation_role_key text,
+      add column if not exists simulation_generation uuid`);
     return { identity, owner, url, close };
   } catch (error) {
     await close();
