@@ -141,6 +141,25 @@ function sourceAuthority(
   return { costVisible: costAuthority(caps) };
 }
 
+/**
+ * Coarse admission by SOURCE TYPE, run before any source read or lock: the same uniform `forbidden`
+ * answer whether or not the source exists (no existence oracle). The precise effect-based
+ * `sourceAuthority` re-check still runs after planning.
+ */
+export function coarseAuthority(
+  caps: FreshCapabilitySnapshot,
+  request: PreviewRequest,
+  apply: boolean,
+): void {
+  const ok =
+    request.sourceType === 'pos_ticket_line'
+      ? can(caps, 'pos', 'view') && can(caps, 'pos', 'edit')
+      : apply
+        ? can(caps, 'stock', 'manage')
+        : can(caps, 'stock', 'view');
+  if (!ok) throw new CorrectionError('not allowed', 'forbidden');
+}
+
 // ── snapshots ────────────────────────────────────────────────────────────────────────────
 
 type Rows = Array<Record<string, unknown>>;
@@ -563,6 +582,7 @@ export async function previewStockCorrection(
   const reason = parseReason(rawReason);
   return readSnapshot(ctx, async (tx) => {
     const caps = await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, actor);
+    coarseAuthority(caps, request, false);
     // A POS-only caller may have a stockless swap checked; nonempty stock intent needs stock access.
     let p: Planned;
     try {
@@ -614,6 +634,14 @@ export async function applyStockCorrection(
   if (!UUID_RE.test(command.operationKey))
     throw new CorrectionError('operationKey must be a UUID', 'invalid_request');
 
+  // Refuse before ANY lock or source read: a read-only snapshot answers the coarse check.
+  await readSnapshot(ctx, async (tx) =>
+    coarseAuthority(
+      await resolveFreshCapabilitiesReadOnlyInTransaction(tx, ctx.tenantId, profile),
+      request,
+      true,
+    ),
+  );
   try {
     return await writeTransaction(ctx, async (tx, guard) => {
       // 1. Idempotency first: the key namespace is per org and global across kinds.
@@ -650,6 +678,7 @@ export async function applyStockCorrection(
         ctx.tenantId,
         profile,
       );
+      coarseAuthority(caps, request, true);
       const now = new Date();
       let p: Planned;
       try {
