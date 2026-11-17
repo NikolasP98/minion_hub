@@ -13,6 +13,7 @@ vi.mock('./stock-accruals.service', () => ({
   accrueConsumption: async () => 0,
   accrualSummaryForSources: async () => [],
   stockAnchorForBookings: async () => new Map(),
+  stockRecoveryForBookings: async () => [],
   releaseAccruals: async () => 0,
 }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => false }));

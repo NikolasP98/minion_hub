@@ -15,6 +15,7 @@ vi.mock('./pos-accounts.service', () => ({ getPlan, bookingTicketLinks }));
 vi.mock('./stock-accruals.service', () => ({
   accrualSummaryForSources: async () => [],
   stockAnchorForBookings,
+  stockRecoveryForBookings: async () => [],
 }));
 vi.mock('./tag-links.service', () => ({
   getTagLinks: async () => new Map(),

@@ -22,6 +22,7 @@ vi.mock('./stock-accruals.service', () => ({
   accrueConsumption: async () => 0,
   accrualSummaryForSources: async () => [],
   stockAnchorForBookings: async () => new Map(),
+  stockRecoveryForBookings: async () => [],
   releaseAccruals: (ctx: unknown, source: string, sourceId: string) =>
     mocks.releaseAccruals(ctx, source, sourceId),
 }));

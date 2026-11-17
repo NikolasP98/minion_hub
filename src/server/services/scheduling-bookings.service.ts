@@ -77,9 +77,11 @@ import {
   accrualSummaryForSources,
   releaseAccruals,
   stockAnchorForBookings,
+  stockRecoveryForBookings,
   type AccrualLineInput,
   type AccrualSourceSummary,
   type AnchorAccrual,
+  type StockRecoveryMember,
 } from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
 import { PosError } from './pos/errors';
@@ -3461,6 +3463,8 @@ export interface BookingDetail {
   sold: SoldFacet;
   /** Spec 126: cost-free accrual counts of the server-resolved visit ANCHOR (never the clicked member). */
   stockAnchor: BookingReadFacet<{ anchorId: string; accrual: AnchorAccrual | null }>;
+  /** Spec 126 US2: per-member recovery facts (eligibility + the reviewable open set) of the visit. */
+  stockRecovery: BookingReadFacet<StockRecoveryMember[]>;
   /** POS tickets that charged this EVENT (`pos_ticket_lines.booking_id` of this
    *  booking, or of every member when it belongs to a visit), newest first —
    *  the "was it paid?" answer. Empty when unpaid or POS off. */
@@ -4007,6 +4011,23 @@ export async function getBookingDetail(
           return { state: 'unavailable', reason: 'read_failed' };
         },
       );
+  // Members come from the visit read above, never from the client; more than the
+  // visit cap is a corrupt group → unavailable rather than an unbounded read.
+  const recoveryMembers = visit?.members.length
+    ? visit.members.map((m) => ({ bookingId: m.id, status: m.status }))
+    : [{ bookingId: id, status: base.booking.status }];
+  const stockRecovery: BookingDetail['stockRecovery'] = isDenied(foreign.stock)
+    ? { state: 'denied' }
+    : recoveryMembers.length > MAX_GROUP_MEMBERS
+      ? { state: 'unavailable', reason: 'capacity' }
+      : await stockRecoveryForBookings(foreign.stock, recoveryMembers).then(
+          (rows): BookingDetail['stockRecovery'] =>
+            rows.length ? { state: 'available', value: rows } : { state: 'empty' },
+          (e: unknown): BookingDetail['stockRecovery'] => {
+            console.error('[scheduling] stock recovery facet failed (detail stands)', e);
+            return { state: 'unavailable', reason: 'read_failed' };
+          },
+        );
   const stockAnchor: BookingDetail['stockAnchor'] = isDenied(foreign.stock)
     ? { state: 'denied' }
     : await stockAnchorForBookings(foreign.stock, [anchorId]).then(
@@ -4096,6 +4117,7 @@ export async function getBookingDetail(
     accrual: accruals[0] ?? null,
     sold,
     stockAnchor,
+    stockRecovery,
     tickets,
     visit,
     products,
