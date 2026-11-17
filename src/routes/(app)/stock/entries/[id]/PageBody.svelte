@@ -6,7 +6,9 @@
   import { appLocale, formatMoney } from '$lib/utils/format';
   import { ArrowLeftRight, ArrowLeft } from 'lucide-svelte';
   import { inPeek } from '$lib/records/peek.svelte';
-  import { iconSizes, PageHeader, Button, Badge, Modal } from '$lib/components/ui';
+  import { iconSizes, PageHeader, Button, Badge, Modal, Input } from '$lib/components/ui';
+  import { page } from '$app/state';
+  import CorrectionFlow from '$lib/components/stock/CorrectionFlow.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
@@ -33,6 +35,63 @@
           ? m.stock_type_transfer()
           : m.stock_type_adjustment(),
   );
+
+  // ── Receipt correction (spec 124): cancel + replace with the corrected quantity or rate ──
+  const meta = $derived((entry.metadata ?? {}) as Record<string, unknown>);
+  const correctedFrom = $derived(typeof meta.correctionOf === 'string' ? meta.correctionOf : null);
+  // The server decides eligibility (standalone, nothing later on its bins, open period); this only
+  // hides the action where it can never apply.
+  const canCorrect = $derived(
+    entry.type === 'receipt' &&
+      entry.status === 'submitted' &&
+      !meta.source &&
+      !meta.invoiceId &&
+      !meta.sourceId &&
+      !data.replacementEntryId &&
+      canAct('stock', 'manage') &&
+      data.lines.every((l) => l.rate != null && l.toWarehouseId),
+  );
+  let correcting = $state(false);
+  let edits = $state<Record<string, { qty: string; rate: string }>>({});
+  const DECIMAL = /^\d{1,9}(\.\d{1,4})?$/;
+  function openCorrection() {
+    edits = Object.fromEntries(
+      data.lines.map((l) => [l.id, { qty: String(l.qty), rate: String(l.rate ?? '') }]),
+    );
+    correcting = true;
+  }
+  const qtyChanged = (l: LineRow) => Number(edits[l.id]?.qty) !== Number(l.qty);
+  const rateChanged = (l: LineRow) => Number(edits[l.id]?.rate) !== Number(l.rate);
+  /** The replacement request, or null while any value is invalid or nothing changed (one change per line). */
+  function correctionRequest() {
+    const lines = [];
+    let changed = false;
+    for (const l of data.lines) {
+      const e = edits[l.id];
+      if (!e || !DECIMAL.test(e.qty) || !DECIMAL.test(e.rate)) return null;
+      if (!(Number(e.qty) > 0) || !(Number(e.rate) > 0)) return null;
+      if (qtyChanged(l) && rateChanged(l)) return null;
+      changed ||= qtyChanged(l) || rateChanged(l);
+      lines.push({
+        originalLineId: l.id,
+        itemId: l.itemId,
+        qty: e.qty,
+        rate: e.rate,
+        uom: l.uom ?? l.itemUom ?? '',
+        toWarehouseId: l.toWarehouseId as string,
+      });
+    }
+    return changed
+      ? {
+          mode: 'receipt_replace',
+          sourceType: 'stock_receipt',
+          sourceId: entry.id,
+          replacement: { lines },
+        }
+      : null;
+  }
+  const anyRateChange = $derived(data.lines.some((l) => rateChanged(l)));
+  const lineName = (id: string) => data.lines.find((l) => l.id === id)?.itemLabel;
 
   let busy = $state(false);
   let err = $state<string | null>(null);
@@ -128,6 +187,11 @@
           title={canAct('stock', 'edit') ? undefined : m.no_permission()}>{m.stock_submit()}</Button
         >
       {:else if entry.status === 'submitted'}
+        {#if canCorrect}
+          <Button variant="outline" size="sm" onclick={openCorrection}
+            >{m.stock_corr_receipt_action()}</Button
+          >
+        {/if}
         <Button
           variant="outline"
           size="sm"
@@ -142,6 +206,22 @@
 
   <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
     {#if err}<p class="err-msg">{err}</p>{/if}
+    {#if data.replacementEntryId}
+      <p class="t-caption" role="status">
+        {m.stock_corr_receipt_replaced()}
+        <a class="card-link" href={`/stock/entries/${data.replacementEntryId}`}
+          >{m.stock_corr_receipt_replacement_link()}</a
+        >
+      </p>
+    {/if}
+    {#if correctedFrom}
+      <p class="t-caption" role="status">
+        {m.stock_corr_receipt_replaces()}
+        <a class="card-link" href={`/stock/entries/${correctedFrom}`}
+          >{m.stock_corr_receipt_original_link()}</a
+        >
+      </p>
+    {/if}
     <div class="card">
       <dl class="meta-grid">
         <dt>{m.stock_col_status()}</dt>
@@ -198,6 +278,59 @@
   </div>
 </div>
 
+<Modal bind:open={correcting} title={m.stock_corr_receipt_title()} size="md">
+  <div class="corr-form">
+    <p class="t-caption">{m.stock_corr_receipt_note()}</p>
+    {#each data.lines as l (l.id)}
+      <div class="corr-line">
+        <span class="t-label">{l.itemLabel}</span>
+        <Input
+          size="sm"
+          type="text"
+          inputmode="decimal"
+          label={m.stock_corr_receipt_qty()}
+          bind:value={edits[l.id].qty}
+          disabled={rateChanged(l)}
+        />
+        <Input
+          size="sm"
+          type="text"
+          inputmode="decimal"
+          label={m.stock_corr_receipt_rate()}
+          bind:value={edits[l.id].rate}
+          disabled={qtyChanged(l)}
+        />
+      </div>
+    {/each}
+    {#if anyRateChange}<p class="t-caption">{m.stock_corr_receipt_owner_only()}</p>{/if}
+    {#if correctionRequest() === null}
+      <p class="t-caption">{m.stock_corr_receipt_nochange()}</p>
+    {/if}
+    <CorrectionFlow
+      scope={{
+        orgId: page.data.activeOrgId ?? '',
+        profileId: page.data.user?.supabaseId ?? '',
+        sourceType: 'stock_receipt',
+        sourceId: entry.id,
+      }}
+      previewUrl="/api/stock/corrections/preview"
+      applyUrl="/api/stock/corrections"
+      previewBody={(reason) => {
+        const request = correctionRequest();
+        return request ? { request, reason } : null;
+      }}
+      applyBody={(a) => ({ request: correctionRequest(), ...a })}
+      itemLabel={(id) => data.lines.find((l) => l.itemId === id)?.itemLabel}
+      lineLabel={lineName}
+      costExpected
+      onapplied={async (source) => {
+        if (source === 'post') correcting = false;
+        await invalidate('stock:entry-detail');
+      }}
+    />
+  </div>
+</Modal>
+
 <Modal bind:open={confirmCancelOpen} title={m.stock_confirm_cancel_title()}>
   <p>{m.stock_confirm_cancel_body()}</p>
   {#snippet footer()}
@@ -234,6 +367,28 @@
   }
   .meta-grid dt {
     color: var(--color-muted-foreground);
+  }
+  .corr-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+  .corr-line {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+    align-items: end;
+  }
+  .corr-line > :first-child {
+    grid-column: 1 / -1;
+  }
+  .card-link {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .card-link:hover,
+  .card-link:focus-visible {
+    text-decoration: underline;
   }
   .err-msg {
     font-size: var(--font-size-body);

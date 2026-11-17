@@ -7597,7 +7597,9 @@
   "stock_corr_receipt_qty": "Cantidad",
   "stock_corr_receipt_rate": "Tarifa",
   "stock_corr_receipt_nochange": "Cambia una cantidad o una tarifa para continuar.",
-  "stock_corr_receipt_replaced": "Esta entrada fue corregida: {link}",
-  "stock_corr_receipt_replacement_link": "ver el reemplazo",
-  "stock_corr_receipt_owner_only": "Cambiar una tarifa cambia el valor del stock, así que solo un propietario puede confirmarlo."
+  "stock_corr_receipt_replaced": "Esta entrada fue corregida.",
+  "stock_corr_receipt_replacement_link": "Ver el reemplazo",
+  "stock_corr_receipt_owner_only": "Cambiar una tarifa cambia el valor del stock, así que solo un propietario puede confirmarlo.",
+  "stock_corr_receipt_replaces": "Esta entrada reemplaza a una que fue corregida.",
+  "stock_corr_receipt_original_link": "Ver la original"
 }
