@@ -200,6 +200,7 @@
     "test": "vitest run && bun run test:architecture-recon",
     "faces:stock:diagnose": "bun --no-env-file scripts/faces-stock-reconcile-2026-11.ts",
     "faces:stock:mapping": "bun --no-env-file scripts/faces-garment-mapping-2026-11.ts",
+    "faces:stock:repair": "bun --no-env-file scripts/faces-garment-repost-2026-11.ts",
     "test:architecture-recon": "bun test ./scripts/architecture-recon-index.bun.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",

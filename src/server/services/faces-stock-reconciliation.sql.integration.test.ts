@@ -22,6 +22,17 @@ import {
   type MappingDraftInput,
 } from './faces-garment-mapping.service';
 import {
+  applyGarmentRepost,
+  draftGarmentRepostManifest,
+  getGarmentRepostStatus,
+  previewGarmentRepost,
+  type GarmentDraftInput,
+} from './faces-garment-repost.service';
+import {
+  decodeGarmentRepostManifestV1,
+  garmentManifestSha256,
+} from '../../../scripts/lib/faces-garment-repost';
+import {
   decodeMappingManifestV1,
   mappingManifestSha256,
   type MappingManifestV1,
@@ -545,8 +556,105 @@ describe('FACES stock cutover against PostgreSQL', () => {
   });
 
   it('two garment cases require a fresh approved second manifest after shared bins change', async () => {
-    // Filled in with the garment tooling slice (see the garment test below).
-    expect(true).toBe(true);
+    const w = await world();
+    const tA = await sale(w, [{ product: w.PM, total: 0 }]);
+    const tB = await sale(w, [{ product: w.PM, total: 0 }]);
+    await postTicketStock(w.ctx, tA.ticketId, actorOf(w.boss)); // both wrongly issue L
+    await postTicketStock(w.ctx, tB.ticketId, actorOf(w.boss));
+    expect([await bin(w.org, w.L), await bin(w.org, w.M)]).toEqual(['3', '5']);
+    // The mapping correction must be applied (and receipted) before any garment repost.
+    const mm = await draftMappingManifest(w.ctx, draftInput(w));
+    const mapped = await applyMappingCorrection(w.ctx, await commandFor(w, mm), actorOf(w.boss));
+    const payments = async () =>
+      (
+        await owner.unsafe(
+          `select to_jsonb(x)::text j from public.pos_payments x where org_id='${w.org}' order by id`,
+        )
+      )
+        .map((r) => r.j)
+        .join();
+    const paymentsBefore = await payments();
+    const gInput = (line: string, over: Partial<GarmentDraftInput> = {}): GarmentDraftInput => ({
+      target: TARGET,
+      actorProfileId: w.boss,
+      operationKey: randomUUID(),
+      ticketLineId: line,
+      toItemId: w.M,
+      mappingCorrectionId: mapped.receipt.correctionId,
+      inverseOfOperationId: null,
+      currency: 'PEN',
+      attestedAt: '2026-11-16T00:00:00.000Z',
+      evidenceReference: 'native-owner-attestation',
+      evidenceSha256: H('e'),
+      postedAt: new Date().toISOString(),
+      reason: 'Faja M issued L',
+      ownerApprovalReference: 'native-approval',
+      sourceCodeSha: SHA,
+      ...over,
+    });
+    const a1 = await draftGarmentRepostManifest(w.ctx, gInput(tA.lineIds[0]));
+    const b1 = await draftGarmentRepostManifest(w.ctx, gInput(tB.lineIds[0])); // from the SAME shared-bin snapshot
+    const pa = await previewGarmentRepost(w.ctx, a1);
+    if (pa.outcome !== 'preview') throw new Error(`blocked ${pa.code}`);
+    expect(pa.effects).toEqual([
+      { itemId: w.L, warehouseId: w.wh, qtyDelta: '1.0000' },
+      { itemId: w.M, warehouseId: w.wh, qtyDelta: '-1.0000' },
+    ]);
+    const cmdA = {
+      manifest: a1,
+      approvedPlanSha256: garmentManifestSha256(a1),
+      previewHash: pa.previewHash,
+    };
+    const first = await applyGarmentRepost(w.ctx, cmdA, actorOf(w.boss));
+    expect(first.replayed).toBe(false);
+    expect([await bin(w.org, w.L), await bin(w.org, w.M)]).toEqual(['4', '4']);
+    expect(await payments()).toBe(paymentsBefore);
+    const stamped = (
+      await owner`select stock_entry_id::text as e from public.pos_tickets where id=${tA.ticketId}`
+    )[0].e;
+    expect(stamped).toBe(first.receipt.replacementEntryId);
+    // B's manifest was approved against the pre-A bin state: it must lose its fingerprint race.
+    const pb = await previewGarmentRepost(w.ctx, b1).catch((e) => e);
+    expect(pb).toMatchObject({ code: 'stale' });
+    await expect(
+      applyGarmentRepost(
+        w.ctx,
+        {
+          manifest: b1,
+          approvedPlanSha256: garmentManifestSha256(b1),
+          previewHash: pa.previewHash,
+        },
+        actorOf(w.boss),
+      ),
+    ).rejects.toMatchObject({ code: 'stale' });
+    expect([await bin(w.org, w.L), await bin(w.org, w.M)]).toEqual(['4', '4']);
+    // A fresh, separately approved manifest applies; the first operation then replays with zero writes.
+    const b2 = await draftGarmentRepostManifest(w.ctx, gInput(tB.lineIds[0]));
+    const pb2 = await previewGarmentRepost(w.ctx, b2);
+    if (pb2.outcome !== 'preview') throw new Error('blocked');
+    await applyGarmentRepost(
+      w.ctx,
+      { manifest: b2, approvedPlanSha256: garmentManifestSha256(b2), previewHash: pb2.previewHash },
+      actorOf(w.boss),
+    );
+    expect([await bin(w.org, w.L), await bin(w.org, w.M)]).toEqual(['5', '3']); // net effect of two quantity-1 transformations
+    const corrections = await count('stk_corrections', w.org);
+    const replay = await applyGarmentRepost(w.ctx, cmdA, actorOf(w.boss));
+    expect(replay.replayed).toBe(true);
+    expect(await count('stk_corrections', w.org)).toBe(corrections);
+    expect(await payments()).toBe(paymentsBefore);
+    // Ineligible without the owner-attested valuation keys and without a mapped M recipe.
+    const bad = decodeGarmentRepostManifestV1({
+      ...b2,
+      operationKey: randomUUID(),
+      valuation: { ...b2.valuation, currency: 'EUR' },
+    });
+    expect(bad.valuation.currency).toBe('EUR');
+    const status = await getGarmentRepostStatus(w.ctx, {
+      operationKey: a1.operationKey,
+      manifestSha256: garmentManifestSha256(a1),
+    });
+    expect(status).toMatchObject({ outcome: 'applied' });
   });
 
   it('stale unauthorized foreign and numeric out of range cases produce no repair effect', async () => {
