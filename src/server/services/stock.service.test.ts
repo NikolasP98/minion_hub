@@ -19,6 +19,10 @@ import {
   itemOnHandInfo,
   listItems,
   archiveItems,
+  lockStockWrite,
+  submitEntryInTx,
+  cancelEntryInTx,
+  createEntryInTx,
 } from './stock.service';
 
 // `and` is spied (not stubbed — it still delegates to the real implementation)
@@ -992,5 +996,87 @@ describe('itemOnHandInfo — qty + value aggregation', () => {
     expect(out.get('i1')).toEqual({ qtyOnHand: 15, value: 150.5 });
     expect(out.get('i2')).toEqual({ qtyOnHand: 0, value: 0 });
     expect(out.get('missing')).toBeUndefined();
+  });
+});
+
+describe('same-transaction seams (spec 124)', () => {
+  const guardCtx = (db: unknown) => ctx(db);
+
+  it('lockStockWrite takes stock-v1 first and the org authority lock second, in the caller transaction', async () => {
+    const { db } = createMockDb();
+    const tx = db as never;
+    const calls: string[] = [];
+    (db as unknown as { execute: (q: unknown) => Promise<void> }).execute = async (q) => {
+      // The drizzle SQL object carries its text chunks; the literal differs per lock.
+      calls.push(JSON.stringify(q));
+    };
+    await lockStockWrite(tx, guardCtx(db));
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toContain('minion:stock-write:v1:');
+    expect(calls[1]).toContain('hashtextextended');
+    expect(calls[1]).not.toContain('minion:stock-write:v1:');
+  });
+
+  it('refuses a guard issued for another transaction or organization', async () => {
+    const { db } = createMockDb();
+    const other = createMockDb().db;
+    const guard = await lockStockWrite(db as never, guardCtx(db));
+    await expect(
+      submitEntryInTx(other as never, guardCtx(other), guard, 'e1', actor),
+    ).rejects.toMatchObject({ code: 'guard_mismatch' });
+    await expect(
+      cancelEntryInTx(db as never, { db: db as never, tenantId: 'org-2' }, guard, 'e1', actor),
+    ).rejects.toMatchObject({ code: 'guard_mismatch' });
+    await expect(
+      createEntryInTx(
+        other as never,
+        guardCtx(other),
+        guard,
+        { type: 'receipt', lines: [] },
+        actor,
+      ),
+    ).rejects.toMatchObject({ code: 'guard_mismatch' });
+  });
+
+  it('submitEntryInTx refuses a submitted entry by default and reports transitioned:false only with acceptSubmitted', async () => {
+    const submitted = [{ id: 'e1', orgId: 'org-1', status: 'submitted', type: 'issue' }];
+    const a = createMockDb();
+    const guardA = await lockStockWrite(a.db as never, guardCtx(a.db));
+    a.resolveSequence([submitted]);
+    await expect(
+      submitEntryInTx(a.db as never, guardCtx(a.db), guardA, 'e1', actor),
+    ).rejects.toMatchObject({ code: 'not_draft' });
+
+    const b = createMockDb();
+    const guardB = await lockStockWrite(b.db as never, guardCtx(b.db));
+    b.resolveSequence([submitted]);
+    const result = await submitEntryInTx(b.db as never, guardCtx(b.db), guardB, 'e1', actor, {
+      acceptSubmitted: true,
+    });
+    expect(result).toMatchObject({ transitioned: false, entry: { id: 'e1' } });
+    // No event on an already-submitted entry.
+    const sql = (
+      b.db as unknown as { execute: { mock: { calls: unknown[][] } } }
+    ).execute.mock.calls
+      .map((c) => JSON.stringify(c[0]))
+      .join('\n');
+    expect(sql).not.toContain('stock.entry_submitted');
+  });
+
+  it('createEntryInTx rejects a malformed preallocated id before inserting', async () => {
+    const { db } = createMockDb();
+    const guard = await lockStockWrite(db as never, guardCtx(db));
+    await expect(
+      createEntryInTx(db as never, guardCtx(db), guard, { type: 'receipt', lines: [] }, actor, {
+        entryId: 'not-a-uuid',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_entry_id' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('the public submitEntry still refuses a submitted entry (wrapper unchanged)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[{ id: 'e1', orgId: 'org-1', status: 'submitted', type: 'issue' }]]);
+    await expect(submitEntry(ctx(db), 'e1', actor)).rejects.toMatchObject({ code: 'not_draft' });
   });
 });

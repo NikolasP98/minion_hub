@@ -1,10 +1,12 @@
 import { StaleWriteError, staleGuard, nextWriteTimestamp } from './errors';
 import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { appModules } from '$server/db/pg-modules-schema';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { memoRequest } from '$server/db/request-memo';
 import { nextSerialId } from './naming-series';
 import { recordAudit } from './activity.service';
+import { lockNavigationPolicy } from './nav-policy-lock';
 import { registerNotifCandidateSource } from './notif.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
@@ -143,22 +145,27 @@ export interface ComponentRow {
  *  availability helpers) — a no-op passthrough outside a GET. */
 export function listAllComponentEdges(ctx: CoreCtx): Promise<ComponentEdge[]> {
   return memoRequest(`component-edges:${ctx.tenantId}`, () =>
-    withOrgCore(ctx, async (tx) => {
-      const rows = await tx
-        .select({
-          parentItemId: stkItemComponents.parentItemId,
-          childItemId: stkItemComponents.childItemId,
-          qty: stkItemComponents.qty,
-        })
-        .from(stkItemComponents)
-        .where(eq(stkItemComponents.orgId, ctx.tenantId));
-      return rows.map((r) => ({
-        parentItemId: r.parentItemId,
-        childItemId: r.childItemId,
-        qty: Number(r.qty),
-      }));
-    }),
+    withOrgCore(ctx, (tx) => listAllComponentEdgesInTx(tx, ctx)),
   );
+}
+
+export async function listAllComponentEdgesInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+): Promise<ComponentEdge[]> {
+  const rows = await tx
+    .select({
+      parentItemId: stkItemComponents.parentItemId,
+      childItemId: stkItemComponents.childItemId,
+      qty: stkItemComponents.qty,
+    })
+    .from(stkItemComponents)
+    .where(eq(stkItemComponents.orgId, ctx.tenantId));
+  return rows.map((r) => ({
+    parentItemId: r.parentItemId,
+    childItemId: r.childItemId,
+    qty: Number(r.qty),
+  }));
 }
 
 /** One item's direct children, joined to the child item for display. */
@@ -228,6 +235,7 @@ export async function setComponent(
   }
 
   const row = await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const [r] = await tx
       .insert(stkItemComponents)
       .values({
@@ -270,6 +278,7 @@ export async function setComponent(
 
 export async function removeComponent(ctx: CoreCtx, id: string, actor: Actor): Promise<boolean> {
   const deleted = await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const rows = await tx
       .delete(stkItemComponents)
       .where(and(eq(stkItemComponents.id, id), eq(stkItemComponents.orgId, ctx.tenantId)))
@@ -431,6 +440,9 @@ export async function updateItem(
   expectedUpdatedAt?: Date,
 ): Promise<StkItem | null> {
   return withOrgCore(ctx, async (tx) => {
+    // Only a stock-rule change (UOM conversion / bridge) can race a correction's rule snapshot.
+    if ('uom' in patch || 'consumptionUom' in patch || 'unitsPerStockUom' in patch)
+      await lockStockWrite(tx, ctx);
     const [cur] = await tx
       .select()
       .from(stkItems)
@@ -516,6 +528,7 @@ export async function updateWarehouse(
   patch: Partial<NewWarehouseInput> & { archived?: boolean },
 ): Promise<StkWarehouse | null> {
   return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const { archived, ...rest } = patch;
     if (rest.parentId !== undefined && rest.parentId !== null) {
       const all = await tx
@@ -618,23 +631,32 @@ export function listEntries(
   });
 }
 
-export async function getEntry(
+export function getEntry(
   ctx: CoreCtx,
   id: string,
 ): Promise<{ entry: StkEntry; lines: StkEntryLine[] } | null> {
-  return withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx
-      .select()
-      .from(stkEntries)
-      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
-    if (!entry) return null;
-    const lines = await tx
-      .select()
-      .from(stkEntryLines)
-      .where(eq(stkEntryLines.entryId, id))
-      .orderBy(asc(stkEntryLines.lineNo));
-    return { entry, lines };
-  });
+  return withOrgCore(ctx, (tx) => getEntryInTx(tx, ctx, id));
+}
+
+/** Same-transaction read (optionally `FOR UPDATE` on the header) for writers that already hold the gate pair. */
+export async function getEntryInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  opts: { forUpdate?: boolean } = {},
+): Promise<{ entry: StkEntry; lines: StkEntryLine[] } | null> {
+  const q = tx
+    .select()
+    .from(stkEntries)
+    .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, ctx.tenantId)));
+  const [entry] = opts.forUpdate ? await q.for('update') : await q;
+  if (!entry) return null;
+  const lines = await tx
+    .select()
+    .from(stkEntryLines)
+    .where(eq(stkEntryLines.entryId, id))
+    .orderBy(asc(stkEntryLines.lineNo));
+  return { entry, lines };
 }
 
 function linesToRows(orgId: string, entryId: string, lines: NewEntryLineInput[]) {
@@ -651,29 +673,189 @@ function linesToRows(orgId: string, entryId: string, lines: NewEntryLineInput[])
   }));
 }
 
+// ── Same-transaction stock seams (spec 124, contracts/transaction-protocol.md) ─────────
+
+declare const stockWriteGuardBrand: unique symbol;
+/** Opaque proof that this transaction holds stock-v1 AND the org authority lock. */
+export type StockWriteGuard = { readonly [stockWriteGuardBrand]: true };
+const guardOwners = new WeakMap<object, { tx: CoreTx; orgId: string }>();
+
+export interface BinIdentity {
+  itemId: string;
+  warehouseId: string;
+}
+export interface LockedBins {
+  readonly orgId: string;
+  readonly keys: readonly BinIdentity[];
+  /** Existing `binKey` spelling; mutated in place by each posting leg. */
+  readonly states: Map<string, BinState>;
+}
+export interface StockPostingOptions {
+  /** Preallocated replacement UUID, validated before insert. */
+  readonly entryId?: string;
+  /** Server/approved manifest only; normal callers use now. */
+  readonly postedAt?: Date;
+  readonly bins?: LockedBins;
+}
+export interface SubmitEntryOptions extends StockPostingOptions {
+  /** Default false: a non-draft entry refuses `not_draft`. */
+  readonly acceptSubmitted?: boolean;
+  readonly expectedInvoice?: { invoiceId: string; lines: string[] };
+}
+
+/**
+ * First SQL of every participating stock write: the per-org stock gate, then the existing org
+ * authority lock (same key the authority writers take), both transaction-scoped and held to
+ * commit. Authority-only writers take the second lock alone, never the first after it.
+ */
+export async function lockStockWrite(tx: CoreTx, ctx: CoreCtx): Promise<StockWriteGuard> {
+  const orgId = ctx.tenantId.toLowerCase();
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended('minion:stock-write:v1:' || ${orgId}::text, 0))`,
+  );
+  await lockNavigationPolicy(tx, ctx.tenantId);
+  const guard = {} as StockWriteGuard;
+  guardOwners.set(guard, { tx, orgId: ctx.tenantId });
+  return guard;
+}
+
+/** Throws unless `guard` was issued by `lockStockWrite` for THIS transaction and organization. */
+export function assertStockWriteGuard(tx: CoreTx, ctx: CoreCtx, guard: StockWriteGuard): void {
+  const owner = guardOwners.get(guard);
+  if (!owner || owner.tx !== tx || owner.orgId !== ctx.tenantId)
+    throw new StockError('stock write guard does not belong to this transaction', 'guard_mismatch');
+}
+
+/**
+ * Reads module state straight from the passed transaction (no cache, absent row = enabled, never
+ * a placeholder insert). A present `false` row refuses before effects.
+ */
+export async function assertStockModulesEnabledInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  moduleIds: readonly ('stock' | 'pos' | 'finances')[],
+): Promise<void> {
+  assertStockWriteGuard(tx, ctx, guard);
+  const rows = await tx
+    .select({ moduleId: appModules.moduleId, enabled: appModules.enabled })
+    .from(appModules)
+    .where(and(eq(appModules.orgId, ctx.tenantId), inArray(appModules.moduleId, [...moduleIds])));
+  const off = rows.find((r) => r.enabled === false);
+  if (off) throw new StockError(`module ${off.moduleId} is disabled`, 'module_disabled');
+}
+
+/** Sorted, deduplicated `FOR UPDATE` of the existing bin rows; a missing bin is EMPTY_BIN, never a placeholder. */
+export async function lockBinsInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  keys: readonly BinIdentity[],
+): Promise<LockedBins> {
+  assertStockWriteGuard(tx, ctx, guard);
+  const unique = new Map(keys.map((k) => [binKey(k.itemId, k.warehouseId), k]));
+  const ordered = [...unique.keys()].sort();
+  return {
+    orgId: ctx.tenantId,
+    keys: ordered.map((k) => unique.get(k)!),
+    states: await lockBins(tx, ctx.tenantId, ordered),
+  };
+}
+
+/** The locked bin states one posting leg needs: the caller's shared context (extended with any missing key) or a fresh lock. */
+async function legBins(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  keys: Set<string>,
+  provided?: LockedBins,
+): Promise<Map<string, BinState>> {
+  const parse = (k: string): BinIdentity => {
+    const [itemId, warehouseId] = k.split(':');
+    return { itemId, warehouseId };
+  };
+  if (!provided) return (await lockBinsInTx(tx, ctx, guard, [...keys].map(parse))).states;
+  if (provided.orgId !== ctx.tenantId)
+    throw new StockError('locked bins belong to another organization', 'guard_mismatch');
+  const missing = [...keys].filter((k) => !provided.states.has(k));
+  if (missing.length) {
+    const extra = await lockBinsInTx(tx, ctx, guard, missing.map(parse));
+    for (const [k, v] of extra.states) provided.states.set(k, v);
+  }
+  return provided.states;
+}
+
+/** An approved posting time may not precede the newest ledger row of the affected bins, nor lie in the future. */
+async function assertPostedAtAdmissible(
+  tx: CoreTx,
+  orgId: string,
+  postedAt: Date,
+  keys: Iterable<string>,
+): Promise<void> {
+  const pairs = [...keys].map((k) => k.split(':'));
+  const latest = pairs.length
+    ? ((await tx.execute(sql`
+        select max(posted_at) as latest from (
+          select distinct on (item_id, warehouse_id) posted_at
+            from stk_ledger
+           where org_id = ${orgId}
+             and (item_id, warehouse_id) in (${sql.join(
+               pairs.map(([i, w]) => sql`(${i}::uuid, ${w}::uuid)`),
+               sql`, `,
+             )})
+           order by item_id, warehouse_id, id desc) t`)) as unknown as Array<{
+        latest: string | Date | null;
+      }>)
+    : [];
+  const [clock] = (await tx.execute(sql`select clock_timestamp() as now`)) as unknown as Array<{
+    now: string | Date;
+  }>;
+  const newest = latest[0]?.latest ? new Date(latest[0].latest) : null;
+  if ((newest && postedAt < newest) || (clock && postedAt > new Date(clock.now)))
+    throw new StockError('posting time is out of order', 'posted_at_out_of_order');
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+export async function createEntryInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  input: NewEntryInput,
+  actor: Actor,
+  options: StockPostingOptions = {},
+): Promise<StkEntry> {
+  assertStockWriteGuard(tx, ctx, guard);
+  if (!isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
+  if (options.entryId !== undefined && !UUID_RE.test(options.entryId))
+    throw new StockError('invalid preallocated entry id', 'invalid_entry_id');
+  const [entry] = await tx
+    .insert(stkEntries)
+    .values({
+      ...(options.entryId ? { id: options.entryId } : {}),
+      orgId: ctx.tenantId,
+      type: input.type,
+      status: 'draft',
+      partyId: input.partyId ?? null,
+      note: input.note ?? null,
+      createdBy: actor.id,
+      metadata: input.metadata ?? {},
+    })
+    .returning();
+  if (input.lines.length)
+    await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, entry.id, input.lines));
+  return entry;
+}
+
 export async function createEntry(
   ctx: CoreCtx,
   input: NewEntryInput,
   actor: Actor,
 ): Promise<StkEntry> {
   if (!isEntryType(input.type)) throw new StockError('invalid entry type', 'invalid_type');
-  return withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx
-      .insert(stkEntries)
-      .values({
-        orgId: ctx.tenantId,
-        type: input.type,
-        status: 'draft',
-        partyId: input.partyId ?? null,
-        note: input.note ?? null,
-        createdBy: actor.id,
-        metadata: input.metadata ?? {},
-      })
-      .returning();
-    if (input.lines.length)
-      await tx.insert(stkEntryLines).values(linesToRows(ctx.tenantId, entry.id, input.lines));
-    return entry;
-  });
+  return withOrgCore(ctx, async (tx) =>
+    createEntryInTx(tx, ctx, await lockStockWrite(tx, ctx), input, actor),
+  );
 }
 
 export async function updateEntry(
@@ -682,6 +864,7 @@ export async function updateEntry(
   input: Partial<NewEntryInput>,
 ): Promise<StkEntry | null> {
   return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const [cur] = await tx
       .select()
       .from(stkEntries)
@@ -716,6 +899,7 @@ export async function updateEntry(
 
 export async function deleteEntry(ctx: CoreCtx, id: string): Promise<boolean> {
   return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const [cur] = await tx
       .select({ status: stkEntries.status })
       .from(stkEntries)
@@ -740,7 +924,7 @@ async function lockBins(
   keys: Iterable<string>,
 ): Promise<Map<string, BinState>> {
   const out = new Map<string, BinState>();
-  for (const key of keys) {
+  for (const key of [...new Set(keys)].sort()) {
     const [itemId, warehouseId] = key.split(':');
     const [row] = (await tx
       .select({ qty: stkBins.qty, valuationRate: stkBins.valuationRate })
@@ -761,8 +945,15 @@ async function lockBins(
   return out;
 }
 
-async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>): Promise<void> {
+async function writeBins(
+  tx: CoreTx,
+  orgId: string,
+  bins: Map<string, BinState>,
+  only?: Iterable<string>,
+): Promise<void> {
+  const wanted = only ? new Set(only) : null;
   for (const [key, bin] of bins) {
+    if (wanted && !wanted.has(key)) continue;
     const [itemId, warehouseId] = key.split(':');
     await tx
       .insert(stkBins)
@@ -775,165 +966,27 @@ async function writeBins(tx: CoreTx, orgId: string, bins: Map<string, BinState>)
 }
 
 /**
- * Submit a draft entry: ONE withOrgCore tx that locks the entry row + every
- * touched bin (`select ... for update`, the boring-correct choice over
- * upsert-and-hope), validates lines, computes ledger deltas via
- * stock.logic.ts, enforces the negative-stock guard, writes the append-only
- * ledger, upserts bins, and stamps the naming-series human_id. recordAudit
- * runs in its own tx right after (matches the rest of the codebase — see
- * projects.service.ts / workflow.service.ts; audit is best-effort, not
- * part of the atomic invariant).
+ * Submit a draft entry: ONE withOrgCore tx that takes the stock gate pair, locks the entry row +
+ * every touched bin (`select ... for update`, sorted), validates lines, computes ledger deltas via
+ * stock.logic.ts, enforces the negative-stock guard, writes the append-only ledger, upserts bins,
+ * and stamps the naming-series human_id. recordAudit runs in its own tx right after (best-effort,
+ * not part of the atomic invariant); `submitEntryInTx` itself never audits.
  */
 export async function submitEntry(ctx: CoreCtx, id: string, actor: Actor): Promise<StkEntry> {
-  return submitEntryInternal(ctx, id, actor, false);
+  return submitEntryOwning(ctx, id, actor, {});
 }
 
-/** Invoice retries may observe a submission committed by a competing caller. */
-async function submitEntryInternal(
+/** Owning wrapper: one transaction, gate first, audit after commit only for a real transition. */
+async function submitEntryOwning(
   ctx: CoreCtx,
   id: string,
   actor: Actor,
-  acceptSubmitted: boolean,
-  expectedInvoice?: { invoiceId: string; lines: string[] },
+  options: SubmitEntryOptions,
 ): Promise<StkEntry> {
-  const orgId = ctx.tenantId;
-  let newlySubmitted = false;
-  const result = await withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx
-      .select()
-      .from(stkEntries)
-      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
-      .for('update');
-    if (!entry) throw new StockError('entry not found', 'not_found');
-    // Recheck under the entry lock: a draft can be edited between its creation
-    // transaction and this submission transaction. Never post a changed payload.
-    const checkedLines = expectedInvoice
-      ? await tx
-          .select()
-          .from(stkEntryLines)
-          .where(and(eq(stkEntryLines.entryId, id), eq(stkEntryLines.orgId, orgId)))
-      : undefined;
-    if (
-      expectedInvoice &&
-      (entry.type !== 'issue' ||
-        String((entry.metadata as { invoiceId?: unknown }).invoiceId ?? '')
-          .trim()
-          .toLowerCase() !== expectedInvoice.invoiceId ||
-        JSON.stringify(invoiceLineIdentity(checkedLines ?? [])) !==
-          JSON.stringify(expectedInvoice.lines))
-    )
-      throw new StockError('invoice issue changed before submission', 'duplicate_invoice');
-    if (acceptSubmitted && entry.status === 'submitted') return entry;
-    if (entry.status !== 'draft')
-      throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
-
-    const lines =
-      checkedLines ?? (await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id)));
-    if (!lines.length) throw new StockError('entry has no lines', 'no_lines');
-    if (!isEntryType(entry.type)) throw new StockError('invalid entry type', 'invalid_type');
-    const type = entry.type;
-
-    const itemIds = [...new Set(lines.map((l) => l.itemId))];
-    const items = await tx
-      .select({ id: stkItems.id, code: stkItems.code, name: stkItems.name })
-      .from(stkItems)
-      .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
-    const itemIdSet = new Set(items.map((i) => i.id));
-    const itemMap = new Map(items.map((i) => [i.id, i]));
-    const warehouseIds = [
-      ...new Set(
-        lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
-      ),
-    ];
-    const warehouses = warehouseIds.length
-      ? await tx
-          .select({ id: stkWarehouses.id, archivedAt: stkWarehouses.archivedAt })
-          .from(stkWarehouses)
-          .where(and(eq(stkWarehouses.orgId, orgId), inArray(stkWarehouses.id, warehouseIds)))
-      : [];
-    const warehouseIdSet = new Set(warehouses.map((w) => w.id));
-    // A direct API call could otherwise submit against an archived warehouse
-    // id even though the UI hides archived rows from every picker — silently
-    // reintroducing stock into something the archive guard required to be
-    // empty (PR-C, spec 2026-08-23-hub-stock-crm-ux-consolidation).
-    const archivedWarehouse = warehouses.find((w) => w.archivedAt != null);
-    if (archivedWarehouse)
-      throw new StockError(`warehouse ${archivedWarehouse.id} is archived`, 'warehouse_archived');
-
-    const lineLikes = lines.map((l) => ({
-      itemId: l.itemId,
-      qty: Number(l.qty),
-      rate: l.rate == null ? null : Number(l.rate),
-      fromWarehouseId: l.fromWarehouseId,
-      toWarehouseId: l.toWarehouseId,
-    }));
-    for (const l of lineLikes) {
-      if (!itemIdSet.has(l.itemId))
-        throw new StockError(`item ${l.itemId} not found`, 'item_not_found');
-      const errs = validateEntryLine(type, l);
-      if (errs.length) throw new StockError(errs.join('; '), 'invalid_line');
-      for (const wid of [l.fromWarehouseId, l.toWarehouseId]) {
-        if (wid && !warehouseIdSet.has(wid))
-          throw new StockError(`warehouse ${wid} not found`, 'warehouse_not_found');
-      }
-    }
-
-    const binKeys = new Set<string>();
-    for (const l of lineLikes)
-      for (const leg of expandLine(type, l)) binKeys.add(binKey(l.itemId, leg.warehouseId));
-    const binMap = await lockBins(tx, orgId, binKeys);
-
-    const ledgerInserts: Array<typeof stkLedger.$inferInsert> = [];
-    for (const l of lineLikes) {
-      const legs = expandLine(type, l);
-      let carryRate: number | null = null; // transfer: the out-leg's rateUsed feeds the in-leg
-      for (const leg of legs) {
-        const key = binKey(l.itemId, leg.warehouseId);
-        const bin = binMap.get(key)!;
-        const rate = leg.rate ?? carryRate;
-        if (leg.qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, leg.qtyDelta)) {
-          const item = itemMap.get(l.itemId);
-          const itemLabel = item ? `${item.code} (${item.name})` : l.itemId;
-          throw new StockError(
-            `insufficient stock for ${itemLabel} in warehouse ${leg.warehouseId}: ${bin.qty} available`,
-            'negative_stock',
-          );
-        }
-        const { valueDelta, rateUsed } = computeLegValue(bin, leg.qtyDelta, rate);
-        const next = applyLedgerDelta(bin, leg.qtyDelta, valueDelta);
-        binMap.set(key, next);
-        if (type === 'transfer' && leg.qtyDelta < 0) carryRate = rateUsed;
-        ledgerInserts.push({
-          orgId,
-          itemId: l.itemId,
-          warehouseId: leg.warehouseId,
-          entryId: id,
-          qtyDelta: String(leg.qtyDelta),
-          qtyAfter: String(next.qty),
-          valuationRate: String(next.rate),
-          valueDelta: String(valueDelta),
-        });
-      }
-    }
-
-    await tx.insert(stkLedger).values(ledgerInserts);
-    await writeBins(tx, orgId, binMap);
-
-    const humanId = entry.humanId ?? (await nextSerialId(tx, orgId, 'STE-.YYYY.-', new Date()));
-    const [updated] = await tx
-      .update(stkEntries)
-      .set({ status: 'submitted', humanId, postedAt: new Date(), updatedAt: new Date() })
-      .where(eq(stkEntries.id, id))
-      .returning();
-    // Transactional — pg_notify only delivers on commit, so this rides the same
-    // atomicity as the ledger/bin writes above (unlike recordAudit below, which
-    // runs in its own tx per the codebase's existing convention).
-    await emitHubEvent(tx, { type: 'stock.entry_submitted', orgId, entryId: id, entryType: type });
-    newlySubmitted = true;
-    return updated;
-  });
-
-  if (newlySubmitted)
+  const result = await withOrgCore(ctx, async (tx) =>
+    submitEntryInTx(tx, ctx, await lockStockWrite(tx, ctx), id, actor, options),
+  );
+  if (result.transitioned)
     await recordAudit(ctx, {
       refType: 'stk_entry',
       refId: id,
@@ -941,70 +994,168 @@ async function submitEntryInternal(
       changes: [{ field: 'status', label: 'Submit', old: 'draft', new: 'submitted' }],
       actor,
     });
-  return result;
+  return result.entry;
+}
+
+/** Same-transaction submit. Emits `stock.entry_submitted` once per newly submitted entry. */
+export async function submitEntryInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  id: string,
+  _actor: Actor,
+  options: SubmitEntryOptions = {},
+): Promise<{ entry: StkEntry; transitioned: boolean }> {
+  assertStockWriteGuard(tx, ctx, guard);
+  const orgId = ctx.tenantId;
+  const { acceptSubmitted = false, expectedInvoice } = options;
+  const [entry] = await tx
+    .select()
+    .from(stkEntries)
+    .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
+    .for('update');
+  if (!entry) throw new StockError('entry not found', 'not_found');
+  // Recheck under the entry lock: a draft can be edited between its creation
+  // transaction and this submission transaction. Never post a changed payload.
+  const checkedLines = expectedInvoice
+    ? await tx
+        .select()
+        .from(stkEntryLines)
+        .where(and(eq(stkEntryLines.entryId, id), eq(stkEntryLines.orgId, orgId)))
+    : undefined;
+  if (
+    expectedInvoice &&
+    (entry.type !== 'issue' ||
+      String((entry.metadata as { invoiceId?: unknown }).invoiceId ?? '')
+        .trim()
+        .toLowerCase() !== expectedInvoice.invoiceId ||
+      JSON.stringify(invoiceLineIdentity(checkedLines ?? [])) !==
+        JSON.stringify(expectedInvoice.lines))
+  )
+    throw new StockError('invoice issue changed before submission', 'duplicate_invoice');
+  if (acceptSubmitted && entry.status === 'submitted') return { entry, transitioned: false };
+  if (entry.status !== 'draft')
+    throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
+
+  const lines =
+    checkedLines ?? (await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id)));
+  if (!lines.length) throw new StockError('entry has no lines', 'no_lines');
+  if (!isEntryType(entry.type)) throw new StockError('invalid entry type', 'invalid_type');
+  const type = entry.type;
+
+  const itemIds = [...new Set(lines.map((l) => l.itemId))];
+  const items = await tx
+    .select({ id: stkItems.id, code: stkItems.code, name: stkItems.name })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, orgId), inArray(stkItems.id, itemIds)));
+  const itemIdSet = new Set(items.map((i) => i.id));
+  const itemMap = new Map(items.map((i) => [i.id, i]));
+  const warehouseIds = [
+    ...new Set(
+      lines.flatMap((l) => [l.fromWarehouseId, l.toWarehouseId]).filter((x): x is string => !!x),
+    ),
+  ];
+  const warehouses = warehouseIds.length
+    ? await tx
+        .select({ id: stkWarehouses.id, archivedAt: stkWarehouses.archivedAt })
+        .from(stkWarehouses)
+        .where(and(eq(stkWarehouses.orgId, orgId), inArray(stkWarehouses.id, warehouseIds)))
+    : [];
+  const warehouseIdSet = new Set(warehouses.map((w) => w.id));
+  // A direct API call could otherwise submit against an archived warehouse
+  // id even though the UI hides archived rows from every picker — silently
+  // reintroducing stock into something the archive guard required to be
+  // empty (PR-C, spec 2026-08-23-hub-stock-crm-ux-consolidation).
+  const archivedWarehouse = warehouses.find((w) => w.archivedAt != null);
+  if (archivedWarehouse)
+    throw new StockError(`warehouse ${archivedWarehouse.id} is archived`, 'warehouse_archived');
+
+  const lineLikes = lines.map((l) => ({
+    itemId: l.itemId,
+    qty: Number(l.qty),
+    rate: l.rate == null ? null : Number(l.rate),
+    fromWarehouseId: l.fromWarehouseId,
+    toWarehouseId: l.toWarehouseId,
+  }));
+  for (const l of lineLikes) {
+    if (!itemIdSet.has(l.itemId))
+      throw new StockError(`item ${l.itemId} not found`, 'item_not_found');
+    const errs = validateEntryLine(type, l);
+    if (errs.length) throw new StockError(errs.join('; '), 'invalid_line');
+    for (const wid of [l.fromWarehouseId, l.toWarehouseId]) {
+      if (wid && !warehouseIdSet.has(wid))
+        throw new StockError(`warehouse ${wid} not found`, 'warehouse_not_found');
+    }
+  }
+
+  const binKeys = new Set<string>();
+  for (const l of lineLikes)
+    for (const leg of expandLine(type, l)) binKeys.add(binKey(l.itemId, leg.warehouseId));
+  const binMap = await legBins(tx, ctx, guard, binKeys, options.bins);
+
+  if (options.postedAt) await assertPostedAtAdmissible(tx, orgId, options.postedAt, binKeys);
+  const ledgerInserts: Array<typeof stkLedger.$inferInsert> = [];
+  for (const l of lineLikes) {
+    const legs = expandLine(type, l);
+    let carryRate: number | null = null; // transfer: the out-leg's rateUsed feeds the in-leg
+    for (const leg of legs) {
+      const key = binKey(l.itemId, leg.warehouseId);
+      const bin = binMap.get(key)!;
+      const rate = leg.rate ?? carryRate;
+      if (leg.qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, leg.qtyDelta)) {
+        const item = itemMap.get(l.itemId);
+        const itemLabel = item ? `${item.code} (${item.name})` : l.itemId;
+        throw new StockError(
+          `insufficient stock for ${itemLabel} in warehouse ${leg.warehouseId}: ${bin.qty} available`,
+          'negative_stock',
+        );
+      }
+      const { valueDelta, rateUsed } = computeLegValue(bin, leg.qtyDelta, rate);
+      const next = applyLedgerDelta(bin, leg.qtyDelta, valueDelta);
+      binMap.set(key, next);
+      if (type === 'transfer' && leg.qtyDelta < 0) carryRate = rateUsed;
+      ledgerInserts.push({
+        orgId,
+        itemId: l.itemId,
+        warehouseId: leg.warehouseId,
+        entryId: id,
+        qtyDelta: String(leg.qtyDelta),
+        qtyAfter: String(next.qty),
+        valuationRate: String(next.rate),
+        valueDelta: String(valueDelta),
+        ...(options.postedAt ? { postedAt: options.postedAt } : {}),
+      });
+    }
+  }
+
+  await tx.insert(stkLedger).values(ledgerInserts);
+  await writeBins(tx, orgId, binMap, binKeys);
+
+  const humanId = entry.humanId ?? (await nextSerialId(tx, orgId, 'STE-.YYYY.-', new Date()));
+  const [updated] = await tx
+    .update(stkEntries)
+    .set({
+      status: 'submitted',
+      humanId,
+      postedAt: options.postedAt ?? new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(stkEntries.id, id))
+    .returning();
+  // Transactional — pg_notify only delivers on commit, so this rides the same
+  // atomicity as the ledger/bin writes above (unlike recordAudit below, which
+  // runs in its own tx per the codebase's existing convention).
+  await emitHubEvent(tx, { type: 'stock.entry_submitted', orgId, entryId: id, entryType: type });
+  return { entry: updated, transitioned: true };
 }
 
 /** Cancel a submitted entry: inserts REVERSING ledger rows (never deletes),
  *  same locking discipline as submit. Exact by construction — see
  *  applyLedgerDelta's doc comment on invertibility. */
 export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promise<StkEntry> {
-  const orgId = ctx.tenantId;
-  const result = await withOrgCore(ctx, async (tx) => {
-    const [entry] = await tx
-      .select()
-      .from(stkEntries)
-      .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
-      .for('update');
-    if (!entry) throw new StockError('entry not found', 'not_found');
-    if (entry.status !== 'submitted')
-      throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
-
-    const origRows = await tx
-      .select()
-      .from(stkLedger)
-      .where(and(eq(stkLedger.entryId, id), eq(stkLedger.orgId, orgId)));
-    if (!origRows.length) throw new StockError('no ledger rows to reverse', 'no_ledger');
-
-    const binKeys = new Set(origRows.map((r) => binKey(r.itemId, r.warehouseId)));
-    const binMap = await lockBins(tx, orgId, binKeys);
-
-    const ledgerInserts: Array<typeof stkLedger.$inferInsert> = [];
-    for (const r of origRows) {
-      const key = binKey(r.itemId, r.warehouseId);
-      const bin = binMap.get(key)!;
-      const qtyDelta = -Number(r.qtyDelta);
-      const valueDelta = -Number(r.valueDelta);
-      if (qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, qtyDelta)) {
-        throw new StockError(
-          `cancelling would take item ${r.itemId} in warehouse ${r.warehouseId} negative`,
-          'negative_stock',
-        );
-      }
-      const next = applyLedgerDelta(bin, qtyDelta, valueDelta);
-      binMap.set(key, next);
-      ledgerInserts.push({
-        orgId,
-        itemId: r.itemId,
-        warehouseId: r.warehouseId,
-        entryId: id,
-        qtyDelta: String(qtyDelta),
-        qtyAfter: String(next.qty),
-        valuationRate: String(next.rate),
-        valueDelta: String(valueDelta),
-      });
-    }
-
-    await tx.insert(stkLedger).values(ledgerInserts);
-    await writeBins(tx, orgId, binMap);
-
-    const [updated] = await tx
-      .update(stkEntries)
-      .set({ status: 'cancelled', updatedAt: new Date() })
-      .where(eq(stkEntries.id, id))
-      .returning();
-    return updated;
-  });
-
+  const result = await withOrgCore(ctx, async (tx) =>
+    cancelEntryInTx(tx, ctx, await lockStockWrite(tx, ctx), id, actor),
+  );
   await recordAudit(ctx, {
     refType: 'stk_entry',
     refId: id,
@@ -1013,6 +1164,74 @@ export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promi
     actor,
   });
   return result;
+}
+
+/** Same-transaction cancel. `postedAt` dates only the reversal ledger rows; the entry keeps its own posting time. */
+export async function cancelEntryInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  id: string,
+  _actor: Actor,
+  options: StockPostingOptions = {},
+): Promise<StkEntry> {
+  assertStockWriteGuard(tx, ctx, guard);
+  const orgId = ctx.tenantId;
+  const [entry] = await tx
+    .select()
+    .from(stkEntries)
+    .where(and(eq(stkEntries.id, id), eq(stkEntries.orgId, orgId)))
+    .for('update');
+  if (!entry) throw new StockError('entry not found', 'not_found');
+  if (entry.status !== 'submitted')
+    throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
+
+  const origRows = await tx
+    .select()
+    .from(stkLedger)
+    .where(and(eq(stkLedger.entryId, id), eq(stkLedger.orgId, orgId)));
+  if (!origRows.length) throw new StockError('no ledger rows to reverse', 'no_ledger');
+
+  const binKeys = new Set(origRows.map((r) => binKey(r.itemId, r.warehouseId)));
+  const binMap = await legBins(tx, ctx, guard, binKeys, options.bins);
+  if (options.postedAt) await assertPostedAtAdmissible(tx, orgId, options.postedAt, binKeys);
+
+  const ledgerInserts: Array<typeof stkLedger.$inferInsert> = [];
+  for (const r of origRows) {
+    const key = binKey(r.itemId, r.warehouseId);
+    const bin = binMap.get(key)!;
+    const qtyDelta = -Number(r.qtyDelta);
+    const valueDelta = -Number(r.valueDelta);
+    if (qtyDelta < 0 && !ALLOW_NEGATIVE_STOCK_V1 && wouldGoNegative(bin, qtyDelta)) {
+      throw new StockError(
+        `cancelling would take item ${r.itemId} in warehouse ${r.warehouseId} negative`,
+        'negative_stock',
+      );
+    }
+    const next = applyLedgerDelta(bin, qtyDelta, valueDelta);
+    binMap.set(key, next);
+    ledgerInserts.push({
+      orgId,
+      itemId: r.itemId,
+      warehouseId: r.warehouseId,
+      entryId: id,
+      qtyDelta: String(qtyDelta),
+      qtyAfter: String(next.qty),
+      valuationRate: String(next.rate),
+      valueDelta: String(valueDelta),
+      ...(options.postedAt ? { postedAt: options.postedAt } : {}),
+    });
+  }
+
+  await tx.insert(stkLedger).values(ledgerInserts);
+  await writeBins(tx, orgId, binMap, binKeys);
+
+  const [updated] = await tx
+    .update(stkEntries)
+    .set({ status: 'cancelled', updatedAt: new Date() })
+    .where(eq(stkEntries.id, id))
+    .returning();
+  return updated;
 }
 
 // ── Queries: bins + ledger ───────────────────────────────────────────────────
@@ -1090,6 +1309,7 @@ export interface RebuildResult {
 export async function rebuildBins(ctx: CoreCtx, itemId?: string): Promise<RebuildResult> {
   const orgId = ctx.tenantId;
   return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const conds = [eq(stkLedger.orgId, orgId)];
     if (itemId) conds.push(eq(stkLedger.itemId, itemId));
     const rows = await tx
@@ -1239,6 +1459,7 @@ export async function setConsumption(
   if (!(Number.isFinite(input.qtyPerUnit) && input.qtyPerUnit >= 0))
     throw new StockError('qtyPerUnit must be >= 0', 'invalid_qty');
   const { row, oldQtyPerUnit } = await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const [item] = await tx
       .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
       .from(stkItems)
@@ -1306,6 +1527,7 @@ export async function setConsumption(
 
 export async function deleteConsumption(ctx: CoreCtx, id: string): Promise<boolean> {
   return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const res = await tx
       .delete(stkConsumption)
       .where(and(eq(stkConsumption.id, id), eq(stkConsumption.orgId, ctx.tenantId)))
@@ -1730,32 +1952,44 @@ export async function createServiceIssue(
 ): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
 
-  const entry = await withOrgCore(ctx, async (tx) => {
-    const [product] = await tx
-      .select({ id: finProducts.id, name: finProducts.name })
-      .from(finProducts)
-      .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
-    if (!product) throw new StockError('product not found', 'product_not_found');
-
-    const source = input.source ?? 'service';
-    return insertSourcedIssueEntry(ctx, tx, {
-      source,
-      sourceId: input.sourceId,
-      warehouseId: input.warehouseId,
-      lines: input.lines,
-      partyId: input.partyId,
-      note: input.note ?? `Service: ${product.name}`,
-      metadata: {
-        source,
-        finProductId: input.finProductId,
-        quantity: input.quantity,
-        ...(input.sourceId ? { sourceId: input.sourceId } : {}),
-      },
-      actor: input.actor,
-    });
-  });
+  const entry = await withOrgCore(ctx, async (tx) =>
+    createServiceIssueInTx(tx, ctx, await lockStockWrite(tx, ctx), input),
+  );
 
   return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
+}
+
+/** Same-transaction draft service issue (product check, duplicate-source guard); never submits. */
+export async function createServiceIssueInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  input: CreateServiceIssueInput,
+): Promise<StkEntry> {
+  assertStockWriteGuard(tx, ctx, guard);
+  if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
+  const [product] = await tx
+    .select({ id: finProducts.id, name: finProducts.name })
+    .from(finProducts)
+    .where(and(eq(finProducts.id, input.finProductId), eq(finProducts.orgId, ctx.tenantId)));
+  if (!product) throw new StockError('product not found', 'product_not_found');
+
+  const source = input.source ?? 'service';
+  return insertSourcedIssueEntry(ctx, tx, {
+    source,
+    sourceId: input.sourceId,
+    warehouseId: input.warehouseId,
+    lines: input.lines,
+    partyId: input.partyId,
+    note: input.note ?? `Service: ${product.name}`,
+    metadata: {
+      source,
+      finProductId: input.finProductId,
+      quantity: input.quantity,
+      ...(input.sourceId ? { sourceId: input.sourceId } : {}),
+    },
+    actor: input.actor,
+  });
 }
 
 export interface CreateSourcedIssueInput {
@@ -1786,20 +2020,32 @@ export async function createSourcedIssue(
 ): Promise<StkEntry> {
   if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
 
-  const entry = await withOrgCore(ctx, (tx) =>
-    insertSourcedIssueEntry(ctx, tx, {
-      source: input.source,
-      sourceId: input.sourceId,
-      warehouseId: input.warehouseId,
-      lines: input.lines,
-      partyId: input.partyId,
-      note: input.note,
-      metadata: { source: input.source, sourceId: input.sourceId, ...input.metadata },
-      actor: input.actor,
-    }),
+  const entry = await withOrgCore(ctx, async (tx) =>
+    createSourcedIssueInTx(tx, ctx, await lockStockWrite(tx, ctx), input),
   );
 
   return input.submit ? submitEntry(ctx, entry.id, input.actor) : entry;
+}
+
+/** Same-transaction draft sourced issue (duplicate-source guard included); the caller submits it in the same tx if wanted. */
+export async function createSourcedIssueInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  input: CreateSourcedIssueInput,
+): Promise<StkEntry> {
+  assertStockWriteGuard(tx, ctx, guard);
+  if (!input.lines.length) throw new StockError('at least one stock line is required', 'no_lines');
+  return insertSourcedIssueEntry(ctx, tx, {
+    source: input.source,
+    sourceId: input.sourceId,
+    warehouseId: input.warehouseId,
+    lines: input.lines,
+    partyId: input.partyId,
+    note: input.note,
+    metadata: { source: input.source, sourceId: input.sourceId, ...input.metadata },
+    actor: input.actor,
+  });
 }
 
 export interface CreateIssueFromInvoiceLine {
@@ -1865,6 +2111,7 @@ export async function createIssueFromInvoice(
   };
 
   const { entry, expectedLines, invoiceId } = await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const [invoice] = await tx
       .select({ id: finInvoices.id, providerRef: finInvoices.providerRef })
       .from(finInvoices)
@@ -1940,9 +2187,9 @@ export async function createIssueFromInvoice(
   });
 
   return input.submit
-    ? submitEntryInternal(ctx, entry.id, input.actor, true, {
-        invoiceId,
-        lines: expectedLines,
+    ? submitEntryOwning(ctx, entry.id, input.actor, {
+        acceptSubmitted: true,
+        expectedInvoice: { invoiceId, lines: expectedLines },
       })
     : entry;
 }
@@ -1987,27 +2234,34 @@ export async function findEntryByInvoice(
 /** Latest NON-cancelled entry stamped with metadata {source, sourceId} — the
  *  booking realize path's retry/idempotency anchor (a draft left behind by a
  *  negative-stock failure is found and re-submitted instead of duplicated). */
-export async function findEntryBySource(
+export function findEntryBySource(
   ctx: CoreCtx,
   source: string,
   sourceId: string,
 ): Promise<StkEntry | null> {
-  return withOrgCore(ctx, async (tx) => {
-    const [row] = await tx
-      .select()
-      .from(stkEntries)
-      .where(
-        and(
-          eq(stkEntries.orgId, ctx.tenantId),
-          ne(stkEntries.status, 'cancelled'),
-          sql`${stkEntries.metadata}->>'source' = ${source}`,
-          sql`${stkEntries.metadata}->>'sourceId' = ${sourceId}`,
-        ),
-      )
-      .orderBy(desc(stkEntries.createdAt))
-      .limit(1);
-    return row ?? null;
-  });
+  return withOrgCore(ctx, (tx) => findEntryBySourceInTx(tx, ctx, source, sourceId));
+}
+
+export async function findEntryBySourceInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  source: string,
+  sourceId: string,
+): Promise<StkEntry | null> {
+  const [row] = await tx
+    .select()
+    .from(stkEntries)
+    .where(
+      and(
+        eq(stkEntries.orgId, ctx.tenantId),
+        ne(stkEntries.status, 'cancelled'),
+        sql`${stkEntries.metadata}->>'source' = ${source}`,
+        sql`${stkEntries.metadata}->>'sourceId' = ${sourceId}`,
+      ),
+    )
+    .orderBy(desc(stkEntries.createdAt))
+    .limit(1);
+  return row ?? null;
 }
 
 /**
