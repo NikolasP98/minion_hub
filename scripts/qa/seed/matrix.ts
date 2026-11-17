@@ -655,6 +655,11 @@ export const MATRIX: readonly MatrixEntry[] = [
   { id: 'stock.entry.transfer', domain: 'stock', why: 'from_warehouse_id -> to_warehouse_id' },
   { id: 'stock.entry.adjustment', domain: 'stock', why: 'positive rate-bearing adjustment line' },
   { id: 'stock.entry.cancelled', domain: 'stock', why: "status='cancelled'" },
+  {
+    id: 'stock.correction.receipt-replace',
+    domain: 'stock',
+    why: 'immutable stk_corrections row linking a cancelled receipt to its replacement',
+  },
   { id: 'stock.bin.zero', domain: 'stock', why: 'qty=0 after the chain nets out' },
   { id: 'stock.accrual.open', domain: 'stock', why: "status='open'" },
   {

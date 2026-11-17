@@ -340,6 +340,43 @@ export const stkItemComponents = pgTable(
   ],
 );
 
+/**
+ * Spec 124 (F3): immutable correction receipts, ONE table for five kinds. Written once at
+ * the end of the correcting transaction; app_ledger holds SELECT/INSERT only (companion
+ * migration 20261116193000_stock_corrections.sql carries the CHECK matrix and same-org FKs).
+ */
+export const stkCorrections = pgTable(
+  'stk_corrections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    operationKey: uuid('operation_key').notNull(),
+    kind: text('kind').notNull(),
+    sourceType: text('source_type').notNull(),
+    sourceId: uuid('source_id').notNull(),
+    sourceEntryId: uuid('source_entry_id'),
+    replacementEntryId: uuid('replacement_entry_id'),
+    payloadHash: text('payload_hash').notNull(),
+    previewHash: text('preview_hash').notNull(),
+    reason: text('reason').notNull(),
+    /** Historical identity: plain uuid, no profile FK (the receipt outlives the account). */
+    actorId: uuid('actor_id').notNull(),
+    before: jsonb('before').notNull(),
+    intended: jsonb('intended').notNull(),
+    after: jsonb('after').notNull(),
+    status: text('status').notNull().default('applied'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('stk_corrections_org_operation_key_uniq').on(t.orgId, t.operationKey),
+    uniqueIndex('stk_corrections_receipt_chain_source_uniq')
+      .on(t.orgId, t.sourceEntryId)
+      .where(sql`kind = 'receipt_chain'`),
+    index('stk_corrections_org_source_idx').on(t.orgId, t.sourceType, t.sourceId, t.createdAt),
+  ],
+);
+
 export type StkItem = typeof stkItems.$inferSelect;
 export type StkItemComponent = typeof stkItemComponents.$inferSelect;
 export type StkWarehouse = typeof stkWarehouses.$inferSelect;
@@ -349,3 +386,5 @@ export type StkLedgerRow = typeof stkLedger.$inferSelect;
 export type StkBin = typeof stkBins.$inferSelect;
 export type StkConsumption = typeof stkConsumption.$inferSelect;
 export type StkAccrual = typeof stkAccruals.$inferSelect;
+export type StkCorrection = typeof stkCorrections.$inferSelect;
+export type NewStkCorrection = typeof stkCorrections.$inferInsert;

@@ -1173,6 +1173,14 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'faces receivables audit against PostgreSQL produces stable proposal hashes and UUIDs across fresh runs',
       ],
     },
+    {
+      file: 'src/server/services/stock-corrections.sql.integration.test.ts',
+      minimumAssertions: 1,
+      exactAssertions: true,
+      requiredBehaviors: [
+        'stock corrections against PostgreSQL enforces tenant scoped five kind schema immutable grants and private source ownership',
+      ],
+    },
   ],
 } as const satisfies Record<NativePostgresLane, readonly NativePostgresAdmission[]>;
 

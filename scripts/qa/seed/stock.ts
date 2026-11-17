@@ -252,6 +252,21 @@ export async function seed(ctx: SeedContext): Promise<void> {
 
   await entry('stock.entry.cancelled', ENTRY_CANCELLED, 'adjustment', 'cancelled', {});
 
+  // Spec 124: one immutable correction receipt (cancelled entry -> its replacement). Synthetic
+  // linkage only; the payload hashes are fixed digests of the fixture ids, not production evidence.
+  const correctionId = matrixUuid('stock.correction.receipt-replace');
+  await sql`
+    insert into stk_corrections (id, org_id, operation_key, kind, source_type, source_id,
+      source_entry_id, replacement_entry_id, payload_hash, preview_hash, reason, actor_id,
+      before, intended, after, applied_at)
+    values (${correctionId}, ${ORG_BUSINESS}, ${matrixUuid('stock.correction.receipt-replace', 'key')},
+      'receipt_replace', 'stock_receipt', ${ENTRY_CANCELLED}, ${ENTRY_CANCELLED}, ${ENTRY_RECEIPT},
+      ${'a'.repeat(64)}, ${'b'.repeat(64)}, 'QA fixture: quantity typed wrong', ${createdBy},
+      ${sql.json({ fixture: true })}, ${sql.json({ fixture: true })}, ${sql.json({ fixture: true })}, ${now.toISOString()})
+    on conflict (id) do nothing
+  `;
+  register('stock.correction.receipt-replace', { table: 'stk_corrections', where: { id: correctionId } });
+
   // ── Accruals — soft refs to bookings scheduling.ts creates (no FK, order-independent).
   const bookingOpen = matrixUuid('sched.booking.accepted');
   const bookingRealized = matrixUuid('sched.booking.completed');
