@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ locals, url, depends }) => {
 
   // Spec 125: one bounded page (50) + page-qualified labels inside one REPEATABLE READ snapshot.
   // Replaces the unbounded listEntries/listItems/listWarehouses/countAttachmentsByObjects reads.
-  const partyId = url.searchParams.get('party') ?? undefined;
+  const partyId = url.searchParams.get('party') || undefined;
   const admission = await resolveMovementAdmission(locals, ctx);
   let page;
   try {

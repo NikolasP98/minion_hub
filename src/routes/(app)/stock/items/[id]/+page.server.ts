@@ -91,6 +91,7 @@ export const load: PageServerLoad = async ({ locals, params, depends, url }) => 
         warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId,
       })),
       movements,
+      ledgerCursor: url.searchParams.get('ledgerCursor'),
       consumedBy,
       tags: itemTags.get(params.id)?.own ?? [],
       inheritedTags: itemTags.get(params.id)?.inherited ?? [],

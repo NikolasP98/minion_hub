@@ -143,7 +143,9 @@ it('Newest appears only with a cursor and drops just the cursor', () => {
 it('an empty raw page with a cursor keeps Newest reachable', () => {
   page.url = new URL('http://localhost/stock/entries?cursor=CUR');
   render(PageBody, { data: full([]).stock });
-  expect(screen.getByText(m.stock_mv_page_empty())).toBeTruthy();
+  expect(
+    screen.getAllByText(/No movements on this page|No hay movimientos en esta página/),
+  ).toHaveLength(1);
   expect(screen.getByText(m.stock_mv_newest()).closest('a')!.getAttribute('href')).toBe(
     '/stock/entries',
   );
@@ -239,4 +241,66 @@ it('exports the lineDetails column right after Lines with exact raw strings and 
   expect(rowB[i + 1]).toBe('[]');
   expect(String(rowA[i + 1])).not.toMatch(/S\/|PEN|USD|\$/);
   expect(toCsv([[String(rowA[i + 1])]])).toContain('"[{""lineNo"":0');
+});
+
+it('base_values_only document cell shows unavailable, not the no-provider-invoice hint', () => {
+  const r = mkRow(1);
+  const rows = [
+    {
+      entryId: r.entryId,
+      entryHref: r.entryHref,
+      type: 'receipt',
+      status: 'submitted',
+      createdAt: r.createdAt,
+      postedAt: null,
+      lineCount: 2,
+      attachmentCount: 0,
+      firstFromWarehouseId: null,
+      firstToWarehouseId: W1,
+    },
+  ];
+  render(PageBody, {
+    data: {
+      customProperties: custom,
+      partyFilter: null,
+      warehouseCount: 2,
+      movements: {
+        surface: 'entries',
+        projection: 'base_values_only',
+        rows,
+        nextCursor: null,
+        enrichmentAvailability: 'unavailable',
+        reason: 'capacity_limit',
+      },
+    } as unknown as Data,
+  });
+  expect(screen.getAllByText(m.stock_mv_unavailable_value()).length).toBeGreaterThan(0);
+});
+
+it('no pager nav is rendered without cursors; with one it has a real label', () => {
+  const { unmount } = render(PageBody, { data: full([mkRow(1)]).stock });
+  expect(screen.queryByRole('navigation', { name: m.stock_mv_pager_label() })).toBeNull();
+  unmount();
+  render(PageBody, { data: full([mkRow(1)], 'CUR').stock });
+  expect(screen.getByRole('navigation', { name: m.stock_mv_pager_label() })).toBeTruthy();
+});
+
+it('calculated amount is an exact decimal (3 x 0.1 = 0.3)', async () => {
+  const row = mkRow(1, {
+    lines: [
+      {
+        lineId: 'l1',
+        lineNo: 0,
+        itemId: I1,
+        qty: '3',
+        uom: 'und',
+        rate: '0.1',
+        fromWarehouseId: W1,
+        toWarehouseId: null,
+      },
+    ],
+  });
+  render(PageBody, { data: full([row]).stock });
+  await fireEvent.click(screen.getAllByRole('button', { name: /expand|expandir/i })[0]);
+  expect(screen.getByText('0.3')).toBeTruthy();
 });

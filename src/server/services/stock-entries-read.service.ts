@@ -88,6 +88,7 @@ export const MAX_STATEMENTS = 40;
 
 export type MovementErrorCode =
   | 'invalid_cursor'
+  | 'invalid_party'
   | 'movement_snapshot_unavailable'
   | 'movement_projection_inconsistent'
   | 'movement_statement_budget';
@@ -197,14 +198,18 @@ export type EntriesMovementResponse =
     })
   | (Common<'entries'> & { projection: 'base_values_only'; rows: GlobalBase[] } & Unavailable)
   | (Common<'entries'> & { projection: 'identity_only'; rows: EntryIdentity[] } & Unavailable);
+/** The overview card renders no rate/value column, so recent rows omit those two scalars. */
+type LedgerBaseFor<S> = S extends 'recent'
+  ? Omit<LedgerBase, 'valuationRate' | 'valueDelta'>
+  : LedgerBase;
 type LedgerResponse<S extends 'item_ledger' | 'recent'> =
   | (Common<S> & {
       projection: 'full';
-      rows: (LedgerBase & LedgerLabels)[];
+      rows: (LedgerBaseFor<S> & LedgerLabels)[];
       enrichmentAvailability: 'available';
       reason: null;
     })
-  | (Common<S> & { projection: 'base_values_only'; rows: LedgerBase[] } & Unavailable)
+  | (Common<S> & { projection: 'base_values_only'; rows: LedgerBaseFor<S>[] } & Unavailable)
   | (Common<S> & { projection: 'identity_only'; rows: LedgerIdentity[] } & Unavailable);
 export type ItemLedgerMovementResponse = LedgerResponse<'item_ledger'>;
 export type RecentMovementResponse = LedgerResponse<'recent'>;
@@ -273,6 +278,27 @@ export function makeMovementQ(
   return q;
 }
 
+function sqlState(e: unknown): string | null {
+  for (let cur = e, d = 0; cur && typeof cur === 'object' && d < 5; d++) {
+    const c = cur as { code?: unknown; cause?: unknown };
+    if (typeof c.code === 'string' && /^[0-9A-Z]{5}$/.test(c.code)) return c.code;
+    cur = c.cause;
+  }
+  return null;
+}
+/** 57014 statement timeout -> 503; 22008 impossible datetime in a cursor -> 400. */
+async function mapSqlError<T>(run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (e) {
+    if (e instanceof MovementError) throw e;
+    const code = sqlState(e);
+    if (code === '57014') throw new MovementError('movement_snapshot_unavailable', 503);
+    if (code === '22008') throw bad();
+    throw e;
+  }
+}
+
 /** One owned REPEATABLE READ READ ONLY transaction for every count and fetch of a request. */
 export async function withMovementSnapshot<T>(
   ctx: CoreCtx,
@@ -281,21 +307,23 @@ export async function withMovementSnapshot<T>(
   const ambient = currentAmbientOrgTx();
   if (ambient && !ambient.closed) throw new MovementError('movement_snapshot_unavailable', 503);
   const db = getOrgTransactionDb(ctx.db);
-  return db.transaction(
-    (tx) =>
-      withOrgCoreTransaction(ctx, tx, async (t) => {
-        // capture + apply + restore of withOrgCoreTransaction, plus the check below
-        const q = makeMovementQ((query) => t.execute(query), 4);
-        const [mode] = await q(
-          sql`select current_setting('transaction_isolation') as iso,
+  return mapSqlError(() =>
+    db.transaction(
+      (tx) =>
+        withOrgCoreTransaction(ctx, tx, async (t) => {
+          // capture + apply + restore of withOrgCoreTransaction, plus the check below
+          const q = makeMovementQ((query) => t.execute(query), 4);
+          const [mode] = await q(
+            sql`select current_setting('transaction_isolation') as iso,
             current_setting('transaction_read_only') as ro,
             set_config('statement_timeout','2000',true), set_config('lock_timeout','1000',true)`,
-        );
-        if (mode?.iso !== 'repeatable read' || mode?.ro !== 'on')
-          throw new MovementError('movement_snapshot_unavailable', 503);
-        return fn(q, t);
-      }),
-    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+          );
+          if (mode?.iso !== 'repeatable read' || mode?.ro !== 'on')
+            throw new MovementError('movement_snapshot_unavailable', 503);
+          return fn(q, t);
+        }),
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
+    ),
   );
 }
 
@@ -335,8 +363,11 @@ function decodeCursor(raw: string, keys: string[]): Record<string, string | null
   for (const v of Object.values(rec)) if (v !== null && typeof v !== 'string') throw bad();
   return rec as Record<string, string | null>;
 }
+/** Regex + round-trip: Date normalizes Feb 30 to Mar 2, so a changed prefix means an impossible date. */
 const validTs = (v: unknown): v is string =>
-  typeof v === 'string' && TS_RE.test(v) && !Number.isNaN(Date.parse(v));
+  typeof v === 'string' &&
+  TS_RE.test(v) &&
+  new Date(`${v.slice(0, 23)}Z`).toISOString().slice(0, 19) === v.slice(0, 19);
 const validUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v);
 
 type EntryHead = { id: string; type: string; partyId: string | null; md: unknown };
@@ -420,7 +451,7 @@ export async function listEntriesPage(
   opts: { cursor?: string | null; partyId?: string | null } = {},
 ): Promise<{ movements: EntriesMovementResponse; warehouseCount: number }> {
   const partyId = opts.partyId ?? null;
-  if (partyId !== null && !validUuid(partyId)) throw bad();
+  if (partyId !== null && !validUuid(partyId)) throw new MovementError('invalid_party', 400);
   let after: { createdAt: string; id: string } | null = null;
   if (opts.cursor) {
     const c = decodeCursor(opts.cursor, ['createdAt', 'id', 'partyId']);
@@ -677,7 +708,7 @@ export async function buildLedgerPage(
   const rows =
     await q(sql`select id::text as "ledgerId", entry_id as "entryId", item_id as "itemId",
       warehouse_id as "warehouseId", ${ts('posted_at')} as "postedAt", qty_delta::text as "qtyDelta",
-      qty_after::text as "qtyAfter", valuation_rate::text as "valuationRate", value_delta::text as "valueDelta"
+      qty_after::text as "qtyAfter"${o.surface === 'recent' ? sql`` : sql`, valuation_rate::text as "valuationRate", value_delta::text as "valueDelta"`}
     from stk_ledger where org_id=${org}
       ${o.itemId ? sql`and item_id=${o.itemId}::uuid` : sql``}
       ${o.after ? sql`and (posted_at, id) < (${o.after.postedAt}::timestamptz, ${o.after.seq}::bigint)` : sql``}
@@ -688,7 +719,7 @@ export async function buildLedgerPage(
     o.surface === 'item_ledger' && rows.length > limit && last
       ? encodeCursor({ postedAt: last.postedAt, seq: last.ledgerId, itemId: o.itemId })
       : null;
-  const base: LedgerBase[] = page.map((r) => ({
+  const base = page.map((r) => ({
     ledgerId: r.ledgerId as string,
     entryId: r.entryId as string,
     entryHref: entryHref(r.entryId as string),
@@ -697,9 +728,10 @@ export async function buildLedgerPage(
     postedAt: r.postedAt as string,
     qtyDelta: r.qtyDelta as string,
     qtyAfter: r.qtyAfter as string,
-    valuationRate: r.valuationRate as string,
-    valueDelta: r.valueDelta as string,
-  }));
+    ...(o.surface === 'recent'
+      ? {}
+      : { valuationRate: r.valuationRate as string, valueDelta: r.valueDelta as string }),
+  })) as LedgerBase[];
   const wrap = (projection: string, rs: unknown[], avail: boolean) =>
     ({
       surface: o.surface,

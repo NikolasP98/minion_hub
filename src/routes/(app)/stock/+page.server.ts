@@ -11,8 +11,8 @@ import {
   listRecentMovementRows,
   resolveMovementAdmission,
   MovementError,
+  type RecentMovementResponse,
 } from '$server/services/stock-entries-read.service';
-import { error } from '@sveltejs/kit';
 import { buildLowStockRows, buildStockSeries } from '$server/services/stock.logic';
 
 const SERIES_DAYS = 90;
@@ -27,9 +27,17 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     listItems(ctx, { includeArchived: false }),
     listWarehouses(ctx),
     getBins(ctx),
-    listRecentMovementRows(ctx, admission).catch((e) => {
-      if (e instanceof MovementError) throw error(e.status, e.code);
-      throw e;
+    // A failed recent card must not take the overview down: render it unavailable.
+    listRecentMovementRows(ctx, admission).catch((e): RecentMovementResponse => {
+      if (!(e instanceof MovementError)) throw e;
+      return {
+        surface: 'recent',
+        projection: 'identity_only',
+        rows: [],
+        nextCursor: null,
+        enrichmentAvailability: 'unavailable',
+        reason: 'capacity_limit',
+      };
     }),
     itemOnHandInfo(ctx),
     getStockDailyFlow(ctx, SERIES_DAYS),

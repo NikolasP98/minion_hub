@@ -55,13 +55,15 @@
   const ledgerRows = $derived(mv.rows as LedgerRow[]);
   const ledgerFull = $derived(mv.projection === 'full');
   const ledgerHasValues = $derived(mv.projection !== 'identity_only');
-  const ledgerHasCursor = $derived(page.url.searchParams.has('ledgerCursor'));
+  // The item detail is peekable: the host URL is not ours, so the cursor comes from loader data
+  // and links are built from the item's own path (other query params only outside a peek).
+  const ledgerHasCursor = $derived(!!data.ledgerCursor);
   const ledgerHref = (cursor: string | null) => {
-    const sp = new URLSearchParams(page.url.searchParams);
+    const sp = new URLSearchParams(inPeek() ? '' : page.url.searchParams);
     if (cursor) sp.set('ledgerCursor', cursor);
     else sp.delete('ledgerCursor');
     const qs = sp.toString();
-    return `${page.url.pathname}${qs ? `?${qs}` : ''}`;
+    return `/stock/items/${item.id}${qs ? `?${qs}` : ''}`;
   };
   const kindLabel = (l: LedgerRow) =>
     l.movementKind === 'receipt'
@@ -83,9 +85,15 @@
           : m.stock_document_booking();
   const sourceText = (l: LedgerRow) => {
     const d = l.document;
-    if (!d) return l.sourceState === 'denied' ? m.stock_mv_state_denied() : '';
+    if (!d)
+      return l.sourceState === 'denied'
+        ? m.stock_mv_state_denied()
+        : l.sourceState === 'unavailable'
+          ? m.stock_mv_unavailable_value()
+          : '';
+    if (d.label) return d.kind === 'ticket' ? `#${d.label}` : d.label;
     const short = (d.href.match(/[0-9a-f]{8}-[0-9a-f-]{27}/i)?.[0] ?? '').slice(0, 8);
-    return d.label ?? m.stock_mv_source_fallback({ kind: sourceKindLabel(d.kind), short });
+    return m.stock_mv_source_fallback({ kind: sourceKindLabel(d.kind), short });
   };
   const counterpartyText = (l: LedgerRow) =>
     l.counterpartyState === 'denied' ? m.stock_mv_state_denied() : (l.counterpartyLabel ?? '');
@@ -1107,7 +1115,7 @@
         </div>
       {/if}
       {#if ledgerRows.length === 0 && ledgerHasCursor}
-        <p class="t-caption">{m.stock_mv_page_empty()} {m.stock_mv_cursor_empty()}</p>
+        <p class="t-caption">{m.stock_mv_page_empty()} {m.stock_mv_page_empty_hint()}</p>
       {:else if ledgerRows.length === 0}
         <p class="t-caption">{m.stock_ledger_empty()}</p>
       {:else}
@@ -1170,16 +1178,20 @@
           {/snippet}
         </DataTable>
       {/if}
-      <nav class="mv-nav" aria-label={m.stock_ledger_empty()}>
-        {#if ledgerHasCursor}
-          <Button variant="outline" size="sm" href={ledgerHref(null)}>{m.stock_mv_newest()}</Button>
-        {/if}
-        {#if mv.nextCursor}
-          <Button variant="outline" size="sm" href={ledgerHref(mv.nextCursor)}>
-            {m.stock_mv_older()}
-          </Button>
-        {/if}
-      </nav>
+      {#if ledgerHasCursor || mv.nextCursor}
+        <nav class="mv-nav" aria-label={m.stock_mv_pager_label()}>
+          {#if ledgerHasCursor}
+            <Button variant="outline" size="sm" href={ledgerHref(null)}
+              >{m.stock_mv_newest()}</Button
+            >
+          {/if}
+          {#if mv.nextCursor}
+            <Button variant="outline" size="sm" href={ledgerHref(mv.nextCursor)}>
+              {m.stock_mv_older()}
+            </Button>
+          {/if}
+        </nav>
+      {/if}
     </div>
     <div class="card">
       <div class="card-h flex items-center justify-between gap-2">

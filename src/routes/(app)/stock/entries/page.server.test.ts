@@ -69,6 +69,16 @@ describe('/stock/entries loader', () => {
     expect(h.legacy).not.toHaveBeenCalled();
   });
 
+  it('an empty ?party= means no filter', async () => {
+    h.listEntriesPage.mockResolvedValue({
+      movements: { surface: 'entries', projection: 'full', rows: [], nextCursor: null },
+      warehouseCount: 1,
+    });
+    const out = await run('?party=');
+    expect(h.listEntriesPage.mock.calls[0][2].partyId).toBeUndefined();
+    expect(out.stock).toMatchObject({ partyFilter: null });
+  });
+
   it('maps a bad cursor to HTTP 400 and snapshot failure to 503', async () => {
     h.listEntriesPage.mockRejectedValueOnce(new MovementError('invalid_cursor', 400));
     await expect(run('?cursor=x')).rejects.toMatchObject({ status: 400 });

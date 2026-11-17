@@ -303,3 +303,51 @@ describe('buildLedgerPage', () => {
     expect(res.nextCursor).toBeNull();
   });
 });
+
+describe('recent payload and SQL error mapping', () => {
+  it('recent rows carry no valuationRate/valueDelta and the query does not select them', async () => {
+    const { q, sqls } = fakeQ([
+      [
+        {
+          ledgerId: '1',
+          entryId: E1,
+          itemId: I1,
+          warehouseId: W1,
+          postedAt: '2026-11-10T10:00:00.000001Z',
+          qtyDelta: '1',
+          qtyAfter: '2',
+        },
+      ],
+      [{ n: 1 }],
+      [{ n: 1 }],
+      [{ n: 1 }],
+      [{ id: E1, humanId: 'S', type: 'issue', partyId: null, md: {} }],
+      [{ id: I1, code: 'C', name: 'N', uom: 'u' }],
+      [{ id: W1, name: 'Main' }],
+    ]);
+    const res = await buildLedgerPage(q, tx, adm, { surface: 'recent', itemId: null, after: null });
+    expect(res.rows[0]).not.toHaveProperty('valuationRate');
+    expect(res.rows[0]).not.toHaveProperty('valueDelta');
+    expect(JSON.stringify(sqls[0])).not.toContain('valuation_rate');
+  });
+
+  it('maps 57014 to 503 and 22008 to 400 through withMovementSnapshot', async () => {
+    const run = (code: string) =>
+      listEntriesPage(
+        {
+          tenantId: 'org-1',
+          db: {
+            transaction: async () => {
+              throw Object.assign(new Error('x'), { code });
+            },
+          } as never,
+        },
+        adm,
+      );
+    await expect(run('57014')).rejects.toMatchObject({
+      code: 'movement_snapshot_unavailable',
+      status: 503,
+    });
+    await expect(run('22008')).rejects.toMatchObject({ code: 'invalid_cursor', status: 400 });
+  });
+});

@@ -7569,5 +7569,6 @@
   "stock_mv_unit_missing": "Unidad de stock actual no disponible",
   "stock_mv_unit_none": "Unidad no registrada",
   "stock_mv_recent_notice": "El orden cubre solo estos movimientos recientes.",
-  "stock_mv_cursor_empty": "No hay movimientos en esta página. Vuelve a los más recientes."
+  "stock_mv_pager_label": "Páginas de movimientos",
+  "stock_mv_page_empty_hint": "Vuelve a los más recientes."
 }

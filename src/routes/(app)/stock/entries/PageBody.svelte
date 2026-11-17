@@ -5,6 +5,7 @@
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
+  import { mulDecimal } from '$lib/components/stock/decimal';
   import { ArrowLeftRight, Paperclip } from 'lucide-svelte';
   import {
     PageHeader,
@@ -85,12 +86,8 @@
   };
   /** Raw stored strings, no locale grouping or rounding (valuation denomination is unverified). */
   const qtyText = (l: Line) => `${l.qty}${l.uom ? ` ${l.uom}` : ` · ${m.stock_mv_unit_none()}`}`;
-  /** Calculated stock scalar: finite product or null. Never 0, never a currency. */
-  const amountOf = (l: Line): string | null => {
-    if (l.rate == null) return null;
-    const v = Number(l.qty) * Number(l.rate);
-    return Number.isFinite(v) ? String(v) : null;
-  };
+  /** Calculated stock scalar: exact decimal product or null. Never 0, never a currency. */
+  const amountOf = (l: Line): string | null => (l.rate == null ? null : mulDecimal(l.qty, l.rate));
   const itemsText = (e: Row) => {
     if (!e.itemSummary) return unavailable();
     const first = e.itemSummary.first;
@@ -346,7 +343,7 @@
     <EmptyState
       icon={ArrowLeftRight}
       title={m.stock_mv_page_empty()}
-      description={m.stock_mv_cursor_empty()}
+      description={m.stock_mv_page_empty_hint()}
     >
       {#snippet action()}
         <Button variant="outline" size="sm" href={pageHref(null)}>{m.stock_mv_newest()}</Button>
@@ -479,6 +476,8 @@
             </span>
           {:else if docLabel(e)}
             <span class="t-caption">{docLabel(e)}</span>
+          {:else if e.sourceState === undefined}
+            <span class="t-caption">{unavailable()}</span>
           {:else if e.type === 'receipt'}
             <!-- No provider invoice was picked for this receipt (optional field,
                  or the receipt predates the picker) — its supplier invoice, if
@@ -515,16 +514,18 @@
         {/if}
       {/snippet}
     </DataTable>
-    <nav class="mv-nav" aria-label={m.stock_entries_title()}>
-      {#if hasCursor}
-        <Button variant="outline" size="sm" href={pageHref(null)}>{m.stock_mv_newest()}</Button>
-      {/if}
-      {#if mv.nextCursor}
-        <Button variant="outline" size="sm" href={pageHref(mv.nextCursor)}>
-          {m.stock_mv_older()}
-        </Button>
-      {/if}
-    </nav>
+    {#if hasCursor || mv.nextCursor}
+      <nav class="mv-nav" aria-label={m.stock_mv_pager_label()}>
+        {#if hasCursor}
+          <Button variant="outline" size="sm" href={pageHref(null)}>{m.stock_mv_newest()}</Button>
+        {/if}
+        {#if mv.nextCursor}
+          <Button variant="outline" size="sm" href={pageHref(mv.nextCursor)}>
+            {m.stock_mv_older()}
+          </Button>
+        {/if}
+      </nav>
+    {/if}
   {/if}
 </div>
 

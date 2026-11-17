@@ -24,6 +24,7 @@ vi.mock('$server/services/stock-entries-read.service', async (original) => ({
   resolveMovementAdmission: async () => ({}),
 }));
 const { load } = await import('./+page.server');
+const { MovementError } = await import('$server/services/stock-entries-read.service');
 
 describe('/stock overview loader', () => {
   it('serves stock.recentMovements (lossless ids) in place of stock.recent and keeps its aggregates', async () => {
@@ -42,5 +43,13 @@ describe('/stock overview loader', () => {
     expect(out.stock).toHaveProperty('series');
     expect(out.stock).toHaveProperty('lowStock');
     expect(h.legacy).not.toHaveBeenCalled();
+  });
+
+  it('a movement error renders the recent card unavailable instead of failing the page', async () => {
+    h.recent.mockRejectedValue(new MovementError('movement_snapshot_unavailable', 503));
+    const out = (await load({ locals: {}, depends: vi.fn() } as never)) as {
+      stock: { recentMovements: { projection: string; rows: unknown[] } };
+    };
+    expect(out.stock.recentMovements).toMatchObject({ projection: 'identity_only', rows: [] });
   });
 });
