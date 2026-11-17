@@ -1175,7 +1175,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/stock-corrections.sql.integration.test.ts',
-      minimumAssertions: 8,
+      minimumAssertions: 13,
       exactAssertions: true,
       requiredBehaviors: [
         'stock corrections against PostgreSQL preserves POS only no stock swap and rejects unauthorized stock effects',
@@ -1186,6 +1186,11 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'stock corrections against PostgreSQL repeated concurrent booking completion reuses frozen draft and submitted source once',
         'stock corrections against PostgreSQL absent enabled module can be disabled only before or after the guarded correction',
         'stock corrections against PostgreSQL serializes period fiscal and void guards before correction',
+        'stock corrections against PostgreSQL freezes approved stock only lines and preserves financial facts',
+        'stock corrections against PostgreSQL drains old mapping posters and refuses persisted old mapping pending sources',
+        'stock corrections against PostgreSQL absent permission deny insertion serializes with correction in both authority lock orders',
+        'stock corrections against PostgreSQL serializes warehouse timezone and bundle eligibility writers in both arrival orders',
+        'stock corrections against PostgreSQL rejects deleting principals and inactive organizations before correction admission',
       ],
     },
   ],

@@ -28,7 +28,9 @@ import {
 } from './stock.service';
 import { setModuleEnabled } from './modules.service';
 import { realizeAccruals } from './stock-accruals.service';
-import { postTicketStock } from './pos.service';
+import { setConsumption, updateWarehouse } from './stock.service';
+import { updateFinSettings } from './finance.service';
+import { postTicketStock, setBundleComponent } from './pos.service';
 import { withOrgCore } from '$server/db/with-org-core';
 import { assertStockModulesEnabledInTx } from './stock.service';
 import {
@@ -1133,5 +1135,336 @@ describe('stock corrections against PostgreSQL', () => {
         previewStockCorrection(wd.ownerCtx, swapRequest(t.lineIds[0], wd.PM, wd.PL), 'x'),
       ),
     ).toBe('dependent_history');
+  });
+});
+
+// ── shared barriers for the writer/authority race cases ──────────────────────────────────
+
+/** Hold stock-v1 + the org authority lock (what an in-flight correction holds) until `release()`. */
+async function holdGate(ctx: Ctx) {
+  let release!: () => void;
+  const hold = new Promise<void>((r) => (release = r));
+  let held!: () => void;
+  const holding = new Promise<void>((r) => (held = r));
+  const done = withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    held();
+    await hold;
+  });
+  await holding;
+  return { release, done };
+}
+/**
+ * An authority writer as the existing participants behave (org authority lock, then its own rows) on a
+ * raw connection with table-owner rights. The real writeSectionAccess/deleteUser need nav-policy and
+ * auth-admin fixtures this child does not model; their lock participation is proven in their own suites.
+ */
+async function authorityWriter(
+  org: string,
+  write: (tx: postgres.TransactionSql) => PromiseLike<unknown>,
+) {
+  const raw = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => undefined });
+  extraClients.push(raw);
+  await raw.begin(async (tx) => {
+    await tx`select pg_advisory_xact_lock(hashtextextended(${org},112))`; // same key as lockNavigationPolicy
+    await write(tx);
+  });
+}
+/** True when the promise has NOT settled after a backend is observed waiting on an advisory lock. */
+async function parkedBehindGate(p: Promise<unknown>) {
+  let settled = false;
+  void p.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let i = 0; i < 60; i += 1) {
+    const [r] =
+      await owner`select count(*)::int n from pg_stat_activity where wait_event_type='Lock' and wait_event='advisory'`;
+    if (r.n >= 1) break;
+    await new Promise((x) => setTimeout(x, 25));
+  }
+  return !settled;
+}
+
+describe('stock corrections against PostgreSQL', () => {
+  it('freezes approved stock only lines and preserves financial facts', async () => {
+    const wd = await world();
+    // Mixed ticket: line 0 issues stock (M), line 1 is stockless. Swap line 0 M -> L.
+    const t = await sale(wd, [{ product: wd.PM }, { product: wd.PS1 }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    const financial = async () =>
+      JSON.stringify([
+        await owner`select subtotal::text, total::text, status from public.pos_tickets where id=${t.ticketId}`,
+        await owner`select method, amount::text, shift_id from public.pos_payments where ticket_id=${t.ticketId} order by id`,
+      ]);
+    const financeBefore = await financial();
+    const { result } = await applyVariant(wd.ownerCtx, t.lineIds[0], wd.PM, wd.PL);
+    expect(result).toMatchObject({ outcome: 'applied', receipt: { kind: 'sale_variant' } });
+    // The replacement is the FROZEN original issue with M swapped for L, in the same warehouse.
+    const [{ stock_entry_id: live }] =
+      await owner`select stock_entry_id from public.pos_tickets where id=${t.ticketId}`;
+    const lines =
+      await owner`select item_id, qty::text, from_warehouse_id from public.stk_entry_lines where entry_id=${live}`;
+    expect(lines.map((l) => [l.item_id, l.qty, l.from_warehouse_id])).toEqual([[wd.L, '1', wd.wh]]);
+    expect(await bin(wd.org, wd.M)).toBe('5');
+    expect(await bin(wd.org, wd.L)).toBe('4');
+    expect(await financial()).toBe(financeBefore);
+    // A recipe edited AFTER the sale is never regenerated into the replacement: the swap refuses with zero effects.
+    const t2 = await sale(wd, [{ product: wd.PL }]);
+    await postTicketStock(wd.ownerCtx, t2.ticketId, actorOf(wd.boss));
+    await owner`update public.stk_consumption set qty_per_unit = 2 where org_id=${wd.org} and fin_product_id=${wd.PL}`;
+    const entries = await count('stk_entries', wd.org);
+    const ledger = await count('stk_ledger', wd.org);
+    expect(
+      await refusal(
+        previewStockCorrection(wd.ownerCtx, swapRequest(t2.lineIds[0], wd.PL, wd.PM), 'x'),
+      ),
+    ).toBe('stock_drift');
+    expect(await count('stk_entries', wd.org)).toBe(entries);
+    expect(await count('stk_ledger', wd.org)).toBe(ledger);
+    // The till swap keeps POS-edit-only authority through the server-only scope (and only for ITS ticket).
+    const posOnly = await addProfile(wd.org, 'member', [['pos', true, true, false, 0]]);
+    const posCtx = ctxFor(wd.org, posOnly);
+    const t3 = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t3.ticketId, actorOf(wd.boss));
+    const req = swapRequest(t3.lineIds[0], wd.PM, wd.PL);
+    expect(await refusal(previewStockCorrection(posCtx, req, 'r'))).toBe('stock_scope_required');
+    expect(await refusal(previewStockCorrection(posCtx, req, 'r', { ticketId: t.ticketId }))).toBe(
+      'not_found',
+    );
+    const scope = { ticketId: t3.ticketId };
+    const pv = await previewStockCorrection(posCtx, req, 'r', scope);
+    expect(pv.eligible).toBe(true);
+    const applied = await applyStockCorrection(
+      posCtx,
+      {
+        request: req,
+        operationKey: randomUUID(),
+        previewHash: pv.previewHash,
+        payloadHash: pv.payloadHash,
+        reason: 'r',
+      },
+      actorOf(posOnly),
+      scope,
+    );
+    expect(applied).toMatchObject({ outcome: 'applied' });
+    // TODO(handoff): the private owner-approved stock_only entrypoint (garment-envelope.md) is not built;
+    // this case proves the frozen-line engine its public swap shares, not that private command.
+  });
+
+  it('drains old mapping posters and refuses persisted old mapping pending sources', async () => {
+    const wd = await world();
+    // A mapping writer queues behind an in-flight stock write and applies after it.
+    const gate = await holdGate(ctxFor(wd.org, wd.boss));
+    const writer = setConsumption(
+      ctxFor(wd.org, wd.boss),
+      { finProductId: wd.PD, itemId: wd.X, qtyPerUnit: 3 },
+      actorOf(wd.boss),
+    );
+    expect(await parkedBehindGate(writer)).toBe(true);
+    expect(await count('stk_consumption', wd.org)).toBe(2);
+    gate.release();
+    await gate.done;
+    await writer;
+    // The next poster reads the committed mapping, never the old one.
+    const t = await sale(wd, [{ product: wd.PD }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    expect(await bin(wd.org, wd.X)).toBe('2');
+    // TODO(handoff): the F1 mapping cutover writer and its `cutover_pending_sources` census refusal do
+    // not exist yet; only the shared-gate drain is proven here (meta proposals/2026-11-17-hub-stock-correction-handoff.md).
+  });
+
+  it('absent permission deny insertion serializes with correction in both authority lock orders', async () => {
+    const wd = await world();
+    const admin = await addProfile(wd.org, 'owner');
+    await owner`update public.organization_members set role='admin' where organization_id=${wd.org} and profile_id=${admin}`;
+    const adminCtx = ctxFor(wd.org, admin);
+    const t = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    expect(
+      (await owner`select count(*)::int n from public.permission_rules where org_id=${wd.org}`)[0]
+        .n,
+    ).toBe(0);
+    // The deny is a row that does not exist yet: FOR SHARE on existing rows could never exclude it.
+    const insertDeny = () =>
+      authorityWriter(
+        wd.org,
+        (tx) =>
+          tx`insert into public.permission_rules(org_id,role_key,module,can_view,can_edit,can_manage,field_level) values (${wd.org},'admin','stock',false,false,false,0)`,
+      );
+    // Correction first: the writer waits, then applies after the correction commits.
+    const gate = await holdGate(adminCtx);
+    const deny = insertDeny();
+    expect(await parkedBehindGate(deny)).toBe(true);
+    expect(
+      (await owner`select count(*)::int n from public.permission_rules where org_id=${wd.org}`)[0]
+        .n,
+    ).toBe(0);
+    gate.release();
+    await gate.done;
+    await deny;
+    // Deny first: the stock-moving swap now needs stock access the admin no longer has; zero effects.
+    const entries = await count('stk_entries', wd.org);
+    const request = swapRequest(t.lineIds[0], wd.PM, wd.PL);
+    expect(await refusal(previewStockCorrection(adminCtx, request, 'x'))).toBe(
+      'stock_scope_required',
+    );
+    expect(
+      await refusal(
+        applyStockCorrection(
+          adminCtx,
+          {
+            request,
+            operationKey: randomUUID(),
+            previewHash: H('a'),
+            payloadHash: H('b'),
+            reason: 'x',
+          },
+          actorOf(admin),
+        ),
+      ),
+    ).toBe('stock_scope_required');
+    expect(await count('stk_entries', wd.org)).toBe(entries);
+    expect(await bin(wd.org, wd.M)).toBe('4');
+  });
+
+  it('serializes warehouse timezone and bundle eligibility writers in both arrival orders', async () => {
+    const wd = await world();
+    const w2 = randomUUID();
+    await owner.unsafe(
+      `insert into public.stk_warehouses(id,org_id,name) values ('${w2}','${wd.org}','W2')`,
+    );
+    const writers: Array<[string, () => Promise<unknown>, () => Promise<boolean>]> = [
+      [
+        'warehouse',
+        () => updateWarehouse(ctxFor(wd.org, wd.boss), w2, { name: 'W2b' }),
+        async () =>
+          (await owner`select name from public.stk_warehouses where id=${w2}`)[0].name === 'W2b',
+      ],
+      [
+        'timezone',
+        () => updateFinSettings(ctxFor(wd.org, wd.boss), { timezone: 'America/Bogota' }),
+        async () =>
+          (await owner`select timezone from public.fin_settings where org_id=${wd.org}`)[0]
+            .timezone === 'America/Bogota',
+      ],
+      [
+        'bundle',
+        () =>
+          setBundleComponent(ctxFor(wd.org, wd.boss), {
+            bundleProductId: wd.PS1,
+            childProductId: wd.PS2,
+            qty: 1,
+          }),
+        async () =>
+          (
+            await owner`select count(*)::int n from public.fin_product_components where org_id=${wd.org}`
+          )[0].n === 1,
+      ],
+    ];
+    for (const [, write, applied] of writers) {
+      // Correction first: the writer parks, nothing slips in, and it applies after the release.
+      const gate = await holdGate(ctxFor(wd.org, wd.boss));
+      const pending = write();
+      expect(await parkedBehindGate(pending)).toBe(true);
+      expect(await applied()).toBe(false);
+      gate.release();
+      await gate.done;
+      await pending;
+      expect(await applied()).toBe(true);
+    }
+    // Writer first: a correction admitted afterwards sees the committed rule (the approved hash moves).
+    const receiptId = (
+      await createEntry(
+        wd.ownerCtx,
+        { type: 'receipt', lines: [{ itemId: wd.X, qty: 2, rate: 1, toWarehouseId: wd.wh }] },
+        actorOf(wd.boss),
+      )
+    ).id;
+    await submitEntry(wd.ownerCtx, receiptId, actorOf(wd.boss));
+    const [line] = await owner`select id from public.stk_entry_lines where entry_id=${receiptId}`;
+    const request = {
+      mode: 'receipt_replace' as const,
+      sourceType: 'stock_receipt' as const,
+      sourceId: receiptId,
+      replacement: {
+        lines: [
+          {
+            originalLineId: line.id as string,
+            itemId: wd.X,
+            qty: '1',
+            rate: '1',
+            uom: 'unit',
+            toWarehouseId: wd.wh,
+          },
+        ],
+      },
+    };
+    const before = await previewStockCorrection(wd.ownerCtx, request, 'x');
+    await updateFinSettings(ctxFor(wd.org, wd.boss), { timezone: 'Pacific/Kiritimati' });
+    const after = await previewStockCorrection(wd.ownerCtx, request, 'x');
+    expect(after.previewHash).not.toBe(before.previewHash);
+    expect(
+      await refusal(
+        applyStockCorrection(
+          wd.ownerCtx,
+          {
+            request,
+            operationKey: randomUUID(),
+            previewHash: before.previewHash,
+            payloadHash: before.payloadHash,
+            reason: 'x',
+          },
+          actorOf(wd.boss),
+        ),
+      ),
+    ).toBe('stale_preview');
+    expect(await bin(wd.org, wd.X)).toBe('7');
+  });
+
+  it('rejects deleting principals and inactive organizations before correction admission', async () => {
+    const wd = await world();
+    const t = await sale(wd, [{ product: wd.PM }]);
+    await postTicketStock(wd.ownerCtx, t.ticketId, actorOf(wd.boss));
+    const request = swapRequest(t.lineIds[0], wd.PM, wd.PL);
+    const entries = await count('stk_entries', wd.org);
+    const attempt = () =>
+      applyStockCorrection(
+        wd.ownerCtx,
+        {
+          request,
+          operationKey: randomUUID(),
+          previewHash: H('a'),
+          payloadHash: H('b'),
+          reason: 'x',
+        },
+        actorOf(wd.boss),
+      );
+    // Deletion flagged first: private data stays unread and the refusal is a plain 403.
+    await owner`update public.profiles set deletion_pending=true where id=${wd.boss}`;
+    expect(await refusal(previewStockCorrection(wd.ownerCtx, request, 'x'))).toBe('forbidden');
+    expect(await refusal(attempt())).toBe('forbidden');
+    await owner`update public.profiles set deletion_pending=false where id=${wd.boss}`;
+    // An inactive organization refuses even though every role row remains.
+    await owner`update public.organizations set status='suspended' where id=${wd.org}`;
+    expect(await refusal(previewStockCorrection(wd.ownerCtx, request, 'x'))).toBe('forbidden');
+    expect(await refusal(attempt())).toBe('forbidden');
+    await owner`update public.organizations set status='active' where id=${wd.org}`;
+    expect(await count('stk_entries', wd.org)).toBe(entries);
+    // Correction first: the deletion flag (written under the org authority lock) waits and lands afterwards.
+    const gate = await holdGate(ctxFor(wd.org, wd.boss));
+    const flag = authorityWriter(
+      wd.org,
+      (tx) => tx`update public.profiles set deletion_pending=true where id=${wd.boss}`,
+    );
+    expect(await parkedBehindGate(flag)).toBe(true);
+    expect(
+      (await owner`select deletion_pending from public.profiles where id=${wd.boss}`)[0]
+        .deletion_pending,
+    ).toBe(false);
+    gate.release();
+    await gate.done;
+    await flag;
+    expect(await refusal(attempt())).toBe('forbidden');
   });
 });
