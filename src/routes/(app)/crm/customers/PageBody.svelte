@@ -113,7 +113,7 @@
   }
   $effect(() => {
     clearPageCache();
-    reqSeq += 1; // a loader rerun supersedes any fresh read in flight
+    freshSeq += 1; // a loader rerun supersedes any fresh read in flight
     rows = data.contacts;
     total = data.total;
     knownTotalFingerprint = crmCountScopeFingerprint(toApiParams(buildParams(lastQuery)));
@@ -254,6 +254,8 @@
     pageSize: data.pageSize,
   };
   let reqSeq = 0;
+  // Separate from reqSeq: bumping reqSeq would strand an in-flight runQuery's `loading` flag.
+  let freshSeq = 0;
   /** The API-shaped request params: the kit's generic codec plus this page's
    *  own scope filters. `page` feeds the API OFFSET only (see `toApiParams`). */
   function buildParams(q: ServerQuery): URLSearchParams {
@@ -809,7 +811,9 @@
 
   /** Page 1 of the current filters, uncached; rows are replaced only when the read is accepted. */
   async function reloadFreshRows(): Promise<boolean> {
-    const seq = ++reqSeq;
+    const seq = ++freshSeq;
+    reqSeq += 1; // drop in-flight page reads …
+    loading = false; // … and release their flag, which their own finally no longer will
     clearPageCache();
     try {
       const params = toApiParams(buildParams({ ...lastQuery, page: 1 }));
@@ -822,7 +826,7 @@
       });
       if (!res.ok || res.redirected) return false;
       const body = (await res.json()) as Partial<PageBody> & { fresh?: boolean };
-      if (seq !== reqSeq) return false;
+      if (seq !== freshSeq) return false;
       if (body.fresh !== true || !Array.isArray(body.contacts) || typeof body.total !== 'number')
         return false;
       rows = body.contacts;

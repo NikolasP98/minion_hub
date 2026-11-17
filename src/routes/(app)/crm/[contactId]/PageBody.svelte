@@ -56,6 +56,7 @@
     isEmailKey,
     metaEntries,
     isReservedMetaKey,
+    pickStoredKeys,
   } from '$lib/components/crm/crm-meta';
   import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, User } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
@@ -133,7 +134,8 @@
   const canEditSensitive = $derived(data.canEditSensitiveFields !== false);
   const isMaskedKey = (key: string) => CRM_PII_FIELD_KEYS.has(key.trim().toLowerCase());
   const stdLocked = (f: StdField) =>
-    !canEditSensitive && (f.kind === 'phone' || (f.kind === 'cf' && f.keys.some(isMaskedKey)));
+    !canEditSensitive &&
+    (f.kind === 'phone' || f.kind === 'dni' || (f.kind === 'cf' && f.keys.some(isMaskedKey)));
 
   function cfValue(keys: string[]): string {
     for (const k of keys) {
@@ -245,6 +247,10 @@
         if (val) next[f.keys[0]] = val;
       }
     }
+    // dni / dob are not edited as custom fields: keep their stored keys (a contact with no
+    // party holds its DNI only here, and the whole-namespace save would delete it).
+    for (const f of STD)
+      if (f.kind === 'dni' || f.kind === 'dob') Object.assign(next, pickStoredKeys(fields, f.keys));
     // phone mirrored into custom_fields too (canonical 'telefono')
     const phone = (stdDraft.phone ?? '').trim();
     if (phone && canEditSensitive) next['telefono'] = phone;
@@ -731,12 +737,13 @@
                   oninput={() => (dniLookup = { state: 'idle' })}
                   placeholder={m.crm_field_empty()}
                   inputmode="numeric"
+                  readonly={stdLocked(f)}
                 />
                 <Button
                   variant="outline"
                   size="sm"
                   onclick={lookupDni}
-                  disabled={!dniValid || dniLookup.state === 'loading'}
+                  disabled={!dniValid || dniLookup.state === 'loading' || stdLocked(f)}
                   loading={dniLookup.state === 'loading'}
                   title={m.crm_dni_lookup_hint()}
                 >

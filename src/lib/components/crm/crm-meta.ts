@@ -59,7 +59,10 @@ export function metaLabel(key: string): string {
   const hit = LABELS[key.toLowerCase()];
   if (hit) return languageTag() === 'es' ? hit.es : hit.en;
   // snake/camel → spaced, capitalized ("birth_date" → "Birth date").
-  const spaced = key.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  const spaced = key
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .trim();
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
@@ -100,8 +103,19 @@ const orderIndex = (k: string) => {
  */
 export const isReservedMetaKey = (k: string): boolean => k.startsWith('_');
 
+/** Stored entries under `keys` (exact match): values the details editor does not edit but
+ *  that a whole-namespace save would otherwise delete (dni / edad / fecha_nacimiento). */
+export function pickStoredKeys(
+  fields: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, unknown> {
+  return Object.fromEntries(keys.filter((k) => k in fields).map((k) => [k, fields[k]]));
+}
+
 /** Non-empty custom-field entries, ordered (known keys first, then the rest). */
-export function metaEntries(fields: Record<string, unknown> | null | undefined): [string, unknown][] {
+export function metaEntries(
+  fields: Record<string, unknown> | null | undefined,
+): [string, unknown][] {
   if (!fields || typeof fields !== 'object') return [];
   const entries = Object.entries(fields).filter(
     ([k, v]) => !isReservedMetaKey(k) && v != null && String(v).trim() !== '',

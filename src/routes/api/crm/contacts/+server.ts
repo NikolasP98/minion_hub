@@ -74,6 +74,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   };
 
   // `fresh=1`: uncached read the merge UI uses to reconcile rows after a merge.
+  // TODO(handoff): `fresh=1` is an uncached whole-org rank with no rate limit; see proposal 2026-11-16-faces-stock-cash-crm-meeting-followups.
   const fresh = q.get('fresh') === '1';
   if (fresh && q.get('fields') === 'id') throw error(400, 'fresh reads do not support fields=id');
 

@@ -2101,9 +2101,32 @@ export async function lockContactsInOrg(
   ctx: CoreCtx,
   ids: string[],
   ownerPredicate: SQL | undefined,
+  /** This id is locked FOR NO KEY UPDATE (merge survivor); every other id FOR UPDATE. */
+  weakLockId?: string,
 ): Promise<string[]> {
   if (ids.some((id) => !UUID_RE.test(id))) throw error(404, 'Contact not found');
   const wanted = [...new Set(ids.map((id) => id.toLowerCase()))].sort();
+  if (weakLockId) {
+    // One statement per id, in sorted order, so each gets its own lock strength.
+    const got: string[] = [];
+    for (const id of wanted) {
+      const [r] = await tx
+        .select({ id: crmContacts.id })
+        .from(crmContacts)
+        .where(
+          and(
+            eq(crmContacts.orgId, ctx.tenantId),
+            eq(crmContacts.id, id),
+            isNull(crmContacts.deletedAt),
+            ownerPredicate,
+          ),
+        )
+        .for(id === weakLockId.toLowerCase() ? 'no key update' : 'update');
+      if (!r) throw error(404, 'Contact not found');
+      got.push(r.id.toLowerCase());
+    }
+    return got;
+  }
   const found = await tx
     .select({ id: crmContacts.id })
     .from(crmContacts)
@@ -2121,6 +2144,14 @@ export async function lockContactsInOrg(
   if (got.length !== wanted.length || got.some((id, i) => id !== wanted[i]))
     throw error(404, 'Contact not found');
   return got;
+}
+
+/** Admit a contact for tagging before any tag is created (same checks as applyTag). */
+export async function assertContactTaggable(ctx: CoreCtx, contactId: string) {
+  await withOrgCore(ctx, async (tx) => {
+    await lockContactsInOrg(tx, ctx, [contactId], undefined);
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
+  });
 }
 
 export async function applyTag(

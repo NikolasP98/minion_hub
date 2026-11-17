@@ -469,7 +469,13 @@ export async function mergeContacts(
       options.ownerId ? eq(crmContacts.ownerId, options.ownerId) : undefined,
       simulatedMutationPredicate(ctx, 'crm', 'edit', crmContacts.ownerId),
     );
-    const locked = await lockContactsInOrg(tx, ctx, [survivorId, ...losers], ownerPredicate);
+    const locked = await lockContactsInOrg(
+      tx,
+      ctx,
+      [survivorId, ...losers],
+      ownerPredicate,
+      survivorId,
+    );
     if (losers.length === 0) return;
     if (!options.canWriteSensitiveFields) {
       const stored = await tx

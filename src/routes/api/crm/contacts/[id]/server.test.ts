@@ -53,6 +53,14 @@ describe('PATCH /api/crm/contacts/[id] masked-field authority', () => {
     const { contact } = await res.json();
     expect(contact.customFields.instagram_handle).toBe(masked ? '••••••••_123' : 'synthetic_123');
   });
+  it('refuses a phone from a restricted principal with 403 and writes nothing', async () => {
+    mocks.shouldMask.mockResolvedValue(true);
+    await expect(patch({ phone: '999111222' })).rejects.toMatchObject({
+      status: 403,
+      body: { message: 'sensitive_fields_restricted' },
+    });
+    expect(mocks.updateContact).not.toHaveBeenCalled();
+  });
   it('a stale response never returns the raw masked value', async () => {
     mocks.shouldMask.mockResolvedValue(true);
     mocks.updateContact.mockRejectedValue(new StaleWriteError(row as never));
