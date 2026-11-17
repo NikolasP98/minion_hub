@@ -13,6 +13,7 @@ vi.mock('@minion-stack/cache', () => ({
 }));
 import { withOrgCore } from '$server/db/with-org-core';
 import { round4 } from './stock.logic';
+import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   createEntry,
   createEntryInTx,
@@ -49,11 +50,11 @@ let child: CorrectionNativeChild;
 let owner: postgres.Sql;
 const clients: postgres.Sql[] = [];
 const actorOf = (id: string) => ({ id, name: 'Native' });
-type Ctx = { db: ReturnType<typeof drizzle>; tenantId: string; profileId: string };
+type Ctx = CoreCtx;
 const ctxFor = (org: string, profile: string): Ctx => {
   const client = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => undefined });
   clients.push(client);
-  return { db: drizzle(client), tenantId: org, profileId: profile };
+  return { db: drizzle(client) as unknown as CoreCtx['db'], tenantId: org, profileId: profile };
 };
 beforeAll(async () => {
   child = await openCorrectionNativeChild();

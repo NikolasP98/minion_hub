@@ -286,8 +286,7 @@ async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Pro
   );
   if (!bin || !item || entries.length !== ids.length) fail('stale_preview');
 
-  const byEntry = <T extends { entry_id: unknown }>(rows: T[], id: string) =>
-    rows.filter((r) => String(r.entry_id) === id);
+  const byEntry = (rows: Rows, id: string) => rows.filter((r) => String(r.entry_id) === id);
   const originals: FreshChain['originals'] = new Map();
   const evidence: EntryEvidence[] = ids.map((id, idx) => {
     const e = entries.find((r) => String(r.id) === id)!;

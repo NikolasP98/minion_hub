@@ -37,6 +37,9 @@ describe('operator service loader', () => {
       expect(typeof bridge.readOperatorAuthorityReadOnlyInTx).toBe('function');
       const audit = await loader.load('audit');
       expect(typeof audit.runAuditInventory).toBe('function');
+      const receipt = await loader.load('receiptCorrection');
+      expect(typeof receipt.applyReceiptCorrection).toBe('function');
+      expect(typeof receipt.draftReceiptCompensationManifest).toBe('function');
       await expect(loader.load('nope' as never)).rejects.toThrow(/unknown registry key/);
     }, 120_000);
   });
