@@ -117,6 +117,8 @@ describe('output directory and publication', () => {
     expect(readFileSync(join(dir, 'run1', 'subjects.jsonl'), 'utf8')).toBe('{"a":2,"b":1}\n');
     const manifest = JSON.parse(readFileSync(join(dir, 'run1', 'manifest.json'), 'utf8'));
     expect(manifest.subjects.rows).toBe(1);
+    expect(manifest.proposals.count).toBe(0);
+    expect(readFileSync(join(dir, 'run1', 'repair-proposals.json'), 'utf8')).toBe('[]\n');
     expect(canonicalJson({ b: [2, { d: 1, c: 2 }], a: null })).toBe(
       '{"a":null,"b":[2,{"c":2,"d":1}]}',
     );

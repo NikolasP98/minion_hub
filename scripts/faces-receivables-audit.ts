@@ -25,12 +25,14 @@ import type {
   AuditSink,
   AuditSubject,
   QualifiedOperatorTarget,
+  RepairProposal,
   ResidualRecord,
 } from '../src/server/services/pos/accounts/audit.types';
 import {
   assertInterval,
   intervalContained,
   isRealDate,
+  sortProposals,
 } from '../src/server/services/pos/accounts/audit.logic';
 import { operatorDatabaseIdentity, verifyOperatorPrincipal } from './lib/operator-principal';
 
@@ -194,14 +196,24 @@ export class RunOutput implements AuditSink {
   writeResidual(residual: ResidualRecord) {
     return this.residuals.write(residual);
   }
-  async publish(summary: unknown): Promise<void> {
+  /** Writes protected repair-proposals.json (inert envelopes, always pending_owner_approval; no apply mode exists). */
+  async publish(summary: unknown, proposals: readonly RepairProposal[] = []): Promise<void> {
     const subjectsSha256 = await this.subjects.end();
     const residualsSha256 = await this.residuals.end();
     writeFileSync(join(this.staging, 'summary.json'), `${canonicalJson(summary)}\n`, {
       mode: 0o600,
       flag: 'wx',
     });
+    const proposalsText = `${canonicalJson(sortProposals(proposals))}\n`;
+    writeFileSync(join(this.staging, 'repair-proposals.json'), proposalsText, {
+      mode: 0o600,
+      flag: 'wx',
+    });
     const manifest = {
+      proposals: {
+        count: proposals.length,
+        sha256: createHash('sha256').update(proposalsText).digest('hex'),
+      },
       schemaVersion: 1,
       runId: this.runId,
       subjects: { rows: this.subjects.rows, sha256: subjectsSha256 },
@@ -322,6 +334,7 @@ async function run(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       );
+      // TODO(handoff): no proposals are emitted until the FinancialSourceRows closure loader (T017) can prove eligibility.
       await output!.publish(summary);
       console.log(JSON.stringify({ run: output!.final, totals: summary.totals }));
       return 0;
