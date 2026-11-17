@@ -399,7 +399,7 @@
       key: 'warehouse',
       label: m.stock_col_warehouse(),
       sortable: false,
-      accessor: (l) => l.warehouseName ?? l.warehouseId.slice(0, 8),
+      accessor: (l) => l.warehouseName ?? l.warehouseId?.slice(0, 8) ?? '',
     },
     {
       key: 'delta',

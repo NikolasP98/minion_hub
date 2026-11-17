@@ -62,7 +62,7 @@ describe('/stock/entries loader', () => {
       cursor: 'C',
       partyId: 'P',
     });
-    expect(h.bundle.mock.calls[0][3]).toHaveLength(50);
+    expect((h.bundle.mock.calls[0] as unknown[])[3]).toHaveLength(50);
     expect(out.stock).toMatchObject({ partyFilter: 'P', warehouseCount: 1 });
     expect(out.stock).not.toHaveProperty('entries');
     expect(out.stock).not.toHaveProperty('itemsById');
