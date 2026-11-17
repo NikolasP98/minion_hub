@@ -93,12 +93,13 @@
         signal,
         headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
       });
-      if (!res.ok) throw new Error(res.status === 409 ? 'refresh_required' : `HTTP ${res.status}`);
+      if (!res.ok)
+        throw new Error(res.status === 409 ? m.pos_appt_refresh_required() : `HTTP ${res.status}`);
       const json = (await res.json()) as { calendarScope: string | null };
       // Strict decode before the cache: this host carries NO money, sold or stock rows (its facets
       // are `not_in_slice`/`denied`), and an old or malformed protocol is refused, not cached.
       const projection = decodeBookingCalendarProjection<WindowPayload['bookings'][number]>(json);
-      if (!projection) throw new Error('refresh_required');
+      if (!projection) throw new Error(m.pos_appt_refresh_required());
       return {
         calendarScope: json.calendarScope,
         payload: {

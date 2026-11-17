@@ -203,6 +203,9 @@
                 <div class="t-caption">{b.attendeePhone ?? ''}</div>
               </div>
               <Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
+              <!-- TODO(handoff): estValue/realizedValue money chips read the stock accrual outside the
+                   spec 126 versioned facets (no money gate, spec 126 is quantity-only). Replace with the
+                   stock facet or gate on finance view. Ledger: proposals/2026-11-17-hub-booking-product-consistency-handoff.md -->
               {#if accrualBySource.get(b.id)}
                 {@const acc = accrualBySource.get(b.id)!}
                 {#if acc.open > 0}

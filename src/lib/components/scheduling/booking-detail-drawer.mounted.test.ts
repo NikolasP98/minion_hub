@@ -17,8 +17,13 @@ vi.mock('$app/state', async (original) => {
   const { reactivePage } = await import('./__fixtures__/reactive-page.svelte');
   return { ...actual, page: reactivePage({ ...actual.page }) };
 });
+import { page } from '$app/state';
 import { basicMember, facetsOf, wireDetail } from './__fixtures__/detail-wire';
-import type { BasicVisitMember, BookingProductFacets } from './booking-product-facets';
+import type {
+  BasicVisitMember,
+  BookingProductFacets,
+  SoldProductBasic,
+} from './booking-product-facets';
 const { default: BookingDetailDrawer } = await import('./BookingDetailDrawer.svelte');
 
 const TZ = 'America/Lima';
@@ -170,7 +175,7 @@ describe('BookingDetailDrawer acts on the booking it shows (spec 116 FR-008)', (
 });
 
 describe('BookingDetailDrawer sold facet (spec 126)', () => {
-  const soldRow = (over: Record<string, unknown> = {}) => ({
+  const soldRow = (over: Partial<SoldProductBasic> = {}): SoldProductBasic => ({
     ticketId: 't1',
     lineId: 'l1',
     productId: 'p-faja',
@@ -294,6 +299,55 @@ describe('BookingDetailDrawer stock recovery action (spec 126 US2)', () => {
     expect(recoverBtn(view)).toBeNull();
   });
 
+  it('confirm_open needs stock:manage: hidden without it, offered with it', async () => {
+    const open = member('A', {
+      eligibility: 'confirm_open',
+      openCount: 1,
+      confirmation: {
+        state: 'available',
+        value: {
+          openCount: 1,
+          expectedOpenFingerprint: 'a'.repeat(64),
+          rows: [
+            {
+              accrualId: 'acc1',
+              itemId: 'item1',
+              itemName: 'Serum',
+              uom: 'bottle',
+              consumptionUom: 'ml',
+              unitsPerStockUom: 50,
+              subunitsPerStockUom: null,
+              diagramEnabled: false,
+              qty: 0.2,
+              qtyConsumption: 10,
+            },
+          ],
+        },
+      },
+    });
+    net.details.A = detailOf('A', 'Ana', {
+      booking: { status: 'completed' },
+      members: [basicMember('A', 0, { status: 'completed' })],
+      facets: { stock: recoveryStock({ state: 'available', value: [open] }) },
+    });
+    const saveData = page.data;
+    try {
+      page.data = { ...saveData, permissions: { permissions: ['scheduling:edit'] } };
+      const noManage = render(BookingDetailDrawer, props('A'));
+      await noManage.findByText('Sold with this visit');
+      expect(recoverBtn(noManage)).toBeNull();
+      cleanup();
+      page.data = {
+        ...saveData,
+        permissions: { permissions: ['scheduling:edit', 'stock:manage'] },
+      };
+      const withManage = render(BookingDetailDrawer, props('A'));
+      await withManage.findByRole('button', { name: 'Recover stock' });
+    } finally {
+      page.data = saveData;
+    }
+  });
+
   it('offers no action to a viewer who cannot edit', async () => {
     net.details.A = detailOf('A', 'Ana', {
       facets: { stock: recoveryStock({ state: 'available', value: [saved] }) },
@@ -379,5 +433,8 @@ describe('BookingDetailDrawer versioned wire and payment facet (spec 126)', () =
     const view = render(BookingDetailDrawer, props('A'));
     await waitFor(() => expect(view.container.textContent).not.toContain('Ana'));
     expect(view.queryByRole('button', { name: 'Mark no-show' })).toBeNull();
+    // The reason is the translated refresh message, never the raw code.
+    await waitFor(() => expect(view.container.textContent).toContain('out of date'));
+    expect(view.container.textContent).not.toContain('refresh_required');
   });
 });

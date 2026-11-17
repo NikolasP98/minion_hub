@@ -147,11 +147,12 @@
         signal,
         headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
       });
-      if (!res.ok) throw new Error(res.status === 409 ? 'refresh_required' : `HTTP ${res.status}`);
+      if (!res.ok)
+        throw new Error(res.status === 409 ? m.pos_appt_refresh_required() : `HTTP ${res.status}`);
       const json = (await res.json()) as { calendarScope: string | null };
       // Decode BEFORE the cache sees it: an old or malformed protocol never becomes cached rows.
       const projection = decodeBookingCalendarProjection<WindowPayload['bookings'][number]>(json);
-      if (!projection) throw new Error('refresh_required');
+      if (!projection) throw new Error(m.pos_appt_refresh_required());
       return {
         calendarScope: json.calendarScope,
         payload: {
@@ -734,7 +735,7 @@
 
   /** The visit's lead booking (`groupSeq` 0 / first of the group) — what the server resolves as the
    *  anchor; `chargeEvent` re-reads it from the detail and never trusts this id for authority. */
-  function anchorOf(b: Booking): string {
+  function anchorOf(b: Pick<Booking, 'id' | 'groupId'>): string {
     if (!b.groupId) return b.id;
     const group = cal.bookings.filter((x) => x.groupId === b.groupId);
     return (
@@ -887,15 +888,27 @@
   /** Charge reads the versioned detail ON PICK (not on open) and decides from IT, never from a cached
    *  offer: the till handoff needs the event's rows, products and plan, which the window payload does
    *  not carry. Any denied, unavailable, mixed or old-protocol answer opens nothing. */
-  async function chargeEvent(anchorId: string) {
+  async function chargeEvent(clientAnchorId: string) {
     try {
-      const res = await fetch(`/api/pos/appointments/${anchorId}`, {
-        headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
-      });
-      if (res.status === 409) return void toastError(m.pos_appt_refresh_required());
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = decodeBookingDetailWire<Omit<EventMenuDetail, 'productFacets'>>(await res.json());
-      const anchor = d ? visitAnchorIdFromFacets(d.productFacets) : null;
+      const readDetail = async (id: string) => {
+        const res = await fetch(`/api/pos/appointments/${id}`, {
+          headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+        });
+        if (res.status === 409) return 'refresh' as const;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return decodeBookingDetailWire<Omit<EventMenuDetail, 'productFacets'>>(await res.json());
+      };
+      let d = await readDetail(clientAnchorId);
+      if (d === 'refresh') return void toastError(m.pos_appt_refresh_required());
+      let anchor = d ? visitAnchorIdFromFacets(d.productFacets) : null;
+      // The window's guess at the anchor disagrees with the server's: charge from the ANCHOR's own
+      // detail, never from the member's (its rows and plan are the visit's, read from the anchor).
+      if (d && anchor && anchor !== clientAnchorId) {
+        const want: string = anchor;
+        d = await readDetail(want);
+        if (d === 'refresh') return void toastError(m.pos_appt_refresh_required());
+        anchor = d && visitAnchorIdFromFacets(d.productFacets) === want ? want : null; // still moving: fail closed
+      }
       const fin = d ? eventServiceRows(d as EventMenuDetail) : null;
       if (!d || !anchor || fin?.state !== 'available')
         return void toastError(m.pos_appt_charge_unavailable());
@@ -1313,23 +1326,18 @@
             {#if lead && facets?.stock.state === 'available' && facets.stock.value.anchorAccrual}
               {@const acc = facets.stock.value.anchorAccrual}
               {#if acc.open > 0}
-                <Badge
-                  variant="semantic"
-                  value="warning"
-                  size="sm"
-                  title={m.sched_stock_cost_unavailable()}
-                  >{m.sched_stock_open_qty({ n: String(acc.open) })}</Badge
-                >
+                <span title={m.sched_stock_cost_unavailable()}>
+                  <Badge variant="semantic" value="warning" size="sm"
+                    >{m.sched_stock_open_qty({ n: String(acc.open) })}</Badge
+                  >
+                </span>
               {:else if acc.realized > 0}
                 <a
                   href={acc.realizedEntryId ? `/stock/entries/${acc.realizedEntryId}` : '/stock'}
                   class="no-underline"
+                  title={m.sched_stock_cost_unavailable()}
                 >
-                  <Badge
-                    variant="semantic"
-                    value="success"
-                    size="sm"
-                    title={m.sched_stock_cost_unavailable()}
+                  <Badge variant="semantic" value="success" size="sm"
                     >{m.sched_stock_posted_qty({ n: String(acc.realized) })}</Badge
                   >
                 </a>
@@ -1352,7 +1360,8 @@
           {#snippet actions(b)}
             <!-- Same gate as the context menu: a booking a ticket already charged is not
                  offered for charging again (FACES report 2026-11-03). -->
-            {#if b.status === 'completed' && canAct('pos', 'edit') && decodeCalendarFacets(b.productFacets)?.payment.state === 'available'}
+            {@const pay = decodeCalendarFacets(b.productFacets)?.payment}
+            {#if b.status === 'completed' && canAct('pos', 'edit') && pay?.state === 'available' && !pay.value.paid}
               <Button variant="outline" size="sm" onclick={() => void chargeEvent(anchorOf(b))}>
                 <ShoppingCart size={iconSizes.sm} />
                 {m.pos_appt_charge()}

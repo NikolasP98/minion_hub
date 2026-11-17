@@ -276,7 +276,7 @@
         }
         if (!res.ok) {
           const j = (await res.json().catch(() => null)) as { error?: string } | null;
-          mark(mb.bookingId, 'error');
+          mark(mb.bookingId, 'error', j?.error === 'stock_forbidden' ? 'denied' : undefined);
           if (j?.error === 'recovery_preview_stale') err = m.sched_recover_stale();
           break;
         }
@@ -463,7 +463,9 @@
               {:else if outcome.kind === 'warning'}{m.sched_recover_warning({
                   message: outcome.message ?? '',
                 })}
-              {:else if outcome.kind === 'error'}{m.sched_recover_error()}
+              {:else if outcome.kind === 'error'}{outcome.message === 'denied'
+                  ? m.sched_recover_denied()
+                  : m.sched_recover_error()}
               {:else}{m.sched_recover_unknown()}{/if}
             </p>
           {/if}

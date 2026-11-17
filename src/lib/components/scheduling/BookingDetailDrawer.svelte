@@ -50,6 +50,7 @@
     visitAnchorIdFromFacets,
     type BookingProductFacets,
     type BookingReadFacet,
+    type FullBookingTicketWire,
     type RecoveryFacet,
     type SoldFacet,
   } from './booking-product-facets';
@@ -255,13 +256,14 @@
     const res = await fetch(`${apiBase}/${id}`, {
       headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
     });
-    if (!res.ok) throw new Error(res.status === 409 ? 'refresh_required' : String(res.status));
+    if (!res.ok)
+      throw new Error(res.status === 409 ? m.pos_appt_refresh_required() : String(res.status));
     return decodeBookingDetailWire<Omit<Detail, 'productFacets'>>(await res.json());
   }
 
   async function loadDetail(id: string): Promise<Detail> {
     const d = await fetchDetail(id);
-    if (!d) throw new Error('refresh_required');
+    if (!d) throw new Error(m.pos_appt_refresh_required());
     const lead = visitAnchorIdFromFacets(d.productFacets);
     if (!lead || lead === d.booking.id) return d;
     // Decode BEFORE the canonical-anchor redirect; a failed second read keeps the clicked member's detail.
@@ -572,7 +574,10 @@
   // only service when it has no visit yet (a single-service event).
   // Structural rows only (title, minutes, status): money for a row is `finById.get(row.id)`, present
   // ONLY when the payment facet is available. Nothing below invents paid/unpaid/0 for a blocked one.
-  const svcRows = $derived(
+  type SvcRow = Pick<VisitRow, 'id' | 'eventTypeId' | 'title' | 'minutes' | 'status'> & {
+    canRemove: boolean;
+  };
+  const svcRows = $derived<SvcRow[]>(
     members.map((mb) => ({
       id: mb.id,
       eventTypeId: mb.eventTypeId,
@@ -633,7 +638,7 @@
     }
   }
 
-  async function separateService(row: VisitRow) {
+  async function separateService(row: SvcRow) {
     if (!detailIsCurrent) return;
     svcBusyId = row.id;
     err = null;
@@ -657,8 +662,8 @@
   // flows elsewhere in the module) — the server's 409 `referenced` becomes the
   // dialog's own failure message, never a silent no-op.
   let removeOpen = $state(false);
-  let removeRow = $state<VisitRow | null>(null);
-  function openRemove(row: VisitRow) {
+  let removeRow = $state<SvcRow | null>(null);
+  function openRemove(row: SvcRow) {
     removeRow = row;
     removeOpen = true;
   }
@@ -798,7 +803,10 @@
     canEdit &&
       recoveryFacet.state === 'available' &&
       recoveryFacet.value.some(
-        (r) => r.eligibility === 'retry_saved' || r.eligibility === 'confirm_open',
+        (r) =>
+          r.eligibility === 'retry_saved' ||
+          // confirm_open posts through the stock:manage-gated recovery endpoint.
+          (r.eligibility === 'confirm_open' && canAct('stock', 'manage')),
       ),
   );
   let productBusyId = $state<string | null>(null);
@@ -910,7 +918,7 @@
      No customer name, no ticket number, no paid amount or date — those are on
      the chip itself. Money rows appear only when the ticket is more than this
      one booking (a discount, or more than one line). -->
-{#snippet ticketCard(t: Detail['tickets'][number])}
+{#snippet ticketCard(t: FullBookingTicketWire)}
   {@const showMoney = Number(t.discount || 0) !== 0 || t.lineCount > 1}
   {@const extra = t.otherLines.slice(0, 4)}
   {@const hidden = t.otherLines.length - extra.length}
@@ -1502,14 +1510,16 @@
                   if (!detailIsCurrent || fin.state !== 'available') return;
                   // Guarded handoff: no chargeable service means no fabricated first service (only an
                   // open instalment plan keeps that fallback); products alone still hand off.
-                  const offer = payableEventFrom({
+                  const base = {
                     booking: d.booking,
                     contactPartyId: d.contact?.partyId ?? null,
                     anchorId: anchorId ?? d.booking.id,
                     rows: fin.value.rows,
                     products: fin.value.products,
-                    allowServiceFallback: instalmentOnly,
-                  });
+                  };
+                  const offer = instalmentOnly
+                    ? payableEventFrom({ ...base, allowServiceFallback: true })
+                    : payableEventFrom({ ...base, allowServiceFallback: false });
                   if (offer) onpay(offer, pay.plan?.plan.id ?? null);
                 }}
               >

@@ -202,11 +202,11 @@ describe('direct Charge (spec 126 T022)', () => {
       expect(chargeBtn(view, id), id).toBeUndefined();
   });
 
-  it('is offered even when the cached row reads paid (the guarded detail decides: products-only handoff)', async () => {
+  it('is hidden when the cached row reads paid: a charged completed booking is not charged again (2026-11-03)', async () => {
     const view = render(PageBody, {
       data: data([cb('A', { paid: true, productFacets: calFacets({ payment: pay(true) }) })]),
     });
-    expect(chargeBtn(view, 'A')).toBeTruthy();
+    expect(chargeBtn(view, 'A')).toBeUndefined();
   });
 
   it('re-fetches the versioned detail and hands the till the guarded offer', async () => {
@@ -244,6 +244,26 @@ describe('direct Charge (spec 126 T022)', () => {
     expect(
       h.handoff.mock.calls[0]![0].input.lines.map((l: { bookingId: string }) => l.bookingId),
     ).toEqual(['lead', 'two']);
+  });
+
+  it('a client anchor that disagrees with the server anchor re-fetches the ANCHOR detail', async () => {
+    const members = [
+      basicMember('A', 0, { status: 'completed' }),
+      basicMember('B', 1, { status: 'completed' }),
+    ];
+    // The window sorts B first (groupSeq 0), the server says A is the anchor.
+    details['B'] = detailFor('B', facetsOf(members, {}, 'g1'));
+    details['A'] = detailFor('A', facetsOf(members, {}, 'g1'));
+    const view = render(PageBody, {
+      data: data([
+        cb('B', { groupId: 'g1', groupSeq: 0 }),
+        cb('A', { groupId: 'g1', groupSeq: 1 }),
+      ]),
+    });
+    await fireEvent.click(chargeBtn(view, 'B')!);
+    await waitFor(() => expect(h.handoff).toHaveBeenCalledTimes(1));
+    expect(gets.map((g) => g.url)).toEqual(['/api/pos/appointments/B', '/api/pos/appointments/A']);
+    expect(h.handoff.mock.calls[0]![0].input.lines[0].bookingId).toBe('A');
   });
 
   it.each([

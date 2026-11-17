@@ -236,6 +236,20 @@ describe('ConsumptionConfirmDialog mode="recover_stock" (spec 126)', () => {
     ).toHaveLength(2);
   });
 
+  it('a 403 stock_forbidden says the role cannot recover stock, not "reload and try again"', async () => {
+    stub(available(open), () =>
+      Response.json(
+        { error: 'stock_forbidden', message: 'stock:manage required' },
+        { status: 403 },
+      ),
+    );
+    const view = mount();
+    await view.findByText('Serum');
+    await fireEvent.click(view.getByRole('button', { name: 'Retry stock posting' }));
+    await waitFor(() => expect(view.container.textContent).toContain('Your role cannot recover'));
+    expect(view.container.textContent).not.toContain('Reload and try again');
+  });
+
   it('a lost response is unknown and stops the rest; a warning is not posted but continues', async () => {
     let n = 0;
     const calls = stub(available(saved, open), () => {
