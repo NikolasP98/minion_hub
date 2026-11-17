@@ -2054,3 +2054,10 @@ export const wire = {
   target: targetV,
 };
 export { ratToDecimal as ratToDecimalString, eng as engineString };
+
+/** Per-ticket financial digest shared by the diagnostic reader and the correction service (ticket row + its payments). */
+export const ticketFinancialSha256 = (
+  ticketRowText: string,
+  paymentRowTexts: readonly string[],
+): Digest =>
+  sha256(canonical({ ticket: sha256(ticketRowText), payments: paymentRowTexts.map(sha256) }));

@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import * as stockLogic from './stock.logic';
 import {
   decodeReceiptChainManifestV1,
+  financialStateDigest,
+  ruleStateDigest,
+  sourceStateDigest,
   decodeReceiptCorrectionCommand,
   decodeReceiptCorrectionStatusInput,
   planCorrectEffects,
@@ -90,6 +93,28 @@ function manifest(over: Record<string, unknown> = {}): ReceiptChainManifestV1 {
     writerCodeSha: SHA,
     writerEvidenceSha256: H(40),
   }));
+  const consumers = [
+    {
+      kind: 'pos_ticket',
+      id: U(401),
+      rowSha256: H(50),
+      currentEntryId: U(101),
+      financialFiscalSha256: H(51),
+      replacementEntryId: U(501),
+    },
+    {
+      kind: 'stock_accrual',
+      id: U(402),
+      rowSha256: H(52),
+      currentEntryId: U(102),
+      sourceType: 'booking',
+      sourceId: U(302),
+      realizedQty: '8',
+      realizedValue: '1',
+      replacementEntryId: U(502),
+      intendedRealizedValue: newIssueCost(1),
+    },
+  ].sort((a, b) => (a.kind + a.id < b.kind + b.id ? -1 : 1)) as never;
   return {
     schemaVersion: 1,
     kind: 'receipt_chain',
@@ -104,28 +129,7 @@ function manifest(over: Record<string, unknown> = {}): ReceiptChainManifestV1 {
     warehouseId: U(5),
     stockUom: 'U',
     entries,
-    consumers: [
-      {
-        kind: 'pos_ticket',
-        id: U(401),
-        rowSha256: H(50),
-        currentEntryId: U(101),
-        financialFiscalSha256: H(51),
-        replacementEntryId: U(501),
-      },
-      {
-        kind: 'stock_accrual',
-        id: U(402),
-        rowSha256: H(52),
-        currentEntryId: U(102),
-        sourceType: 'booking',
-        sourceId: U(302),
-        realizedQty: '8',
-        realizedValue: '1',
-        replacementEntryId: U(502),
-        intendedRealizedValue: newIssueCost(0),
-      },
-    ].sort((a, b) => (a.kind + a.id < b.kind + b.id ? -1 : 1)) as never,
+    consumers,
     entryMap,
     opening: { qty: '8', value: '2000', valuationRate: '250', ledgerId: '1899', rowSha256: H(60) },
     before: {
@@ -133,9 +137,9 @@ function manifest(over: Record<string, unknown> = {}): ReceiptChainManifestV1 {
       latestLedgerId: '1902',
       latestLedgerRowSha256: H(62),
       itemRowSha256: H(63),
-      ruleStateSha256: H(64),
-      sourceStateSha256: H(65),
-      financialFiscalSha256: H(66),
+      ruleStateSha256: ruleStateDigest(entries),
+      sourceStateSha256: sourceStateDigest(entries, consumers),
+      financialFiscalSha256: financialStateDigest(consumers),
       policyStateSha256: H(67),
     },
     intended,
@@ -255,6 +259,12 @@ describe('decodeReceiptChainManifestV1', () => {
     swap((m) => (m.before.latestLedgerId = '1'));
     swap((m) => (m.entries[2].qty = '1234567890'));
     swap((m) => (m.basis.stockQty = '88'));
+    swap((m) => (m.before.sourceStateSha256 = H(1)));
+    swap((m) => (m.before.ruleStateSha256 = H(1)));
+    swap((m) => (m.before.financialFiscalSha256 = H(1)));
+    swap((m) => (m.basis.unitQualification.sources[1].lineRowSha256 = H(1)));
+    swap((m) => (m.basis.unitQualification.itemRowSha256 = H(1)));
+    swap((m) => (m.entries[1].uom = 'BOX'));
     swap((m) => (m.sourceCodeSha = 'zz'));
   });
   it('compensate carries the inverse reference and the restore policy only', () => {

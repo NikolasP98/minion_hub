@@ -167,6 +167,89 @@ export type ReceiptCorrectionStatusInput = {
   manifest: ReceiptChainManifestV1;
 };
 
+// ───────────── state digests (decisions for review finding F2-R6-IR-002) ─────────────
+// Each digest is a pure function of manifest-shaped evidence, so the decoder can verify the derived ones and the service
+// recomputes them from fresh rows read in the same shape. Row hashes themselves are raw to_jsonb(row)::text SHA-256s.
+type ConsumerKey = { kind: string; id: UUID; rowSha256: Digest; currentEntryId: UUID };
+/** Frozen-quantity rule evidence: the chain replays stored quantities, never today's recipes or conversions. */
+export const ruleStateDigest = (entries: readonly EntryEvidence[]): Digest =>
+  sha256(
+    canonical({
+      domain: 'receipt_chain_rules',
+      entries: entries.map((e) => ({ entryId: e.entryId, qty: e.qty, uom: e.uom })),
+    }),
+  );
+/** Aggregate of the per-ticket financial/fiscal digests (ticket row + its payments), sorted by ticket id. */
+export const financialStateDigest = (consumers: readonly ConsumerEvidence[]): Digest =>
+  sha256(
+    canonical({
+      domain: 'receipt_chain_financial',
+      tickets: consumers.flatMap((c) =>
+        c.kind === 'pos_ticket' ? [{ id: c.id, sha: c.financialFiscalSha256 }] : [],
+      ),
+    }),
+  );
+export const sourceStateDigest = (
+  entries: readonly EntryEvidence[],
+  consumers: readonly (ConsumerKey & Record<string, unknown>)[],
+): Digest =>
+  sha256(
+    canonical({
+      domain: 'receipt_chain_source',
+      entries: entries.map((e) => ({
+        entryId: e.entryId,
+        headerRowSha256: e.headerRowSha256,
+        lineId: e.lineId,
+        lineRowSha256: e.lineRowSha256,
+        ledgerId: e.ledgerId,
+        ledgerRowSha256: e.ledgerRowSha256,
+      })),
+      consumers: consumers.map((c) => ({
+        kind: c.kind,
+        id: c.id,
+        rowSha256: c.rowSha256,
+        currentEntryId: c.currentEntryId,
+      })),
+    }),
+  );
+export const stockStateDigest = (
+  m: Pick<ReceiptManifestBase, 'opening' | 'before' | 'entries'>,
+): Digest =>
+  sha256(
+    canonical({
+      domain: 'receipt_chain_stock',
+      opening: m.opening,
+      binRowSha256: m.before.binRowSha256,
+      latestLedgerId: m.before.latestLedgerId,
+      latestLedgerRowSha256: m.before.latestLedgerRowSha256,
+      itemRowSha256: m.before.itemRowSha256,
+      ledger: m.entries.map((e) => ({
+        ledgerId: e.ledgerId,
+        qtyDelta: e.qtyDelta,
+        valueDelta: e.valueDelta,
+        qtyAfter: e.qtyAfter,
+        valuationRate: e.valuationRate,
+      })),
+    }),
+  );
+/** Period/timezone/authority evidence; lockedPeriods are the actual pos_period_locks rows read in the snapshot. */
+export const policyStateDigest = (input: {
+  accountingTimezone: string;
+  correctionMonth: string;
+  actorProfileId: UUID;
+  lockedPeriods: readonly string[];
+}): Digest =>
+  sha256(
+    canonical({
+      domain: 'receipt_chain_policy',
+      accountingTimezone: input.accountingTimezone,
+      correctionMonth: input.correctionMonth,
+      actorProfileId: input.actorProfileId,
+      membershipRole: 'owner',
+      lockedPeriods: [...input.lockedPeriods].sort(),
+    }),
+  );
+
 // ───────────── field decoders ─────────────
 /** Positive stock quantity: at most nine integer and four fractional digits (F3 transaction-protocol admission rule). */
 const qty4: V<string> = (x, p) => {
@@ -386,6 +469,32 @@ function invariants(m: ReceiptChainManifestV1): ReceiptChainManifestV1 {
   });
   if (m.consumers.some((c) => !originals.has(c.currentEntryId) || c.currentEntryId === e0.entryId))
     bad('$.consumers');
+  if (m.action === 'correct') {
+    // The normalized-unit proof must bind exactly these rows/sources and the frozen item; a stored label may only be null or the proved unit.
+    const u = m.basis.unitQualification;
+    const proofOk =
+      u.sources.length === n &&
+      u.itemId === m.itemId &&
+      u.itemRowSha256 === m.before.itemRowSha256 &&
+      u.documentSha256 === m.basis.sha256 &&
+      m.entries.every(
+        (e, i) =>
+          u.sources[i].entryId === e.entryId &&
+          u.sources[i].lineId === e.lineId &&
+          u.sources[i].headerRowSha256 === e.headerRowSha256 &&
+          u.sources[i].lineRowSha256 === e.lineRowSha256 &&
+          u.sources[i].sourceKind === e.source.kind &&
+          u.sources[i].sourceId === e.source.id &&
+          (e.uom === null || e.uom === u.stockUom),
+      );
+    if (!proofOk) bad('$.basis.unitQualification');
+  }
+  // derived digests are pure functions of the manifest's own evidence
+  if (m.before.ruleStateSha256 !== ruleStateDigest(m.entries)) bad('$.before.ruleStateSha256');
+  if (m.before.financialFiscalSha256 !== financialStateDigest(m.consumers))
+    bad('$.before.financialFiscalSha256');
+  if (m.before.sourceStateSha256 !== sourceStateDigest(m.entries, m.consumers))
+    bad('$.before.sourceStateSha256');
   // posting time and period
   try {
     if (monthIn(m.postedAt, m.accountingTimezone) !== m.correctionMonth) bad('$.correctionMonth');
@@ -544,4 +653,63 @@ export function planCorrectEffects(
     terminalRate: engineString(bin.rate),
     netCogsDelta: engineString(Object.is(net, -0) ? 0 : net),
   };
+}
+
+// ───────────── typed errors (command-envelope.md "Status, CLI and failures") ─────────────
+export type ReceiptCorrectionCode =
+  | 'invalid_manifest'
+  | 'invalid_command'
+  | 'target_mismatch'
+  | 'actor_unavailable'
+  | 'incomplete_evidence'
+  | 'read_unavailable'
+  | 'stale_preview'
+  | 'key_reuse'
+  | 'source_conflict'
+  | 'unsupported_movement'
+  | 'period_unavailable'
+  | 'invariant_failed'
+  | 'commit_outcome_unknown';
+export const RECEIPT_CORRECTION_EXIT: Record<ReceiptCorrectionCode, 2 | 3 | 4 | 5> = {
+  invalid_manifest: 2,
+  invalid_command: 2,
+  target_mismatch: 2,
+  actor_unavailable: 2,
+  incomplete_evidence: 3,
+  read_unavailable: 3,
+  stale_preview: 4,
+  key_reuse: 4,
+  source_conflict: 4,
+  unsupported_movement: 4,
+  period_unavailable: 4,
+  invariant_failed: 4,
+  commit_outcome_unknown: 5,
+};
+export class ReceiptCorrectionError extends Error {
+  constructor(readonly code: ReceiptCorrectionCode) {
+    super(code); // fixed code only: never raw SDK/SQL/server text
+    this.name = 'ReceiptCorrectionError';
+  }
+}
+/** F3 helper StockError codes / SQLSTATEs mapped to this contract (review finding F2-R6-IR-005). */
+export function mapHelperRefusal(
+  code: string | null | undefined,
+  sqlState?: string | null,
+): ReceiptCorrectionCode {
+  if (sqlState === '40001' || sqlState === '40P01' || sqlState === '55P03' || sqlState === '57014')
+    return 'read_unavailable';
+  switch (code) {
+    case 'posted_at_out_of_order':
+      return 'period_unavailable';
+    case 'not_draft':
+    case 'not_submitted':
+    case 'no_ledger':
+    case 'duplicate_source':
+    case 'not_found':
+      return 'source_conflict';
+    case 'module_disabled':
+      return 'actor_unavailable';
+    default:
+      return 'invariant_failed'; // negative_stock, guard_mismatch, ambient_write_not_allowed, invalid_entry_id, ...
+  }
 }

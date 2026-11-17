@@ -22,12 +22,12 @@ import { dirname, join } from 'node:path';
 import postgres from 'postgres';
 import {
   buildDiagnosticResult,
-  canonical,
   decodeDiagnosticReport,
   diagnosticManifestSha256,
   diagnosticReportSha256,
   MAX_MANIFEST_BYTES,
   parseDiagnosticManifestJson,
+  ticketFinancialSha256,
   type Consumer,
   type Coverage,
   type DiagnosticEvidenceManifestV1,
@@ -418,9 +418,7 @@ export async function readReceiptSource(
         id: String(t.id),
         rowSha256: sha(String(t.row_text)),
         entryId: String(t.entry_id),
-        financialFiscalSha256: sha(
-          canonical({ ticket: sha(String(t.row_text)), payments: (t.pays as string[]).map(sha) }),
-        ),
+        financialFiscalSha256: ticketFinancialSha256(String(t.row_text), t.pays as string[]),
       });
     }
     const accruals = await tx.unsafe(
