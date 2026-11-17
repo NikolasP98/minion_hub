@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
+import { requireAuth } from '$server/auth/authorize';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import {
   applyStockCorrection,
@@ -48,6 +49,8 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 
 /** GET /api/stock/corrections?operationKey=&payloadHash= — authoritative status after a lost response. */
 export const GET: RequestHandler = async ({ locals, url }) => {
+  // Session guard only: the service admits pos:view OR stock:view (a stockless POS swap has no stock access).
+  requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const operationKey = url.searchParams.get('operationKey') ?? '';
