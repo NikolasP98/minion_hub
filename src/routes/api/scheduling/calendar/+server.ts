@@ -2,6 +2,7 @@ import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { datasetCtx } from '$server/auth/dataset-ctx';
 import { requireProductsVersion } from '$server/api/booking-products-version';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
@@ -48,6 +49,16 @@ export const GET: RequestHandler = async ({ locals, url, request }) => {
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
-  const payload = await loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: false });
+  const payload = await loadCalendarWindow(ctx, locals, {
+    from,
+    to,
+    eventTypes,
+    pos: false,
+    // Tags/colours through their own handles (denied = degraded); no pos/stock facets on this host.
+    foreign: {
+      pos: await datasetCtx(locals, 'pos'),
+      crm: await datasetCtx(locals, 'crm'),
+    },
+  });
   return json({ calendarScope: calendarWindowScope(ctx.tenantId, orgTz), ...payload });
 };

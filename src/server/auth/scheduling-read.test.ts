@@ -288,7 +288,7 @@ describe('scheduling read authority inventory', () => {
         });
       }
       // The detail resolves its POS/stock/finance handles independently (spec 126).
-      if (suffix === 'bookings/[id]') expect(boundary.context).toHaveBeenCalled();
+      if (suffix !== 'bookings') expect(boundary.context).toHaveBeenCalled();
       else expect(boundary.context).toHaveBeenCalledOnce();
       expect(boundary.enabled).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: 'org-fixture' }),

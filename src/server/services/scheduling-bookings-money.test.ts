@@ -216,6 +216,8 @@ describe('getBookingDetail financial read boundaries', () => {
 });
 
 describe('getBookingDetail sold + stock anchor facets (spec 126)', () => {
+  const handle = { db: {} as never, tenantId: 'org1' };
+  const foreign = { pos: handle, stock: handle };
   const links = (total: number) =>
     new Map([
       [
@@ -244,12 +246,12 @@ describe('getBookingDetail sold + stock anchor facets (spec 126)', () => {
   it('shows the same unassigned Faja M the hover shows, labelled and gift-flagged only with finance', async () => {
     bookingTicketLinks.mockResolvedValue(links(0));
     const { ctx } = fixture();
-    const withMoney = await getBookingDetail(ctx, 'b1', { canReadFinancialFields: true });
+    const withMoney = await getBookingDetail(ctx, 'b1', { canReadFinancialFields: true, foreign });
     expect(withMoney?.sold).toMatchObject({
       state: 'available',
       value: { rows: [{ description: 'Faja M', relation: 'co_ticket_unassigned', gift: true }] },
     });
-    const noMoney = await getBookingDetail(fixture().ctx, 'b1');
+    const noMoney = await getBookingDetail(fixture().ctx, 'b1', { foreign });
     expect(
       (noMoney?.sold as { value: { rows: { gift: unknown }[] } }).value.rows[0]!.gift,
     ).toBeNull();
@@ -267,16 +269,25 @@ describe('getBookingDetail sold + stock anchor facets (spec 126)', () => {
 
     bookingTicketLinks.mockRejectedValue(new Error('boom'));
     stockAnchorForBookings.mockRejectedValue(new Error('boom'));
-    const failed = await getBookingDetail(fixture().ctx, 'b1');
+    const failed = await getBookingDetail(fixture().ctx, 'b1', { foreign });
     expect(failed?.sold).toEqual({ state: 'unavailable', reason: 'read_failed' });
     expect(failed?.stockAnchor).toEqual({ state: 'unavailable', reason: 'read_failed' });
+  });
+
+  it('FAIL CLOSED: omitted foreign handles are denied, never read through the scheduling ctx', async () => {
+    const out = await getBookingDetail(fixture().ctx, 'b1');
+    expect(out?.sold).toEqual({ state: 'denied' });
+    expect(out?.stockAnchor).toEqual({ state: 'denied' });
+    expect(out?.stockRecovery).toEqual({ state: 'denied' });
+    expect(bookingTicketLinks).not.toHaveBeenCalled();
+    expect(stockAnchorForBookings).not.toHaveBeenCalled();
   });
 
   it('reads the stock facet for the ANCHOR, with counts only', async () => {
     stockAnchorForBookings.mockResolvedValue(
       new Map([['b1', { open: 1, realized: 0, released: 0, realizedEntryId: null }]]),
     );
-    const out = await getBookingDetail(fixture().ctx, 'b1');
+    const out = await getBookingDetail(fixture().ctx, 'b1', { foreign });
     expect(stockAnchorForBookings).toHaveBeenCalledWith(expect.anything(), ['b1']);
     expect(out?.stockAnchor).toEqual({
       state: 'available',

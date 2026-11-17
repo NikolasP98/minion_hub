@@ -19,6 +19,11 @@ import {
   type TicketOverlayFacet,
 } from '$lib/components/scheduling/booking-product-facets';
 
+const DENIED = (module: 'pos' | 'stock' | 'crm'): DatasetDenied => ({
+  denied: module,
+  verb: 'view',
+});
+
 /** The subset of an event type the window needs for `kindId`/`productOf`
  *  resolution — callers already have the full list loaded (once per page
  *  load), so it rides in as an argument instead of a second query. */
@@ -59,16 +64,23 @@ export async function loadCalendarWindow(
     canReadFinancialFields?: boolean;
     /** `ctx` is the SCHEDULING handle. Each foreign dataset is read through its own handle (spec
      *  039): a denied one degrades its slice (no money, chips, colours or tags), never leaks.
-     *  Omitted by the guarded JSON endpoints, which authorize at the route (S5 migrates them). */
+     *  Omitted (or a missing member) = DENIED for that dataset: every caller resolves them with
+     *  `datasetCtx(locals, …)`. */
     foreign?: {
-      pos: CoreCtx | DatasetDenied;
-      stock: CoreCtx | DatasetDenied;
-      crm: CoreCtx | DatasetDenied;
+      pos?: CoreCtx | DatasetDenied;
+      stock?: CoreCtx | DatasetDenied;
+      crm?: CoreCtx | DatasetDenied;
     };
   },
 ) {
   const { from, to, eventTypes } = opts;
-  const foreign = opts.foreign ?? { pos: ctx, stock: ctx, crm: ctx };
+  // Fail closed: a caller that omits `foreign` (or a member of it) gets that dataset DENIED, never a read
+  // through the scheduling handle, which would bypass the pos/stock/crm dataset gates.
+  const foreign = {
+    pos: opts.foreign?.pos ?? DENIED('pos'),
+    stock: opts.foreign?.stock ?? DENIED('stock'),
+    crm: opts.foreign?.crm ?? DENIED('crm'),
+  };
   const pos = opts.pos && !isDenied(foreign.pos);
 
   // TODO(handoff): no status filter — every status reaches the grid, including

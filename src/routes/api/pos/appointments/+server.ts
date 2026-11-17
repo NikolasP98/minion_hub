@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { canReadFinancialFields } from '$server/auth/dataset-ctx';
+import { canReadFinancialFields, datasetCtx } from '$server/auth/dataset-ctx';
 import { requireProductsVersion } from '$server/api/booking-products-version';
 import { requireAuth } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
@@ -82,6 +82,12 @@ export const GET: RequestHandler = async ({ locals, url, request }) => {
     eventTypes,
     pos: true,
     canReadFinancialFields: await canReadFinancialFields(locals),
+    // Each foreign dataset through ITS OWN handle (denied = degraded slice), as the page loader does.
+    foreign: {
+      pos: await datasetCtx(locals, 'pos'),
+      stock: await datasetCtx(locals, 'stock'),
+      crm: await datasetCtx(locals, 'crm'),
+    },
   });
   return json({ calendarScope: calendarWindowScope(ctx.tenantId, orgTz), ...payload });
 };

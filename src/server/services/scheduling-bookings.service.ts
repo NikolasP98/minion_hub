@@ -3880,11 +3880,11 @@ export async function getBookingDetail(
   opts: {
     maskAttendeePii?: boolean;
     /** Spec 126: each foreign dataset through its own handle; a denied one yields a
-     *  `denied` facet and no query. Omitted → the scheduling handle (legacy callers).
+     *  `denied` facet and no query. Omitted → DENIED (fail closed).
      *  TODO(handoff): contracts/admission-recovery.md makes this REQUIRED and routes the legacy
      *  ticket/money/accrual facets through `foreign.pos`/`finance` too; only the new sold,
      *  stock-anchor and recovery facets honour it today. */
-    foreign?: { pos: CoreCtx | DatasetDenied; stock: CoreCtx | DatasetDenied };
+    foreign?: { pos?: CoreCtx | DatasetDenied; stock?: CoreCtx | DatasetDenied };
     /** `finance:view` + the finance field tier; gates the sold rows' `gift` flag. */
     canReadFinancialFields?: boolean;
   } = {},
@@ -3998,7 +3998,11 @@ export async function getBookingDetail(
   // the event's product lines, independent of which member was fetched.
   const anchorId = visit?.members[0]?.id ?? id;
   const products = await visitProductsForAnchor(ctx, anchorId);
-  const foreign = opts.foreign ?? { pos: ctx, stock: ctx };
+  // Fail closed: an omitted handle is DENIED, never a read through the scheduling handle.
+  const foreign = {
+    pos: opts.foreign?.pos ?? ({ denied: 'pos', verb: 'view' } as DatasetDenied),
+    stock: opts.foreign?.stock ?? ({ denied: 'stock', verb: 'view' } as DatasetDenied),
+  };
   const memberIds = new Set(eventIds);
   // Failure mapping (spec 126 FR-004): a thrown read is `unavailable`, never
   // `empty`; the legacy facets above keep their fail-soft + corrupt-money rethrow.

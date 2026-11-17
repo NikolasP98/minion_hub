@@ -6,6 +6,9 @@ const h = vi.hoisted(() => ({ window: vi.fn() }));
 vi.mock('$server/auth/scheduling-read', () => ({
   requireSchedulingRead: async () => ({ db: {}, tenantId: 'org-1' }),
 }));
+vi.mock('$server/auth/dataset-ctx', () => ({
+  datasetCtx: async (_l: unknown, module: string) => ({ db: {}, tenantId: 'org-1', module }),
+}));
 vi.mock('$server/services/scheduling.service', () => ({
   listResources: async () => [{ id: 'r1', active: true, timezone: 'America/Lima' }],
   listEventTypes: async () => [],
@@ -49,5 +52,7 @@ describe('GET /api/scheduling/calendar', () => {
     expect(body.ticketOverlay).toEqual({ state: 'denied' });
     expect(h.window.mock.calls[0]![2]).toMatchObject({ pos: false });
     expect(h.window.mock.calls[0]![2].canReadFinancialFields).toBeUndefined();
+    // foreign handles come from datasetCtx; this host asks for no stock handle at all (fail closed)
+    expect(Object.keys(h.window.mock.calls[0]![2].foreign).sort()).toEqual(['crm', 'pos']);
   });
 });

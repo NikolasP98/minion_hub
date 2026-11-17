@@ -5,6 +5,7 @@ const state = vi.hoisted(() => ({
   ctx: { db: {}, tenantId: 'org-1' } as { db: object; tenantId: string } | null,
   enabled: true,
   canReadMoney: true,
+  denied: [] as string[],
   required: vi.fn(),
   resources: [{ id: 'r1', active: true, timezone: 'America/Lima' }],
   eventTypes: [{ id: 'e1', productId: null, kindId: null }],
@@ -35,6 +36,8 @@ vi.mock('$server/auth/authorize', () => ({
 vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: () => Promise.resolve(state.ctx) }));
 vi.mock('$server/auth/dataset-ctx', () => ({
   canReadFinancialFields: () => Promise.resolve(state.canReadMoney),
+  datasetCtx: (_l: unknown, module: string) =>
+    Promise.resolve(state.denied.includes(module) ? { denied: module, verb: 'view' } : state.ctx),
 }));
 vi.mock('$server/services/modules.service', () => ({
   isModuleEnabled: () => Promise.resolve(state.enabled),
@@ -63,6 +66,7 @@ beforeEach(() => {
   state.ctx = { db: {}, tenantId: 'org-1' };
   state.enabled = true;
   state.canReadMoney = true;
+  state.denied = [];
 });
 
 const v1 = () => new Request('http://x', { headers: { 'X-Minion-Booking-Products-Version': '1' } });
@@ -110,6 +114,22 @@ describe('GET /api/pos/appointments', () => {
     expect(state.window).not.toHaveBeenCalled();
     // normal admission still runs first
     expect(state.required).toHaveBeenCalled();
+  });
+
+  it('resolves pos/stock/crm through their OWN dataset handles (a denied one is passed as denied)', async () => {
+    const { GET } = await import('./+server');
+    state.denied = ['stock'];
+    await GET({
+      locals: { user: state.user },
+      request: v1(),
+      url: url('?from=2026-09-07&to=2026-09-13'),
+    } as never);
+    const opts = state.window.mock.calls[0]![2] as unknown as {
+      foreign: Record<string, unknown>;
+    };
+    expect(opts.foreign.pos).toBe(state.ctx);
+    expect(opts.foreign.crm).toBe(state.ctx);
+    expect(opts.foreign.stock).toEqual({ denied: 'stock', verb: 'view' });
   });
 
   it('passes money admission to the window: the gift flag needs finance, not just POS (spec 126)', async () => {

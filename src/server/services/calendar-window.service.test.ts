@@ -99,6 +99,7 @@ beforeEach(() => {
   state.ticketsFail = false;
 });
 
+const all = { pos: ctx, stock: ctx, crm: ctx };
 const window = { from: new Date('2026-09-07T05:00:00Z'), to: new Date('2026-09-14T05:00:00Z') };
 
 describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
@@ -114,6 +115,7 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
     const { bookings } = await loadCalendarWindow(ctx, locals, {
       ...window,
       eventTypes,
+      foreign: all,
       pos: true,
       canReadFinancialFields: true,
     });
@@ -135,6 +137,7 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
     const { bookings } = await loadCalendarWindow(ctx, locals, {
       ...window,
       eventTypes,
+      foreign: all,
       pos: false,
     });
     // The scheduling host: no money, sold or stock facet, and no legacy alias at all.
@@ -160,6 +163,7 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
     const { bookings } = await loadCalendarWindow(ctx, locals, {
       ...window,
       eventTypes,
+      foreign: all,
       pos: true,
       canReadFinancialFields: true,
     });
@@ -191,6 +195,7 @@ describe('loadCalendarWindow category payload (HC-020)', () => {
       to: new Date('2026-09-14T05:00:00Z'),
       eventTypes,
       pos: false,
+      foreign: all,
     });
     const byId = Object.fromEntries(
       bookings.map((b) => [b.id, { category: b.category, categoryColor: b.categoryColor }]),
@@ -217,6 +222,7 @@ describe('loadCalendarWindow category payload (HC-020)', () => {
       to: new Date('2026-09-14T05:00:00Z'),
       eventTypes,
       pos: false,
+      foreign: all,
     });
     expect(bookings[0]).toMatchObject({ id: 'b-own', category: null, categoryColor: null });
   });
@@ -253,6 +259,7 @@ describe('loadCalendarWindow sold facet (spec 126)', () => {
     const { bookings } = await loadCalendarWindow(ctx, locals, {
       ...window,
       eventTypes,
+      foreign: all,
       pos: true,
       canReadFinancialFields: true,
     });
@@ -275,7 +282,12 @@ describe('loadCalendarWindow sold facet (spec 126)', () => {
     state.bookings = [booking('b1', {})];
     state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: null, products: [line({})] }]]]);
     const run = (opts: Record<string, unknown>, foreign?: unknown) =>
-      loadCalendarWindow(ctx, locals, { ...window, eventTypes, ...opts, foreign } as never);
+      loadCalendarWindow(ctx, locals, {
+        ...window,
+        eventTypes,
+        ...opts,
+        foreign: foreign ?? all,
+      } as never);
     const gift = await run({ pos: true });
     expect(
       (gift.bookings[0]!.productFacets!.sold as { value: { rows: { gift: unknown }[] } }).value
@@ -302,7 +314,13 @@ describe('loadCalendarWindow sold facet (spec 126)', () => {
 describe('loadCalendarWindow payment, stock and overlay facets (spec 126)', () => {
   const run = (opts: Record<string, unknown>, foreign?: unknown) =>
     import('./calendar-window.service').then((m) =>
-      m.loadCalendarWindow(ctx, locals, { ...window, eventTypes, ...opts, foreign } as never),
+      m.loadCalendarWindow(ctx, locals, {
+        ...window,
+        eventTypes,
+        ...opts,
+        // `undefined` = all admitted; `null` = omitted entirely (fail-closed case)
+        ...(foreign === null ? {} : { foreign: foreign ?? all }),
+      } as never),
     );
   const denied = (module: string) => ({ denied: module, verb: 'view' });
 
@@ -399,5 +417,30 @@ describe('loadCalendarWindow payment, stock and overlay facets (spec 126)', () =
     expect(await ov()).toEqual({ state: 'unavailable', reason: 'capacity' });
     state.ticketsFail = true;
     expect(await ov()).toEqual({ state: 'unavailable', reason: 'read_failed' });
+  });
+
+  it('FAIL CLOSED: an omitted foreign (or member) is denied: no stock, crm or pos read through the scheduling ctx', async () => {
+    state.bookings = [booking('b1', {})];
+    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: null, products: [] }]]]);
+    const none = await run({ pos: true, canReadFinancialFields: true }, null);
+    expect(state.anchorCalls).toEqual([]);
+    expect(state.ticketLinkCalls).toEqual([]);
+    expect(none.bookings[0]!.productFacets).toMatchObject({
+      sold: { state: 'denied' },
+      payment: { state: 'denied' },
+      stock: { state: 'denied' },
+    });
+    expect(none.bookings[0]).not.toHaveProperty('paid');
+    expect(none.ticketOverlay).toEqual({ state: 'denied' });
+    // a partial foreign: only what is passed is read
+    await run({ pos: true, canReadFinancialFields: true }, { pos: ctx });
+    expect(state.anchorCalls).toEqual([]);
+    expect(state.ticketLinkCalls).toHaveLength(1);
+  });
+
+  it('a denied stock handle never calls stockAnchorForBookings', async () => {
+    state.bookings = [booking('b1', {})];
+    await run({ pos: true }, { pos: ctx, stock: denied('stock'), crm: ctx });
+    expect(state.anchorCalls).toEqual([]);
   });
 });
