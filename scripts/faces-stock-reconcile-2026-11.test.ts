@@ -68,6 +68,7 @@ const put = (name: string, value: unknown, mode = 0o600) => {
   return p;
 };
 const env = {
+  FACES_OPERATOR_AUTH_URL: AUTH.authUrl,
   FACES_STOCK_DATABASE_URL: URL_OK,
   FACES_OPERATOR_ACCESS_TOKEN: 't',
   FACES_OPERATOR_ANON_KEY: 'a',
@@ -196,6 +197,37 @@ describe('authority matrix (stock has no field tier; finance tier gates cost)', 
         '55555555-5555-4555-8555-555555555555',
       ),
     ).toThrow(/owner_required/);
+  });
+});
+
+describe('token destination', () => {
+  it('passes the env-trusted auth url to the verifier, which refuses a tampered manifest url before any network call', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const real = await vi.importActual<typeof import('./lib/operator-principal')>(
+      './lib/operator-principal',
+    );
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    await expect(
+      real.verifyOperatorPrincipal({
+        accessToken: 't',
+        authUrl: 'https://evil.example',
+        trustedAuthUrl: AUTH.authUrl,
+        anonKey: 'a',
+        expectedProfileId: ACTOR,
+        targetFingerprint: {
+          databaseIdentity: 'x',
+          authProject: 'proj',
+          authUrl: 'https://evil.example',
+        },
+      }),
+    ).rejects.toThrow();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    verify.mockRejectedValue(new real.OperatorPrincipalError('x'));
+    await run(
+      ['--org', ORG, '--case-manifest', put('t.json', manifest()), '--output', join(dir, 'o.json')],
+      env,
+    );
+    expect(verify.mock.calls[0][0]).toMatchObject({ trustedAuthUrl: AUTH.authUrl });
   });
 });
 

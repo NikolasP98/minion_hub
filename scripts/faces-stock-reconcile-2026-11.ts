@@ -2,7 +2,7 @@
 /**
  * FACES stock reconciliation diagnostic (minion-meta spec 122, contracts/report.md). READ-ONLY: no apply flag, no writer,
  * no repair service call. Required: --org <uuid> --case-manifest <private-json> --output <private-json>.
- * Private env: FACES_STOCK_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY (never printed, never flags).
+ * Private env: FACES_STOCK_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY, FACES_OPERATOR_AUTH_URL (the only auth URL that may receive the token; a manifest authUrl must equal it) (never printed, never flags).
  * Exit 0 complete (unresolved cases are findings), 2 refusal before data access, 3 incomplete, 4 integrity failure.
  */
 import { execFileSync } from 'node:child_process';
@@ -164,6 +164,7 @@ export async function run(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
     const principal = await verifyOperatorPrincipal({
       accessToken: token,
       authUrl: manifest.target.authUrl,
+      trustedAuthUrl: env.FACES_OPERATOR_AUTH_URL,
       anonKey,
       expectedProfileId: manifest.actorProfileId,
       targetFingerprint: manifest.target,
