@@ -103,3 +103,66 @@ export class AuditIncompleteError extends Error {
     this.name = 'AuditIncompleteError';
   }
 }
+
+// ---- Classification (T015/T016) ----------------------------------------------------------------
+export type PrimaryClassification =
+  | 'inactive'
+  | 'free'
+  | 'paid-but-unlinked candidate'
+  | 'genuine-debt candidate'
+  | 'unused-reservation candidate'
+  | 'stale-lifecycle candidate'
+  | 'unresolved';
+export type NextAction = 'none' | 'review' | 'propose_link' | 'normal_collection_review';
+
+export interface Classification {
+  primaryClassification: PrimaryClassification;
+  recommendedNextAction: NextAction;
+  /** Sorted distinct. */
+  reasonCodes: string[];
+  /** Sorted distinct. */
+  uncertainty: string[];
+}
+
+/** Result of the (pure) financial closure for one subject: which supported shape was proven, or why not. */
+export interface ClosureFacts {
+  /** A: complete all-date closure with no stored settlement. B: exactly one fully settled ordinary one-line ticket. */
+  shape: 'A' | 'B' | 'none';
+  /** Closed blocker codes when shape is 'none' (e.g. partial_or_excess_settlement_unsupported). */
+  blockers: string[];
+}
+
+/** Shared global-check inputs (unknown source, identity, contradictory evidence). */
+export interface GlobalFacts {
+  sourceCorrupt: boolean;
+  identity: 'ok' | 'unresolved' | 'conflict';
+  evidenceConflict: boolean;
+  /** Finite approved interval: no all-date closure, so no positive financial label. */
+  finiteScope: boolean;
+  closure: ClosureFacts;
+  /** The exact full pair envelope qualifies (owner, C membership, evidence, stock clearance). */
+  proposalEligible: boolean;
+  /** Blocker codes when proposalEligible is false. */
+  proposalBlockers: string[];
+}
+
+export interface BookingFacts extends GlobalFacts {
+  status: string;
+  /** Admitted positive historical_charge. */
+  historicalCharge: boolean;
+  /** Current resolved active catalog price is exactly 0. */
+  currentCatalogFree: boolean;
+  currentPriceKnown: boolean;
+  /** Admitted matching service_delivery. */
+  delivery: boolean;
+  validUnused: boolean;
+  validStale: boolean;
+  /** Stale assertion whose observed equals claimed status. */
+  staleNoChange: boolean;
+}
+
+export interface LineFacts extends GlobalFacts {
+  ticketStatus: string;
+  /** Stored line total is exactly 0, parent is a submitted one-line service ticket with total 0 and a proven-empty no-money closure. */
+  zeroValueNoMoney: boolean;
+}

@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
 import type { AuditControl, AuditInterval } from './audit.types';
+import type {
+  BookingFacts,
+  Classification,
+  LineFacts,
+  GlobalFacts,
+  NextAction,
+  PrimaryClassification,
+} from './audit.types';
 
 const SAMPLE = 100;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -57,4 +65,169 @@ export class ControlAccumulator {
       idsSha256: this.hash.digest('hex'),
     };
   }
+}
+
+// ---- Exhaustive ordered classification (contracts/evidence-and-proposals.md) --------------------
+
+const uniqueSorted = (codes: readonly string[]) => [...new Set(codes)].sort();
+const result = (
+  primaryClassification: PrimaryClassification,
+  recommendedNextAction: NextAction,
+  reasonCodes: readonly string[],
+  uncertainty: readonly string[],
+): Classification => ({
+  primaryClassification,
+  recommendedNextAction,
+  reasonCodes: uniqueSorted(reasonCodes),
+  uncertainty: uniqueSorted(uncertainty),
+});
+
+const BOOKING_STATUSES = new Set([
+  'accepted',
+  'pending',
+  'completed',
+  'cancelled',
+  'rejected',
+  'no_show',
+]);
+const INACTIVE_BOOKING = new Set(['cancelled', 'rejected', 'no_show']);
+
+/** Global checks run before either table; the first failing check wins. */
+function globalCheck(facts: GlobalFacts, statusKnown: boolean): Classification | null {
+  if (!statusKnown || facts.sourceCorrupt)
+    return result('unresolved', 'review', ['source_corrupt'], ['source_corrupt']);
+  if (facts.identity === 'unresolved')
+    return result('unresolved', 'review', ['identity_unresolved'], ['identity_unresolved']);
+  if (facts.identity === 'conflict')
+    return result('unresolved', 'review', ['identity_conflict'], ['identity_conflict']);
+  if (facts.evidenceConflict) {
+    return result(
+      'unresolved',
+      'review',
+      ['external_evidence_conflict'],
+      ['external_evidence_conflict'],
+    );
+  }
+  return null;
+}
+
+export function classifyBooking(facts: BookingFacts): Classification {
+  const blocked = globalCheck(facts, BOOKING_STATUSES.has(facts.status));
+  if (blocked) return blocked;
+  // Attested facets are retained on every branch without changing it.
+  const facets = [
+    ...(facts.validUnused ? ['unused_reservation_attested'] : []),
+    ...(facts.validStale ? ['stale_lifecycle_attested'] : []),
+    ...(facts.staleNoChange ? ['stale_assertion_no_change'] : []),
+  ];
+  const H = facts.historicalCharge;
+  const differs = H && facts.currentCatalogFree ? ['current_catalog_price_differs'] : [];
+
+  // B1
+  if (INACTIVE_BOOKING.has(facts.status)) {
+    return result(
+      'inactive',
+      'none',
+      ['inactive_booking', ...(H ? ['historical_charge_on_inactive'] : []), ...facets],
+      H ? ['historical_charge_unresolved'] : [],
+    );
+  }
+  if (H) {
+    const closure = facts.closure;
+    // B2: finite U never reaches a positive label (all-date closure is forbidden there).
+    if (closure.shape === 'B' && !facts.finiteScope) {
+      const proposed = facts.proposalEligible;
+      return result(
+        'paid-but-unlinked candidate',
+        proposed ? 'propose_link' : 'review',
+        [
+          'historical_charge_fully_settled',
+          'stored_one_line_ticket_fully_settled',
+          ...(proposed ? [] : ['proposal_not_eligible']),
+          ...differs,
+          ...facets,
+        ],
+        proposed ? [] : facts.proposalBlockers,
+      );
+    }
+    // B3
+    if (closure.shape === 'A' && !facts.finiteScope && facts.delivery) {
+      return result(
+        'genuine-debt candidate',
+        'normal_collection_review',
+        ['historical_unpaid_charge', 'no_stored_settlement', ...differs, ...facets],
+        [],
+      );
+    }
+    // B4
+    const missing = [
+      ...closure.blockers,
+      ...(facts.finiteScope ? ['settlement_scope_incomplete'] : []),
+      ...(closure.shape === 'A' && !facts.delivery ? ['service_delivery_unverified'] : []),
+    ];
+    return result(
+      'unresolved',
+      'review',
+      ['historical_charge_unresolved', ...missing, ...differs, ...facets],
+      missing,
+    );
+  }
+  // B5
+  if (facts.currentCatalogFree)
+    return result(
+      'free',
+      'none',
+      ['current_catalog_free', ...facets],
+      ['historical_charge_unverified'],
+    );
+  // B6
+  if (facts.validUnused)
+    return result('unused-reservation candidate', 'review', facets, [
+      'historical_charge_unverified',
+    ]);
+  // B7
+  if (facts.validStale)
+    return result('stale-lifecycle candidate', 'review', facets, ['historical_charge_unverified']);
+  // B8
+  const missing = [
+    'historical_charge_unverified',
+    ...(facts.currentPriceKnown ? [] : ['current_price_unknown']),
+    ...(facts.delivery ? [] : ['service_delivery_unverified']),
+  ];
+  return result('unresolved', 'review', [...missing, ...facets], missing);
+}
+
+export function classifyLine(facts: LineFacts): Classification {
+  const blocked = globalCheck(
+    facts,
+    ['submitted', 'void', 'voided', 'draft'].includes(facts.ticketStatus),
+  );
+  if (blocked) return blocked;
+  // L1
+  if (facts.ticketStatus === 'void' || facts.ticketStatus === 'voided')
+    return result('inactive', 'none', ['inactive_ticket'], []);
+  // L2 (finite U can never prove an empty closure)
+  if (facts.zeroValueNoMoney && !facts.finiteScope)
+    return result('free', 'none', ['zero_value_service_line'], []);
+  // L3
+  if (facts.closure.shape === 'B' && !facts.finiteScope) {
+    const proposed = facts.proposalEligible;
+    return result(
+      'paid-but-unlinked candidate',
+      proposed ? 'propose_link' : 'review',
+      ['stored_one_line_ticket_fully_settled', ...(proposed ? [] : ['proposal_not_eligible'])],
+      proposed
+        ? []
+        : facts.proposalBlockers.length
+          ? facts.proposalBlockers
+          : ['missing_pair_evidence'],
+    );
+  }
+  // L4
+  const missing = [
+    ...facts.closure.blockers,
+    ...(facts.finiteScope ? ['settlement_scope_incomplete'] : []),
+    'payment_settlement_unverified',
+  ];
+  return result('unresolved', 'review', missing, missing);
 }
