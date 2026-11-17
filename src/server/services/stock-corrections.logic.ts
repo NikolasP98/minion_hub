@@ -3,6 +3,7 @@
  * strict request parsing, canonical hashing, the receipt period policy and the frozen-line
  * transform. No database, no clock reads (callers pass `now`), so every branch is unit-testable.
  */
+import { instantMonthKey } from '$lib/time/zoned';
 import { createHash } from 'node:crypto';
 
 export const RECEIPT_PERIOD_POLICY_ID = 'receipt_period_v1';
@@ -233,12 +234,7 @@ export function payloadHashOf(body: {
 // ── receipt period policy v1 ─────────────────────────────────────────────────────────────
 
 /** `YYYY-MM` of an instant in an IANA zone. */
-export function monthInZone(at: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit' })
-    .formatToParts(at)
-    .reduce<Record<string, string>>((a, p) => ((a[p.type] = p.value), a), {});
-  return `${parts.year}-${parts.month}`;
-}
+export const monthInZone = (at: Date, timeZone: string): string => instantMonthKey(at, timeZone);
 
 export interface ReceiptPeriodEvaluation {
   policyId: typeof RECEIPT_PERIOD_POLICY_ID;

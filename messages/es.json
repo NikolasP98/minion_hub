@@ -7575,7 +7575,7 @@
   "stock_corr_err_stale_preview": "El registro cambió después de la revisión. Revisa el cambio de nuevo.",
   "stock_corr_err_operation_conflict": "La misma corrección ya se está procesando. Comprueba el resultado en un momento.",
   "stock_corr_err_key_reuse": "Esta confirmación ya se usó para otro cambio. Revisa el cambio de nuevo.",
-  "stock_corr_err_price_differs": "Este cambio no se puede hacer aquí. Anula la venta y cóbrala de nuevo con el producto correcto.",
+  "stock_corr_err_price_differs": "Este cambio no se puede hacer aquí. Anula la venta y vuelve a cobrarla con el producto correcto.",
   "stock_corr_err_stock_drift": "El stock ya no coincide con la venta. Anula la venta y cóbrala de nuevo, o revisa Stock.",
   "stock_corr_err_negative_stock": "No hay stock suficiente para esta corrección. Registra primero la entrada en Stock.",
   "stock_corr_err_source_ambiguous": "Este registro está vinculado a otros documentos, así que no se puede corregir aquí. Pide al propietario que lo revise.",
