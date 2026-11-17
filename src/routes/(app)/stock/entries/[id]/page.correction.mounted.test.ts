@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import type { ComponentProps } from 'svelte';
 import Entry from './PageBody.svelte';
 import * as m from '$lib/paraglide/messages';
@@ -101,18 +101,17 @@ afterEach(() => {
 });
 
 const open = async (d = data) => {
-  const view = render(Entry, { data: d });
-  await fireEvent.click(view.getByRole('button', { name: m.stock_corr_receipt_action() }));
-  return view;
+  render(Entry, { data: d });
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_receipt_action() }));
 };
-const type = (view: ReturnType<typeof render>, label: string, i: number, value: string) =>
-  fireEvent.input(view.getAllByLabelText(label)[i], { target: { value } });
-const review = async (view: ReturnType<typeof render>) => {
-  await fireEvent.input(view.getByLabelText(new RegExp(m.stock_corr_reason_label())), {
+const type = (label: string, i: number, value: string) =>
+  fireEvent.input(screen.getAllByLabelText(label)[i], { target: { value } });
+const review = async () => {
+  await fireEvent.input(screen.getByLabelText(new RegExp(m.stock_corr_reason_label())), {
     target: { value: 'counted 8' },
   });
-  await fireEvent.click(view.getByRole('button', { name: m.stock_corr_preview() }));
-  await waitFor(() => view.getByRole('button', { name: m.stock_corr_confirm() }));
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_preview() }));
+  await waitFor(() => screen.getByRole('button', { name: m.stock_corr_confirm() }));
 };
 const posts = (suffix?: string) =>
   fetchMock.mock.calls.filter(
@@ -138,17 +137,19 @@ it('offers the correction only to a stock manager on a standalone submitted rece
 });
 
 it('previews with the reason, then confirms with the stable key and the previewed hashes', async () => {
-  const view = await open();
+  await open();
   // Nothing changed yet: no review possible.
-  expect(view.getByText(m.stock_corr_receipt_nochange())).toBeTruthy();
-  await type(view, m.stock_corr_receipt_qty(), 0, '8');
+  expect(screen.getByText(m.stock_corr_receipt_nochange())).toBeTruthy();
+  await type(m.stock_corr_receipt_qty(), 0, '8');
   // One change per line: the rate of that line is locked.
   expect(
-    (view.getAllByLabelText(m.stock_corr_receipt_rate())[0] as HTMLInputElement).disabled,
+    (screen.getAllByLabelText(m.stock_corr_receipt_rate())[0] as HTMLInputElement).disabled,
   ).toBe(true);
-  await review(view);
+  await review();
   expect(
-    view.getByText(m.stock_corr_effect_row({ item: 'A-1 — Gauze', before: '10.0000', after: '8' })),
+    screen.getByText(
+      m.stock_corr_effect_row({ item: 'A-1 — Gauze', before: '10.0000', after: '8' }),
+    ),
   ).toBeTruthy();
   const [, previewInit] = posts('/preview')[0]!;
   const sent = JSON.parse(String(previewInit!.body));
@@ -166,7 +167,7 @@ it('previews with the reason, then confirms with the stable key and the previewe
     uom: 'box',
     toWarehouseId: U(30),
   });
-  await fireEvent.click(view.getByRole('button', { name: m.stock_corr_confirm() }));
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_confirm() }));
   await waitFor(() => expect(invalidate).toHaveBeenCalledWith('stock:entry-detail'));
   const body = JSON.parse(String(posts('/api/stock/corrections')[0]![1]!.body));
   expect(body).toMatchObject({
@@ -183,13 +184,13 @@ it('a refusal names its next step and clears the pointer', async () => {
       { code: 'dependent_history', error: 'x', outcome: 'not_applied' },
       { status: 422 },
     );
-  const view = await open();
-  await type(view, m.stock_corr_receipt_rate(), 1, '6');
-  expect(view.getByText(m.stock_corr_receipt_owner_only())).toBeTruthy();
-  await review(view);
-  await fireEvent.click(view.getByRole('button', { name: m.stock_corr_confirm() }));
+  await open();
+  await type(m.stock_corr_receipt_rate(), 1, '6');
+  expect(screen.getByText(m.stock_corr_receipt_owner_only())).toBeTruthy();
+  await review();
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_confirm() }));
   await waitFor(() =>
-    expect(view.getByRole('alert').textContent).toBe(m.stock_corr_err_dependent_history()),
+    expect(screen.getByRole('alert').textContent).toBe(m.stock_corr_err_dependent_history()),
   );
   expect(Object.keys(localStorage).filter((k) => k.startsWith('minion:stock-correction'))).toEqual(
     [],
@@ -205,13 +206,13 @@ it('a cost-hidden preview says so and a blocked one cannot be confirmed', async 
       eligible: false,
       blockers: ['cost_visibility_required'],
     });
-  const view = await open();
-  await type(view, m.stock_corr_receipt_qty(), 0, '9');
-  await review(view).catch(() => {});
-  await waitFor(() => view.getByText(m.stock_corr_cost_hidden()));
-  expect(view.getByText(m.stock_corr_err_cost_visibility_required())).toBeTruthy();
+  await open();
+  await type(m.stock_corr_receipt_qty(), 0, '9');
+  await review().catch(() => {});
+  await waitFor(() => screen.getByText(m.stock_corr_cost_hidden()));
+  expect(screen.getByText(m.stock_corr_err_cost_visibility_required())).toBeTruthy();
   expect(
-    (view.getByRole('button', { name: m.stock_corr_confirm() }) as HTMLButtonElement).disabled,
+    (screen.getByRole('button', { name: m.stock_corr_confirm() }) as HTMLButtonElement).disabled,
   ).toBe(true);
 });
 
@@ -219,12 +220,12 @@ it('a lost answer keeps the receipt blocked until the server says what happened,
   apply = () => {
     throw new TypeError('offline');
   };
-  const view = await open();
-  await type(view, m.stock_corr_receipt_qty(), 0, '9');
-  await review(view);
-  await fireEvent.click(view.getByRole('button', { name: m.stock_corr_confirm() }));
-  await waitFor(() => view.getByText(m.stock_corr_pending_title()));
-  expect(view.queryByRole('button', { name: m.stock_corr_confirm() })).toBeNull();
+  await open();
+  await type(m.stock_corr_receipt_qty(), 0, '9');
+  await review();
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_confirm() }));
+  await waitFor(() => screen.getByText(m.stock_corr_pending_title()));
+  expect(screen.queryByRole('button', { name: m.stock_corr_confirm() })).toBeNull();
   expect(fetchMock.mock.calls.some(([u]) => String(u).startsWith('/api/stock/corrections?'))).toBe(
     true,
   );

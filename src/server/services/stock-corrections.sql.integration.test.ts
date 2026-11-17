@@ -31,6 +31,7 @@ import { realizeAccruals } from './stock-accruals.service';
 import { setConsumption, updateWarehouse } from './stock.service';
 import { updateFinSettings } from './finance.service';
 import { postTicketStock, setBundleComponent } from './pos.service';
+import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
 import { assertStockModulesEnabledInTx } from './stock.service';
 import {
@@ -311,12 +312,12 @@ describe('stock corrections against PostgreSQL', () => {
 // ── world fixture ────────────────────────────────────────────────────────────────────────
 
 const actorOf = (id: string) => ({ id, name: 'Native' });
-type Ctx = { db: ReturnType<typeof drizzle>; tenantId: string; profileId: string };
+type Ctx = { db: CoreCtx['db']; tenantId: string; profileId: string };
 const extraClients: postgres.Sql[] = [];
 function ctxFor(org: string, profile: string): Ctx {
   const client = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => undefined });
   extraClients.push(client);
-  return { db: drizzle(client), tenantId: org, profileId: profile };
+  return { db: drizzle(client) as CoreCtx['db'], tenantId: org, profileId: profile };
 }
 afterAll(async () => {
   await Promise.all(extraClients.map((c) => c.end({ timeout: 5 }).catch(() => undefined)));
