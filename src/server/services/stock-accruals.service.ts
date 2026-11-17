@@ -881,10 +881,8 @@ export async function listRecoveryOpenAccrualsInTx(
 }
 
 /** Precondition of `confirm_open`; runs inside the write transaction after the F3 gate.
- *  TODO(handoff): proven only against the mock db. The real-PostgreSQL race cases (add/remove/
- *  convert between preview and POST, accrue/release/retry in both orders) belong in F3's semantic
- *  case 9 of `stock-corrections.sql.integration.test.ts` (spec 126 T025), which does not exist at
- *  the F3 base this branch sits on. */
+ *  Proven against real PostgreSQL in F3's semantic case 9 (`stock-corrections.sql.integration.test.ts`).
+ */
 async function assertRecoveryPreviewInTx(
   tx: CoreTx,
   ctx: CoreCtx,
