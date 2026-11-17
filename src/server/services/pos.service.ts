@@ -2928,6 +2928,8 @@ export async function setPeriodLock(
 ): Promise<PosPeriodLock[]> {
   const period = normalizePeriod(input.period);
   await withOrgCore(ctx, async (tx) => {
+    // Gate pair first: receipt_period_v1 reads these rows under the same gate (spec 124).
+    await lockStockWrite(tx, ctx);
     if (!input.locked) {
       await tx
         .delete(posPeriodLocks)
@@ -3672,31 +3674,34 @@ export async function setBundleComponent(
   }
   if (!(input.qty > 0)) throw new PosError('qty must be greater than 0', 'invalid_qty');
 
-  const guard = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+  // Validation and upsert share ONE transaction under the gate pair, so no bundle/nesting
+  // change can slip between them (spec 124).
+  await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    const guard = (await tx.execute(sql`
       select
         (select count(*)::int from fin_products p
           where p.org_id = ${ctx.tenantId}
             and p.id in (${input.bundleProductId}, ${input.childProductId})) as found,
         (select count(*)::int from fin_product_components c
           where c.org_id = ${ctx.tenantId}
-            and c.bundle_product_id = ${input.childProductId}) as child_is_bundle`),
-  )) as unknown as Array<{ found: number; child_is_bundle: number }>;
-  // Both ids must belong to THIS org — an id from another tenant would
-  // otherwise be linkable, since these are plain uuid columns.
-  if ((guard[0]?.found ?? 0) !== 2) throw new PosError('product not found', 'not_found');
-  if ((guard[0]?.child_is_bundle ?? 0) > 0) {
-    throw new PosError('a bundle cannot contain another bundle', 'bundle_nested');
-  }
-
-  await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+            and c.bundle_product_id = ${input.childProductId}) as child_is_bundle`)) as unknown as Array<{
+      found: number;
+      child_is_bundle: number;
+    }>;
+    // Both ids must belong to THIS org — an id from another tenant would
+    // otherwise be linkable, since these are plain uuid columns.
+    if ((guard[0]?.found ?? 0) !== 2) throw new PosError('product not found', 'not_found');
+    if ((guard[0]?.child_is_bundle ?? 0) > 0) {
+      throw new PosError('a bundle cannot contain another bundle', 'bundle_nested');
+    }
+    await tx.execute(sql`
       insert into fin_product_components (org_id, bundle_product_id, child_product_id, qty, line_no)
       values (${ctx.tenantId}, ${input.bundleProductId}, ${input.childProductId},
               ${String(input.qty)}, ${input.lineNo ?? 0})
       on conflict (org_id, bundle_product_id, child_product_id)
-      do update set qty = excluded.qty, line_no = excluded.line_no, updated_at = now()`),
-  );
+      do update set qty = excluded.qty, line_no = excluded.line_no, updated_at = now()`);
+  });
   await bustFinanceCache(ctx);
 }
 
@@ -3743,12 +3748,13 @@ export async function getPackageValidityDays(
 }
 
 export async function deleteBundleComponent(ctx: CoreCtx, id: string): Promise<boolean> {
-  const rows = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+  const rows = (await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    return tx.execute(sql`
       delete from fin_product_components
       where id = ${id} and org_id = ${ctx.tenantId}
-      returning id`),
-  )) as unknown as unknown[];
+      returning id`);
+  })) as unknown as unknown[];
   if (rows.length) await bustFinanceCache(ctx);
   return rows.length > 0;
 }
