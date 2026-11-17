@@ -3,7 +3,9 @@
  * (same-price product swap on a submitted sale) and `receipt_replace` (standalone receipt). One gated
  * transaction does cancel -> create -> submit -> stamp -> immutable receipt + audit, or nothing.
  *
- * TODO(handoff): owner currency attestation (valuation-qualification.md), private garment
+ * TODO(handoff): (T011) the retry wrapper covers ONLY correction transactions; participant wrappers keep
+ * their own timeouts. (T017/T021/T023) no UI, browser-recovery pointer, blocked-evidence projection,
+ * GET-by-id detail or operator CLI loader key yet. Owner currency attestation (valuation-qualification.md), private garment
  * `stock_only` entrypoints, browser recovery pointer and the operator CLI loader key are NOT wired;
  * a public `stock_only` is refused (owner_evidence_required) and cost currency is not qualified.
  */
