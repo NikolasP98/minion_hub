@@ -2,6 +2,7 @@
  * Read-only source collection for the FACES stock diagnostic (contracts/report.md, source-explanation.md).
  * Every statement is org-qualified, key/ID-qualified and bounded (limit+1 => capacity); the caller owns the
  * REPEATABLE READ READ ONLY transaction and passes `exec`. Ledger ids are selected as text only.
+ * TODO(handoff): `stk_corrections` rows are not read as `correction` source evidence and prior_correction refs are not resolved (see meta proposals/2026-11-17-hub-faces-stock-reconciliation-handoff.md).
  * No names, notes, phones, emails, payment metadata, status-log reasons or raw warning text are selected.
  */
 import { sql, type SQL } from 'drizzle-orm';
