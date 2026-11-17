@@ -12,6 +12,7 @@ vi.mock('@minion-stack/cache', () => ({
 }));
 import { createEntry, lockStockWrite, submitEntry } from './stock.service';
 import { postTicketStock } from './pos.service';
+import type { CoreCtx } from '$server/auth/core-ctx';
 import { withOrgCore } from '$server/db/with-org-core';
 import {
   MappingError,
@@ -64,11 +65,11 @@ const TARGET = {
 let child: CorrectionNativeChild;
 let owner: postgres.Sql;
 const extra: postgres.Sql[] = [];
-type Ctx = { db: ReturnType<typeof drizzle>; tenantId: string; profileId: string };
+type Ctx = { db: CoreCtx['db']; tenantId: string; profileId: string };
 const ctxFor = (org: string, profile: string): Ctx => {
   const c = postgres(child.url.href, { max: 1, prepare: false, onnotice: () => undefined });
   extra.push(c);
-  return { db: drizzle(c), tenantId: org, profileId: profile };
+  return { db: drizzle(c) as CoreCtx['db'], tenantId: org, profileId: profile };
 };
 const actorOf = (id: string) => ({ id, name: 'Native' });
 
