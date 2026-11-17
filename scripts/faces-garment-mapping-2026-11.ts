@@ -128,6 +128,10 @@ export function parseMappingArgs(argv: readonly string[]): MappingArgs {
   return { mode: b.has('--draft') ? 'draft' : 'preview', ...base };
 }
 
+/** operation_conflict: another request holds the key, so the outcome is uncertain until --status (exit 5). */
+export const mappingExitCode = (c: string): number =>
+  c === 'forbidden' ? 2 : c === 'incomplete' ? 3 : c === 'operation_conflict' ? 5 : 4;
+
 export async function run(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
     const args = parseMappingArgs(argv);
@@ -203,7 +207,7 @@ export async function run(argv: readonly string[], env: NodeJS.ProcessEnv): Prom
       if (name === 'MappingError') {
         const c = (error as { code: string }).code;
         console.error(`refused: ${c}`);
-        return c === 'forbidden' ? 2 : c === 'incomplete' ? 3 : 4;
+        return mappingExitCode(c);
       }
       throw error;
     } finally {

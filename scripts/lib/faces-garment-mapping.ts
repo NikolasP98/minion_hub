@@ -315,6 +315,12 @@ export type MappingFacts = {
   /** Fresh current item rows for the old (L) and new (M) items and the stock UOM label they must share. */
   fromItem: ItemUom & { id: UUID };
   toItem: ItemUom & { id: UUID };
+  /** stk_item_components rows whose parent is the from or to item: the sale path issues components instead of the item. */
+  componentRows: number;
+  /** The target item's is_stock_item flag. */
+  toIsStockItem: boolean;
+  /** Operator-attested deployed SHA (env FACES_DEPLOYED_SHA); the rollout is verified only when it equals rollout.candidateSha. */
+  deployedSha: string | null;
 };
 export type PlanOutcome =
   | { eligible: true }
@@ -342,6 +348,10 @@ export function planMapping(m: MappingManifestV1, facts: MappingFacts): PlanOutc
     return { eligible: false, code: 'unsupported_scope' };
   if (facts.fromItem.id !== old.itemId || facts.toItem.id !== intended.itemId)
     return { eligible: false, code: 'incomplete_evidence' };
+  if (facts.componentRows > 0 || !facts.toIsStockItem)
+    return { eligible: false, code: 'unsupported_scope' };
+  if (facts.deployedSha === null || facts.deployedSha !== m.rollout.candidateSha)
+    return { eligible: false, code: 'rollout_unverified' };
   if (intended.stockUom !== facts.toItem.uom || facts.toItem.uom !== facts.fromItem.uom)
     return { eligible: false, code: 'unsupported_scope' };
   // One product unit must issue exactly one M stock unit, and the L baseline must have meant one stock unit too.

@@ -14,7 +14,7 @@ vi.mock('./lib/operator-principal', async (orig) => ({
   verifyOperatorPrincipal: (...a: unknown[]) => verify(...a),
 }));
 
-import { parseMappingArgs, run } from './faces-garment-mapping-2026-11';
+import { mappingExitCode, parseMappingArgs, run } from './faces-garment-mapping-2026-11';
 import { CliAdmissionError } from './faces-stock-reconcile-2026-11';
 import { operatorDatabaseIdentity } from './lib/operator-principal';
 import { mappingManifestSha256, decodeMappingManifestV1 } from './lib/faces-garment-mapping';
@@ -201,5 +201,16 @@ describe('mapping CLI refusals never load the application graph', () => {
     // an approved digest that matches is accepted by the decoder (then stops at the verifier)
     const ok = decodeMappingManifestV1(m);
     expect(mappingManifestSha256(ok)).toMatch(/^[0-9a-f]{64}$/);
+  });
+});
+
+describe('mappingExitCode', () => {
+  it('maps an operation_conflict to 5 (uncertain, run --status), not 4', () => {
+    expect([
+      'forbidden',
+      'incomplete',
+      'operation_conflict',
+      'stale',
+    ].map(mappingExitCode)).toEqual([2, 3, 5, 4]);
   });
 });

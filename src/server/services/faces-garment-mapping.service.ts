@@ -551,7 +551,22 @@ async function observe(tx: CoreTx, ctx: CoreCtx, id: MappingIdentity) {
   const census = await readCensus(tx, ctx.tenantId, id);
   const facts = await readUnchangedFacts(tx, ctx.tenantId, id, census);
   const uoms = await readItemUoms(tx, ctx.tenantId, [id.fromItemId, id.toItemId]);
-  return { state, census, unchanged: unchangedFactsDigest(facts), uoms };
+  const [comp] = await run(
+    tx,
+    sql`select count(*)::int as n from stk_item_components t where t.org_id = ${ctx.tenantId} and t.parent_item_id in (${uuidList([id.fromItemId, id.toItemId])})`,
+  );
+  const [stock] = await run(
+    tx,
+    sql`select t.is_stock_item as s from stk_items t where t.org_id = ${ctx.tenantId} and t.id = ${id.toItemId}::uuid`,
+  );
+  return {
+    state,
+    census,
+    unchanged: unchangedFactsDigest(facts),
+    uoms,
+    componentRows: Number(comp?.n ?? 0),
+    toIsStockItem: stock?.s === true,
+  };
 }
 
 function policyHash(principalStateHash: string, caps: FreshCapabilitySnapshot): Digest {
@@ -594,7 +609,13 @@ function matchOrBlock(
   const from = fresh.uoms.get(identityOf(m).fromItemId);
   const to = fresh.uoms.get(m.intended.itemId);
   if (!from || !to) return 'incomplete_evidence';
-  const plan = planMapping(m, { fromItem: from, toItem: to });
+  const plan = planMapping(m, {
+    fromItem: from,
+    toItem: to,
+    componentRows: fresh.componentRows,
+    toIsStockItem: fresh.toIsStockItem,
+    deployedSha: process.env.FACES_DEPLOYED_SHA || null,
+  });
   return plan.eligible ? null : plan.code;
 }
 

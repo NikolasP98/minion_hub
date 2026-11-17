@@ -74,6 +74,7 @@ const ctxFor = (org: string, profile: string): Ctx => {
 const actorOf = (id: string) => ({ id, name: 'Native' });
 
 beforeAll(async () => {
+  process.env.FACES_DEPLOYED_SHA = SHA; // operator-attested deploy (mapping rollout gate)
   child = await openCorrectionNativeChild();
   owner = child.owner;
 }, 240_000);

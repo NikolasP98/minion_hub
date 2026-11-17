@@ -76,6 +76,9 @@ const manifest = (over: Record<string, unknown> = {}): MappingManifestV1 =>
 const facts = (over: Partial<MappingFacts> = {}): MappingFacts => ({
   fromItem: { id: ITEM_L, uom: 'unit', consumptionUom: null, unitsPerStockUom: null },
   toItem: { id: ITEM_M, uom: 'unit', consumptionUom: null, unitsPerStockUom: null },
+  componentRows: 0,
+  toIsStockItem: true,
+  deployedSha: 'a'.repeat(40),
   ...over,
 });
 
@@ -276,6 +279,10 @@ describe('planMapping', () => {
       facts(),
       'cutover_pending_sources',
     ],
+    ['target has components', {}, facts({ componentRows: 1 }), 'unsupported_scope'],
+    ['target not a stock item', {}, facts({ toIsStockItem: false }), 'unsupported_scope'],
+    ['no operator-attested deploy', {}, facts({ deployedSha: null }), 'rollout_unverified'],
+    ['deploy sha differs', {}, facts({ deployedSha: 'c'.repeat(40) }), 'rollout_unverified'],
   ])('blocks %s', (_n, over, f, code) =>
     expect(planMapping(manifest(over as Record<string, unknown>), f)).toEqual({
       eligible: false,
