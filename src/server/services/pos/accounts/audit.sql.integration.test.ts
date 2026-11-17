@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
+import type { CoreTx } from '$server/db/with-org-core';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -13,6 +14,8 @@ import {
   composeFreshCapabilitiesFromAuthorityRows,
   resolveFreshCapabilitiesInTransaction,
 } from '$server/services/rbac.service';
+import { runAuditInventory } from './audit';
+import type { AuditScope, AuditSink, ResidualRecord, AuditSubject } from './audit.types';
 import { migrationSql, openAuditNativeChild, type AuditNativeChild } from './audit.native-setup';
 
 /**
@@ -51,7 +54,7 @@ async function fingerprint() {
   return String(row.fp);
 }
 
-type Tx = Parameters<Parameters<typeof app.transaction>[0]>[0];
+type Tx = CoreTx;
 /** Run as app_ledger with the server's GUCs, in READ ONLY REPEATABLE READ ('ro') or default READ WRITE ('rw'). */
 async function asApp<T>(
   orgId: string,
@@ -65,7 +68,7 @@ async function asApp<T>(
       await tx.execute(
         sql`select set_config('role','app_ledger',true), set_config('app.current_org_id',${orgId},true), set_config('app.current_profile_id',${gucProfile},true)`,
       );
-      return fn(tx);
+      return fn(tx as unknown as CoreTx);
     },
     mode === 'ro' ? { isolationLevel: 'repeatable read', accessMode: 'read only' } : undefined,
   );
@@ -128,6 +131,101 @@ async function seed() {
   );
 }
 
+// ---- US1 inventory fixtures (synthetic, org F; org X proves foreign isolation) ----
+const FORG = randomUUID();
+const XORG = randomUUID();
+const FPROFILE = randomUUID();
+const N_CLIENTS = 520; // > the 500-row list cap
+const MAY = '2026-05-10T15:00:00Z';
+const JUNE = '2026-06-10T15:00:00Z';
+const ids = {
+  freeProduct: randomUUID(),
+  cancelled: randomUUID(),
+  paid: randomUUID(),
+  identityless: randomUUID(),
+  voided: randomUUID(),
+  legacyVoided: randomUUID(),
+  linked: randomUUID(),
+  edgeIn: randomUUID(),
+  edgeOut: randomUUID(),
+};
+
+async function seedFaces() {
+  await owner.unsafe('set session_replication_role = replica');
+  try {
+    await owner.unsafe(
+      `insert into public.fin_settings(org_id,timezone) values ('${FORG}','America/Lima'),('${XORG}','America/Lima')`,
+    );
+    await owner.unsafe(
+      `insert into public.fin_products(id,org_id,code,name,unit_price,active) values ('${ids.freeProduct}','${FORG}','FREE','free',0,true)`,
+    );
+    // 520 clients, one unbilled booking each: 500 in May (local), 20 in June.
+    await owner.unsafe(
+      `insert into public.parties(id,org_id) select md5('p'||g)::uuid,'${FORG}' from generate_series(1,${N_CLIENTS}) g`,
+    );
+    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id)
+      select md5('b'||g)::uuid,'${FORG}','u'||g,gen_random_uuid(),gen_random_uuid(),
+             case when g<=500 then timestamptz '${MAY}' else timestamptz '${JUNE}' end,
+             case when g<=500 then timestamptz '${MAY}' else timestamptz '${JUNE}' end + interval '1 hour', md5('p'||g)::uuid
+        from generate_series(1,${N_CLIENTS}) g`);
+    // Excluded by the canonical unbilled predicate: cancelled, zero-priced product. Counted by neither.
+    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id,status)
+      values ('${ids.cancelled}','${FORG}','ucx',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}',md5('p1')::uuid,'cancelled')`);
+    // Local-midnight edges in America/Lima (UTC-5, no DST): 05:00Z is 00:00 on the 31st.
+    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id) values
+      ('${ids.edgeIn}','${FORG}','uin',gen_random_uuid(),gen_random_uuid(),'2026-05-31T05:00:00Z','2026-05-31T06:00:00Z',md5('p2')::uuid),
+      ('${ids.edgeOut}','${FORG}','uout',gen_random_uuid(),gen_random_uuid(),'2026-05-31T04:59:59Z','2026-05-31T06:00:00Z',md5('p3')::uuid)`);
+    // Foreign org: must never appear.
+    await owner.unsafe(
+      `insert into public.parties(id,org_id) values ('${randomUUID()}','${XORG}')`,
+    );
+    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id)
+      values (gen_random_uuid(),'${XORG}','ux',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}',md5('p1')::uuid)`);
+    // Paid unscheduled lines: normal, identityless, void, legacy voided; plus a linked line (outside U).
+    const ticket = async (
+      lineId: string,
+      status: string,
+      party: boolean,
+      booking: string | null = null,
+    ) => {
+      const t = randomUUID();
+      await owner.unsafe(`insert into public.pos_tickets(id,org_id,shift_id,status,subtotal,total,submitted_at,party_id)
+        values ('${t}','${FORG}',gen_random_uuid(),'${status}',10,10,'${MAY}',${party ? "md5('p4')::uuid" : 'null'})`);
+      await owner.unsafe(`insert into public.pos_ticket_lines(id,org_id,ticket_id,kind,description,qty,unit_price,total,booking_id)
+        values ('${lineId}','${FORG}','${t}','service','svc',1,10,10,${booking ?? 'null'})`);
+    };
+    await ticket(ids.paid, 'submitted', true);
+    await ticket(ids.identityless, 'submitted', false);
+    await ticket(ids.voided, 'void', true);
+    await ticket(ids.legacyVoided, 'voided', true);
+    await ticket(ids.linked, 'submitted', true, "md5('b1')::uuid");
+  } finally {
+    await owner.unsafe('set session_replication_role = origin');
+  }
+}
+
+class MemorySink implements AuditSink {
+  subjects: AuditSubject[] = [];
+  residuals: ResidualRecord[] = [];
+  onFirstSubject?: () => Promise<void>;
+  async writeSubject(s: AuditSubject) {
+    this.subjects.push(s);
+    if (this.subjects.length === 1) await this.onFirstSubject?.();
+  }
+  async writeResidual(r: ResidualRecord) {
+    this.residuals.push(r);
+  }
+}
+const scope = (over: Partial<AuditScope> = {}): AuditScope => ({
+  orgId: FORG,
+  accountingTimezone: 'America/Lima',
+  approved: { after: null, before: null },
+  cohort: { after: null, before: null },
+  ...over,
+});
+const inventory = (sink: AuditSink, s: AuditScope = scope(), org = s.orgId) =>
+  asApp(org, FPROFILE, 'ro', (tx) => runAuditInventory(tx, s, sink));
+
 beforeAll(async () => {
   child = await openAuditNativeChild();
   owner = child.owner;
@@ -136,6 +234,7 @@ beforeAll(async () => {
   fingerprintBefore = await fingerprint();
   await owner.unsafe(migrationSql());
   await seed();
+  await seedFaces();
 }, 180_000);
 
 afterAll(async () => {
@@ -221,8 +320,33 @@ describe('faces receivables audit against PostgreSQL', () => {
       });
     }).catch(() => undefined);
   });
-  it('preserves canonical controls beyond 500 clients and exposes legacy residuals', () =>
-    pending('T011-T013'));
+  it('preserves canonical controls beyond 500 clients and exposes legacy residuals', async () => {
+    const sink = new MemorySink();
+    const summary = await inventory(sink);
+    // Independent reconciliation of the seed, not a re-run of the audit predicates.
+    const unbilled = N_CLIENTS + 2 - 1; // 520 + two midnight-edge bookings; cancelled and the booking with a live ticket line excluded
+    expect(summary.coverage).toBe('organization_all_date');
+    expect(summary.controls.unbilledBookings.count).toBe(unbilled);
+    expect(summary.controls.unbilledBookings.count).toBeGreaterThan(500);
+    expect(summary.controls.badgePaidLines.count).toBe(2); // paid + identityless; void and legacy voided are excluded
+    expect(summary.controls.listPendingLines.count).toBe(2); // paid + legacy voided (identity required)
+    expect(summary.totals).toEqual({ badge: unbilled + 2, list: unbilled + 2 });
+    // The readers differ by design: identityless is badge-only, legacy voided is list-only.
+    expect(sink.residuals.map((r) => [r.control, r.reasonCode, r.id]).sort()).toEqual(
+      [
+        ['badge_not_list', 'identity_required', ids.identityless],
+        ['list_not_badge', 'legacy_voided', ids.legacyVoided],
+      ].sort(),
+    );
+    // Every subject in U is exported (all-date, cohort = U); the linked line and the foreign org are not subjects.
+    expect(sink.subjects.some((x) => x.id === ids.linked)).toBe(false);
+    expect(sink.subjects.filter((x) => x.kind === 'booking').length).toBe(N_CLIENTS + 3);
+    expect(summary.controls.unbilledBookings.sampleIds).toHaveLength(100);
+    expect(summary.controls.unbilledBookings.idsSha256).toMatch(/^[0-9a-f]{64}$/);
+    // Identical inputs give identical hashes.
+    const again = await inventory(new MemorySink());
+    expect(again.controls).toEqual(summary.controls);
+  });
   it('resolves explicit and provider invoice links without unsupported repair candidates', () =>
     pending('T017'));
   it('matches locking authority composition without locks or stale cache', async () => {
@@ -245,7 +369,7 @@ describe('faces receivables audit against PostgreSQL', () => {
     ]) {
       // Reference: legacy locking adapter on the privileged fixture controller (app_ledger cannot run it).
       const ref = await drizzle(owner).transaction((tx) =>
-        resolveFreshCapabilitiesInTransaction(tx, o, p),
+        resolveFreshCapabilitiesInTransaction(tx as unknown as CoreTx, o, p),
       );
       const ro = await asApp(o, p, 'ro', async (tx) =>
         composeFreshCapabilitiesFromAuthorityRows(
@@ -272,7 +396,7 @@ describe('faces receivables audit against PostgreSQL', () => {
                 pg_try_advisory_lock(hashtextextended('${ORG}',112)) as authority`,
       );
       await probe.unsafe('select pg_advisory_unlock_all()');
-      return r as { stock: boolean; authority: boolean };
+      return r as unknown as { stock: boolean; authority: boolean };
     };
     try {
       await asApp(ORG, STAFF, 'ro', async (tx) => {
@@ -327,9 +451,69 @@ describe('faces receivables audit against PostgreSQL', () => {
     );
     await refuse(ORG, STAFF, 'operator_principal_inactive');
   });
-  it('isolates concurrent pages and foreign organization rows', () => pending('T013'));
+  it('isolates concurrent pages and foreign organization rows', async () => {
+    const sink = new MemorySink();
+    // A second connection commits a new unbilled booking after the snapshot began, between subject writes.
+    sink.onFirstSubject = async () => {
+      await owner.unsafe('set session_replication_role = replica');
+      await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id)
+        values (gen_random_uuid(),'${FORG}','late',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}',md5('p5')::uuid)`);
+      await owner.unsafe('set session_replication_role = origin');
+    };
+    const during = await inventory(sink);
+    const after = await inventory(new MemorySink());
+    expect(after.controls.unbilledBookings.count).toBe(during.controls.unbilledBookings.count + 1);
+    expect(during.controls.unbilledBookings.idsSha256).not.toBe(
+      after.controls.unbilledBookings.idsSha256,
+    );
+    // A foreign organization's rows are never visible: its scope cannot even prove a timezone.
+    await expect(inventory(new MemorySink(), scope({ orgId: XORG }), FORG)).rejects.toMatchObject({
+      code: 'accounting_timezone_mismatch',
+    });
+    // The subject set never contains the foreign booking.
+    expect(
+      sink.subjects.every((x) => x.clientKey === null || x.clientKey.startsWith('party:')),
+    ).toBe(true);
+    await owner.unsafe(`delete from public.sched_bookings where uid='late'`);
+  });
   it('admits only approved matched evidence and preserves uncertainty', () => pending('T017/T018'));
-  it('applies exact accounting timezone cohort and approved scope boundaries', () =>
-    pending('T010/T013'));
+  it('applies exact accounting timezone cohort and approved scope boundaries', async () => {
+    // [2026-05-31, 2026-06-01): 05:00:00Z is local midnight (inside), 04:59:59Z is the previous local day (outside).
+    const sink = new MemorySink();
+    const day = await inventory(
+      sink,
+      scope({ approved: { after: '2026-05-31', before: '2026-06-01' } }),
+    );
+    expect(day.coverage).toBe('approved_scope');
+    expect(sink.subjects.filter((x) => x.kind === 'booking').map((x) => x.id)).toEqual([
+      ids.edgeIn,
+    ]);
+    expect(day.controls.unbilledBookings.count).toBe(1);
+    // Narrow cohort inside U: the complement is counted but never exported.
+    const narrow = new MemorySink();
+    const split = await inventory(
+      narrow,
+      scope({
+        approved: { after: '2026-05-01', before: '2026-07-01' },
+        cohort: { after: '2026-06-01', before: '2026-07-01' },
+      }),
+    );
+    expect(split.controls.unbilledBookings.cohortCount).toBe(N_CLIENTS - 500);
+    expect(split.controls.unbilledBookings.complementCount).toBe(500 + 2 - 1);
+    expect(split.controls.unbilledBookings.count).toBe(N_CLIENTS + 2 - 1);
+    expect(narrow.subjects.every((x) => x.inCohort)).toBe(true);
+    // Refusals before any inventory: widening, timezone mismatch, equal and impossible dates.
+    const approved = { after: '2026-05-01', before: '2026-06-01' };
+    for (const bad of [
+      scope({ approved, cohort: { after: '2026-04-30', before: '2026-05-10' } }),
+      scope({ approved, accountingTimezone: 'America/Bogota' }),
+      scope({ approved: { after: '2026-05-01', before: '2026-05-01' } }),
+      scope({ approved: { after: '2026-02-30', before: null } }),
+    ]) {
+      await expect(inventory(new MemorySink(), bad)).rejects.toMatchObject({
+        name: 'AuditAdmissionError',
+      });
+    }
+  });
   it('produces stable proposal hashes and UUIDs across fresh runs', () => pending('T020-T022'));
 });

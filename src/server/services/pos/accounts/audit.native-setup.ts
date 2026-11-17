@@ -44,7 +44,9 @@ export async function openAuditNativeChild(): Promise<AuditNativeChild> {
   try {
     await installOperatorNativeAuthFixture(owner, identity);
     await ensureRole(owner, 'supabase_admin', 'SUPERUSER NOLOGIN');
-    await owner.unsafe('CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm');
+    await owner.unsafe(
+      'CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS pg_trgm',
+    );
     const baseline = readFileSync(join(ROOT, 'supabase/qa/baseline/schema.sql'), 'utf8').replace(
       /^CREATE SCHEMA public;$/m,
       'CREATE SCHEMA IF NOT EXISTS public;',

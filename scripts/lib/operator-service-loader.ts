@@ -7,9 +7,10 @@ import type { QualifiedOperatorTarget, VerifiedOperatorPrincipal } from './opera
 /**
  * Closed Vite SSR service loader (contracts/operator-bootstrap.md). Call ONLY after the CLI has admitted
  * the parameters, target and principal. Empty env, no dotenv/config/HTTP/watch; never a global fallback.
- * Foundation registry: the audit key joins in T011 together with its typeof-import (never a runtime catch).
+ * The audit key joined in T011 together with its typeof-import (never a runtime catch).
  */
 export interface OperatorServiceModules {
+  audit: typeof import('../../src/server/services/pos/accounts/audit');
   rbac: typeof import('../../src/server/services/rbac.service');
   activeOperatorPrincipal: typeof import('../../src/server/auth/active-operator-principal');
   stock: typeof import('../../src/server/services/stock.service');
@@ -31,6 +32,7 @@ export interface OperatorServiceLoader {
 }
 
 const REGISTRY: Readonly<Record<keyof OperatorServiceModules, string>> = Object.freeze({
+  audit: 'src/server/services/pos/accounts/audit.ts',
   rbac: 'src/server/services/rbac.service.ts',
   activeOperatorPrincipal: 'src/server/auth/active-operator-principal.ts',
   stock: 'src/server/services/stock.service.ts',

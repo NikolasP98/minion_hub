@@ -35,7 +35,9 @@ describe('operator service loader', () => {
       expect(typeof rbac.resolveFreshCapabilitiesReadOnlyInTransaction).toBe('function');
       const bridge = await loader.load('activeOperatorPrincipal');
       expect(typeof bridge.readOperatorAuthorityReadOnlyInTx).toBe('function');
-      await expect(loader.load('audit' as never)).rejects.toThrow(/unknown registry key/);
+      const audit = await loader.load('audit');
+      expect(typeof audit.runAuditInventory).toBe('function');
+      await expect(loader.load('nope' as never)).rejects.toThrow(/unknown registry key/);
     }, 120_000);
   });
 });
