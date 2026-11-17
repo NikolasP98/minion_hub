@@ -110,6 +110,7 @@ describe('output directory and publication', () => {
     expect(readdirSync(dir)).toEqual(['run1']);
     expect(readdirSync(join(dir, 'run1')).sort()).toEqual([
       'manifest.json',
+      'repair-proposals.json',
       'residuals.jsonl',
       'subjects.jsonl',
       'summary.json',
