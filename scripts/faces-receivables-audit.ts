@@ -5,6 +5,7 @@
  * Env (private, explicit): FACES_AUDIT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY.
  * Exit: 0 complete, 2 admission refused (no business read), 3 incomplete/error (incomplete.json, no manifest).
  */
+import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   createWriteStream,
@@ -34,7 +35,34 @@ import {
   isRealDate,
   sortProposals,
 } from '../src/server/services/pos/accounts/audit.logic';
+import * as evidenceModule from '../src/server/services/pos/accounts/audit.evidence';
 import { operatorDatabaseIdentity, verifyOperatorPrincipal } from './lib/operator-principal';
+
+export function readEvidenceFile(path: string): { json: unknown; bytes: string } {
+  const stat = lstatSync(path);
+  if (
+    !stat.isFile() ||
+    stat.isSymbolicLink() ||
+    (stat.mode & 0o077) !== 0 ||
+    stat.size > 1_048_576
+  ) {
+    throw new CliAdmissionError('evidence_file_not_private_regular');
+  }
+  const bytes = readFileSync(path, 'utf8');
+  try {
+    return { json: JSON.parse(bytes), bytes };
+  } catch {
+    throw new CliAdmissionError('evidence_unreadable');
+  }
+}
+
+function gitSha(): string {
+  const r = spawnSync('git', ['rev-parse', 'HEAD'], {
+    cwd: join(import.meta.dirname, '..'),
+    encoding: 'utf8',
+  });
+  return r.status === 0 ? r.stdout.trim() : 'unknown';
+}
 
 export class CliAdmissionError extends Error {
   constructor(readonly code: string) {
@@ -49,6 +77,8 @@ export interface ApprovedScopeFile {
   approved: AuditInterval;
   outputDirectory: string;
   target: QualifiedOperatorTarget;
+  approvalRef?: string;
+  evidence?: { path: string; sha256: string; approvedAssertionIds: string[] } | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -295,6 +325,10 @@ async function run(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
         cohort,
       };
       type Tx = Parameters<typeof orgCore.applyOrgTxScope>[0];
+      const cohortIds = new Set<string>();
+      const bookingStatus = new Map<string, string>();
+      const lineIds = new Set<string>();
+      let proposals: RepairProposal[] = [];
       const summary = await db.transaction(
         async (rawTx) => {
           const tx = rawTx as unknown as Tx;
@@ -323,19 +357,63 @@ async function run(argv: string[], env: NodeJS.ProcessEnv): Promise<number> {
             !c.ownerScoped('finance') &&
             c.fieldLevel('finance') >= perms.SENSITIVE_FIELD_LEVEL;
           if (!ok) throw new CliAdmissionError('insufficient_authority');
+          // Evidence-bearing runs need the ACTUAL owner membership, checked before any subject inventory.
+          if (scopeFile.evidence && caps.membershipRole !== 'owner') {
+            throw new CliAdmissionError('owner_required_for_evidence');
+          }
           const modules = await tx.execute<{ module_id: string; enabled: boolean }>(
-            sql`select module_id, enabled from public.app_modules where org_id = ${scope.orgId} and module_id in ('pos','finances')`,
+            sql`select module_id, enabled from public.app_modules where org_id = ${scope.orgId} and module_id in ('pos','finances','stock')`,
           );
-          if (modules.some((m) => m.enabled === false))
+          if (modules.some((m) => m.enabled === false && m.module_id !== 'stock'))
             throw new CliAdmissionError('required_module_disabled');
+          const stockAllowed =
+            !modules.some((m) => m.module_id === 'stock' && m.enabled === false) &&
+            c.can('stock', 'view') &&
+            !c.ownerScoped('stock');
           // Staging exists only after admission, so an exit-2 refusal never leaves a directory.
-          output = new RunOutput(outDir, randomUUID());
-          return audit.runAuditInventory(tx as never, scope, output);
+          const out = new RunOutput(outDir, randomUUID());
+          output = out;
+          const recording: AuditSink = {
+            async writeSubject(subject) {
+              if (subject.inCohort) cohortIds.add(subject.id);
+              if (subject.kind === 'booking') bookingStatus.set(subject.id, subject.status);
+              else lineIds.add(subject.id);
+              await out.writeSubject(subject);
+            },
+            writeResidual: (r) => out.writeResidual(r),
+          };
+          const result = await audit.runAuditInventory(tx as never, scope, recording);
+          if (scopeFile.evidence) {
+            const evidence = readEvidenceFile(scopeFile.evidence.path);
+            const admitted = evidenceModule.admitEvidence(
+              evidence.json,
+              evidence.bytes,
+              scopeFile.evidence,
+              {
+                orgId: scope.orgId,
+                approvalRef: scopeFile.approvalRef ?? '',
+                actorProfileId: principal.profileId,
+                membershipRole: caps.membershipRole,
+                runStart: new Date().toISOString(),
+                bookingStatus: (id) => bookingStatus.get(id) ?? null,
+                lineKnown: (id) => lineIds.has(id),
+              },
+            );
+            const pass = await audit.runAuditProposals(tx as never, {
+              scope,
+              admitted,
+              cohortIds,
+              stockAllowed,
+              sourceGitSha: gitSha(),
+              run: { runId: out.runId, observedAt: new Date().toISOString() },
+            });
+            proposals = pass.proposals;
+          }
+          return result;
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       );
-      // TODO(handoff): no proposals are emitted until the FinancialSourceRows closure loader (T017) can prove eligibility.
-      await output!.publish(summary);
+      await output!.publish(summary, proposals);
       console.log(JSON.stringify({ run: output!.final, totals: summary.totals }));
       return 0;
     } finally {

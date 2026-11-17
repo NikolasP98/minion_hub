@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { loadAuditFinancialClosure, loadAuditStockFacet } from './audit.closure';
+import { runAuditProposals } from './audit';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { sql } from 'drizzle-orm';
 import type { CoreTx } from '$server/db/with-org-core';
@@ -165,6 +167,9 @@ async function seedFaces() {
       `insert into public.organizations(id,name) values ('${FORG}','audit-faces') on conflict do nothing`,
     );
     await owner.unsafe(
+      `insert into public.pos_settings(org_id,methods) values ('${FORG}','${METHODS}'::jsonb)`,
+    );
+    await owner.unsafe(
       `insert into auth.users(id,email) values ('${FPROFILE}','owner@audit.test')`,
     );
     await owner.unsafe(
@@ -221,6 +226,253 @@ async function seedFaces() {
     await ticket(ids.linked, 'submitted', true, "md5('b1')::uuid");
   } finally {
     await owner.unsafe('set session_replication_role = origin');
+  }
+}
+
+// ---- closure worlds (T018 vectors): one synthetic client per variant, amounts in PEN ----
+const METHODS = JSON.stringify([
+  {
+    id: 'cash',
+    label: 'Efectivo',
+    enabled: true,
+    takesTendered: true,
+    drawsOnCredit: false,
+    requiresCreditDecision: false,
+  },
+  {
+    id: 'card',
+    label: 'Tarjeta',
+    enabled: true,
+    takesTendered: false,
+    drawsOnCredit: false,
+    requiresCreditDecision: false,
+  },
+]);
+interface World {
+  party: string;
+  ticket: string;
+  line: string;
+  booking: string;
+  payments: string[];
+  product: string;
+}
+type Variant = {
+  payments?: [string, string, string | null][]; // [amount, method, metadata.kind]
+  secondLine?: boolean;
+  ledger?: boolean;
+  plan?: boolean;
+  invoiceRef?: boolean;
+  contactOnly?: boolean;
+  noDoc?: boolean;
+  zeroLine?: boolean;
+  noTicket?: boolean;
+  bookingInvoice?: boolean;
+};
+async function world(v: Variant): Promise<World> {
+  const w: World = {
+    party: randomUUID(),
+    ticket: randomUUID(),
+    line: randomUUID(),
+    booking: randomUUID(),
+    payments: [],
+    product: randomUUID(),
+  };
+  await owner.unsafe('set session_replication_role = replica');
+  try {
+    await owner.unsafe(
+      `insert into public.parties(id,org_id,type,doc_type,doc_number) values ('${w.party}','${FORG}','person',${v.noDoc ? 'null' : "'DNI'"},${v.noDoc ? 'null' : `'${w.party.slice(0, 8)}'`})`,
+    );
+    const who = v.contactOnly ? `crm_contact_id` : 'party_id';
+    if (v.contactOnly) {
+      await owner.unsafe(
+        `insert into public.crm_contacts(id,org_id) values ('${w.party}','${FORG}')`,
+      );
+    }
+    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,${who},invoice_id)
+      values ('${w.booking}','${FORG}','w${w.booking}',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}','${w.party}',${v.bookingInvoice ? 'gen_random_uuid()' : 'null'})`);
+    if (!v.noTicket) {
+      const total = v.zeroLine ? '0' : '100';
+      await owner.unsafe(`insert into public.pos_tickets(id,org_id,shift_id,status,subtotal,total,submitted_at,${who},invoice_provider_ref)
+        values ('${w.ticket}','${FORG}',gen_random_uuid(),'submitted',${total},${total},'${MAY}','${w.party}',${v.invoiceRef ? "'WREF-" + w.party.slice(0, 8) + "'" : 'null'})`);
+      await owner.unsafe(`insert into public.pos_ticket_lines(id,org_id,ticket_id,kind,description,qty,unit_price,total,fin_product_id)
+        values ('${w.line}','${FORG}','${w.ticket}','service','svc',1,${total},${total},'${w.product}')`);
+      if (v.secondLine) {
+        await owner.unsafe(`insert into public.pos_ticket_lines(id,org_id,ticket_id,kind,description,qty,unit_price,total,fin_product_id)
+          values (gen_random_uuid(),'${FORG}','${w.ticket}','service','svc2',1,0,0,'${w.product}')`);
+      }
+      for (const [amount, method, kind] of v.payments ?? []) {
+        const id = randomUUID();
+        w.payments.push(id);
+        await owner.unsafe(`insert into public.pos_payments(id,org_id,ticket_id,shift_id,method,amount,metadata)
+          values ('${id}','${FORG}','${w.ticket}',gen_random_uuid(),'${method}',${amount},'${kind ? `{"kind":"${kind}"}` : '{}'}')`);
+      }
+    }
+    if (v.ledger)
+      await owner.unsafe(
+        `insert into public.pos_client_ledger(org_id,party_id,kind,amount,currency) values ('${FORG}','${w.party}','topup',50,'PEN')`,
+      );
+    if (v.plan)
+      await owner.unsafe(
+        `insert into public.pos_payment_plans(org_id,party_id,title,total_amount) values ('${FORG}','${w.party}','p',100)`,
+      );
+  } finally {
+    await owner.unsafe('set session_replication_role = origin');
+  }
+  return w;
+}
+async function dropWorld(w: World) {
+  await owner.unsafe(`delete from public.pos_payments where ticket_id='${w.ticket}'`);
+  await owner.unsafe(`delete from public.pos_ticket_lines where ticket_id='${w.ticket}'`);
+  await owner.unsafe(`delete from public.pos_tickets where id='${w.ticket}'`);
+  await owner.unsafe(`delete from public.sched_bookings where id='${w.booking}'`);
+  await owner.unsafe(`delete from public.pos_client_ledger where party_id='${w.party}'`);
+  await owner.unsafe(`delete from public.pos_payment_plans where party_id='${w.party}'`);
+  await owner.unsafe(`delete from public.crm_contacts where id='${w.party}'`);
+  await owner.unsafe(`delete from public.parties where id='${w.party}'`);
+}
+const closureOf = (
+  subject: Parameters<typeof loadAuditFinancialClosure>[2],
+  coverage: 'organization_all_date' | 'approved_scope' = 'organization_all_date',
+) => asApp(FORG, FPROFILE, 'ro', (tx) => loadAuditFinancialClosure(tx, FORG, subject, coverage));
+
+async function closureVectors() {
+  const split = await world({
+    payments: [
+      ['40', 'cash', null],
+      ['60', 'card', null],
+    ],
+  });
+  const clean = await world({ noTicket: true });
+  const variants: Record<string, [Variant, string]> = {
+    partial: [{ payments: [['50', 'cash', null]] }, 'partial_or_excess_settlement_unsupported'],
+    overpaid: [
+      {
+        payments: [
+          ['70', 'cash', null],
+          ['60', 'card', null],
+        ],
+      },
+      'partial_or_excess_settlement_unsupported',
+    ],
+    refund: [
+      {
+        payments: [
+          ['100', 'cash', null],
+          ['10', 'cash', 'refund'],
+        ],
+      },
+      'refund_or_correction_unsupported',
+    ],
+    wallet: [{ payments: [['100', 'cash', null]], ledger: true }, 'wallet_allocation_unsupported'],
+    plan: [{ payments: [['100', 'cash', null]], plan: true }, 'funding_allocation_unsupported'],
+    invoice: [
+      { payments: [['100', 'cash', null]], invoiceRef: true },
+      'invoice_settlement_unsupported',
+    ],
+    method: [{ payments: [['100', 'bogus', null]] }, 'payment_method_unverified'],
+    secondLine: [
+      { payments: [['100', 'cash', null]], secondLine: true },
+      'ticket_allocation_unsupported',
+    ],
+    contactOnly: [
+      { payments: [['100', 'cash', null]], contactOnly: true },
+      'settlement_identity_incomplete',
+    ],
+    noDoc: [{ payments: [['100', 'cash', null]], noDoc: true }, 'settlement_identity_incomplete'],
+  };
+  const made: World[] = [split, clean];
+  try {
+    // V13: ordinary split tenders 40.00 + 60.00 on one whole line are complete shape B.
+    const b = await closureOf({ kind: 'paid_unscheduled_line', id: split.line });
+    expect(b.closure.shape).toBe('B');
+    expect(b.financial).toMatchObject({
+      state: 'fully_settled_one_line',
+      chargeMinor: '10000',
+      settledMinor: '10000',
+      remainderMinor: '0',
+      currency: 'PEN',
+    });
+    expect(b.paymentIds).toEqual([...split.payments].sort());
+    // V1: a clean client with an admitted 100.00 charge and no money anywhere is shape A with a 10000 remainder.
+    const a = await closureOf({
+      kind: 'booking',
+      id: clean.booking,
+      historicalCharge: { amount: '100.00', currency: 'PEN' },
+    });
+    expect(a.financial).toMatchObject({
+      state: 'none_stored',
+      chargeMinor: '10000',
+      settledMinor: '0',
+      remainderMinor: '10000',
+    });
+    // V4: a finite U never issues an all-date closure.
+    expect(
+      (
+        await closureOf(
+          {
+            kind: 'booking',
+            id: clean.booking,
+            historicalCharge: { amount: '100.00', currency: 'PEN' },
+          },
+          'approved_scope',
+        )
+      ).financial.state,
+    ).toBe('scope_incomplete');
+    // V5/V14: every unsupported shape stays unresolved with null settled/remainder and its own blocker.
+    for (const [name, [variant, code]] of Object.entries(variants)) {
+      const w = await world(variant);
+      made.push(w);
+      const line = await closureOf({ kind: 'paid_unscheduled_line', id: w.line });
+      expect(line.closure.shape, name).toBe('none');
+      expect(line.closure.blockers, name).toContain(code);
+      expect(line.financial.settledMinor, name).toBeNull();
+      expect(line.financial.remainderMinor, name).toBeNull();
+      const debt = await closureOf({
+        kind: 'booking',
+        id: w.booking,
+        historicalCharge: { amount: '100.00', currency: 'PEN' },
+      });
+      expect(debt.closure.shape, `${name} debt`).not.toBe('A');
+      expect(debt.financial.remainderMinor, `${name} debt`).toBeNull();
+    }
+    // A known-zero one-line ticket with a proven-empty closure is the L2 free line; a zero-net wallet still blocks shape A.
+    const zero = await world({ zeroLine: true });
+    made.push(zero);
+    expect(
+      (await closureOf({ kind: 'paid_unscheduled_line', id: zero.line })).zeroValueNoMoney,
+    ).toBe(true);
+    const wallet0 = await world({ noTicket: true, ledger: true });
+    made.push(wallet0);
+    await owner.unsafe(
+      `insert into public.pos_client_ledger(org_id,party_id,kind,amount,currency) values ('${FORG}','${wallet0.party}','adjustment',-50,'PEN')`,
+    );
+    const net0 = await closureOf({
+      kind: 'booking',
+      id: wallet0.booking,
+      historicalCharge: { amount: '100.00', currency: 'PEN' },
+    });
+    expect(net0.closure.shape).toBe('none');
+    expect(net0.closure.blockers).toContain('wallet_allocation_unsupported');
+    // Dedup by table+id: the same invoice reached by explicit and provider paths is one row (one digest, not two).
+    // Source-row digest is stable across snapshots and changes with a new payment.
+    const before = (await closureOf({ kind: 'paid_unscheduled_line', id: split.line })).financial
+      .sourceRowsSha256;
+    expect(
+      (await closureOf({ kind: 'paid_unscheduled_line', id: split.line })).financial
+        .sourceRowsSha256,
+    ).toBe(before);
+    await owner.unsafe(
+      `insert into public.pos_payments(org_id,ticket_id,shift_id,method,amount) values ('${FORG}','${split.ticket}',gen_random_uuid(),'cash',1)`,
+    );
+    expect(
+      (await closureOf({ kind: 'paid_unscheduled_line', id: split.line })).financial
+        .sourceRowsSha256,
+    ).not.toBe(before);
+    await owner.unsafe(
+      `delete from public.pos_payments where ticket_id='${split.ticket}' and amount=1`,
+    );
+  } finally {
+    for (const w of made) await dropWorld(w);
   }
 }
 
@@ -747,6 +999,7 @@ describe('faces receivables audit against PostgreSQL', () => {
         'owner',
       ),
     ).toThrow(/subject_not_in_scope/);
+    await closureVectors();
   });
   it('applies exact accounting timezone cohort and approved scope boundaries', async () => {
     // [2026-05-31, 2026-06-01): 05:00:00Z is local midnight (inside), 04:59:59Z is the previous local day (outside).
@@ -787,82 +1040,202 @@ describe('faces receivables audit against PostgreSQL', () => {
     }
   });
   it('produces stable proposal hashes and UUIDs across fresh runs', async () => {
-    // The paid line of client p4 plus a new unbilled booking of the same client form one exact pair.
-    const booking = randomUUID();
-    await owner.unsafe('set session_replication_role = replica');
-    await owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id)
-      values ('${booking}','${FORG}','pair',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}',md5('p4')::uuid)`);
-    await owner.unsafe('set session_replication_role = origin');
-    const evidence = {
-      assertionIds: [randomUUID()],
-      documentHashes: ['a'.repeat(64)],
-      assertionsHash: 'b'.repeat(64),
-    };
-    const build = (b = booking) =>
-      asApp(FORG, FPROFILE, 'ro', (tx) =>
-        buildLinkIntent(tx, {
-          orgId: FORG,
-          sourceGitSha: 'c'.repeat(40),
-          ticketLineId: ids.paid,
-          bookingMemberId: b,
-          evidence,
-        }),
-      );
+    // One exact pair: a line settled by ordinary split tenders (40.00 + 60.00) and the same client's booking.
+    const w = await world({
+      payments: [
+        ['40', 'cash', null],
+        ['60', 'card', null],
+      ],
+    });
     try {
-      const first = buildProposal(
-        await build(),
-        { runId: randomUUID(), observedAt: '2026-11-17T00:00:00.000Z' },
-        ['/private/a.json'],
+      const stock = await asApp(FORG, FPROFILE, 'ro', (tx) =>
+        loadAuditStockFacet(tx, FORG, { ticketId: w.ticket, bookingId: w.booking }, true),
       );
-      const second = buildProposal(
-        await build(),
-        { runId: randomUUID(), observedAt: '2026-12-31T00:00:00.000Z' },
-        ['/elsewhere/b.json'],
+      expect(stock.availability).toBe('available');
+      const DOC = randomUUID();
+      const asserted = (
+        kind: string,
+        values: Record<string, unknown>,
+        subject: { kind: string; id: string },
+      ) => ({
+        assertionId: randomUUID(),
+        subject,
+        kind,
+        values,
+        documentIds: [DOC],
+        verifiedByProfileId: FPROFILE,
+        verifiedAt: '2026-11-16T00:00:00.000Z',
+      });
+      const bookingSubject = { kind: 'booking', id: w.booking };
+      const lineSubject = { kind: 'paid_unscheduled_line', id: w.line };
+      const evidenceSet = (opts: { clearance?: boolean; fingerprint?: string | null } = {}) => [
+        asserted(
+          'identity_binding',
+          { clientKey: `party:${w.party}`, ticketLineId: w.line, bookingMemberId: w.booking },
+          bookingSubject,
+        ),
+        asserted(
+          'historical_charge',
+          {
+            bookingMemberId: w.booking,
+            productId: w.product,
+            quantity: '1',
+            amount: '100.00',
+            currency: 'PEN',
+            agreedAt: '2026-05-01T00:00:00.000Z',
+          },
+          bookingSubject,
+        ),
+        asserted(
+          'settlement_allocation',
+          {
+            ticketLineId: w.line,
+            bookingMemberId: w.booking,
+            productId: w.product,
+            quantity: '1',
+            amount: '100.00',
+            currency: 'PEN',
+            paymentIds: w.payments,
+            complete: true,
+          },
+          lineSubject,
+        ),
+        ...(opts.clearance === false
+          ? []
+          : [
+              asserted(
+                'stock_ownership_clearance',
+                {
+                  ticketLineId: w.line,
+                  bookingMemberId: w.booking,
+                  stockEffects: 'none',
+                  sourceFingerprint: opts.fingerprint ?? stock.fingerprint!,
+                },
+                lineSubject,
+              ),
+            ]),
+      ];
+      const admit = (assertions: ReturnType<typeof asserted>[]) => {
+        const manifest = {
+          schemaVersion: 1,
+          orgId: FORG,
+          approvalRef: 'ap',
+          documents: [{ documentId: DOC, sha256: 'a'.repeat(64), privateRef: 'vault/x' }],
+          assertions,
+        };
+        const bytes = JSON.stringify(manifest);
+        return admitEvidence(
+          manifest,
+          bytes,
+          {
+            sha256: createHash('sha256').update(bytes).digest('hex'),
+            approvedAssertionIds: assertions.map((a) => a.assertionId),
+          },
+          {
+            orgId: FORG,
+            approvalRef: 'ap',
+            actorProfileId: FPROFILE,
+            membershipRole: 'owner',
+            runStart: new Date().toISOString(),
+            bookingStatus: (id) => (id === w.booking ? 'accepted' : null),
+            lineKnown: (id) => id === w.line,
+          },
+        );
+      };
+      const base: AuditScope = {
+        orgId: FORG,
+        accountingTimezone: 'America/Lima',
+        approved: { after: null, before: null },
+        cohort: { after: null, before: null },
+      };
+      const run = (
+        admitted: ReturnType<typeof admit>,
+        over: { cohort?: string[]; scope?: typeof base; stock?: boolean } = {},
+      ) =>
+        asApp(FORG, FPROFILE, 'ro', (tx) =>
+          runAuditProposals(tx, {
+            scope: over.scope ?? base,
+            admitted,
+            cohortIds: new Set(over.cohort ?? [w.line, w.booking]),
+            stockAllowed: over.stock ?? true,
+            sourceGitSha: 'c'.repeat(40),
+            run: { runId: randomUUID(), observedAt: new Date().toISOString() },
+          }),
+        );
+      const admitted = admit(evidenceSet());
+      const first = await run(admitted);
+      const second = await run(admitted);
+      expect(first.receipts).toEqual([
+        { ticketLineId: w.line, bookingMemberId: w.booking, blockers: [] },
+      ]);
+      expect(first.proposals).toHaveLength(1);
+      // Fresh snapshots and run metadata: identical intent bytes, hash and UUID; the envelope stays inert.
+      expect(second.proposals[0].proposalHash).toBe(first.proposals[0].proposalHash);
+      expect(second.proposals[0].proposalId).toBe(first.proposals[0].proposalId);
+      expect(JSON.stringify(second.proposals[0].intent)).toBe(
+        JSON.stringify(first.proposals[0].intent),
       );
-      // Fresh runs, fresh snapshots, different run metadata and relocated private evidence: same identity.
-      expect(second.proposalHash).toBe(first.proposalHash);
-      expect(second.proposalId).toBe(first.proposalId);
-      expect(JSON.stringify(second.intent)).toBe(JSON.stringify(first.intent));
-      expect(first.status).toBe('pending_owner_approval');
-      // Exact effects of the counterfactual: only the paid-unscheduled and unbilled contributions move; wallet and money do not.
-      expect(first.intent.effects).toMatchObject({
+      expect(first.proposals[0].status).toBe('pending_owner_approval');
+      expect(first.proposals[0].intent.effects).toMatchObject({
         paidUnscheduledDelta: -1,
         unbilledBookingDelta: -1,
         paymentMinorDelta: '0',
         stockQuantityDelta: '0',
       });
-      expect(first.intent.effects.accountDisplay.before.pendingScheduling).toBe(2); // paid + legacy-voided line of client p4;
-      expect(first.intent.effects.accountDisplay.after.pendingScheduling).toBe(1);
-      expect(first.intent.effects.wallet.before).toEqual(first.intent.effects.wallet.after);
-      expect(first.intent.change).toEqual({
-        field: 'pos_ticket_lines.booking_id',
-        from: null,
-        to: booking,
-      });
-      // A changed business fact changes the approval identity.
-      await owner.unsafe(
-        `update public.sched_bookings set status='pending', updated_at = now() + interval '1 minute' where id='${booking}'`,
+      // Every conjunctive gate blocks independently; no proposal is emitted.
+      const blocked = async (
+        admittedSet: ReturnType<typeof admit>,
+        over: Parameters<typeof run>[1] = {},
+      ) => (await run(admittedSet, over)).receipts[0].blockers;
+      expect(await blocked(admit(evidenceSet({ clearance: false })))).toContain(
+        'stock_ownership_unavailable',
       );
-      const changed = buildProposal(await build(), {
-        runId: randomUUID(),
-        observedAt: '2026-11-17T00:00:00.000Z',
-      });
-      expect(changed.proposalHash).not.toBe(first.proposalHash);
-      expect(changed.proposalId).not.toBe(first.proposalId);
-      // An already-linked line is not an eligible pair.
+      expect(await blocked(admit(evidenceSet({ fingerprint: 'f'.repeat(64) })))).toContain(
+        'stock_ownership_unavailable',
+      );
+      expect(await blocked(admitted, { stock: false })).toContain('stock_ownership_unavailable');
+      expect(await blocked(admitted, { cohort: [w.booking] })).toContain(
+        'outside_requested_cohort',
+      );
+      expect(
+        await blocked(admitted, {
+          scope: { ...base, approved: { after: '2026-01-01', before: null } },
+        }),
+      ).toContain('settlement_scope_incomplete');
+      expect(
+        (await run(admit(evidenceSet().filter((a) => a.kind !== 'settlement_allocation'))))
+          .receipts,
+      ).toEqual([]); // no allocation assertion => no pair at all
+      // A changed business fact changes approval identity; a changed money fact blocks the pair.
+      await owner.unsafe(
+        `update public.sched_bookings set status='pending', updated_at = now() + interval '1 minute' where id='${w.booking}'`,
+      );
+      const changed = await run(admitted);
+      expect(changed.proposals[0].proposalHash).not.toBe(first.proposals[0].proposalHash);
+      await owner.unsafe(
+        `insert into public.pos_payments(org_id,ticket_id,shift_id,method,amount) values ('${FORG}','${w.ticket}',gen_random_uuid(),'cash',1)`,
+      );
+      const afterPayment = await run(admitted);
+      expect(afterPayment.proposals).toHaveLength(0);
+      expect(afterPayment.receipts[0].blockers).toEqual(
+        expect.arrayContaining(['proposal_not_eligible']),
+      );
+      // An already-linked line is never an eligible pair.
       await expect(
         asApp(FORG, FPROFILE, 'ro', (tx) =>
           buildLinkIntent(tx, {
             orgId: FORG,
             sourceGitSha: 'c'.repeat(40),
             ticketLineId: ids.linked,
-            bookingMemberId: booking,
-            evidence,
+            bookingMemberId: w.booking,
+            closureSourceRowsSha256: 'a'.repeat(64),
+            stockFingerprint: 'b'.repeat(64),
+            evidence: { assertionIds: [], documentHashes: [], assertionsHash: 'c'.repeat(64) },
           }),
         ),
       ).rejects.toMatchObject({ name: 'AuditIncompleteError' });
     } finally {
-      await owner.unsafe(`delete from public.sched_bookings where id='${booking}'`);
+      await dropWorld(w);
     }
   });
 });

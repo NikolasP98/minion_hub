@@ -340,3 +340,81 @@ export function bookingEvidenceFacts(
     evidenceConflict: conflict,
   };
 }
+
+export interface PairGateInput {
+  admitted: AdmittedEvidence;
+  ticketLineId: string;
+  bookingMemberId: string;
+  /** Both subjects are members of the selected cohort C. */
+  bothInCohort: boolean;
+  /** Approved U is unbounded (all-date closure was read). */
+  unboundedScope: boolean;
+  bookingActive: boolean;
+  /** Proven shape B: ordinary payment ids, ticket total minor string, currency, product/quantity of the line. */
+  proof: {
+    paymentIds: string[];
+    totalMinor: string;
+    currency: string;
+    productId: string | null;
+    quantity: string;
+  } | null;
+  /** Booking facts that forbid linking (invoice/grant/plan/redemption already present, invoice links, conflicts). */
+  existingAllocation: boolean;
+  evidenceConflict: boolean;
+  stock: { availability: 'available' | 'unavailable'; fingerprint: string | null };
+  /** Converts an admitted decimal string to a minor-unit string in the given currency. */
+  toMinor(amount: string): string;
+}
+
+/** Closed proposal-blocker codes for one exact pair; empty means every conjunctive gate passed. */
+export function pairProposalBlockers(g: PairGateInput): string[] {
+  const out: string[] = [];
+  if (!g.unboundedScope) out.push('settlement_scope_incomplete');
+  if (!g.bothInCohort) out.push('outside_requested_cohort');
+  if (g.evidenceConflict) out.push('external_evidence_conflict');
+  if (!g.bookingActive || g.existingAllocation || !g.proof) out.push('proposal_not_eligible');
+  const mine = g.admitted.assertions.filter(
+    (a) => a.subject.id === g.ticketLineId || a.subject.id === g.bookingMemberId,
+  );
+  const of = (k: AssertionKind) => mine.filter((a) => a.kind === k);
+  const bindsPair = of('identity_binding').some(
+    (a) =>
+      a.values.ticketLineId === g.ticketLineId && a.values.bookingMemberId === g.bookingMemberId,
+  );
+  const charge = of('historical_charge').find(
+    (a) => a.values.bookingMemberId === g.bookingMemberId,
+  );
+  const alloc = of('settlement_allocation').find(
+    (a) =>
+      a.values.ticketLineId === g.ticketLineId && a.values.bookingMemberId === g.bookingMemberId,
+  );
+  const clearance = of('stock_ownership_clearance').find(
+    (a) =>
+      a.values.ticketLineId === g.ticketLineId && a.values.bookingMemberId === g.bookingMemberId,
+  );
+  if (!bindsPair || !charge || !alloc) out.push('missing_pair_evidence');
+  const p = g.proof;
+  if (p && charge && alloc) {
+    const same =
+      charge.values.currency === p.currency &&
+      g.toMinor(String(charge.values.amount)) === p.totalMinor &&
+      alloc.values.currency === p.currency &&
+      g.toMinor(String(alloc.values.amount)) === p.totalMinor &&
+      charge.values.productId === p.productId &&
+      alloc.values.productId === p.productId &&
+      Number(charge.values.quantity) === Number(p.quantity) &&
+      Number(alloc.values.quantity) === Number(p.quantity) &&
+      JSON.stringify([...(alloc.values.paymentIds as string[])].sort()) ===
+        JSON.stringify([...p.paymentIds].sort());
+    if (!same) out.push('missing_pair_evidence');
+  }
+  if (
+    g.stock.availability !== 'available' ||
+    g.stock.fingerprint === null ||
+    !clearance ||
+    clearance.values.sourceFingerprint !== g.stock.fingerprint
+  ) {
+    out.push('stock_ownership_unavailable');
+  }
+  return [...new Set(out)].sort();
+}

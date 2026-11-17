@@ -1,4 +1,10 @@
 import { createHash } from 'node:crypto';
+import {
+  loadAuditFinancialClosure as loadClosure,
+  loadAuditStockFacet as loadStock,
+} from './audit.closure';
+import { pairProposalBlockers, type AdmittedEvidence } from './audit.evidence';
+import { buildProposal } from './audit.logic';
 import { sql, type SQL } from 'drizzle-orm';
 import type { CoreTx } from '$server/db/with-org-core';
 import {
@@ -14,6 +20,7 @@ import {
   type AuditInvoiceRef,
   type BookingInvoiceLink,
   type LinkIntent,
+  type RepairProposal,
   type TicketInvoiceLink,
   type AuditInterval,
   type AuditScope,
@@ -392,8 +399,8 @@ interface PairRow extends Record<string, unknown> {
  * Immutable line->existing-booking LinkIntent for one exact pair, from same-snapshot rows only. It never
  * calls bookAndLinkTicketLine and writes nothing. Wallet and account display are a PURE counterfactual:
  * only the line's bookingId changes, so wallet is unchanged and the pending counts move by the pair's own contribution.
- * TODO(handoff): sourceFingerprint omits the FinancialSourceRows/stock facets and logicalRowPresent ignores
- * plan/grant/ledger facets (T017 closure loader is not built); proposals are therefore not yet eligible output.
+ * sourceFingerprint now binds the closure source-row digest and the stock facet fingerprint.
+ * TODO(handoff): logicalRowPresent ignores plan/grant facets of the client row.
  */
 export async function buildLinkIntent(
   tx: CoreTx,
@@ -402,6 +409,8 @@ export async function buildLinkIntent(
     sourceGitSha: string;
     ticketLineId: string;
     bookingMemberId: string;
+    closureSourceRowsSha256: string;
+    stockFingerprint: string;
     evidence: { assertionIds: string[]; documentHashes: string[]; assertionsHash: string };
   },
 ): Promise<LinkIntent> {
@@ -497,7 +506,16 @@ export async function buildLinkIntent(
       line,
       booking,
       identityKey: row.client_key,
-      sourceFingerprint: sha256({ ticket, line, booking, balances, pending, unbilled }),
+      sourceFingerprint: sha256({
+        ticket,
+        line,
+        booking,
+        balances,
+        pending,
+        unbilled,
+        closure: input.closureSourceRowsSha256,
+        stock: input.stockFingerprint,
+      }),
     },
     evidence: input.evidence,
     change: { field: 'pos_ticket_lines.booking_id', from: null, to: input.bookingMemberId },
@@ -518,4 +536,122 @@ export async function buildLinkIntent(
     accountControlSha256: sha256({ before, after, balances }),
     blockers: [],
   };
+}
+
+export { loadAuditFinancialClosure, loadAuditStockFacet } from './audit.closure';
+export type { ClosureResult, ClosureSubject, FinancialClosure, StockFacet } from './audit.closure';
+
+export interface PairReceipt {
+  ticketLineId: string;
+  bookingMemberId: string;
+  blockers: string[];
+}
+
+/**
+ * Sorted proposal pass over the owner-approved settlement_allocation pairs. It re-reads each pair in the same
+ * snapshot, applies every conjunctive gate and emits inert envelopes only for pairs with no blocker. It never
+ * rewrites subject classifications and has no apply path.
+ */
+export async function runAuditProposals(
+  tx: CoreTx,
+  input: {
+    scope: AuditScope;
+    admitted: AdmittedEvidence;
+    cohortIds: ReadonlySet<string>;
+    stockAllowed: boolean;
+    sourceGitSha: string;
+    run: { runId: string; observedAt: string };
+  },
+): Promise<{ proposals: RepairProposal[]; receipts: PairReceipt[] }> {
+  const { scope, admitted } = input;
+  const finite = scope.approved.after !== null || scope.approved.before !== null;
+  const coverage = finite ? 'approved_scope' : 'organization_all_date';
+  const proposals: RepairProposal[] = [];
+  const receipts: PairReceipt[] = [];
+  const pairs = admitted.assertions.filter((a) => a.kind === 'settlement_allocation');
+  for (const a of pairs) {
+    const lineId = String(a.values.ticketLineId);
+    const bookingId = String(a.values.bookingMemberId);
+    const charge = admitted.assertions.find(
+      (x) => x.kind === 'historical_charge' && x.values.bookingMemberId === bookingId,
+    );
+    const [booking] = await tx.execute<{ status: string; ticket_id: string | null }>(sql`
+      select b.status, (select t.id::text from public.pos_ticket_lines tl join public.pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+                         where tl.org_id = b.org_id and tl.id = ${lineId}::uuid) as ticket_id
+      from public.sched_bookings b where b.org_id = ${scope.orgId} and b.id = ${bookingId}::uuid`);
+    if (!booking?.ticket_id) {
+      receipts.push({
+        ticketLineId: lineId,
+        bookingMemberId: bookingId,
+        blockers: ['missing_pair_evidence'],
+      });
+      continue;
+    }
+    const historicalCharge = charge
+      ? { amount: String(charge.values.amount), currency: String(charge.values.currency) }
+      : null;
+    const lineClosure = await loadClosure(
+      tx,
+      scope.orgId,
+      { kind: 'paid_unscheduled_line', id: lineId },
+      coverage,
+    );
+    const bookingClosure = await loadClosure(
+      tx,
+      scope.orgId,
+      { kind: 'booking', id: bookingId, historicalCharge, pairLineId: lineId },
+      coverage,
+    );
+    const links = await loadAuditInvoiceLinks(tx, scope.orgId, [bookingId], [booking.ticket_id]);
+    const link = links.bookings[0];
+    const stock = await loadStock(
+      tx,
+      scope.orgId,
+      { ticketId: booking.ticket_id, bookingId },
+      input.stockAllowed,
+    );
+    const proven = lineClosure.closure.shape === 'B' && bookingClosure.closure.shape === 'B';
+    const blockers = pairProposalBlockers({
+      admitted,
+      ticketLineId: lineId,
+      bookingMemberId: bookingId,
+      bothInCohort: input.cohortIds.has(lineId) && input.cohortIds.has(bookingId),
+      unboundedScope: !finite,
+      bookingActive: !['cancelled', 'rejected', 'no_show'].includes(booking.status),
+      proof:
+        proven && lineClosure.financial.chargeMinor && lineClosure.line
+          ? {
+              paymentIds: lineClosure.paymentIds,
+              totalMinor: lineClosure.financial.chargeMinor,
+              currency: lineClosure.financial.currency ?? '',
+              productId: lineClosure.line.productId,
+              quantity: lineClosure.line.quantity,
+            }
+          : null,
+      existingAllocation: invoiceLinkBlocksProposal(link, links.tickets[0]),
+      evidenceConflict: false,
+      stock: { availability: stock.availability, fingerprint: stock.fingerprint },
+      toMinor: toMinorString,
+    });
+    if (blockers.length) {
+      receipts.push({ ticketLineId: lineId, bookingMemberId: bookingId, blockers });
+      continue;
+    }
+    const intent = await buildLinkIntent(tx, {
+      orgId: scope.orgId,
+      sourceGitSha: input.sourceGitSha,
+      ticketLineId: lineId,
+      bookingMemberId: bookingId,
+      closureSourceRowsSha256: lineClosure.financial.sourceRowsSha256 ?? '',
+      stockFingerprint: stock.fingerprint ?? '',
+      evidence: {
+        assertionIds: admitted.assertions.map((x) => x.assertionId),
+        documentHashes: admitted.documentHashes,
+        assertionsHash: admitted.assertionsHash,
+      },
+    });
+    proposals.push(buildProposal(intent, input.run));
+    receipts.push({ ticketLineId: lineId, bookingMemberId: bookingId, blockers: [] });
+  }
+  return { proposals, receipts };
 }
