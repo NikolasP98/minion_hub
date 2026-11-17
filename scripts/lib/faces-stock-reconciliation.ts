@@ -37,7 +37,8 @@ export function canonicalJson(value: unknown): string {
   }
   return JSON.stringify(value);
 }
-export const sha256Hex = (s: string): Digest => createHash('sha256').update(s, 'utf8').digest('hex');
+export const sha256Hex = (s: string): Digest =>
+  createHash('sha256').update(s, 'utf8').digest('hex');
 export const canonicalSha256 = (v: unknown): Digest => sha256Hex(canonicalJson(v));
 
 export const cmpBig = (a: bigint, b: bigint): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -120,7 +121,10 @@ export const q4OfString = (raw: string): bigint => q4(parseDec(raw));
 export const sumDec = (values: Dec[]): Dec => values.reduce(decAdd, DEC_ZERO);
 
 /** |a-b| <= 1e-8 + 1e-12*max(|a|,|b|), exact. `scale`d bound is multiplied by 1e12 so everything stays integral. */
-export function withinScalarTolerance(a: Dec, b: Dec): { pass: boolean; difference: Dec; tolerance: Dec } {
+export function withinScalarTolerance(
+  a: Dec,
+  b: Dec,
+): { pass: boolean; difference: Dec; tolerance: Dec } {
   const diff = decAbs(decSub(a, b));
   const m = decCmp(decAbs(a), decAbs(b)) >= 0 ? decAbs(a) : decAbs(b);
   return toleranceResult(diff, m);
@@ -188,9 +192,12 @@ export const dDigest: Dc<Digest> = (v) =>
 export const dSha40: Dc<string> = (v) =>
   typeof v === 'string' && SHA40_RE.test(v) ? v : fail('sha_invalid');
 export const dBool: Dc<boolean> = (v) => (typeof v === 'boolean' ? v : fail('boolean_invalid'));
-export const dInt: Dc<number> = (v) => (Number.isSafeInteger(v) ? (v as number) : fail('integer_invalid'));
+export const dInt: Dc<number> = (v) =>
+  Number.isSafeInteger(v) ? (v as number) : fail('integer_invalid');
 export const dUtc: Dc<string> = (v) =>
-  typeof v === 'string' && UTC_RE.test(v) && !Number.isNaN(Date.parse(v)) ? v : fail('instant_invalid');
+  typeof v === 'string' && UTC_RE.test(v) && !Number.isNaN(Date.parse(v))
+    ? v
+    : fail('instant_invalid');
 export const dLedgerId: Dc<string> = (v) => assertLedgerId(v);
 export const dEnum =
   <T extends string>(...values: T[]): Dc<T> =>
@@ -259,7 +266,8 @@ export const dSourceRef: Dc<SourceRef> = (v) => {
   const r = dObj<SourceRef>({ kind: dEnum(...SOURCE_KINDS), id: dRefId })(v);
   if (r.kind === 'ledger') assertLedgerId(r.id);
   else if (r.kind === 'booking_group') {
-    if (!/^[0-9a-f-]{36}\/.+/.test(r.id) || !UUID_RE.test(r.id.slice(0, 36))) return fail('ref_invalid');
+    if (!/^[0-9a-f-]{36}\/.+/.test(r.id) || !UUID_RE.test(r.id.slice(0, 36)))
+      return fail('ref_invalid');
   } else if (!UUID_RE.test(r.id)) return fail('ref_invalid');
   return r;
 };
@@ -280,13 +288,20 @@ export type ExpectedComponent = {
   fulfilled: boolean;
   trueUpCoverage: 'not_covered' | 'covered' | 'unknown';
 };
-const dFixed4 = (max: number): Dc<string> => (v) => {
-  if (typeof v !== 'string' || !new RegExp(`^\\d{1,${max}}\\.\\d{4}$`).test(v)) return fail('fixed4_invalid');
-  return v;
-};
+const dFixed4 =
+  (max: number): Dc<string> =>
+  (v) => {
+    if (typeof v !== 'string' || !new RegExp(`^\\d{1,${max}}\\.\\d{4}$`).test(v))
+      return fail('fixed4_invalid');
+    return v;
+  };
 const dExpected = dObj<ExpectedComponent>({
   source: dObj({
-    kind: dEnum<'pos_ticket' | 'pos_ticket_line' | 'booking'>('pos_ticket', 'pos_ticket_line', 'booking'),
+    kind: dEnum<'pos_ticket' | 'pos_ticket_line' | 'booking'>(
+      'pos_ticket',
+      'pos_ticket_line',
+      'booking',
+    ),
     id: dUuid,
   }),
   itemId: dUuid,
@@ -337,9 +352,11 @@ const dObservation: Dc<ProjectionObservation> = (v) => {
     appSourceSha: dNullable(dSha40),
   })(v);
   if (!o.productId && !o.itemId) return fail('projection_identity_missing');
-  if (o.presence === 'omitted' && (o.qty !== null || o.stockUom !== null)) return fail('projection_omitted_has_qty');
+  if (o.presence === 'omitted' && (o.qty !== null || o.stockUom !== null))
+    return fail('projection_omitted_has_qty');
   if (o.presence === 'shown') {
-    if (o.qty === null || !/^\d{1,9}(\.\d+)?$/.test(o.qty) || o.stockUom === null) return fail('projection_qty_invalid');
+    if (o.qty === null || !/^\d{1,9}(\.\d+)?$/.test(o.qty) || o.stockUom === null)
+      return fail('projection_qty_invalid');
     parseDec(o.qty);
   }
   return o;
@@ -368,7 +385,12 @@ export type DiagnosticEvidenceRef = {
   correctionId: UUID | null;
   assertion:
     | null
-    | { kind: 'expected_component'; component: ExpectedComponent; verifiedByProfileId: UUID; verifiedAt: string }
+    | {
+        kind: 'expected_component';
+        component: ExpectedComponent;
+        verifiedByProfileId: UUID;
+        verifiedAt: string;
+      }
     | ProjectionAssertion;
 };
 const dAssertion: Dc<DiagnosticEvidenceRef['assertion']> = (v) => {
@@ -390,9 +412,14 @@ const dEvidenceRef: Dc<DiagnosticEvidenceRef> = (v) => {
     correctionId: dNullable(dUuid),
     assertion: dAssertion,
   })(v);
-  if (r.kind === 'prior_correction' ? r.correctionId === null || r.assertion !== null : r.correctionId !== null)
+  if (
+    r.kind === 'prior_correction'
+      ? r.correctionId === null || r.assertion !== null
+      : r.correctionId !== null
+  )
     return fail('evidence_ref_invalid');
-  if (r.assertion?.kind === 'projection_comparison' && r.kind === 'prior_correction') return fail('evidence_ref_invalid');
+  if (r.assertion?.kind === 'projection_comparison' && r.kind === 'prior_correction')
+    return fail('evidence_ref_invalid');
   return r;
 };
 export type DiagnosticCase = {
@@ -412,7 +439,11 @@ export type DiagnosticManifestV1 = {
   cases: DiagnosticCase[];
 };
 const dDate: Dc<string> = (v) => {
-  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(`${v}T00:00:00Z`)))
+  if (
+    typeof v !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(v) ||
+    Number.isNaN(Date.parse(`${v}T00:00:00Z`))
+  )
     return fail('date_invalid');
   return v;
 };
@@ -450,14 +481,16 @@ const dCase: Dc<DiagnosticCase> = (v) => {
 };
 export const MANIFEST_MAX_BYTES = 1_048_576;
 export function decodeDiagnosticManifestV1(value: unknown): DiagnosticManifestV1 {
-  if (Buffer.byteLength(JSON.stringify(value ?? null), 'utf8') > MANIFEST_MAX_BYTES) return fail('manifest_too_large');
+  if (Buffer.byteLength(JSON.stringify(value ?? null), 'utf8') > MANIFEST_MAX_BYTES)
+    return fail('manifest_too_large');
   const m = dObj<DiagnosticManifestV1>({
     schemaVersion: (v) => (v === 1 ? 1 : fail('schema_version')),
     target: dTarget,
     actorProfileId: dUuid,
     cases: dArr(dCase, 100),
   })(value);
-  if (new Set(m.cases.map((c) => c.caseKey)).size !== m.cases.length) return fail('case_key_duplicate');
+  if (new Set(m.cases.map((c) => c.caseKey)).size !== m.cases.length)
+    return fail('case_key_duplicate');
   const refs = m.cases.flatMap((c) => c.evidenceRefs.map((r) => r.referenceId));
   if (new Set(refs).size !== refs.length) return fail('reference_id_duplicate');
   const distinct = new Set(m.cases.flatMap((c) => [...c.bookingIds, ...c.ticketIds, ...c.itemIds]));
@@ -474,7 +507,10 @@ export type StockEntrySource =
   | { kind: 'invoice'; id: UUID }
   | { kind: 'service'; id: UUID | null; finProductId: UUID | null }
   | { kind: 'purchase'; id: UUID }
-  | { kind: 'manual_reconciliation'; label: 'repair-opening-balance' | 'analyst-reconciliation-2026-08' }
+  | {
+      kind: 'manual_reconciliation';
+      label: 'repair-opening-balance' | 'analyst-reconciliation-2026-08';
+    }
   | { kind: 'none' }
   | { kind: 'unknown'; metadataSha256: Digest };
 
@@ -515,7 +551,10 @@ export function decodeStockEntrySource(
     return UUID_RE.test(id) ? { kind: 'invoice', id } : unknown();
   }
   if (type === 'issue' && source === 'service') {
-    if ((has(m, 'sourceId') && !isUuid(sourceId)) || (has(m, 'finProductId') && !isUuid(m.finProductId)))
+    if (
+      (has(m, 'sourceId') && !isUuid(sourceId)) ||
+      (has(m, 'finProductId') && !isUuid(m.finProductId))
+    )
       return unknown();
     return {
       kind: 'service',
@@ -659,7 +698,11 @@ export type MovementEvidence = {
   postedAt: string;
   sourceRefs: SourceRef[];
 };
-export type GraphNode = { ref: SourceRef; state: 'available' | 'missing_or_unavailable'; rowSha256: Digest | null };
+export type GraphNode = {
+  ref: SourceRef;
+  state: 'available' | 'missing_or_unavailable';
+  rowSha256: Digest | null;
+};
 export type GraphEdge = {
   from: SourceRef;
   to: SourceRef;
@@ -701,7 +744,9 @@ export type WarningEvidence = {
 };
 const dWarning = dObj<WarningEvidence>({
   state: dEnum('none', 'present', 'unavailable'),
-  code: dNullable((v) => (typeof v === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(v) ? v : fail('warning_code'))),
+  code: dNullable((v) =>
+    typeof v === 'string' && /^[a-z][a-z0-9_]{0,63}$/.test(v) ? v : fail('warning_code'),
+  ),
   sourceSha256: dNullable(dDigest),
   draftEntryId: dNullable(dUuid),
   items: dArr(dObj({ itemId: dUuid, requested: dNumStr, available: dNumStr }), 1000),
@@ -715,7 +760,11 @@ const dSourceEntry: Dc<StockEntrySource> = (v) => {
     case 'purchase':
       return dObj({ kind: dEnum(v.kind as 'pos'), id: dUuid })(v) as StockEntrySource;
     case 'service':
-      return dObj({ kind: dEnum<'service'>('service'), id: dNullable(dUuid), finProductId: dNullable(dUuid) })(v);
+      return dObj({
+        kind: dEnum<'service'>('service'),
+        id: dNullable(dUuid),
+        finProductId: dNullable(dUuid),
+      })(v);
     case 'manual_reconciliation':
       return dObj({
         kind: dEnum<'manual_reconciliation'>('manual_reconciliation'),
@@ -734,46 +783,168 @@ const N = dNullable;
 const dTs = dUtc;
 /** Closed SourceValue shapes, one per `kind`. */
 const VALUE_SHAPES: Record<string, Dc<unknown>> = {
-  ticket: dObj({ kind: dEnum<'ticket'>('ticket'), status: S, submittedAt: dTs, voidedAt: N(dTs), currency: S,
-    total: dNumStr, stockEntryId: N(dUuid), warning: dWarning }),
-  sale_line: dObj({ kind: dEnum<'sale_line'>('sale_line'), ticketId: dUuid, lineKind: S, finProductId: N(dUuid),
-    bookingId: N(dUuid), qty: dNumStr, unitPrice: dNumStr, discount: dNumStr, total: dNumStr, lineNo: dInt,
-    planId: N(dUuid), redemptionId: N(dUuid) }),
-  payment: dObj({ kind: dEnum<'payment'>('payment'), ticketId: dUuid, paidAt: dTs, amount: dNumStr, method: S, currency: S }),
-  booking: dObj({ kind: dEnum<'booking'>('booking'), status: S, resourceId: dUuid, startTime: dTs, endTime: dTs,
-    createdAt: dTs, updatedAt: dTs, productId: N(dUuid), eventTypeId: dUuid, groupId: N(dStr(1, 256)),
-    rescheduledFromId: N(dUuid), invoiceId: N(dUuid), packageGrantId: N(dUuid), paymentPlanId: N(dUuid) }),
-  booking_product: dObj({ kind: dEnum<'booking_product'>('booking_product'), bookingId: dUuid, productId: dUuid,
-    qty: dNumStr, createdAt: dTs, updatedAt: dTs }),
-  booking_group: dObj({ kind: dEnum<'booking_group'>('booking_group'), resourceId: dUuid, groupId: dStr(1, 256),
-    memberIds: dArr(dUuid, 1000) }),
-  booking_status: dObj({ kind: dEnum<'booking_status'>('booking_status'), bookingId: dUuid, fromStatus: N(S),
-    toStatus: S, changedBy: N(dUuid), changedAt: dTs }),
+  ticket: dObj({
+    kind: dEnum<'ticket'>('ticket'),
+    status: S,
+    submittedAt: dTs,
+    voidedAt: N(dTs),
+    currency: S,
+    total: dNumStr,
+    stockEntryId: N(dUuid),
+    warning: dWarning,
+  }),
+  sale_line: dObj({
+    kind: dEnum<'sale_line'>('sale_line'),
+    ticketId: dUuid,
+    lineKind: S,
+    finProductId: N(dUuid),
+    bookingId: N(dUuid),
+    qty: dNumStr,
+    unitPrice: dNumStr,
+    discount: dNumStr,
+    total: dNumStr,
+    lineNo: dInt,
+    planId: N(dUuid),
+    redemptionId: N(dUuid),
+  }),
+  payment: dObj({
+    kind: dEnum<'payment'>('payment'),
+    ticketId: dUuid,
+    paidAt: dTs,
+    amount: dNumStr,
+    method: S,
+    currency: S,
+  }),
+  booking: dObj({
+    kind: dEnum<'booking'>('booking'),
+    status: S,
+    resourceId: dUuid,
+    startTime: dTs,
+    endTime: dTs,
+    createdAt: dTs,
+    updatedAt: dTs,
+    productId: N(dUuid),
+    eventTypeId: dUuid,
+    groupId: N(dStr(1, 256)),
+    rescheduledFromId: N(dUuid),
+    invoiceId: N(dUuid),
+    packageGrantId: N(dUuid),
+    paymentPlanId: N(dUuid),
+  }),
+  booking_product: dObj({
+    kind: dEnum<'booking_product'>('booking_product'),
+    bookingId: dUuid,
+    productId: dUuid,
+    qty: dNumStr,
+    createdAt: dTs,
+    updatedAt: dTs,
+  }),
+  booking_group: dObj({
+    kind: dEnum<'booking_group'>('booking_group'),
+    resourceId: dUuid,
+    groupId: dStr(1, 256),
+    memberIds: dArr(dUuid, 1000),
+  }),
+  booking_status: dObj({
+    kind: dEnum<'booking_status'>('booking_status'),
+    bookingId: dUuid,
+    fromStatus: N(S),
+    toStatus: S,
+    changedBy: N(dUuid),
+    changedAt: dTs,
+  }),
   invoice: dObj({ kind: dEnum<'invoice'>('invoice'), providerRef: N(S) }),
-  accrual: dObj({ kind: dEnum<'accrual'>('accrual'), source: S, sourceId: dUuid, finProductId: N(dUuid),
-    itemId: dUuid, warehouseId: dUuid, status: dEnum('open', 'realized', 'released'), qtyConsumption: dNumStr,
-    qty: dNumStr, realizedEntryId: N(dUuid), realizedQty: N(dNumStr), realizedValue: N(dNumStr), createdAt: dTs,
-    updatedAt: dTs, realizedAt: N(dTs), releasedAt: N(dTs) }),
-  stock_entry: dObj({ kind: dEnum<'stock_entry'>('stock_entry'),
-    type: dEnum('receipt', 'issue', 'transfer', 'adjustment'), status: dEnum('draft', 'submitted', 'cancelled'),
-    createdAt: dTs, updatedAt: dTs, postedAt: N(dTs), source: dSourceEntry }),
-  stock_line: dObj({ kind: dEnum<'stock_line'>('stock_line'), entryId: dUuid, itemId: dUuid, qty: dNumStr,
-    uom: N(S), rate: N(dNumStr), fromWarehouseId: N(dUuid), toWarehouseId: N(dUuid), lineNo: dInt }),
-  grant: dObj({ kind: dEnum<'grant'>('grant'), sourceTicketId: dUuid, sourceLineId: dUuid,
-    packageProductId: dUuid, serviceProductId: dUuid, sessionsTotal: dInt, unitValue: dNumStr,
-    expiresAt: N(dStr(10, 10)), status: S, createdAt: dTs, cancelledAt: N(dTs) }),
-  redemption: dObj({ kind: dEnum<'redemption'>('redemption'), grantId: dUuid, bookingId: N(dUuid), ticketId: N(dUuid),
-    ticketLineId: N(dUuid), redeemedAt: dTs, reversedAt: N(dTs) }),
-  correction: dObj({ kind: dEnum<'correction'>('correction'),
-    correctionKind: dEnum('sale_variant', 'sale_stock_repost', 'receipt_replace', 'product_mapping', 'receipt_chain'),
-    sourceType: dEnum('pos_ticket_line', 'stock_receipt', 'fin_product'), sourceId: dUuid,
-    sourceEntryId: N(dUuid), replacementEntryId: N(dUuid), appliedAt: dTs }),
+  accrual: dObj({
+    kind: dEnum<'accrual'>('accrual'),
+    source: S,
+    sourceId: dUuid,
+    finProductId: N(dUuid),
+    itemId: dUuid,
+    warehouseId: dUuid,
+    status: dEnum('open', 'realized', 'released'),
+    qtyConsumption: dNumStr,
+    qty: dNumStr,
+    realizedEntryId: N(dUuid),
+    realizedQty: N(dNumStr),
+    realizedValue: N(dNumStr),
+    createdAt: dTs,
+    updatedAt: dTs,
+    realizedAt: N(dTs),
+    releasedAt: N(dTs),
+  }),
+  stock_entry: dObj({
+    kind: dEnum<'stock_entry'>('stock_entry'),
+    type: dEnum('receipt', 'issue', 'transfer', 'adjustment'),
+    status: dEnum('draft', 'submitted', 'cancelled'),
+    createdAt: dTs,
+    updatedAt: dTs,
+    postedAt: N(dTs),
+    source: dSourceEntry,
+  }),
+  stock_line: dObj({
+    kind: dEnum<'stock_line'>('stock_line'),
+    entryId: dUuid,
+    itemId: dUuid,
+    qty: dNumStr,
+    uom: N(S),
+    rate: N(dNumStr),
+    fromWarehouseId: N(dUuid),
+    toWarehouseId: N(dUuid),
+    lineNo: dInt,
+  }),
+  grant: dObj({
+    kind: dEnum<'grant'>('grant'),
+    sourceTicketId: dUuid,
+    sourceLineId: dUuid,
+    packageProductId: dUuid,
+    serviceProductId: dUuid,
+    sessionsTotal: dInt,
+    unitValue: dNumStr,
+    expiresAt: N(dStr(10, 10)),
+    status: S,
+    createdAt: dTs,
+    cancelledAt: N(dTs),
+  }),
+  redemption: dObj({
+    kind: dEnum<'redemption'>('redemption'),
+    grantId: dUuid,
+    bookingId: N(dUuid),
+    ticketId: N(dUuid),
+    ticketLineId: N(dUuid),
+    redeemedAt: dTs,
+    reversedAt: N(dTs),
+  }),
+  correction: dObj({
+    kind: dEnum<'correction'>('correction'),
+    correctionKind: dEnum(
+      'sale_variant',
+      'sale_stock_repost',
+      'receipt_replace',
+      'product_mapping',
+      'receipt_chain',
+    ),
+    sourceType: dEnum('pos_ticket_line', 'stock_receipt', 'fin_product'),
+    sourceId: dUuid,
+    sourceEntryId: N(dUuid),
+    replacementEntryId: N(dUuid),
+    appliedAt: dTs,
+  }),
 };
 const REF_TO_VALUE_KIND: Record<string, string> = {
-  pos_ticket: 'ticket', pos_ticket_line: 'sale_line', payment: 'payment', booking: 'booking',
-  booking_product: 'booking_product', booking_group: 'booking_group', booking_status: 'booking_status',
-  invoice: 'invoice', accrual: 'accrual', stock_entry: 'stock_entry', stock_line: 'stock_line', grant: 'grant',
-  redemption: 'redemption', correction: 'correction',
+  pos_ticket: 'ticket',
+  pos_ticket_line: 'sale_line',
+  payment: 'payment',
+  booking: 'booking',
+  booking_product: 'booking_product',
+  booking_group: 'booking_group',
+  booking_status: 'booking_status',
+  invoice: 'invoice',
+  accrual: 'accrual',
+  stock_entry: 'stock_entry',
+  stock_line: 'stock_line',
+  grant: 'grant',
+  redemption: 'redemption',
+  correction: 'correction',
 };
 export type SourceValue = Record<string, unknown> & { kind: string };
 export type SourceEvidenceRow =
@@ -783,12 +954,21 @@ const dSourceEvidenceRow: Dc<SourceEvidenceRow> = (v) => {
   if (!isObj(v)) return fail('shape_invalid');
   const ref = dSourceRef(v.ref);
   if (v.state === 'missing_or_unavailable')
-    return dObj({ ref: dSourceRef, state: dEnum<'missing_or_unavailable'>('missing_or_unavailable'),
-      rowSha256: (x) => (x === null ? null : fail('shape_invalid')), value: (x) => (x === null ? null : fail('shape_invalid')) })(v) as SourceEvidenceRow;
+    return dObj({
+      ref: dSourceRef,
+      state: dEnum<'missing_or_unavailable'>('missing_or_unavailable'),
+      rowSha256: (x) => (x === null ? null : fail('shape_invalid')),
+      value: (x) => (x === null ? null : fail('shape_invalid')),
+    })(v) as SourceEvidenceRow;
   const expectKind = REF_TO_VALUE_KIND[ref.kind];
-  if (!expectKind || !isObj(v.value) || v.value.kind !== expectKind || !VALUE_SHAPES[expectKind]) return fail('ref_value_mismatch');
-  return dObj({ ref: dSourceRef, state: dEnum<'available'>('available'), rowSha256: dDigest,
-    value: VALUE_SHAPES[expectKind] as Dc<SourceValue> })(v) as SourceEvidenceRow;
+  if (!expectKind || !isObj(v.value) || v.value.kind !== expectKind || !VALUE_SHAPES[expectKind])
+    return fail('ref_value_mismatch');
+  return dObj({
+    ref: dSourceRef,
+    state: dEnum<'available'>('available'),
+    rowSha256: dDigest,
+    value: VALUE_SHAPES[expectKind] as Dc<SourceValue>,
+  })(v) as SourceEvidenceRow;
 };
 export type TimelineRow = {
   ref: SourceRef;
@@ -796,19 +976,42 @@ export type TimelineRow = {
   at: string | null;
   meaning: 'stored_source_time' | 'current_state_observation' | 'timestamp_unavailable';
 };
-const TIMELINE_FIELDS = ['submitted_at', 'voided_at', 'paid_at', 'start_time', 'end_time', 'created_at', 'updated_at',
-  'changed_at', 'posted_at', 'realized_at', 'released_at', 'cancelled_at', 'redeemed_at', 'reversed_at', 'applied_at',
-  'state_observed'];
+const TIMELINE_FIELDS = [
+  'submitted_at',
+  'voided_at',
+  'paid_at',
+  'start_time',
+  'end_time',
+  'created_at',
+  'updated_at',
+  'changed_at',
+  'posted_at',
+  'realized_at',
+  'released_at',
+  'cancelled_at',
+  'redeemed_at',
+  'reversed_at',
+  'applied_at',
+  'state_observed',
+];
 export type ProjectionEvidenceResult = {
   referenceId: UUID | null;
   componentKey: string;
   state: 'admitted' | 'not_provided' | 'unavailable' | 'conflicting';
   observations: ProjectionObservation[];
-  reason: 'matched_source_capture' | 'projection_unverified' | 'projection_source_changed' | 'projection_identity_unavailable' | 'projection_conflict';
+  reason:
+    | 'matched_source_capture'
+    | 'projection_unverified'
+    | 'projection_source_changed'
+    | 'projection_identity_unavailable'
+    | 'projection_conflict';
 };
 
 const dCoverage = dObj<Coverage>({
-  sourceGraphComplete: dBool, ledgerHistoryComplete: dBool, openingKnown: dBool, fulfillmentKnown: dBool,
+  sourceGraphComplete: dBool,
+  ledgerHistoryComplete: dBool,
+  openingKnown: dBool,
+  fulfillmentKnown: dBool,
   trueUpCoverage: dEnum('not_covered', 'covered', 'unknown'),
 });
 const dClass = dEnum<Classification>(...CLASSIFICATIONS);
@@ -818,7 +1021,11 @@ const dEntryType = dEnum('receipt', 'issue', 'transfer', 'adjustment', 'unavaila
 const dLabel = (id: string) => dObj({ [id]: dUuid, name: dNullable(dStr(0, 1024)) } as never);
 const dCaseRow = dObj<CaseRow>({
   caseKey: dNfc(1, 100),
-  candidateIds: dObj({ bookingIds: dArr(dUuid, 100), ticketIds: dArr(dUuid, 100), itemIds: dArr(dUuid, 100) }),
+  candidateIds: dObj({
+    bookingIds: dArr(dUuid, 100),
+    ticketIds: dArr(dUuid, 100),
+    itemIds: dArr(dUuid, 100),
+  }),
   sources: dArr(dSourceRef),
   identityState: dEnum('matched', 'ambiguous', 'unmatched'),
   classification: dClass,
@@ -826,17 +1033,28 @@ const dCaseRow = dObj<CaseRow>({
   coverage: dCoverage,
   components: dArr(
     dObj<ComponentRow>({
-      componentKey: dStr(1, 400), source: dSourceRef, itemId: dUuid, warehouseId: dUuid,
-      intendedQty: dNullable(dNumStr), stockUom: dNullable(dStr(1, 256)), actualIssuedQty: dNullable(dNumStr),
-      actualValue: dNullable(dNumStr), classification: dClass, reasonCodes: dArr(dReason, 64),
-      evidenceReferenceIds: dArr(dUuid), ledgerIds: dArr(dLedgerId),
+      componentKey: dStr(1, 400),
+      source: dSourceRef,
+      itemId: dUuid,
+      warehouseId: dUuid,
+      intendedQty: dNullable(dNumStr),
+      stockUom: dNullable(dStr(1, 256)),
+      actualIssuedQty: dNullable(dNumStr),
+      actualValue: dNullable(dNumStr),
+      classification: dClass,
+      reasonCodes: dArr(dReason, 64),
+      evidenceReferenceIds: dArr(dUuid),
+      ledgerIds: dArr(dLedgerId),
     }),
   ),
   secondaryFindings: dArr(
     dObj<SecondaryFinding>({
       kind: dEnum('duplicate', 'missing_realization', 'variant_mismatch', 'display_only', 'valid'),
-      componentKey: dStr(1, 400), intendedQty: dNullable(dNumStr), actualQty: dNullable(dNumStr),
-      evidenceRefs: dArr(dUuid), reason: dReason,
+      componentKey: dStr(1, 400),
+      intendedQty: dNullable(dNumStr),
+      actualQty: dNullable(dNumStr),
+      evidenceRefs: dArr(dUuid),
+      reason: dReason,
     }),
   ),
   evidenceReferenceIds: dArr(dUuid),
@@ -852,8 +1070,19 @@ export type ReconciliationReport = {
   target: QualifiedOperatorTarget;
   source: { gitSha: string; deploymentVerified: false };
   observedAt: string;
-  snapshot: null | { id: string; startedAt: string; role: 'app_ledger'; orgId: UUID; profileId: UUID; readOnly: true };
-  scope: { caseKeys: string[]; itemWarehouseKeys: { itemId: UUID; warehouseId: UUID }[]; dateHintsApplied: false };
+  snapshot: null | {
+    id: string;
+    startedAt: string;
+    role: 'app_ledger';
+    orgId: UUID;
+    profileId: UUID;
+    readOnly: true;
+  };
+  scope: {
+    caseKeys: string[];
+    itemWarehouseKeys: { itemId: UUID; warehouseId: UUID }[];
+    dateHintsApplied: false;
+  };
   evidenceCoverage: Coverage;
   cases: CaseRow[];
   ledger: MovementEvidence[];
@@ -880,11 +1109,20 @@ export function decodeReconciliationReport(value: unknown): ReconciliationReport
     orgId: dUuid,
     actorProfileId: dUuid,
     target: dTarget,
-    source: dObj({ gitSha: dSha40, deploymentVerified: (v) => (v === false ? false : fail('shape_invalid')) }),
+    source: dObj({
+      gitSha: dSha40,
+      deploymentVerified: (v) => (v === false ? false : fail('shape_invalid')),
+    }),
     observedAt: dUtc,
     snapshot: dNullable(
-      dObj({ id: dStr(1, 200), startedAt: dUtc, role: dEnum<'app_ledger'>('app_ledger'), orgId: dUuid,
-        profileId: dUuid, readOnly: (v) => (v === true ? true : fail('shape_invalid')) }),
+      dObj({
+        id: dStr(1, 200),
+        startedAt: dUtc,
+        role: dEnum<'app_ledger'>('app_ledger'),
+        orgId: dUuid,
+        profileId: dUuid,
+        readOnly: (v) => (v === true ? true : fail('shape_invalid')),
+      }),
     ),
     scope: dObj({
       caseKeys: dArr(dStr(1, 400), 100),
@@ -895,55 +1133,115 @@ export function decodeReconciliationReport(value: unknown): ReconciliationReport
     cases: dArr(dCaseRow, 100),
     ledger: dArr(
       dObj<MovementEvidence>({
-        ledgerId: dLedgerId, entryId: dUuid, entryState: dEntryState, entryType: dEntryType, itemId: dUuid,
-        warehouseId: dUuid, qtyDelta: dNumStr, valueDelta: dNumStr, qtyAfter: dNumStr, valuationRate: dNumStr,
-        postedAt: dUtc, sourceRefs: dArr(dSourceRef),
+        ledgerId: dLedgerId,
+        entryId: dUuid,
+        entryState: dEntryState,
+        entryType: dEntryType,
+        itemId: dUuid,
+        warehouseId: dUuid,
+        qtyDelta: dNumStr,
+        valueDelta: dNumStr,
+        qtyAfter: dNumStr,
+        valuationRate: dNumStr,
+        postedAt: dUtc,
+        sourceRefs: dArr(dSourceRef),
       }),
       50_000,
     ),
     graph: dObj({
-      nodes: dArr(dObj<GraphNode>({ ref: dSourceRef, state: dEnum('available', 'missing_or_unavailable'),
-        rowSha256: dNullable(dDigest) })),
-      edges: dArr(dObj<GraphEdge>({ from: dSourceRef, to: dSourceRef,
-        relation: dEnum('owns', 'links', 'realizes', 'reverses', 'supersedes', 'recipe', 'covers') })),
+      nodes: dArr(
+        dObj<GraphNode>({
+          ref: dSourceRef,
+          state: dEnum('available', 'missing_or_unavailable'),
+          rowSha256: dNullable(dDigest),
+        }),
+      ),
+      edges: dArr(
+        dObj<GraphEdge>({
+          from: dSourceRef,
+          to: dSourceRef,
+          relation: dEnum(
+            'owns',
+            'links',
+            'realizes',
+            'reverses',
+            'supersedes',
+            'recipe',
+            'covers',
+          ),
+        }),
+      ),
     }),
     sourceEvidence: dArr(dSourceEvidenceRow),
     timeline: dArr(
-      dObj<TimelineRow>({ ref: dSourceRef, field: (v) => (TIMELINE_FIELDS.includes(v as string) ? (v as string) : fail('enum_invalid')),
-        at: dNullable(dUtc), meaning: dEnum('stored_source_time', 'current_state_observation', 'timestamp_unavailable') }),
+      dObj<TimelineRow>({
+        ref: dSourceRef,
+        field: (v) =>
+          TIMELINE_FIELDS.includes(v as string) ? (v as string) : fail('enum_invalid'),
+        at: dNullable(dUtc),
+        meaning: dEnum('stored_source_time', 'current_state_observation', 'timestamp_unavailable'),
+      }),
     ),
     sourceEvidenceSha256: dNullable(dDigest),
     projectionEvidence: dArr(
       dObj<ProjectionEvidenceResult>({
-        referenceId: dNullable(dUuid), componentKey: dStr(1, 400),
+        referenceId: dNullable(dUuid),
+        componentKey: dStr(1, 400),
         state: dEnum('admitted', 'not_provided', 'unavailable', 'conflicting'),
         observations: dArr(dObservation, 5),
-        reason: dEnum('matched_source_capture', 'projection_unverified', 'projection_source_changed',
-          'projection_identity_unavailable', 'projection_conflict'),
+        reason: dEnum(
+          'matched_source_capture',
+          'projection_unverified',
+          'projection_source_changed',
+          'projection_identity_unavailable',
+          'projection_conflict',
+        ),
       }),
     ),
     labels: dObj({
-      items: dArr(dObj({ itemId: dUuid, name: dNullable(dStr(0, 1024)), code: dNullable(dStr(0, 1024)) })),
+      items: dArr(
+        dObj({ itemId: dUuid, name: dNullable(dStr(0, 1024)), code: dNullable(dStr(0, 1024)) }),
+      ),
       products: dArr(dObj({ productId: dUuid, name: dNullable(dStr(0, 1024)) })),
       warehouses: dArr(dObj({ warehouseId: dUuid, name: dNullable(dStr(0, 1024)) })),
     }),
     totals: dArr(
       dObj<KeyTotal>({
-        itemId: dUuid, warehouseId: dUuid, ledgerQtySum: dNumStr, ledgerValueSum: dNumStr,
-        latestLedgerId: dNullable(dLedgerId), latestQty: dNullable(dNumStr), latestRate: dNullable(dNumStr),
-        binExists: dBool, binQty: dNullable(dNumStr), binRate: dNullable(dNumStr), integrity: dEnum('pass', 'fail'),
+        itemId: dUuid,
+        warehouseId: dUuid,
+        ledgerQtySum: dNumStr,
+        ledgerValueSum: dNumStr,
+        latestLedgerId: dNullable(dLedgerId),
+        latestQty: dNullable(dNumStr),
+        latestRate: dNullable(dNumStr),
+        binExists: dBool,
+        binQty: dNullable(dNumStr),
+        binRate: dNullable(dNumStr),
+        integrity: dEnum('pass', 'fail'),
       }),
     ),
     numericChecks: dArr(
       dObj<NumericCheck>({
-        caseKey: dNullable(dStr(1, 400)), itemId: dUuid, warehouseId: dUuid,
-        family: dEnum('quantity', 'value', 'rate'), actual: dNullable(dNumStr), expected: dNullable(dNumStr),
-        normalizedActual: dNullable(dNumStr), normalizedExpected: dNullable(dNumStr), difference: dNullable(dNumStr),
-        tolerance: dNullable(dNumStr), result: dEnum('pass', 'fail', 'unknown'),
+        caseKey: dNullable(dStr(1, 400)),
+        itemId: dUuid,
+        warehouseId: dUuid,
+        family: dEnum('quantity', 'value', 'rate'),
+        actual: dNullable(dNumStr),
+        expected: dNullable(dNumStr),
+        normalizedActual: dNullable(dNumStr),
+        normalizedExpected: dNullable(dNumStr),
+        difference: dNullable(dNumStr),
+        tolerance: dNullable(dNumStr),
+        result: dEnum('pass', 'fail', 'unknown'),
       }),
     ),
-    errors: dArr(dObj<DiagnosticError>({ code: dEnum(...ERROR_CODES), caseKey: dNullable(dStr(1, 400)),
-      ref: dNullable(dSourceRef) })),
+    errors: dArr(
+      dObj<DiagnosticError>({
+        code: dEnum(...ERROR_CODES),
+        caseKey: dNullable(dStr(1, 400)),
+        ref: dNullable(dSourceRef),
+      }),
+    ),
     outcome: dEnum('complete', 'integrity_failed', 'incomplete'),
     complete: dBool,
   })(value);
@@ -960,19 +1258,30 @@ export function assertReportConsistent(r: ReconciliationReport): void {
     if (r.totals.length || r.numericChecks.length) fail('incomplete_has_totals');
     if (r.cases.some((c) => c.repairEligible)) fail('incomplete_repair_eligible');
     const cv = r.evidenceCoverage;
-    if (cv.sourceGraphComplete || cv.ledgerHistoryComplete || cv.openingKnown || cv.fulfillmentKnown) fail('incomplete_coverage');
+    if (
+      cv.sourceGraphComplete ||
+      cv.ledgerHistoryComplete ||
+      cv.openingKnown ||
+      cv.fulfillmentKnown
+    )
+      fail('incomplete_coverage');
     if (r.sourceEvidenceSha256 !== null) fail('incomplete_source_hash');
     if (r.snapshot === null && r.ledger.length) fail('snapshot_required');
   } else {
     if (r.errors.length) fail('complete_has_errors');
     if (r.snapshot === null) fail('snapshot_required');
-    if (r.outcome === 'integrity_failed' && r.cases.some((c) => c.repairEligible)) fail('integrity_repair_eligible');
+    if (r.outcome === 'integrity_failed' && r.cases.some((c) => c.repairEligible))
+      fail('integrity_repair_eligible');
   }
   const ledgerIds = r.ledger.map((m) => m.ledgerId);
   if (new Set(ledgerIds).size !== ledgerIds.length) fail('ledger_duplicate');
-  for (let i = 1; i < ledgerIds.length; i++) if (cmpLedgerId(ledgerIds[i - 1], ledgerIds[i]) >= 0) fail('ledger_order');
+  for (let i = 1; i < ledgerIds.length; i++)
+    if (cmpLedgerId(ledgerIds[i - 1], ledgerIds[i]) >= 0) fail('ledger_order');
   const nodes = new Set(r.graph.nodes.map((n) => refKey(n.ref)));
-  for (const m of r.ledger) for (const s of m.sourceRefs) if (!nodes.has(refKey(s)) && !r.sourceEvidence.some((e) => refKey(e.ref) === refKey(s))) fail('dangling_ref');
+  for (const m of r.ledger)
+    for (const s of m.sourceRefs)
+      if (!nodes.has(refKey(s)) && !r.sourceEvidence.some((e) => refKey(e.ref) === refKey(s)))
+        fail('dangling_ref');
   for (const c of r.cases) {
     if (!c.repairEligible) continue;
     if (c.classification !== 'variant_mismatch') fail('repair_eligible_not_variant');
@@ -1009,7 +1318,10 @@ export type BinRow = { itemId: UUID; warehouseId: UUID; qty: string; rate: strin
 const keyOf = (itemId: string, warehouseId: string) => `${itemId}:${warehouseId}`;
 
 /** Canonical row-ID dedupe: identical repeats collapse; a same-ID row with different content is an integrity failure. */
-export function dedupeLedger(rows: readonly LedgerMovement[]): { rows: LedgerMovement[]; conflicts: string[] } {
+export function dedupeLedger(rows: readonly LedgerMovement[]): {
+  rows: LedgerMovement[];
+  conflicts: string[];
+} {
   const byId = new Map<string, LedgerMovement>();
   const conflicts: string[] = [];
   for (const r of rows) {
@@ -1018,7 +1330,10 @@ export function dedupeLedger(rows: readonly LedgerMovement[]): { rows: LedgerMov
     if (!prev) byId.set(r.ledgerId, r);
     else if (canonicalJson(prev) !== canonicalJson(r)) conflicts.push(r.ledgerId);
   }
-  return { rows: [...byId.values()].sort((a, b) => cmpLedgerId(a.ledgerId, b.ledgerId)), conflicts };
+  return {
+    rows: [...byId.values()].sort((a, b) => cmpLedgerId(a.ledgerId, b.ledgerId)),
+    conflicts,
+  };
 }
 
 /** Full-union comparison of ledger keys and bin keys: detects missing bins, orphan bins, qty and rate differences. */
@@ -1044,35 +1359,73 @@ export function computeKeyTotals(
   const checks: NumericCheck[] = [];
   let integrityFailed = false;
   for (const [k, { itemId, warehouseId }] of [...keys].sort(([, a], [, b]) =>
-    a.itemId !== b.itemId ? cmpStr(a.itemId, b.itemId) : cmpStr(a.warehouseId, b.warehouseId))) {
+    a.itemId !== b.itemId ? cmpStr(a.itemId, b.itemId) : cmpStr(a.warehouseId, b.warehouseId),
+  )) {
     const rows = (byKey.get(k) ?? []).slice().sort((a, b) => cmpLedgerId(a.ledgerId, b.ledgerId));
     const bin = binByKey.get(k);
     const qtySum = sumDec(rows.map((r) => parseDec(r.qtyDelta)));
     const valSum = sumDec(rows.map((r) => parseDec(r.valueDelta)));
     const latest = rows.at(-1) ?? null;
     let ok = true;
-    const push = (family: NumericCheck['family'], actual: string | null, expected: string | null) => {
+    const push = (
+      family: NumericCheck['family'],
+      actual: string | null,
+      expected: string | null,
+    ) => {
       const a = tryParseDec(actual);
       const e = tryParseDec(expected);
       if (!a || !e) {
-        checks.push({ caseKey, itemId, warehouseId, family, actual, expected, normalizedActual: null,
-          normalizedExpected: null, difference: null, tolerance: null, result: 'unknown' });
+        checks.push({
+          caseKey,
+          itemId,
+          warehouseId,
+          family,
+          actual,
+          expected,
+          normalizedActual: null,
+          normalizedExpected: null,
+          difference: null,
+          tolerance: null,
+          result: 'unknown',
+        });
         ok = false;
         return;
       }
       if (family === 'quantity') {
-        const qa = q4(a), qe = q4(e);
+        const qa = q4(a),
+          qe = q4(e);
         const pass = qa === qe;
         if (!pass) ok = false;
-        checks.push({ caseKey, itemId, warehouseId, family, actual, expected, normalizedActual: qa.toString(),
-          normalizedExpected: qe.toString(), difference: (qa - qe).toString(), tolerance: '0', result: pass ? 'pass' : 'fail' });
+        checks.push({
+          caseKey,
+          itemId,
+          warehouseId,
+          family,
+          actual,
+          expected,
+          normalizedActual: qa.toString(),
+          normalizedExpected: qe.toString(),
+          difference: (qa - qe).toString(),
+          tolerance: '0',
+          result: pass ? 'pass' : 'fail',
+        });
         return;
       }
       const t = withinScalarTolerance(a, e);
       if (!t.pass) ok = false;
-      checks.push({ caseKey, itemId, warehouseId, family, actual, expected, normalizedActual: decToString(a),
-        normalizedExpected: decToString(e), difference: decToString(t.difference),
-        tolerance: decToString(t.tolerance), result: t.pass ? 'pass' : 'fail' });
+      checks.push({
+        caseKey,
+        itemId,
+        warehouseId,
+        family,
+        actual,
+        expected,
+        normalizedActual: decToString(a),
+        normalizedExpected: decToString(e),
+        difference: decToString(t.difference),
+        tolerance: decToString(t.tolerance),
+        result: t.pass ? 'pass' : 'fail',
+      });
     };
     // Net signed quantity must equal the terminal ledger quantity (opening history included).
     if (latest) push('quantity', decToString(qtySum), latest.qtyAfter);
@@ -1085,10 +1438,17 @@ export function computeKeyTotals(
     }
     if (!ok) integrityFailed = true;
     totals.push({
-      itemId, warehouseId, ledgerQtySum: decToString(qtySum), ledgerValueSum: decToString(valSum),
-      latestLedgerId: latest?.ledgerId ?? null, latestQty: latest?.qtyAfter ?? null,
-      latestRate: latest?.valuationRate ?? null, binExists: !!bin, binQty: bin?.qty ?? null,
-      binRate: bin?.rate ?? null, integrity: ok ? 'pass' : 'fail',
+      itemId,
+      warehouseId,
+      ledgerQtySum: decToString(qtySum),
+      ledgerValueSum: decToString(valSum),
+      latestLedgerId: latest?.ledgerId ?? null,
+      latestQty: latest?.qtyAfter ?? null,
+      latestRate: latest?.valuationRate ?? null,
+      binExists: !!bin,
+      binQty: bin?.qty ?? null,
+      binRate: bin?.rate ?? null,
+      integrity: ok ? 'pass' : 'fail',
     });
   }
   return { totals, checks, integrityFailed };
@@ -1149,7 +1509,10 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
   const unresolved = (r: Reason) => reasons.add(r);
   if (input.noStableIds) unresolved('no_stable_ids');
   else if (input.identityState === 'ambiguous') unresolved('identity_ambiguous');
-  else if (input.identityState === 'unmatched' || input.identityUnresolved) unresolved('identity_unresolved');
+  else if (input.identityState === 'unmatched' || input.identityUnresolved)
+    unresolved('identity_unresolved');
+  // No asserted component = no historical intent: never a vacuous `valid`.
+  if (input.components.length === 0 && !input.noStableIds) unresolved('expected_effect_unknown');
   const cv = input.coverage;
   if (!cv.sourceGraphComplete || !cv.ledgerHistoryComplete) unresolved('incomplete_read');
   if (!cv.openingKnown) unresolved('evidence_unverified');
@@ -1171,7 +1534,9 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
 
   // Affected keys: every component key plus keys reached by pairing below; an `unknown` source on one blocks it.
   const unknownOnKey = new Set(
-    input.ledger.filter((m) => m.source.kind === 'unknown').map((m) => keyOf(m.itemId, m.warehouseId)),
+    input.ledger
+      .filter((m) => m.source.kind === 'unknown')
+      .map((m) => keyOf(m.itemId, m.warehouseId)),
   );
 
   // Group components by attribution.
@@ -1185,11 +1550,25 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
     // Per-component prerequisites (order 1).
     let blocked = false;
     for (const { c, k } of comp0) {
-      if (c.intendedStockQty === null || c.fulfilled === null || c.stockUom === null) { addCompReason(k, 'expected_effect_unknown'); blocked = true; }
-      else if (tryParseDec(c.intendedStockQty) === null) { addCompReason(k, 'numeric_unsupported'); blocked = true; }
-      if (c.trueUpCoverage === 'unknown') { addCompReason(k, 'true_up_coverage_unknown'); blocked = true; }
-      if (c.sharedUnallocated) { addCompReason(k, 'source_ownership_ambiguous'); blocked = true; }
-      if (unknownOnKey.has(keyOf(c.itemId, c.warehouseId))) { addCompReason(k, 'stock_source_unknown'); blocked = true; }
+      if (c.intendedStockQty === null || c.fulfilled === null || c.stockUom === null) {
+        addCompReason(k, 'expected_effect_unknown');
+        blocked = true;
+      } else if (tryParseDec(c.intendedStockQty) === null) {
+        addCompReason(k, 'numeric_unsupported');
+        blocked = true;
+      }
+      if (c.trueUpCoverage === 'unknown') {
+        addCompReason(k, 'true_up_coverage_unknown');
+        blocked = true;
+      }
+      if (c.sharedUnallocated) {
+        addCompReason(k, 'source_ownership_ambiguous');
+        blocked = true;
+      }
+      if (unknownOnKey.has(keyOf(c.itemId, c.warehouseId))) {
+        addCompReason(k, 'stock_source_unknown');
+        blocked = true;
+      }
     }
     const rowsOf = (m: LedgerMovement) => attrOf(m.source) === g && m.entryType === 'issue';
     const attributed = input.ledger.filter(rowsOf);
@@ -1217,7 +1596,11 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
     const allKeys = new Set([...E.keys(), ...A.keys()]);
     const flagged = new Set<string>(); // keys with a proven discrepancy in this group
     if (!blocked) {
-      for (const k of allKeys) if ((A.get(k) ?? 0n) < 0n) { for (const { k: ck } of comp0) addCompReason(ck, 'evidence_conflict'); blocked = true; }
+      for (const k of allKeys)
+        if ((A.get(k) ?? 0n) < 0n) {
+          for (const { k: ck } of comp0) addCompReason(ck, 'evidence_conflict');
+          blocked = true;
+        }
     }
     if (!blocked) {
       // Pairing: an expected key with no issue + a unique unexpected key with exact qty, warehouse and UOM.
@@ -1228,9 +1611,14 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
         const ec = eInfo.get(ek)!;
         if (!ec.every((c) => c.intentSource === 'owner_assertion')) continue;
         const wh = ek.split(':')[1];
-        const cands = unexpected.filter((uk) => uk.split(':')[1] === wh && A.get(uk) === E.get(ek)
-          && input.itemUoms[uk.split(':')[0]] != null
-          && input.itemUoms[uk.split(':')[0]] === (ec[0].stockUom ?? input.itemUoms[ek.split(':')[0]]));
+        const cands = unexpected.filter(
+          (uk) =>
+            uk.split(':')[1] === wh &&
+            A.get(uk) === E.get(ek) &&
+            input.itemUoms[uk.split(':')[0]] != null &&
+            input.itemUoms[uk.split(':')[0]] ===
+              (ec[0].stockUom ?? input.itemUoms[ek.split(':')[0]]),
+        );
         if (cands.length === 1) paired.set(ek, cands[0]);
       }
       const pairedActual = new Set(paired.values());
@@ -1239,25 +1627,58 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
       for (const [ek, uk] of paired) {
         kinds.add('variant_mismatch');
         pairedVariantComponents += eInfo.get(ek)!.length;
-        flagged.add(ek); done.add(ek); done.add(uk);
-        for (const c of eInfo.get(ek)!) secondary.push({ kind: 'variant_mismatch', componentKey: componentKeyOf(c),
-          intendedQty: fixed4(E.get(ek)!), actualQty: fixed4(A.get(uk)!), evidenceRefs: [...c.evidenceReferenceIds].sort(cmpStr), reason: 'wrong_variant_issue' });
+        flagged.add(ek);
+        done.add(ek);
+        done.add(uk);
+        for (const c of eInfo.get(ek)!)
+          secondary.push({
+            kind: 'variant_mismatch',
+            componentKey: componentKeyOf(c),
+            intendedQty: fixed4(E.get(ek)!),
+            actualQty: fixed4(A.get(uk)!),
+            evidenceRefs: [...c.evidenceReferenceIds].sort(cmpStr),
+            reason: 'wrong_variant_issue',
+          });
       }
       for (const k of allKeys) {
         if (done.has(k)) continue;
-        const e = E.get(k) ?? 0n, a = A.get(k) ?? 0n;
-        if (!E.has(k)) { for (const { k: ck } of comp0) addCompReason(ck, 'unsupported_shape'); blocked = true; continue; }
+        const e = E.get(k) ?? 0n,
+          a = A.get(k) ?? 0n;
+        if (!E.has(k)) {
+          for (const { k: ck } of comp0) addCompReason(ck, 'unsupported_shape');
+          blocked = true;
+          continue;
+        }
         if (a > e) {
           const live = [...(liveEntries.get(k) ?? new Map()).values()].filter((v) => v > 0n).length;
           if (live >= 2) {
-            kinds.add('duplicate'); flagged.add(k);
-            for (const c of eInfo.get(k)!) secondary.push({ kind: 'duplicate', componentKey: componentKeyOf(c),
-              intendedQty: fixed4(e), actualQty: fixed4(a), evidenceRefs: [...c.evidenceReferenceIds].sort(cmpStr), reason: 'duplicate_net_issue' });
-          } else { for (const c of eInfo.get(k)!) addCompReason(componentKeyOf(c), 'unsupported_shape'); blocked = true; }
+            kinds.add('duplicate');
+            flagged.add(k);
+            for (const c of eInfo.get(k)!)
+              secondary.push({
+                kind: 'duplicate',
+                componentKey: componentKeyOf(c),
+                intendedQty: fixed4(e),
+                actualQty: fixed4(a),
+                evidenceRefs: [...c.evidenceReferenceIds].sort(cmpStr),
+                reason: 'duplicate_net_issue',
+              });
+          } else {
+            for (const c of eInfo.get(k)!) addCompReason(componentKeyOf(c), 'unsupported_shape');
+            blocked = true;
+          }
         } else if (a < e) {
-          kinds.add('missing_realization'); flagged.add(k);
-          for (const c of eInfo.get(k)!) secondary.push({ kind: 'missing_realization', componentKey: componentKeyOf(c),
-            intendedQty: fixed4(e), actualQty: fixed4(a), evidenceRefs: [...c.evidenceReferenceIds].sort(cmpStr), reason: 'missing_net_issue' });
+          kinds.add('missing_realization');
+          flagged.add(k);
+          for (const c of eInfo.get(k)!)
+            secondary.push({
+              kind: 'missing_realization',
+              componentKey: componentKeyOf(c),
+              intendedQty: fixed4(e),
+              actualQty: fixed4(a),
+              evidenceRefs: [...c.evidenceReferenceIds].sort(cmpStr),
+              reason: 'missing_net_issue',
+            });
         }
       }
       if (flagged.size && comps.some((c) => c.trueUpCoverage === 'covered')) {
@@ -1270,12 +1691,24 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
       const mine = attributed.filter((m) => keyOf(m.itemId, m.warehouseId) === key);
       const known = !blocked || !compReasons.get(k)?.has('expected_effect_unknown');
       rows.set(k, {
-        componentKey: k, source: { kind: c.source.kind, id: c.source.id }, itemId: c.itemId, warehouseId: c.warehouseId,
-        intendedQty: c.intendedStockQty !== null && tryParseDec(c.intendedStockQty) ? fixed4(q4(parseDec(c.intendedStockQty))) : null,
+        componentKey: k,
+        source: { kind: c.source.kind, id: c.source.id },
+        itemId: c.itemId,
+        warehouseId: c.warehouseId,
+        intendedQty:
+          c.intendedStockQty !== null && tryParseDec(c.intendedStockQty)
+            ? fixed4(q4(parseDec(c.intendedStockQty)))
+            : null,
         stockUom: c.stockUom,
-        actualIssuedQty: known ? decToString(decNeg(sumDec(mine.map((m) => parseDec(m.qtyDelta))))) : null,
-        actualValue: known ? decToString(decNeg(sumDec(mine.map((m) => parseDec(m.valueDelta))))) : null,
-        classification: 'unresolved', reasonCodes: [], evidenceReferenceIds: [...c.evidenceReferenceIds].sort(cmpStr),
+        actualIssuedQty: known
+          ? decToString(decNeg(sumDec(mine.map((m) => parseDec(m.qtyDelta)))))
+          : null,
+        actualValue: known
+          ? decToString(decNeg(sumDec(mine.map((m) => parseDec(m.valueDelta)))))
+          : null,
+        classification: 'unresolved',
+        reasonCodes: [],
+        evidenceReferenceIds: [...c.evidenceReferenceIds].sort(cmpStr),
         ledgerIds: mine.map((m) => m.ledgerId).sort(cmpLedgerId),
       });
     }
@@ -1284,9 +1717,16 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
   const projReason = new Set<Reason>();
   for (const p of input.projections) {
     if (p.state === 'conflicting') projReason.add('projection_conflict');
-    else if (p.state === 'unavailable') projReason.add(p.reason === 'projection_source_changed' ? 'projection_source_changed' : 'projection_identity_unavailable');
+    else if (p.state === 'unavailable')
+      projReason.add(
+        p.reason === 'projection_source_changed'
+          ? 'projection_source_changed'
+          : 'projection_identity_unavailable',
+      );
     else if (p.state === 'admitted') {
-      const shown = p.observations.filter((o) => o.presence === 'shown' && o.qty !== null).map((o) => q4OfString(o.qty!));
+      const shown = p.observations
+        .filter((o) => o.presence === 'shown' && o.qty !== null)
+        .map((o) => q4OfString(o.qty!));
       const omitted = p.observations.some((o) => o.presence === 'omitted');
       if (omitted || new Set(shown).size > 1) displayFinding = true;
     }
@@ -1307,33 +1747,74 @@ export function classifyCase(input: ClassifierInput): ClassifierOutput {
     reasonCodes = ['mixed_discrepancies'];
   } else if (proven.length === 1) {
     classification = proven[0];
-    reasonCodes = [classification === 'duplicate' ? 'duplicate_net_issue' : classification === 'missing_realization' ? 'missing_net_issue' : 'wrong_variant_issue'];
+    reasonCodes = [
+      classification === 'duplicate'
+        ? 'duplicate_net_issue'
+        : classification === 'missing_realization'
+          ? 'missing_net_issue'
+          : 'wrong_variant_issue',
+    ];
   } else if (displayFinding) {
     classification = 'display_only';
     reasonCodes = ['display_multiplicity_only'];
   } else {
     classification = 'valid';
     reasonCodes = ['stock_matches_intent'];
-    if (input.projections.every((p) => p.state === 'not_provided') || input.projections.length === 0) reasonCodes.push('projection_unverified');
+    if (
+      input.projections.every((p) => p.state === 'not_provided') ||
+      input.projections.length === 0
+    )
+      reasonCodes.push('projection_unverified');
   }
   // Unresolved-but-proven discrepancies stay visible through secondaryFindings (already collected).
   if (displayFinding && classification !== 'display_only') {
-    for (const c of input.components) secondary.push({ kind: 'display_only', componentKey: componentKeyOf(c), intendedQty: null, actualQty: null, evidenceRefs: [], reason: 'display_multiplicity_only' });
+    for (const c of input.components)
+      secondary.push({
+        kind: 'display_only',
+        componentKey: componentKeyOf(c),
+        intendedQty: null,
+        actualQty: null,
+        evidenceRefs: [],
+        reason: 'display_multiplicity_only',
+      });
   }
   const only = input.components.length === 1 ? input.components[0] : null;
   let repairEligible = false;
-  if (classification === 'variant_mismatch' && only && pairedVariantComponents === 1 && only.attribution.kind === 'pos') {
+  if (
+    classification === 'variant_mismatch' &&
+    only &&
+    pairedVariantComponents === 1 &&
+    only.attribution.kind === 'pos'
+  ) {
     const ownerConfirmed = only.intentSource === 'owner_assertion';
-    if (!input.mappingQualified) reasonCodes = sortReasons([...reasonCodes, 'mapping_not_qualified']);
+    if (!input.mappingQualified)
+      reasonCodes = sortReasons([...reasonCodes, 'mapping_not_qualified']);
     if (!ownerConfirmed) reasonCodes = sortReasons([...reasonCodes, 'owner_confirmation_missing']);
-    repairEligible = input.mappingQualified && ownerConfirmed && only.trueUpCoverage === 'not_covered' && secondary.length === 1;
+    repairEligible =
+      input.mappingQualified &&
+      ownerConfirmed &&
+      only.trueUpCoverage === 'not_covered' &&
+      secondary.length === 1;
   }
-  const out = [...rows.values()].sort((a, b) => cmpStr(a.itemId, b.itemId) || cmpStr(a.warehouseId, b.warehouseId) || cmpStr(a.componentKey, b.componentKey));
+  const out = [...rows.values()].sort(
+    (a, b) =>
+      cmpStr(a.itemId, b.itemId) ||
+      cmpStr(a.warehouseId, b.warehouseId) ||
+      cmpStr(a.componentKey, b.componentKey),
+  );
   for (const r of out) {
     const rr = compReasons.get(r.componentKey);
-    r.classification = classification === 'unresolved' || (rr && rr.size) ? 'unresolved' : classification;
-    r.reasonCodes = rr && rr.size ? sortReasons(rr) : classification === 'unresolved' ? reasonCodes : reasonCodes;
+    r.classification =
+      classification === 'unresolved' || (rr && rr.size) ? 'unresolved' : classification;
+    r.reasonCodes =
+      rr && rr.size ? sortReasons(rr) : classification === 'unresolved' ? reasonCodes : reasonCodes;
   }
   secondary.sort((a, b) => cmpStr(a.componentKey, b.componentKey) || cmpStr(a.kind, b.kind));
-  return { classification, reasonCodes, components: out, secondaryFindings: secondary, repairEligible };
+  return {
+    classification,
+    reasonCodes,
+    components: out,
+    secondaryFindings: secondary,
+    repairEligible,
+  };
 }

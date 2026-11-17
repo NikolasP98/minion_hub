@@ -198,6 +198,7 @@
     "lint:tokens": "node scripts/token-integrity.mjs",
     "lint:tokens:ci": "node scripts/token-integrity.mjs",
     "test": "vitest run && bun run test:architecture-recon",
+    "faces:stock:diagnose": "bun --no-env-file scripts/faces-stock-reconcile-2026-11.ts",
     "test:architecture-recon": "bun test ./scripts/architecture-recon-index.bun.ts",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
