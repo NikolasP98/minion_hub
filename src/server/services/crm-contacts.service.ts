@@ -1,5 +1,5 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import { maskPii, sanitizeContactFields } from '$lib/pii';
@@ -2041,6 +2041,40 @@ export async function deleteTag(ctx: CoreCtx, tagId: string) {
   await bustCrmList(ctx.tenantId);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Lock live contacts of this org (and the optional owner predicate) in id order.
+ * Malformed, missing, foreign, deleted or inaccessible IDs all give the same 404
+ * so existence never leaks; the foreign key on crm_contact_tags is not org-aware.
+ */
+export async function lockContactsInOrg(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  ids: string[],
+  ownerPredicate: SQL | undefined,
+): Promise<string[]> {
+  if (ids.some((id) => !UUID_RE.test(id))) throw error(404, 'Contact not found');
+  const wanted = [...new Set(ids.map((id) => id.toLowerCase()))].sort();
+  const found = await tx
+    .select({ id: crmContacts.id })
+    .from(crmContacts)
+    .where(
+      and(
+        eq(crmContacts.orgId, ctx.tenantId),
+        inArray(crmContacts.id, wanted),
+        isNull(crmContacts.deletedAt),
+        ownerPredicate,
+      ),
+    )
+    .orderBy(crmContacts.id)
+    .for('update');
+  const got = found.map((r) => r.id.toLowerCase());
+  if (got.length !== wanted.length || got.some((id, i) => id !== wanted[i]))
+    throw error(404, 'Contact not found');
+  return got;
+}
+
 export async function applyTag(
   ctx: CoreCtx,
   contactId: string,
@@ -2048,17 +2082,18 @@ export async function applyTag(
   appliedBy: string | null,
 ) {
   await withOrgCore(ctx, async (tx) => {
+    await lockContactsInOrg(tx, ctx, [contactId], undefined);
     await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     // Only customer-scoped tags may land on a contact (stock/catalog/event tags never).
     const [t] = await tx
       .select({ scope: crmTags.scope, kind: crmTags.kind })
       .from(crmTags)
       .where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId)));
-    if (!t || t.scope !== 'crm') throw new Error('tag is not a customer tag of this org');
+    if (!t || t.scope !== 'crm') throw error(400, 'tag is not a customer tag of this org');
     // A rule-based tag (auto / ai) is DERIVED from the score at read time and
     // never stored as a contact_tags row — hand-applying one would only ever
     // contradict its rule.
-    if (t.kind !== 'manual') throw new Error('tag is rule-based and cannot be applied by hand');
+    if (t.kind !== 'manual') throw error(400, 'tag is rule-based and cannot be applied by hand');
     await tx
       .insert(crmContactTags)
       .values({ orgId: ctx.tenantId, contactId, tagId, appliedBy })
@@ -2069,6 +2104,7 @@ export async function applyTag(
 
 export async function removeTag(ctx: CoreCtx, contactId: string, tagId: string) {
   await withOrgCore(ctx, async (tx) => {
+    await lockContactsInOrg(tx, ctx, [contactId], undefined);
     await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     await tx
       .delete(crmContactTags)

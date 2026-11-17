@@ -627,3 +627,34 @@ describe('simulated domain mutations execute under selected action and own-recor
     ).toBe(1);
   });
 });
+
+describe('tag apply/remove contact admission for unscoped actors', () => {
+  const missing = '20000000-0000-4000-8000-0000000000ff';
+  const tagRows = async () => (await rows('crm_contact_tags')).length;
+  it('rejects foreign-org, missing, deleted and malformed contacts with 404 and zero changes', async () => {
+    await client.query('update crm_contacts set deleted_at=now() where id=$1', [foreign]);
+    for (const id of [crossOrg, missing, foreign, 'not-a-uuid']) {
+      await expect(applyTag(ctx, id, tag, actorId)).rejects.toMatchObject({
+        status: 404,
+        body: { message: 'Contact not found' },
+      });
+      await expect(removeTag(ctx, id, tag)).rejects.toMatchObject({ status: 404 });
+    }
+    expect(await tagRows()).toBe(0);
+  });
+  it('applies and removes on a live contact; rule-based and non-customer tags give 400', async () => {
+    await applyTag(ctx, own, tag, actorId);
+    expect(await tagRows()).toBe(1);
+    await removeTag(ctx, own, tag);
+    expect(await tagRows()).toBe(0);
+    const auto = '40000000-0000-4000-8000-000000000002',
+      event = '40000000-0000-4000-8000-000000000003';
+    await client.query(
+      `insert into crm_tags(id,org_id,name,kind,scope) values($1,$3,'Auto','auto','crm'),($2,$3,'MODELO','manual','event')`,
+      [auto, event, org],
+    );
+    for (const t of [auto, event])
+      await expect(applyTag(ctx, own, t, actorId)).rejects.toMatchObject({ status: 400 });
+    expect(await tagRows()).toBe(0);
+  });
+});
