@@ -28,6 +28,8 @@ export type NativePostgresAdmission = {
   file: string;
   minimumAssertions: number;
   requiredBehaviors: readonly string[];
+  /** When true the file must report exactly requiredBehaviors.length assertions (no extra passing ones). Omitted/false keeps the minimum-count semantics. */
+  exactAssertions?: boolean;
 };
 
 /**
@@ -1154,6 +1156,21 @@ export const NATIVE_POSTGRES_MANIFEST = {
       minimumAssertions: 1,
       requiredBehaviors: [
         'tag link service SQL behavior scopes reads and replaces only manual links, including concurrent replacements',
+      ],
+    },
+    {
+      file: 'src/server/services/pos/accounts/audit.sql.integration.test.ts',
+      minimumAssertions: 8,
+      exactAssertions: true,
+      requiredBehaviors: [
+        'faces receivables audit against PostgreSQL uses one read only snapshot and rejects mutations under app_ledger',
+        'faces receivables audit against PostgreSQL preserves canonical controls beyond 500 clients and exposes legacy residuals',
+        'faces receivables audit against PostgreSQL resolves explicit and provider invoice links without unsupported repair candidates',
+        'faces receivables audit against PostgreSQL matches locking authority composition without locks or stale cache',
+        'faces receivables audit against PostgreSQL isolates concurrent pages and foreign organization rows',
+        'faces receivables audit against PostgreSQL admits only approved matched evidence and preserves uncertainty',
+        'faces receivables audit against PostgreSQL applies exact accounting timezone cohort and approved scope boundaries',
+        'faces receivables audit against PostgreSQL produces stable proposal hashes and UUIDs across fresh runs',
       ],
     },
   ],
