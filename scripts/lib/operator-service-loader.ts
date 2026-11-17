@@ -24,6 +24,7 @@ export interface OperatorServiceModules {
   orgCore: typeof import('../../src/server/db/with-org-core');
   pgClient: typeof import('../../src/server/db/pg-client');
   pgPool: typeof import('../../src/server/db/pg-pool');
+  receiptCorrection: typeof import('../../src/server/services/faces-receipt-correction.service');
 }
 
 export interface OperatorServiceLoader {
@@ -46,6 +47,7 @@ const REGISTRY: Readonly<Record<keyof OperatorServiceModules, string>> = Object.
   orgCore: 'src/server/db/with-org-core.ts',
   pgClient: 'src/server/db/pg-client.ts',
   pgPool: 'src/server/db/pg-pool.ts',
+  receiptCorrection: 'src/server/services/faces-receipt-correction.service.ts',
 });
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');

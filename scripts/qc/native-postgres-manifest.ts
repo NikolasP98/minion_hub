@@ -1193,6 +1193,23 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'stock corrections against PostgreSQL rejects deleting principals and inactive organizations before correction admission',
       ],
     },
+    {
+      file: 'src/server/services/faces-receipt-correction.sql.integration.test.ts',
+      minimumAssertions: 10,
+      exactAssertions: true,
+      requiredBehaviors: [
+        'FACES receipt correction against PostgreSQL original 89 unit fixture replays opening value and all consumer costs within the declared oracle bounds',
+        'FACES receipt correction against PostgreSQL fresh supported chains of up to 128 issues are admitted but a 129th issue and every unsupported shape refuse',
+        'FACES receipt correction against PostgreSQL reverse and replay commit receipt entries ledger bins consumer links and audit atomically',
+        'FACES receipt correction against PostgreSQL each intermediate fault rolls back and a repeated operation creates no new effects',
+        'FACES receipt correction against PostgreSQL same key changed intent and competing source operation cannot correct twice',
+        'FACES receipt correction against PostgreSQL issue first rejects stale correction and correction first makes a waiting issue use corrected stock',
+        'FACES receipt correction against PostgreSQL period fiscal and permission changes serialize and refuse without financial mutation',
+        'FACES receipt correction against PostgreSQL current correction month carries signed COGS while both finance queries preserve prior month totals',
+        'FACES receipt correction against PostgreSQL unknown commit recovers the immutable receipt and approved inverse compensation preserves history',
+        'FACES receipt correction against PostgreSQL read only preview status and foreign denied principals cannot bypass shared authority or append only grants',
+      ],
+    },
   ],
 } as const satisfies Record<NativePostgresLane, readonly NativePostgresAdmission[]>;
 
