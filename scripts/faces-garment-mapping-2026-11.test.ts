@@ -206,11 +206,8 @@ describe('mapping CLI refusals never load the application graph', () => {
 
 describe('mappingExitCode', () => {
   it('maps an operation_conflict to 5 (uncertain, run --status), not 4', () => {
-    expect([
-      'forbidden',
-      'incomplete',
-      'operation_conflict',
-      'stale',
-    ].map(mappingExitCode)).toEqual([2, 3, 5, 4]);
+    expect(['forbidden', 'incomplete', 'operation_conflict', 'stale'].map(mappingExitCode)).toEqual(
+      [2, 3, 5, 4],
+    );
   });
 });
