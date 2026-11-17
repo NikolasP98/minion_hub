@@ -57,6 +57,9 @@
   import PartyCreateForm from '$lib/components/crm/PartyCreateForm.svelte';
   import {
     applyContactMerge,
+    isCrmMergeSensitiveFieldsRestricted,
+    MERGE_CONFIRMABLE,
+    type MergePhase,
     type MergeField,
     type MergeResolution,
   } from '$lib/components/crm/crm-merge';
@@ -110,6 +113,7 @@
   }
   $effect(() => {
     clearPageCache();
+    reqSeq += 1; // a loader rerun supersedes any fresh read in flight
     rows = data.contacts;
     total = data.total;
     knownTotalFingerprint = crmCountScopeFingerprint(toApiParams(buildParams(lastQuery)));
@@ -760,6 +764,7 @@
       acts.push({
         label: m.crm_bulk_merge_action(),
         onSelect: (_ids, rows) => {
+          if (mergeLatched) return;
           mergeRows = rows;
           bulkErr = null;
           mergeOpen = true;
@@ -778,17 +783,94 @@
     return acts;
   });
 
+  // TODO(handoff): no mounted test for this host yet (DataTable virtualization in happy-dom hid the merge dialog); see proposal.
+  // Merge outcome latch (specs/129 client-compatibility.md). The latch is released only by a
+  // fresh uncached read; a failed read after an acknowledged merge never offers a POST retry.
+  let mergePhase = $state<MergePhase>('idle');
+  let refreshOrigin: 'unknown' | 'acknowledged' = 'unknown';
+  const mergeLatched = $derived(
+    mergePhase === 'unknown' ||
+      mergePhase === 'refreshing' ||
+      mergePhase === 'refresh_failed' ||
+      mergePhase === 'acknowledged_refresh_failed',
+  );
+  const mergeNotice = $derived(
+    mergePhase === 'unknown' || mergePhase === 'selection_required'
+      ? m.crm_merge_outcome_unknown()
+      : mergePhase === 'refresh_failed'
+        ? m.crm_merge_refresh_failed()
+        : mergePhase === 'acknowledged_refresh_failed'
+          ? m.crm_merge_applied_refresh_failed()
+          : null,
+  );
+  $effect(() => {
+    if (!mergeOpen && mergePhase === 'definite_refusal') mergePhase = 'idle';
+  });
+
+  /** Page 1 of the current filters, uncached; rows are replaced only when the read is accepted. */
+  async function reloadFreshRows(): Promise<boolean> {
+    const seq = ++reqSeq;
+    clearPageCache();
+    try {
+      const params = toApiParams(buildParams({ ...lastQuery, page: 1 }));
+      params.delete('includeTotal');
+      const fingerprint = crmCountScopeFingerprint(params);
+      params.set('fresh', '1');
+      const res = await fetch(`/api/crm/contacts?${params}`, {
+        cache: 'no-store',
+        headers: { accept: 'application/json' },
+      });
+      if (!res.ok || res.redirected) return false;
+      const body = (await res.json()) as Partial<PageBody> & { fresh?: boolean };
+      if (seq !== reqSeq) return false;
+      if (body.fresh !== true || !Array.isArray(body.contacts) || typeof body.total !== 'number')
+        return false;
+      rows = body.contacts;
+      total = body.total;
+      knownTotalFingerprint = fingerprint;
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async function reconcileMerge() {
+    if (
+      mergePhase !== 'unknown' &&
+      mergePhase !== 'refresh_failed' &&
+      mergePhase !== 'acknowledged_refresh_failed'
+    )
+      return;
+    refreshOrigin = mergePhase === 'acknowledged_refresh_failed' ? 'acknowledged' : 'unknown';
+    mergePhase = 'refreshing';
+    const ok = await reloadFreshRows();
+    if (refreshOrigin === 'acknowledged') mergePhase = ok ? 'idle' : 'acknowledged_refresh_failed';
+    else mergePhase = ok ? 'selection_required' : 'refresh_failed';
+  }
   async function runMerge(res: MergeResolution) {
+    if (!MERGE_CONFIRMABLE.has(mergePhase)) return;
     if (!res.survivorId || res.loserIds.length === 0) return;
+    mergePhase = 'submitting';
     bulkBusy = true;
     bulkErr = null;
     try {
       await applyContactMerge(res.survivorId, res.loserIds, res.resolved);
       selected = new Set();
       mergeOpen = false;
-      await invalidate('crm:contacts');
-    } catch {
-      bulkErr = m.crm_bulk_failed();
+      refreshOrigin = 'acknowledged';
+      mergePhase = 'refreshing';
+      const ok = await reloadFreshRows();
+      mergePhase = ok ? 'idle' : 'acknowledged_refresh_failed';
+    } catch (e) {
+      if (isCrmMergeSensitiveFieldsRestricted(e)) {
+        mergePhase = 'definite_refusal';
+        bulkErr = m.crm_merge_sensitive_fields_restricted();
+      } else {
+        // The merge may have committed: drop the selection and require a fresh read.
+        mergePhase = 'unknown';
+        selected = new Set();
+        mergeRows = [];
+        mergeOpen = false;
+      }
     } finally {
       bulkBusy = false;
     }
@@ -872,6 +954,21 @@
   <!-- Score band and temperature are PAGE filters (not column filters), so they
        ride in the core chip bar through `chips` instead of a hand-rolled row.
        Passed conditionally: the bar is chrome, and an empty one would show. -->
+  {#if mergeNotice}
+    <div class="flex items-center gap-2 px-4 py-2" role="status">
+      <p class="t-caption">{mergeNotice}</p>
+      {#if mergeLatched}
+        <Button
+          variant="outline"
+          size="sm"
+          onclick={reconcileMerge}
+          disabled={mergePhase === 'refreshing'}
+        >
+          {m.crm_merge_refresh_contacts()}
+        </Button>
+      {/if}
+    </div>
+  {/if}
   {#if readState}
     <CollectionState
       state={readState}
@@ -1100,6 +1197,9 @@
   fields={mergeFields}
   busy={bulkBusy}
   error={bulkErr}
+  confirmBlocked={mergeLatched}
+  reconciling={mergePhase === 'refreshing'}
+  onReconcile={reconcileMerge}
   onConfirm={runMerge}
 />
 

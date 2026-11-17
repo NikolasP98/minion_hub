@@ -7542,5 +7542,11 @@
   "pos_rering_err_stock": "The sale was voided, but its stock was not returned. Check the movement in Stock before charging again.",
   "pos_rering_err_no_party": "This sale has no client, so it cannot leave a credit. Choose cash or no refund.",
   "pos_rering_err_package": "A package sold in this sale was already used in an appointment. Cancel that appointment first and try again.",
-  "pos_rering_err_already_void": "This sale was already void. Charge it again in Sell."
+  "pos_rering_err_already_void": "This sale was already void. Charge it again in Sell.",
+  "crm_merge_sensitive_fields_restricted": "This merge needs access to sensitive profile fields.",
+  "crm_merge_outcome_unknown": "The merge result is unconfirmed. Refresh before selecting contacts again.",
+  "crm_merge_applied_refresh_failed": "The merge completed. Refresh to load the latest contacts.",
+  "crm_merge_refresh_failed": "Refresh failed. Merging remains blocked.",
+  "crm_merge_refresh_contacts": "Refresh contacts",
+  "crm_sensitive_fields_read_only": "Only roles with access to sensitive fields can edit this value."
 }

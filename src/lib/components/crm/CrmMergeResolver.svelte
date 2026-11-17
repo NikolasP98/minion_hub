@@ -19,6 +19,9 @@
     fields = [],
     busy = false,
     error = null,
+    confirmBlocked = false,
+    reconciling = false,
+    onReconcile,
     onConfirm,
   }: {
     open?: boolean;
@@ -26,6 +29,10 @@
     fields?: MergeField[];
     busy?: boolean;
     error?: string | null;
+    /** The host latched an uncertain merge outcome: no POST until it refreshes. */
+    confirmBlocked?: boolean;
+    reconciling?: boolean;
+    onReconcile?: () => void;
     onConfirm: (resolution: MergeResolution) => void;
   } = $props();
 
@@ -114,7 +121,7 @@
   const canMerge = $derived(includedList.length >= 2 && !!anchorId);
 
   function confirm() {
-    if (!canMerge) return;
+    if (!canMerge || busy || confirmBlocked) return;
     const survivorId = anchorId;
     const loserIds = includedList.filter((c) => c.id !== survivorId).map((c) => c.id);
     const resolved: Record<string, string> = {};
@@ -294,11 +301,16 @@
           <Button variant="outline" size="sm" onclick={() => (open = false)}
             >{m.common_cancel()}</Button
           >
+          {#if confirmBlocked && onReconcile}
+            <Button variant="outline" size="sm" onclick={onReconcile} disabled={reconciling}>
+              {m.crm_merge_refresh_contacts()}
+            </Button>
+          {/if}
           <Button
             variant="primary"
             size="sm"
             onclick={confirm}
-            disabled={busy || !canMerge}
+            disabled={busy || confirmBlocked || !canMerge}
             loading={busy}
           >
             <GitMerge size={iconSizes.sm} />

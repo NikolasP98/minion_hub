@@ -12,11 +12,13 @@ vi.mock('$server/services/rbac.service', () => ({
 
 const mockRankContactsPage = vi.fn();
 const mockCreateContact = vi.fn();
+const mockRankFresh = vi.fn();
 const mockListTags = vi.fn(async () => [] as unknown[]);
 const mockLoadCustomPropertyBundle = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
   ROSTER_CAP: 50_000,
   rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
+  rankContactsPage: (...a: unknown[]) => mockRankFresh(...a),
   rankContactsPageCached: (...a: unknown[]) => mockRankContactsPage(...a),
   listTags: () => mockListTags(),
   createContact: (...a: unknown[]) => mockCreateContact(...a),
@@ -263,4 +265,40 @@ describe('POST /api/crm/contacts (manual Instagram keys)', () => {
     await post({ canWriteSensitiveFields: true, options: { canWriteSensitiveFields: true } });
     expect(mockCreateContact.mock.calls[0][2]).toEqual({ canWriteSensitiveFields: false });
   });
+});
+
+describe('GET /api/crm/contacts?fresh=1', () => {
+  it('reads uncached with the same filters, marks the body and forbids caching', async () => {
+    mockOwnerFilter.mockResolvedValue('p1' as never);
+    mockShouldMask.mockResolvedValue(true);
+    mockRankFresh.mockResolvedValue({
+      rows: [row('a')],
+      total: 1,
+      hasMore: false,
+      financeEnabled: false,
+    });
+    const res = await callGET('?fresh=1&limit=10&offset=5&search=ana');
+    expect(mockRankContactsPage).not.toHaveBeenCalled();
+    expect(mockRankFresh.mock.calls[0][1]).toMatchObject({
+      limit: 10,
+      offset: 5,
+      search: 'ana',
+      ownerId: 'p1',
+      maskSensitive: true,
+    });
+    expect((await res.json()).fresh).toBe(true);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+  });
+  it('rejects fresh with fields=id', async () => {
+    await expect(callGET('?fresh=1&fields=id')).rejects.toMatchObject({ status: 400 });
+  });
+  it.each(['', '?fresh=0', '?fresh=true'])(
+    'a normal request (%s) stays cached with no fresh key',
+    async (qs) => {
+      const body = await (await callGET(qs)).json();
+      expect(mockRankFresh).not.toHaveBeenCalled();
+      expect(mockRankContactsPage).toHaveBeenCalled();
+      expect('fresh' in body).toBe(false);
+    },
+  );
 });

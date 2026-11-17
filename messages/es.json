@@ -7542,5 +7542,11 @@
   "pos_rering_err_stock": "La venta se anuló, pero su stock no se devolvió. Revisa el movimiento en Inventario antes de volver a cobrar.",
   "pos_rering_err_no_party": "Esta venta no tiene cliente, así que no puede quedar saldo a favor. Elige efectivo o sin devolución.",
   "pos_rering_err_package": "Un paquete vendido en esta venta ya se usó en una cita. Cancela esa cita primero y vuelve a intentar.",
-  "pos_rering_err_already_void": "Esta venta ya estaba anulada. Cóbrala de nuevo en Vender."
+  "pos_rering_err_already_void": "Esta venta ya estaba anulada. Cóbrala de nuevo en Vender.",
+  "crm_merge_sensitive_fields_restricted": "Esta combinación requiere acceso a campos sensibles del perfil.",
+  "crm_merge_outcome_unknown": "El resultado de la combinación no está confirmado. Actualiza antes de volver a seleccionar contactos.",
+  "crm_merge_applied_refresh_failed": "La combinación se completó. Actualiza para cargar los contactos recientes.",
+  "crm_merge_refresh_failed": "No se pudo actualizar. La combinación sigue bloqueada.",
+  "crm_merge_refresh_contacts": "Actualizar contactos",
+  "crm_sensitive_fields_read_only": "Solo los roles con acceso a campos sensibles pueden editar este valor."
 }

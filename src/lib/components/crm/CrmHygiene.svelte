@@ -32,6 +32,10 @@
   import { hasFeature } from '$lib/access/premium';
   import {
     applyContactMerge,
+    fetchFreshMergeGroups,
+    isCrmMergeSensitiveFieldsRestricted,
+    MERGE_CONFIRMABLE,
+    type MergePhase,
     type MergeField,
     type MergeResolution,
   } from '$lib/components/crm/crm-merge';
@@ -274,7 +278,45 @@
     return fields;
   });
 
+  // Merge outcome latch (specs/129 client-compatibility.md): an unconfirmed outcome blocks
+  // every new POST until fresh groups are read; Hygiene never takes the acknowledged path.
+  let mergePhase = $state<MergePhase>('idle');
+  let readSeq = 0;
+  // A read that resolves after unmount (account switch) must be ignored.
+  $effect(() => () => void readSeq++);
+  $effect(() => {
+    if (!mergeOpen && mergePhase === 'definite_refusal') mergePhase = 'idle';
+  });
+  const mergeLatched = $derived(
+    mergePhase === 'unknown' || mergePhase === 'refreshing' || mergePhase === 'refresh_failed',
+  );
+  const mergeNotice = $derived(
+    mergePhase === 'definite_refusal'
+      ? m.crm_merge_sensitive_fields_restricted()
+      : mergePhase === 'unknown' || mergePhase === 'selection_required'
+        ? m.crm_merge_outcome_unknown()
+        : mergePhase === 'refresh_failed'
+          ? m.crm_merge_refresh_failed()
+          : null,
+  );
+  async function reconcileMerge() {
+    if (mergePhase !== 'unknown' && mergePhase !== 'refresh_failed') return;
+    mergePhase = 'refreshing';
+    const seq = ++readSeq;
+    try {
+      const fresh = await fetchFreshMergeGroups<DupGroup>();
+      if (seq !== readSeq) return;
+      groupRows = fresh.map((g) => ({ ...g, done: false }));
+      pendingGroup = null;
+      mergeOpen = false;
+      mergePhase = 'selection_required';
+    } catch {
+      if (seq === readSeq) mergePhase = 'refresh_failed';
+    }
+  }
+
   function openMerge(g: DupGroup) {
+    if (mergeLatched) return;
     pendingGroup = g;
     mergeErr = null;
     mergeOpen = true;
@@ -282,19 +324,30 @@
 
   async function runMerge(res: MergeResolution) {
     const g = pendingGroup;
+    if (!MERGE_CONFIRMABLE.has(mergePhase)) return;
     if (!g || !res.survivorId || res.loserIds.length === 0) return;
+    mergePhase = 'submitting';
     merging = g.key;
     mergeErr = null;
     try {
       await applyContactMerge(res.survivorId, res.loserIds, res.resolved);
+      mergePhase = 'idle';
       mergeOpen = false;
       pendingGroup = null;
       // Mark done in place (green, disabled) instead of invalidating — the
       // list never jumps and the page stays usable after each merge. The
       // merged group won't return on the next full reload.
       groupRows = groupRows.map((gr) => (gr.key === g.key ? { ...gr, done: true } : gr));
-    } catch {
-      mergeErr = m.crm_bulk_failed();
+    } catch (e) {
+      if (isCrmMergeSensitiveFieldsRestricted(e)) {
+        mergePhase = 'definite_refusal';
+        mergeErr = m.crm_merge_sensitive_fields_restricted();
+      } else {
+        // The merge may have committed: drop the selection and require a fresh read.
+        mergePhase = 'unknown';
+        pendingGroup = null;
+        mergeOpen = false;
+      }
     } finally {
       merging = null;
     }
@@ -577,6 +630,21 @@
         <p class="t-caption py-3">{m.crm_no_duplicates()}</p>
       {:else}
         <p class="t-caption mb-2">{m.crm_duplicates_hint()}</p>
+        {#if mergeNotice && mergePhase !== 'definite_refusal'}
+          <div class="flex items-center gap-2 mb-2" role="status">
+            <p class="t-caption">{mergeNotice}</p>
+            {#if mergeLatched}
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={reconcileMerge}
+                disabled={mergePhase === 'refreshing'}
+              >
+                {m.crm_merge_refresh_contacts()}
+              </Button>
+            {/if}
+          </div>
+        {/if}
         <div class="flex flex-col gap-3">
           {#each groupRows as g (g.key)}
             {@const weak = g.confidence < 0.4}
@@ -598,7 +666,7 @@
                     size="sm"
                     class="ml-auto"
                     onclick={() => openMerge(g)}
-                    disabled={merging === g.key}
+                    disabled={merging === g.key || mergeLatched}
                   >
                     <GitMerge size={iconSizes.sm} />
                     {merging === g.key ? m.crm_merging() : m.crm_merge()}
@@ -646,6 +714,9 @@
   fields={mergeFields}
   busy={merging !== null}
   error={mergeErr}
+  confirmBlocked={mergeLatched}
+  reconciling={mergePhase === 'refreshing'}
+  onReconcile={reconcileMerge}
   onConfirm={runMerge}
 />
 

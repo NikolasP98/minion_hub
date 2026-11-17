@@ -5,6 +5,7 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
+  rankContactsPage,
   rankContactsPageCached,
   createContact,
   listTags,
@@ -72,6 +73,10 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     maskSensitive,
   };
 
+  // `fresh=1`: uncached read the merge UI uses to reconcile rows after a merge.
+  const fresh = q.get('fresh') === '1';
+  if (fresh && q.get('fields') === 'id') throw error(400, 'fresh reads do not support fields=id');
+
   // Lean id-only variant: same filters, no pagination, no PII, no decoration.
   if (q.get('fields') === 'id') {
     const { rows, total } = await timing.measure('crm_rank', () =>
@@ -90,7 +95,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   }
 
   const [ranked, tags] = await Promise.all([
-    timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
+    timing.measure('crm_rank', () =>
+      fresh ? rankContactsPage(ctx, filters) : rankContactsPageCached(ctx, filters),
+    ),
     timing.measure('crm_tags', () => listTags(ctx, 'crm')),
   ]);
   const { rows, total, hasMore, financeEnabled } = ranked;
@@ -109,8 +116,20 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     withAutoTags.map((contact) => contact.contact_id),
   );
   return json(
-    { contacts: withAutoTags, total, hasMore, financeEnabled, customProperties },
-    { headers: { 'Server-Timing': timing.headerValue() } },
+    {
+      contacts: withAutoTags,
+      total,
+      hasMore,
+      financeEnabled,
+      customProperties,
+      ...(fresh ? { fresh: true } : {}),
+    },
+    {
+      headers: {
+        'Server-Timing': timing.headerValue(),
+        ...(fresh ? { 'Cache-Control': 'private, no-store' } : {}),
+      },
+    },
   );
 };
 
