@@ -2,13 +2,18 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   assertInterval,
+  buildProposal,
+  canonicalIntentJson,
+  proposalHashOf,
+  proposalIdOf,
+  sortProposals,
   classifyBooking,
   classifyLine,
   ControlAccumulator,
   intervalContained,
   isRealDate,
 } from './audit.logic';
-import type { BookingFacts, ClosureFacts, GlobalFacts, LineFacts } from './audit.types';
+import type { BookingFacts, ClosureFacts, GlobalFacts, LineFacts, LinkIntent } from './audit.types';
 
 describe('audit dates and intervals', () => {
   it.each([
@@ -272,5 +277,142 @@ describe('classifyLine (ordered table L1-L4, vectors V13-V15)', () => {
     expect(classifyLine(line({ closure: B, identity: 'conflict' })).reasonCodes).toEqual([
       'identity_conflict',
     ]);
+  });
+});
+
+const intent = (over: Partial<LinkIntent> = {}): LinkIntent => ({
+  schemaVersion: 1,
+  orgId: '11111111-1111-4111-8111-111111111111',
+  sourceGitSha: 'c'.repeat(40),
+  pair: {
+    ticketLineId: 'aaaaaaaa-0000-4000-8000-000000000001',
+    bookingMemberId: 'bbbbbbbb-0000-4000-8000-000000000001',
+  },
+  before: {
+    ticket: {
+      id: 't',
+      status: 'submitted',
+      submittedAt: '2026-05-10T15:00:00.000Z',
+      currency: 'PEN',
+      total: '10000',
+      invoiceProviderRef: null,
+    },
+    line: {
+      id: 'l',
+      ticketId: 't',
+      bookingId: null,
+      productId: 'p',
+      quantity: '1.0000',
+      total: '10000',
+      planId: null,
+      redemptionId: null,
+    },
+    booking: {
+      id: 'b',
+      updatedAt: '2026-05-10T15:00:00.000Z',
+      status: 'accepted',
+      productId: 'p',
+      startTime: '2026-05-10T15:00:00.000Z',
+      invoiceId: null,
+      grantId: null,
+      planId: null,
+    },
+    identityKey: 'party:x',
+    sourceFingerprint: 'f'.repeat(64),
+  },
+  evidence: {
+    assertionIds: ['2', '1', '1'],
+    documentHashes: ['b', 'a'],
+    assertionsHash: 'h'.repeat(64),
+  },
+  change: { field: 'pos_ticket_lines.booking_id', from: null, to: 'b' },
+  effects: {
+    paidUnscheduledDelta: -1,
+    unbilledBookingDelta: -1,
+    paymentMinorDelta: '0',
+    stockQuantityDelta: '0',
+    lifecycleChanges: [],
+    wallet: { before: [], after: [], ledgerRowsDelta: 0 },
+    accountDisplay: {
+      before: {
+        pendingScheduling: 1,
+        pendingInvoice: 1,
+        logicalRowPresent: true,
+        posCurrency: 'PEN',
+        displayBalanceMinor: '0',
+      },
+      after: {
+        pendingScheduling: 0,
+        pendingInvoice: 0,
+        logicalRowPresent: false,
+        posCurrency: 'PEN',
+        displayBalanceMinor: '0',
+      },
+      visibleCappedRow: null,
+      visibilityReason: 'not_predicted_limit_or_sort',
+    },
+  },
+  accountControlSha256: 'a'.repeat(64),
+  blockers: [],
+  ...over,
+});
+
+describe('proposal identity', () => {
+  it('sorts keys recursively and dedupes/sorts set-like evidence arrays', () => {
+    const json = canonicalIntentJson(intent());
+    expect(json).not.toMatch(/\s/);
+    expect(json.indexOf('"accountControlSha256"')).toBeLessThan(json.indexOf('"blockers"'));
+    expect(json).toContain('"assertionIds":["1","2"]');
+    expect(json).toContain('"documentHashes":["a","b"]');
+  });
+  it('two fresh runs with different run metadata give equal bytes, hash and UUID', () => {
+    const a = buildProposal(intent(), { runId: 'r1', observedAt: '2026-11-17T00:00:00.000Z' }, [
+      '/p/z',
+      '/p/a',
+    ]);
+    const b = buildProposal(intent(), { runId: 'r2', observedAt: '2027-01-01T00:00:00.000Z' });
+    expect(a.proposalHash).toBe(b.proposalHash);
+    expect(a.proposalId).toBe(b.proposalId);
+    expect(a.proposalId).toBe(proposalIdOf(a.proposalHash));
+    expect(a.status).toBe('pending_owner_approval');
+    expect(a.evidenceFileRefs).toEqual(['/p/a', '/p/z']);
+  });
+  it('a changed business fact or evidence changes the identity; reordered evidence does not', () => {
+    const base = proposalHashOf(intent());
+    expect(
+      proposalHashOf(
+        intent({
+          evidence: {
+            assertionIds: ['1', '2'],
+            documentHashes: ['a', 'b'],
+            assertionsHash: 'h'.repeat(64),
+          },
+        }),
+      ),
+    ).toBe(base);
+    expect(proposalHashOf(intent({ accountControlSha256: 'b'.repeat(64) }))).not.toBe(base);
+    expect(
+      proposalHashOf(
+        intent({
+          evidence: {
+            assertionIds: ['1'],
+            documentHashes: ['a', 'b'],
+            assertionsHash: 'h'.repeat(64),
+          },
+        }),
+      ),
+    ).not.toBe(base);
+  });
+  it('sorts by (line, member, hash) and refuses a UUID collision with a different hash', () => {
+    const p1 = buildProposal(intent({ pair: { ticketLineId: 'b', bookingMemberId: 'x' } }), {
+      runId: 'r',
+      observedAt: 'o',
+    });
+    const p2 = buildProposal(intent({ pair: { ticketLineId: 'a', bookingMemberId: 'x' } }), {
+      runId: 'r',
+      observedAt: 'o',
+    });
+    expect(sortProposals([p1, p2]).map((p) => p.intent.pair.ticketLineId)).toEqual(['a', 'b']);
+    expect(() => sortProposals([p1, { ...p1, proposalHash: 'different' }])).toThrow(/collision/);
   });
 });

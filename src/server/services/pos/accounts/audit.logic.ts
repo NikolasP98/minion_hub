@@ -1,12 +1,16 @@
 import { createHash } from 'node:crypto';
-import type { AuditControl, AuditInterval } from './audit.types';
+import { uuidv5 } from '../../../utils/uuid-v5';
 import type {
+  AuditControl,
+  AuditInterval,
   BookingFacts,
   Classification,
-  LineFacts,
   GlobalFacts,
+  LineFacts,
+  LinkIntent,
   NextAction,
   PrimaryClassification,
+  RepairProposal,
 } from './audit.types';
 
 const SAMPLE = 100;
@@ -230,4 +234,81 @@ export function classifyLine(facts: LineFacts): Classification {
     'payment_settlement_unverified',
   ];
   return result('unresolved', 'review', missing, missing);
+}
+
+// ---- Stable approval identity (T020) ------------------------------------------------------------
+
+/** Fixed audit namespace (contracts/evidence-and-proposals.md). */
+export const AUDIT_PROPOSAL_NAMESPACE = 'd0c65690-658b-5b7e-b470-b6beb074168f';
+
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, v]) => [k, sortedKeys(v)]),
+    );
+  }
+  if (typeof value === 'number' && !Number.isFinite(value))
+    throw new Error('non-finite number in intent');
+  return value;
+}
+
+/** Canonical UTF-8 JSON of an intent: set-like evidence arrays sorted and deduped, keys sorted, no whitespace. */
+export function canonicalIntentJson(intent: LinkIntent): string {
+  const normalized: LinkIntent = {
+    ...intent,
+    evidence: {
+      ...intent.evidence,
+      assertionIds: [...new Set(intent.evidence.assertionIds)].sort(),
+      documentHashes: [...new Set(intent.evidence.documentHashes)].sort(),
+    },
+  };
+  return JSON.stringify(sortedKeys(normalized));
+}
+
+export const proposalHashOf = (intent: LinkIntent) =>
+  createHash('sha256').update(canonicalIntentJson(intent), 'utf8').digest('hex');
+export const proposalIdOf = (proposalHash: string) =>
+  uuidv5(proposalHash, AUDIT_PROPOSAL_NAMESPACE);
+
+/** Run metadata wraps, never enters, the hashed intent. */
+export function buildProposal(
+  intent: LinkIntent,
+  run: { runId: string; observedAt: string },
+  evidenceFileRefs: readonly string[] = [],
+): RepairProposal {
+  const proposalHash = proposalHashOf(intent);
+  return {
+    proposalId: proposalIdOf(proposalHash),
+    runId: run.runId,
+    observedAt: run.observedAt,
+    proposalHash,
+    status: 'pending_owner_approval',
+    intent,
+    evidenceFileRefs: [...evidenceFileRefs].sort(),
+  };
+}
+
+/** Sort `(ticketLineId, bookingMemberId, proposalHash)`; the same UUID with a different hash is a fatal integrity conflict. */
+export function sortProposals(proposals: readonly RepairProposal[]): RepairProposal[] {
+  const byId = new Map<string, string>();
+  for (const p of proposals) {
+    const seen = byId.get(p.proposalId);
+    if (seen !== undefined && seen !== p.proposalHash)
+      throw new Error('proposal id collision with a different hash');
+    byId.set(p.proposalId, p.proposalHash);
+  }
+  const key = (p: RepairProposal) => [
+    p.intent.pair.ticketLineId,
+    p.intent.pair.bookingMemberId,
+    p.proposalHash,
+  ];
+  return [...proposals].sort((a, b) => {
+    const [ka, kb] = [key(a), key(b)];
+    for (let i = 0; i < 3; i += 1) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+    return 0;
+  });
 }

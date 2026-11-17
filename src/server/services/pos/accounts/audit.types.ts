@@ -166,3 +166,85 @@ export interface LineFacts extends GlobalFacts {
   /** Stored line total is exactly 0, parent is a submitted one-line service ticket with total 0 and a proven-empty no-money closure. */
   zeroValueNoMoney: boolean;
 }
+
+// ---- Proposals (T019/T020): immutable intent, hashed; envelope fields never enter the hash ------
+export interface AuditCurrencyBalanceMinor {
+  currency: string;
+  balanceMinor: string;
+}
+export interface AccountControlValue {
+  pendingScheduling: number;
+  pendingInvoice: number;
+  logicalRowPresent: boolean;
+  posCurrency: string;
+  displayBalanceMinor: string;
+}
+export interface LinkIntent {
+  schemaVersion: 1;
+  orgId: string;
+  sourceGitSha: string;
+  pair: { ticketLineId: string; bookingMemberId: string };
+  before: {
+    ticket: {
+      id: string;
+      status: string;
+      submittedAt: string;
+      currency: string;
+      total: string;
+      invoiceProviderRef: string | null;
+    };
+    line: {
+      id: string;
+      ticketId: string;
+      bookingId: string | null;
+      productId: string | null;
+      quantity: string;
+      total: string;
+      planId: string | null;
+      redemptionId: string | null;
+    };
+    booking: {
+      id: string;
+      updatedAt: string;
+      status: string;
+      productId: string | null;
+      startTime: string;
+      invoiceId: string | null;
+      grantId: string | null;
+      planId: string | null;
+    };
+    identityKey: string;
+    sourceFingerprint: string;
+  };
+  evidence: { assertionIds: string[]; documentHashes: string[]; assertionsHash: string };
+  change: { field: 'pos_ticket_lines.booking_id'; from: null; to: string };
+  effects: {
+    paidUnscheduledDelta: -1;
+    unbilledBookingDelta: -1 | 0;
+    paymentMinorDelta: '0';
+    stockQuantityDelta: '0';
+    lifecycleChanges: [];
+    wallet: {
+      before: AuditCurrencyBalanceMinor[];
+      after: AuditCurrencyBalanceMinor[];
+      ledgerRowsDelta: 0;
+    };
+    accountDisplay: {
+      before: AccountControlValue;
+      after: AccountControlValue;
+      visibleCappedRow: null;
+      visibilityReason: 'not_predicted_limit_or_sort';
+    };
+  };
+  accountControlSha256: string;
+  blockers: [];
+}
+export interface RepairProposal {
+  proposalId: string;
+  runId: string;
+  observedAt: string;
+  proposalHash: string;
+  status: 'pending_owner_approval';
+  intent: LinkIntent;
+  evidenceFileRefs: string[];
+}
