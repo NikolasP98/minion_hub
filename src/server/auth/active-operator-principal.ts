@@ -141,7 +141,11 @@ async function callBridge(
     return validateOperatorAuthorityRows(row?.authority, orgId, profileId);
   } catch (error) {
     if (error instanceof OperatorAuthorityError) throw error;
-    const message = error instanceof Error ? error.message : '';
+    // drizzle wraps driver errors; the SQL exception text lives on the cause chain.
+    let message = '';
+    for (let e: unknown = error, i = 0; e instanceof Error && i < 4; e = e.cause, i += 1) {
+      message += ` ${e.message}`;
+    }
     const code = [...KNOWN].find((k) => message.includes(k));
     throw new OperatorAuthorityError(
       (code as OperatorAuthorityFailure) ?? 'operator_authority_unavailable',

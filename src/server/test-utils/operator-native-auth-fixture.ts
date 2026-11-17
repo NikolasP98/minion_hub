@@ -30,6 +30,7 @@ const SENTINEL_ROLES = [
   'supabase_auth_admin',
   'dashboard_user',
   'app_assistant_ro',
+  'brain_vector_worker',
 ] as const;
 
 async function one(owner: FixtureOwner, query: string) {
