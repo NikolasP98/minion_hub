@@ -29,6 +29,7 @@
     dispatchSellChargeHandoff,
   } from '$lib/components/pos/sell-charge-handoff';
   import VoidRefundChoice, { type RefundChoice } from '$lib/components/pos/VoidRefundChoice.svelte';
+  import CorrectionFlow from '$lib/components/stock/CorrectionFlow.svelte';
   import { voidRefusalKey } from '$lib/components/scheduling/calendar-context-menu';
 
   type PageData = Granted<LoadedPageData['pos']>;
@@ -179,40 +180,22 @@
     swapTo = swapChoices[0]?.productId ?? '';
     offerRering = swapChoices.length === 0;
   }
-  async function saveSwap() {
-    if (!swapping?.finProductId || !swapTo || swapBusy) return;
-    const lineId = swapping.id;
-    swapBusy = true;
-    swapErr = null;
-    try {
-      const res = await fetch(`/api/pos/tickets/${t.id}/lines/${lineId}/swap`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ productId: swapTo, expectedProductId: swapping.finProductId }),
-      });
-      // The reply belongs to a dialog the user already left.
-      const current = () => swapping?.id === lineId;
-      if (res.ok) {
-        if (current()) swapping = null;
-        await invalidate('pos:ticket');
-        return;
-      }
-      const body = (await res.json().catch(() => ({}))) as { code?: string };
-      if (!current()) return;
-      if (STALE.has(body.code ?? '')) {
-        // Show the sale as it is now, with the choices for its current product.
-        await invalidate('pos:ticket');
-        const fresh = data.lines.find((l) => l.id === lineId);
-        if (canSwap && fresh?.kind === 'product' && fresh.finProductId) await openSwap(fresh);
-        else swapping = null;
-        swapErr = m.pos_swap_err_changed();
-        return;
-      }
-      swapErr = SWAP_ERR[body.code ?? '']?.() ?? m.pos_swap_err_generic();
-      offerRering = RERING.has(body.code ?? '');
-    } finally {
-      swapBusy = false;
-    }
+  /** The previewed swap was refused: a changed sale reloads on its current line; a swap that cannot be made offers the till. */
+  async function swapRefused(code: string) {
+    const lineId = swapping?.id;
+    offerRering = RERING.has(code);
+    if (!STALE.has(code) || !lineId) return;
+    // Show the sale as it is now, with the choices for its current product.
+    await invalidate('pos:ticket');
+    const fresh = data.lines.find((l) => l.id === lineId);
+    if (canSwap && fresh?.kind === 'product' && fresh.finProductId) await openSwap(fresh);
+    else swapping = null;
+    swapErr = m.pos_swap_err_changed();
+  }
+  async function swapApplied(source: 'post' | 'recovered') {
+    // A recovered outcome keeps the dialog open so the applied notice can be dismissed.
+    if (source === 'post') swapping = null;
+    await invalidate('pos:ticket');
   }
   const stockWarning = $derived(t.stockWarning as object | null);
 
@@ -711,6 +694,31 @@
           options={swapChoices.map((s) => ({ value: s.productId, label: s.name }))}
         />
         <p class="t-caption">{m.pos_swap_note()}</p>
+        {#if swapping.finProductId && swapTo}
+          <CorrectionFlow
+            scope={{
+              orgId: page.data.activeOrgId ?? '',
+              profileId: page.data.user?.supabaseId ?? '',
+              sourceType: 'pos_ticket_line',
+              sourceId: swapping.id,
+            }}
+            previewUrl={`/api/pos/tickets/${t.id}/lines/${swapping.id}/swap/preview`}
+            applyUrl={`/api/pos/tickets/${t.id}/lines/${swapping.id}/swap`}
+            previewBody={(reason) => ({
+              productId: swapTo,
+              expectedProductId: swapping?.finProductId,
+              reason,
+            })}
+            applyBody={(a) => ({
+              productId: swapTo,
+              expectedProductId: swapping?.finProductId,
+              ...a,
+            })}
+            refusal={(code) => (STALE.has(code) ? m.pos_swap_err_changed() : SWAP_ERR[code]?.())}
+            onrefused={swapRefused}
+            onapplied={swapApplied}
+          />
+        {/if}
         {#if canRering && canAct('pos', 'manage')}
           <!-- The right product may have another price: the list above cannot offer it. -->
           <Button
@@ -757,12 +765,8 @@
         }}>{m.pos_rering_action()}</Button
       >
     {:else}
-      <Button
-        type="button"
-        variant="primary"
-        loading={swapBusy}
-        disabled={swapBusy || !swapTo}
-        onclick={saveSwap}>{m.pos_swap_save()}</Button
+      <Button type="button" variant="outline" onclick={() => (swapping = null)}
+        >{m.common_close()}</Button
       >
     {/if}
   {/snippet}
