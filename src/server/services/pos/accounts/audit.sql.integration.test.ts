@@ -1026,6 +1026,11 @@ describe('faces receivables audit against PostgreSQL', () => {
     expect(split.controls.unbilledBookings.complementCount).toBe(500 + 2 - 1);
     expect(split.controls.unbilledBookings.count).toBe(N_CLIENTS + 2 - 1);
     expect(narrow.subjects.every((x) => x.inCohort)).toBe(true);
+    // U-minus-C residuals are streamed (never dropped) but their subjects are not exported.
+    expect(split.residualCounts).toEqual({ badge_not_list: 1, list_not_badge: 1 });
+    expect(narrow.residuals).toHaveLength(2);
+    expect(narrow.residuals.every((r) => r.inCohort === false)).toBe(true);
+    expect(narrow.subjects.some((x) => narrow.residuals.some((r) => r.id === x.id))).toBe(false);
     // Refusals before any inventory: widening, timezone mismatch, equal and impossible dates.
     const approved = { after: '2026-05-01', before: '2026-06-01' };
     for (const bad of [
