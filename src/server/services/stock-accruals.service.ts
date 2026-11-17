@@ -891,13 +891,15 @@ async function assertRecoveryPreviewInTx(
   input: RealizeInput,
 ): Promise<void> {
   const want = input.recovery!;
-  // Fresh authority after both gates (the org authority lock is held, so a concurrent role or module
+  // Fresh authority after both gates, through F7's guarded-write authority bridge (the org authority lock is held, so a concurrent role or module
   // change cannot slip past): the host's own edit right, plus stock view and manage.
   if (!want.platformAdmin) {
-    const { resolveFreshCapabilitiesInTransaction } = await import('./rbac.service');
+    const { resolveFreshOperatorCapabilitiesForWriteInTransaction } =
+      await import('./rbac.service');
     const profileId = ctx.profileId;
     const caps = profileId
-      ? (await resolveFreshCapabilitiesInTransaction(tx, ctx.tenantId, profileId)).capabilities
+      ? (await resolveFreshOperatorCapabilitiesForWriteInTransaction(tx, ctx.tenantId, profileId))
+          .capabilities
       : null;
     const hostModule = want.host === 'pos' ? 'pos' : 'scheduling';
     if (

@@ -16,7 +16,7 @@ import {
 
 const caps = vi.hoisted(() => ({ granted: new Set<string>(), fresh: vi.fn() }));
 vi.mock('./rbac.service', () => ({
-  resolveFreshCapabilitiesInTransaction: (...a: unknown[]) => caps.fresh(...a),
+  resolveFreshOperatorCapabilitiesForWriteInTransaction: (...a: unknown[]) => caps.fresh(...a),
 }));
 
 beforeEach(() => {
