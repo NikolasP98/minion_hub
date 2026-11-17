@@ -1,7 +1,7 @@
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { isDenied, type DatasetDenied } from '$lib/permissions';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { listBookings } from '$server/services/scheduling-bookings.service';
+import { listBookings, visitsOfBookings } from '$server/services/scheduling-bookings.service';
 import { categoryColorsForProducts } from '$server/services/finance-products.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
@@ -12,6 +12,10 @@ import {
   type BookingTicketLink,
 } from '$server/services/pos-accounts.service';
 import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-window';
+import {
+  soldRowsForVisit,
+  type SoldFacet,
+} from '$lib/components/scheduling/booking-product-facets';
 
 /** The subset of an event type the window needs for `kindId`/`productOf`
  *  resolution — callers already have the full list loaded (once per page
@@ -48,6 +52,9 @@ export async function loadCalendarWindow(
     to: Date;
     eventTypes: CalendarWindowEventType[];
     pos: boolean;
+    /** `finance:view` + the finance field tier: only then do sold rows carry the `gift` flag
+     *  (spec 126 decision 3); otherwise it is null. Omitted → not admitted. */
+    canReadFinancialFields?: boolean;
     /** `ctx` is the SCHEDULING handle. Each foreign dataset is read through its own handle (spec
      *  039): a denied one degrades its slice (no money, chips, colours or tags), never leaks.
      *  Omitted by the guarded JSON endpoints, which authorize at the route (S5 migrates them). */
@@ -96,13 +103,31 @@ export async function loadCalendarWindow(
   // Per-booking paid-ness for the event context menu (spec 2026-10-13 D3):
   // anchored on the line's booking_id, NOT the window — a ticket sold weeks
   // ago still marks its booking paid. Two statements over the window's ids.
+  let ticketLinksFailed = false;
   const ticketLinks =
     pos && !isDenied(foreign.pos)
       ? await bookingTicketLinks(
           foreign.pos,
           bookings.map((b) => b.id),
-        ).catch(() => new Map<string, BookingTicketLink[]>())
+        ).catch(() => {
+          ticketLinksFailed = true;
+          return new Map<string, BookingTicketLink[]>();
+        })
       : new Map<string, BookingTicketLink[]>();
+  // Spec 126: the SAME sold projection the detail uses, per visit (anchor +
+  // authorized members resolved from the window's rows). The scheduling host
+  // reads no sales, so its sold facet is `not_in_slice`, never an empty list.
+  const visits = visitsOfBookings(bookings);
+  const soldFor = (b: (typeof bookings)[number]): SoldFacet => {
+    if (!opts.pos) return { state: 'unavailable', reason: 'not_in_slice' };
+    if (isDenied(foreign.pos)) return { state: 'denied' };
+    if (ticketLinksFailed) return { state: 'unavailable', reason: 'read_failed' };
+    const visit = visits.get(b.id) ?? { anchorId: b.id, memberIds: new Set([b.id]) };
+    const lines = [...visit.memberIds].flatMap((id) =>
+      (ticketLinks.get(id) ?? []).flatMap((t) => t.products),
+    );
+    return soldRowsForVisit(lines, visit, opts.canReadFinancialFields === true);
+  };
 
   let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
   if (pos && !isDenied(foreign.stock)) {
@@ -211,7 +236,8 @@ export async function loadCalendarWindow(
       funding: (b.packageGrantId ? 'grant' : b.paymentPlanId ? 'plan' : 'cash') as
         'cash' | 'grant' | 'plan',
       /** The non-void tickets that charged it — the cancel-paid dialog voids these. */
-      tickets: ticketLinks.get(b.id) ?? [],
+      tickets: (ticketLinks.get(b.id) ?? []).map((t) => ({ id: t.id, humanId: t.humanId })),
+      sold: soldFor(b),
     })),
     invoices: tickets.map((t) => ({
       id: t.id,

@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { canReadFinancialFields } from '$server/auth/dataset-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
@@ -72,6 +73,12 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
-  const payload = await loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true });
+  const payload = await loadCalendarWindow(ctx, locals, {
+    from,
+    to,
+    eventTypes,
+    pos: true,
+    canReadFinancialFields: await canReadFinancialFields(locals),
+  });
   return json({ ...payload, calendarScope: calendarWindowScope(ctx.tenantId, orgTz) });
 };

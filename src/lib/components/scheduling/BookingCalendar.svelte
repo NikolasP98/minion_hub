@@ -2637,10 +2637,10 @@
     <dl class="hc-row hc-products">
       <dt class="t-caption">{m.pos_calendar_products()}</dt>
       <dd class="t-body">
-        {#each list as p, i (i)}
+        {#each list as p (`${p.ticketId}:${p.lineId}`)}
           <span class="hc-prod">
             {p.qty} × {p.description}
-            {#if p.total === 0}<span class="hc-gift">({m.pos_calendar_gift()})</span>{/if}
+            {#if p.gift === true}<span class="hc-gift">({m.pos_calendar_gift()})</span>{/if}
           </span>
         {/each}
       </dd>

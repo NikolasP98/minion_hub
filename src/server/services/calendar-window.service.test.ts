@@ -5,18 +5,24 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// The first import loads the real visit grouping (a large module): give it room.
+vi.setConfig({ testTimeout: 30_000 });
+
 const state = vi.hoisted(() => ({
   bookings: [] as Array<Record<string, unknown>>,
   categories: new Map<string, { name: string; color: string }>(),
   categoryCalls: [] as string[][],
-  ticketLinks: new Map<string, { id: string; humanId: string | null }[]>(),
+  ticketLinks: new Map<string, { id: string; humanId: string | null; products?: unknown[] }[]>(),
   ticketLinkCalls: [] as string[][],
 }));
 
 vi.mock('$server/services/rbac.service', () => ({
   shouldMaskSensitive: () => Promise.resolve(false),
 }));
-vi.mock('$server/services/scheduling-bookings.service', () => ({
+vi.mock('$server/services/scheduling-bookings.service', async (importOriginal) => ({
+  // The real pure visit grouping, so hover and detail agree on direct vs group.
+  visitsOfBookings: (await importOriginal<typeof import('./scheduling-bookings.service')>())
+    .visitsOfBookings,
   listBookings: () => Promise.resolve(state.bookings),
 }));
 vi.mock('$server/services/finance-products.service', () => ({
@@ -89,7 +95,7 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
       booking('b-grant', { packageGrantId: 'g1' }),
       booking('b-plan', { paymentPlanId: 'pl1' }),
     ];
-    state.ticketLinks = new Map([['b-paid', [{ id: 't1', humanId: 'POS-0001' }]]]);
+    state.ticketLinks = new Map([['b-paid', [{ id: 't1', humanId: 'POS-0001', products: [] }]]]);
     const { bookings } = await loadCalendarWindow(ctx, locals, {
       ...window,
       eventTypes,
@@ -109,7 +115,7 @@ describe('loadCalendarWindow paid/funding/tickets (spec 2026-10-13 D3)', () => {
   it('never reads tickets for the scheduling calendar (pos: false)', async () => {
     const { loadCalendarWindow } = await import('./calendar-window.service');
     state.bookings = [booking('b1', {})];
-    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: null }]]]);
+    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: null, products: [] }]]]);
     const { bookings } = await loadCalendarWindow(ctx, locals, {
       ...window,
       eventTypes,
@@ -181,5 +187,81 @@ describe('loadCalendarWindow category payload (HC-020)', () => {
       pos: false,
     });
     expect(bookings[0]).toMatchObject({ id: 'b-own', category: null, categoryColor: null });
+  });
+});
+
+describe('loadCalendarWindow sold facet (spec 126)', () => {
+  const line = (over: Record<string, unknown>) => ({
+    ticketId: 't1',
+    ticketHumanId: 'POS-1',
+    lineId: 'l1',
+    productId: 'p-faja',
+    bookingId: null,
+    description: 'Faja M',
+    qty: 1,
+    total: 0,
+    ...over,
+  });
+  const member = (id: string, seq: number) =>
+    booking(id, { metadata: { groupId: 'g1', groupSeq: seq } });
+
+  it('gives every member of a visit ONE facet: direct/group/unassigned, no other-visit line, money stripped', async () => {
+    const { loadCalendarWindow } = await import('./calendar-window.service');
+    state.bookings = [member('lead', 0), member('second', 1), booking('other', {})];
+    const products = [
+      line({ lineId: 'l1' }),
+      line({ lineId: 'l2', bookingId: 'lead', description: 'Crema', total: 80 }),
+      line({ lineId: 'l3', bookingId: 'second', description: 'Gel', total: 40 }),
+      line({ lineId: 'l4', bookingId: 'other', description: 'OTHER VISIT', total: 10 }),
+    ];
+    state.ticketLinks = new Map([
+      ['lead', [{ id: 't1', humanId: 'POS-1', products }]],
+      ['second', [{ id: 't1', humanId: 'POS-1', products }]],
+    ]);
+    const { bookings } = await loadCalendarWindow(ctx, locals, {
+      ...window,
+      eventTypes,
+      pos: true,
+      canReadFinancialFields: true,
+    });
+    const byId = Object.fromEntries(bookings.map((b) => [b.id, b]));
+    expect(byId.second!.sold).toEqual(byId.lead!.sold);
+    const lead = byId.lead!.sold as {
+      value: { rows: { description: string; relation: string; gift: boolean }[] };
+    };
+    expect(lead.value.rows.map((r) => [r.description, r.relation, r.gift])).toEqual([
+      ['Faja M', 'co_ticket_unassigned', true],
+      ['Crema', 'direct', false],
+      ['Gel', 'group', false],
+    ]);
+    expect(JSON.stringify(bookings)).not.toContain('OTHER VISIT');
+    expect(JSON.stringify(bookings)).not.toContain('"total"');
+  });
+
+  it('sends gift null without financial admission, and not_in_slice / denied / read_failed states', async () => {
+    const { loadCalendarWindow } = await import('./calendar-window.service');
+    state.bookings = [booking('b1', {})];
+    state.ticketLinks = new Map([['b1', [{ id: 't1', humanId: null, products: [line({})] }]]]);
+    const run = (opts: Record<string, unknown>, foreign?: unknown) =>
+      loadCalendarWindow(ctx, locals, { ...window, eventTypes, ...opts, foreign } as never);
+    const gift = await run({ pos: true });
+    expect(
+      (gift.bookings[0]!.sold as { value: { rows: { gift: unknown }[] } }).value.rows[0]!.gift,
+    ).toBeNull();
+    expect((await run({ pos: false })).bookings[0]!.sold).toEqual({
+      state: 'unavailable',
+      reason: 'not_in_slice',
+    });
+    expect(
+      (await run({ pos: true }, { pos: { denied: 'pos', verb: 'view' }, stock: ctx, crm: ctx }))
+        .bookings[0]!.sold,
+    ).toEqual({ state: 'denied' });
+    state.ticketLinks = {
+      then: (_ok: unknown, fail: (e: Error) => unknown) => fail(new Error('pos off')),
+    } as never;
+    expect((await run({ pos: true })).bookings[0]!.sold).toEqual({
+      state: 'unavailable',
+      reason: 'read_failed',
+    });
   });
 });

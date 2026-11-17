@@ -76,8 +76,10 @@ import {
   accrueConsumption,
   accrualSummaryForSources,
   releaseAccruals,
+  stockAnchorForBookings,
   type AccrualLineInput,
   type AccrualSourceSummary,
+  type AnchorAccrual,
 } from './stock-accruals.service';
 import { isModuleEnabled } from './modules.service';
 import { PosError } from './pos/errors';
@@ -94,7 +96,13 @@ import {
   reverseRedemptionInTx,
   type GrantView,
 } from './pos-packages.service';
-import { getPlan, type PlanDetail } from './pos-accounts.service';
+import { bookingTicketLinks, getPlan, type PlanDetail } from './pos-accounts.service';
+import { isDenied, type DatasetDenied } from '$lib/permissions';
+import {
+  soldRowsForVisit,
+  type BookingReadFacet,
+  type SoldFacet,
+} from '$lib/components/scheduling/booking-product-facets';
 import { ensureCrmContact } from './crm-contact-ensure';
 import type { Attribution } from '$lib/doors/attribution';
 import { grantToday } from './pos-accounts.logic';
@@ -1827,6 +1835,30 @@ function sortGroupMembers<T extends GroupRow>(rows: T[]): T[] {
   );
 }
 
+/**
+ * The visits of a set of booking rows: members share `metadata.groupId` on one
+ * resource; a booking with no group is its own visit. The anchor is the first
+ * member in visit order — the same one `visitForBooking` resolves — so the
+ * calendar hover and the detail agree on `direct` vs `group`. Pure.
+ */
+export function visitsOfBookings<T extends GroupRow & { resourceId: string }>(
+  rows: readonly T[],
+): Map<string, { anchorId: string; memberIds: Set<string> }> {
+  const byVisit = new Map<string, T[]>();
+  for (const r of rows) {
+    const g = groupIdOf(r.metadata);
+    const key = g ? `${g}|${r.resourceId}` : `solo|${r.id}`;
+    byVisit.set(key, [...(byVisit.get(key) ?? []), r]);
+  }
+  const out = new Map<string, { anchorId: string; memberIds: Set<string> }>();
+  for (const members of byVisit.values()) {
+    const ordered = sortGroupMembers(members);
+    const visit = { anchorId: ordered[0]!.id, memberIds: new Set(ordered.map((m) => m.id)) };
+    for (const m of ordered) out.set(m.id, visit);
+  }
+  return out;
+}
+
 /** The container window every member of a visit shares. */
 export interface GroupWindow {
   start: Date;
@@ -3424,6 +3456,11 @@ export interface BookingDetail {
   } | null;
   /** Open/realized/released rollup of this booking's stock accruals. */
   accrual: AccrualSourceSummary | null;
+  /** Spec 126: product lines SOLD with this visit (non-void sales), one projection
+   *  shared with the POS calendar hover. Independent of `products` (planned). */
+  sold: SoldFacet;
+  /** Spec 126: cost-free accrual counts of the server-resolved visit ANCHOR (never the clicked member). */
+  stockAnchor: BookingReadFacet<{ anchorId: string; accrual: AnchorAccrual | null }>;
   /** POS tickets that charged this EVENT (`pos_ticket_lines.booking_id` of this
    *  booking, or of every member when it belongs to a visit), newest first —
    *  the "was it paid?" answer. Empty when unpaid or POS off. */
@@ -3460,11 +3497,11 @@ export interface BookingTicketRef {
   note: string | null;
   /** How the ticket was settled, oldest first. */
   payments: { method: string; amount: string }[];
-  /** Descriptions of the ticket's OTHER lines — what else the customer bought
-   *  on the same ticket. Excludes every line of THIS event — a sibling service
-   *  of the same appointment was not "also bought". */
+  /** Descriptions of the ticket's lines with NO booking link — what else the
+   *  customer bought on the same ticket. Excludes every line of THIS event and
+   *  of any other visit (spec 126). */
   otherLines: string[];
-  /** Every line on the ticket, this booking's included. */
+  /** Every line of the ticket that belongs to this visit or to no booking (lines of another visit are not counted). */
   lineCount: number;
   /** Latest SUNAT document for the ticket (an accepted one wins over a newer
    *  pending/rejected attempt), or null when nothing was emitted. */
@@ -3681,6 +3718,9 @@ async function ticketRefsForBookings(ctx: CoreCtx, ids: string[]): Promise<Booki
           eq(posTicketLines.orgId, ctx.tenantId),
           eq(posTickets.orgId, ctx.tenantId),
           inArray(posTicketLines.bookingId, ids),
+          // Same predicate as the hover read (spec 126 decision 1): a void
+          // ticket is neither a ticket of the visit nor paid.
+          notInArray(sql<string>`${posTickets.status}`, ['void', 'voided']),
         ),
       )
       .orderBy(desc(posTickets.submittedAt)),
@@ -3797,10 +3837,11 @@ async function ticketRefsForBookings(ctx: CoreCtx, ids: string[]): Promise<Booki
         method: p.method,
         amount: p.amount,
       })),
-      otherLines: lines
-        .filter((l) => !(l.bookingId && own.has(l.bookingId)))
-        .map((l) => l.description),
-      lineCount: lines.length,
+      // Spec 126: only lines with no booking link (`co_ticket_unassigned`, any
+      // kind — an unassigned service or plan line stays visible). A line of
+      // ANOTHER visit sharing the sale is neither listed nor counted.
+      otherLines: lines.filter((l) => !l.bookingId).map((l) => l.description),
+      lineCount: lines.filter((l) => !l.bookingId || own.has(l.bookingId)).length,
       // An accepted document is the truth even when a later attempt exists;
       // rows stuck 'pending' are the shadow-emission loss measure, not the doc.
       emission: docs.find((d) => d.status === 'accepted') ?? docs[0] ?? null,
@@ -3830,7 +3871,14 @@ function rethrowFinancialReadFailure(error: unknown): void {
 export async function getBookingDetail(
   ctx: CoreCtx,
   id: string,
-  opts: { maskAttendeePii?: boolean } = {},
+  opts: {
+    maskAttendeePii?: boolean;
+    /** Spec 126: each foreign dataset through its own handle; a denied one yields a
+     *  `denied` facet and no query. Omitted → the scheduling handle (legacy callers). */
+    foreign?: { pos: CoreCtx | DatasetDenied; stock: CoreCtx | DatasetDenied };
+    /** `finance:view` + the finance field tier; gates the sold rows' `gift` flag. */
+    canReadFinancialFields?: boolean;
+  } = {},
 ): Promise<BookingDetail | null> {
   const base = await withOrgCore(ctx, async (tx) => {
     const [booking] = await tx
@@ -3941,6 +3989,36 @@ export async function getBookingDetail(
   // the event's product lines, independent of which member was fetched.
   const anchorId = visit?.members[0]?.id ?? id;
   const products = await visitProductsForAnchor(ctx, anchorId);
+  const foreign = opts.foreign ?? { pos: ctx, stock: ctx };
+  const memberIds = new Set(eventIds);
+  // Failure mapping (spec 126 FR-004): a thrown read is `unavailable`, never
+  // `empty`; the legacy facets above keep their fail-soft + corrupt-money rethrow.
+  const sold: SoldFacet = isDenied(foreign.pos)
+    ? { state: 'denied' }
+    : await bookingTicketLinks(foreign.pos, eventIds).then(
+        (links) =>
+          soldRowsForVisit(
+            [...links.values()].flatMap((l) => l.flatMap((t) => t.products)),
+            { anchorId, memberIds },
+            opts.canReadFinancialFields === true,
+          ),
+        (e: unknown): SoldFacet => {
+          console.error('[scheduling] sold products facet failed (detail stands)', e);
+          return { state: 'unavailable', reason: 'read_failed' };
+        },
+      );
+  const stockAnchor: BookingDetail['stockAnchor'] = isDenied(foreign.stock)
+    ? { state: 'denied' }
+    : await stockAnchorForBookings(foreign.stock, [anchorId]).then(
+        (m) => ({
+          state: 'available' as const,
+          value: { anchorId, accrual: m.get(anchorId) ?? null },
+        }),
+        (e: unknown): BookingDetail['stockAnchor'] => {
+          console.error('[scheduling] stock anchor facet failed (detail stands)', e);
+          return { state: 'unavailable', reason: 'read_failed' };
+        },
+      );
   // One PK lookup, ungrouped only: a visit's members already carry their price.
   const priceProductId = visit ? null : (booking.productId ?? base.eventType?.productId ?? null);
   const unitPrice = priceProductId
@@ -4016,6 +4094,8 @@ export async function getBookingDetail(
         }
       : null,
     accrual: accruals[0] ?? null,
+    sold,
+    stockAnchor,
     tickets,
     visit,
     products,

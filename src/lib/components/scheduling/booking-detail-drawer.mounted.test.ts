@@ -193,3 +193,65 @@ describe('BookingDetailDrawer acts on the booking it shows (spec 116 FR-008)', (
     expect(read).toEqual(['V1']);
   });
 });
+
+describe('BookingDetailDrawer sold facet (spec 126)', () => {
+  const soldRow = (over: Record<string, unknown> = {}) => ({
+    ticketId: 't1',
+    lineId: 'l1',
+    productId: 'p-faja',
+    bookingId: null,
+    ticketHumanId: 'POS-7',
+    description: 'Faja M',
+    qty: 1,
+    relation: 'co_ticket_unassigned',
+    gift: true,
+    ...over,
+  });
+
+  it('shows the unassigned Faja M as SOLD on its sale, never as planned, with the gift label', async () => {
+    net.details.A = detailOf('A', 'Ana', {
+      sold: { state: 'available', value: { rows: [soldRow()] } },
+    });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByText('Sold with this visit');
+    const text = view.container.textContent!;
+    expect(text).toContain('1 × Faja M');
+    expect(text).toContain('(gift)');
+    expect(text).toContain('Sale POS-7');
+    expect(text).toContain('not assigned to a service');
+    // The planned section stays its own, empty list.
+    expect(text).toContain('Products are optional');
+  });
+
+  it('keeps two same-description lines, and hides the gift label when the server sent null', async () => {
+    net.details.A = detailOf('A', 'Ana', {
+      sold: {
+        state: 'available',
+        value: {
+          rows: [
+            soldRow({ gift: null }),
+            soldRow({ lineId: 'l2', gift: null, relation: 'direct' }),
+          ],
+        },
+      },
+    });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByText('Sold with this visit');
+    expect(view.container.querySelectorAll('.sold-row')).toHaveLength(2);
+    expect(view.container.textContent).not.toContain('(gift)');
+  });
+
+  it.each([
+    ['empty', { state: 'empty' }, 'No products were sold on the linked sale.'],
+    ['denied', { state: 'denied' }, 'cannot see the sales linked'],
+    ['unavailable', { state: 'unavailable', reason: 'read_failed' }, 'could not be loaded'],
+    ['missing', undefined, 'could not be loaded'],
+    ['malformed', { state: 'available', value: { rows: [{}] } }, 'could not be loaded'],
+  ])('renders %s as its own state, not as an empty list', async (_n, sold, expected) => {
+    net.details.A = detailOf('A', 'Ana', { sold });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByText('Sold with this visit');
+    expect(view.container.textContent).toContain(expected);
+    expect(view.container.querySelectorAll('.sold-row')).toHaveLength(0);
+  });
+});

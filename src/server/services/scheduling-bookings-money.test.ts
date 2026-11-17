@@ -2,14 +2,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMockDb } from '$server/test-utils/mock-db';
 import { PosError } from './pos/errors';
 
-const { getGrant, getPlan, captureException } = vi.hoisted(() => ({
-  getGrant: vi.fn(),
-  getPlan: vi.fn(),
-  captureException: vi.fn(),
-}));
+const { getGrant, getPlan, captureException, bookingTicketLinks, stockAnchorForBookings } =
+  vi.hoisted(() => ({
+    getGrant: vi.fn(),
+    getPlan: vi.fn(),
+    bookingTicketLinks: vi.fn(),
+    stockAnchorForBookings: vi.fn(),
+    captureException: vi.fn(),
+  }));
 vi.mock('./pos-packages.service', () => ({ getGrant }));
-vi.mock('./pos-accounts.service', () => ({ getPlan }));
-vi.mock('./stock-accruals.service', () => ({ accrualSummaryForSources: async () => [] }));
+vi.mock('./pos-accounts.service', () => ({ getPlan, bookingTicketLinks }));
+vi.mock('./stock-accruals.service', () => ({
+  accrualSummaryForSources: async () => [],
+  stockAnchorForBookings,
+}));
 vi.mock('./tag-links.service', () => ({
   getTagLinks: async () => new Map(),
   getContactTagsBulk: async () => new Map(),
@@ -39,6 +45,10 @@ beforeEach(() => {
   getPlan.mockReset();
   getGrant.mockResolvedValue(null);
   getPlan.mockResolvedValue(null);
+  bookingTicketLinks.mockReset();
+  bookingTicketLinks.mockResolvedValue(new Map());
+  stockAnchorForBookings.mockReset();
+  stockAnchorForBookings.mockResolvedValue(new Map());
 });
 
 describe('getBookingDetail financial read boundaries', () => {
@@ -183,5 +193,96 @@ describe('getBookingDetail financial read boundaries', () => {
   it('leaves unitPrice null for an ungrouped booking with no product', async () => {
     const { ctx } = fixture();
     expect((await getBookingDetail(ctx, 'b1'))?.unitPrice).toBeNull();
+  });
+
+  it('keeps a line of ANOTHER visit out of otherLines and lineCount, but keeps an unassigned service line', async () => {
+    const { ctx } = fixture({}, [
+      [ticket],
+      [],
+      [
+        { ticketId: 't1', bookingId: 'b1', description: 'Botox' },
+        { ticketId: 't1', bookingId: 'someone-elses-visit', description: 'OTHER VISIT SERVICE' },
+        { ticketId: 't1', bookingId: null, description: 'Faja M' },
+        { ticketId: 't1', bookingId: null, description: 'Peeling (unassigned service)' },
+      ],
+      [],
+    ]);
+    const output = await getBookingDetail(ctx, 'b1');
+    expect(output?.tickets[0]?.otherLines).toEqual(['Faja M', 'Peeling (unassigned service)']);
+    expect(output?.tickets[0]?.lineCount).toBe(3);
+    expect(JSON.stringify(output?.tickets)).not.toContain('OTHER VISIT');
+  });
+});
+
+describe('getBookingDetail sold + stock anchor facets (spec 126)', () => {
+  const links = (total: number) =>
+    new Map([
+      [
+        'b1',
+        [
+          {
+            id: 't1',
+            humanId: 'POS-1',
+            products: [
+              {
+                ticketId: 't1',
+                ticketHumanId: 'POS-1',
+                lineId: 'l1',
+                productId: 'p-faja',
+                bookingId: null,
+                description: 'Faja M',
+                qty: 1,
+                total,
+              },
+            ],
+          },
+        ],
+      ],
+    ]);
+
+  it('shows the same unassigned Faja M the hover shows, labelled and gift-flagged only with finance', async () => {
+    bookingTicketLinks.mockResolvedValue(links(0));
+    const { ctx } = fixture();
+    const withMoney = await getBookingDetail(ctx, 'b1', { canReadFinancialFields: true });
+    expect(withMoney?.sold).toMatchObject({
+      state: 'available',
+      value: { rows: [{ description: 'Faja M', relation: 'co_ticket_unassigned', gift: true }] },
+    });
+    const noMoney = await getBookingDetail(fixture().ctx, 'b1');
+    expect(
+      (noMoney?.sold as { value: { rows: { gift: unknown }[] } }).value.rows[0]!.gift,
+    ).toBeNull();
+    expect(JSON.stringify(noMoney?.sold)).not.toContain('total');
+  });
+
+  it('is denied without a POS handle (no query) and unavailable when the read fails, never empty', async () => {
+    const denied = await getBookingDetail(fixture().ctx, 'b1', {
+      foreign: { pos: { denied: 'pos', verb: 'view' }, stock: { denied: 'stock', verb: 'view' } },
+    });
+    expect(denied?.sold).toEqual({ state: 'denied' });
+    expect(denied?.stockAnchor).toEqual({ state: 'denied' });
+    expect(bookingTicketLinks).not.toHaveBeenCalled();
+    expect(stockAnchorForBookings).not.toHaveBeenCalled();
+
+    bookingTicketLinks.mockRejectedValue(new Error('boom'));
+    stockAnchorForBookings.mockRejectedValue(new Error('boom'));
+    const failed = await getBookingDetail(fixture().ctx, 'b1');
+    expect(failed?.sold).toEqual({ state: 'unavailable', reason: 'read_failed' });
+    expect(failed?.stockAnchor).toEqual({ state: 'unavailable', reason: 'read_failed' });
+  });
+
+  it('reads the stock facet for the ANCHOR, with counts only', async () => {
+    stockAnchorForBookings.mockResolvedValue(
+      new Map([['b1', { open: 1, realized: 0, released: 0, realizedEntryId: null }]]),
+    );
+    const out = await getBookingDetail(fixture().ctx, 'b1');
+    expect(stockAnchorForBookings).toHaveBeenCalledWith(expect.anything(), ['b1']);
+    expect(out?.stockAnchor).toEqual({
+      state: 'available',
+      value: {
+        anchorId: 'b1',
+        accrual: { open: 1, realized: 0, released: 0, realizedEntryId: null },
+      },
+    });
   });
 });

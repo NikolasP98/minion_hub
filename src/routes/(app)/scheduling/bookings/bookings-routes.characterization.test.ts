@@ -34,6 +34,7 @@ vi.mock('$server/auth/core-ctx', () => ({
 vi.mock('$server/auth/dataset-ctx', () => ({
   datasetCtx: async (locals: unknown) => (await mocks.getCoreCtx(locals)) ?? { denied: 'x' },
   isDenied: (v: unknown) => !!v && typeof v === 'object' && 'denied' in v,
+  canReadFinancialFields: async () => false,
 }));
 vi.mock('$server/services/rbac.service', () => ({
   shouldMaskSensitive: (locals: unknown, module: unknown) =>
@@ -41,6 +42,9 @@ vi.mock('$server/services/rbac.service', () => ({
 }));
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   listBookings: (ctx: unknown, opts: unknown) => mocks.listBookings(ctx, opts),
+  // Every booking is its own visit in these fixtures (no groups).
+  visitsOfBookings: (rows: { id: string }[]) =>
+    new Map(rows.map((r) => [r.id, { anchorId: r.id, memberIds: new Set([r.id]) }])),
 }));
 vi.mock('$server/services/scheduling.service', () => ({
   listResources: (ctx: unknown) => mocks.listResources(ctx),
@@ -182,6 +186,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
 });
+
+vi.setConfig({ testTimeout: 30_000 }); // cold first import of the route graph
 
 describe('/scheduling/bookings load — pinned key set', () => {
   it('returns the full key set with default filters + effectiveModuleEnabled stock gate', async () => {
@@ -388,6 +394,7 @@ describe('/pos/appointments load — pinned key set', () => {
         paid: false,
         funding: 'cash',
         tickets: [],
+        sold: { state: 'empty' },
       },
     ]);
     expect(result.eventTypes).toEqual(EVENT_TYPES);
@@ -653,6 +660,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
         paid: false,
         funding: 'cash',
         tickets: [],
+        sold: { state: 'unavailable', reason: 'not_in_slice' },
       },
     ]);
     // Off-hours envelope, same collapse rule as POS.

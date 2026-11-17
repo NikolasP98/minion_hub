@@ -6,6 +6,7 @@ import {
   resolveDefaultWarehouse,
   realizeAccruals,
   accrualSummaryForSources,
+  stockAnchorForBookings,
   availableToPromise,
 } from './stock-accruals.service';
 
@@ -359,5 +360,62 @@ describe('availableToPromise', () => {
       [{ total: '3' }], // open accruals sum
     ]);
     expect(await availableToPromise(ctx(db), 'i1', 'w1')).toBe(7);
+  });
+});
+
+describe('stockAnchorForBookings (spec 126)', () => {
+  it('asks nothing for no anchors and refuses more than 1,000', async () => {
+    const { db } = createMockDb();
+    expect((await stockAnchorForBookings(ctx(db), [])).size).toBe(0);
+    expect(db.select).not.toHaveBeenCalled();
+    await expect(
+      stockAnchorForBookings(
+        ctx(db),
+        Array.from({ length: 1001 }, (_, i) => `b${i}`),
+      ),
+    ).rejects.toThrow('capacity');
+  });
+
+  it('counts per anchor without any cost field; an anchor with no rows is absent, not zero-filled', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        { sourceId: 'a1', status: 'open', realizedEntryId: null },
+        { sourceId: 'a1', status: 'released', realizedEntryId: null },
+        { sourceId: 'a2', status: 'realized', realizedEntryId: 'e1' },
+        { sourceId: 'a2', status: 'realized', realizedEntryId: 'e1' },
+      ],
+    ]);
+    const out = await stockAnchorForBookings(ctx(db), ['a1', 'a2', 'a3']);
+    expect(out.get('a1')).toEqual({ open: 1, realized: 0, released: 1, realizedEntryId: null });
+    expect(out.get('a2')).toEqual({ open: 0, realized: 2, released: 0, realizedEntryId: 'e1' });
+    expect(out.has('a3')).toBe(false);
+    expect(JSON.stringify([...out.values()])).not.toMatch(/value|cost|est/i);
+  });
+
+  it('never picks an arbitrary first link when several distinct entries realized the anchor', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [
+        { sourceId: 'a1', status: 'realized', realizedEntryId: 'e1' },
+        { sourceId: 'a1', status: 'realized', realizedEntryId: 'e2' },
+      ],
+    ]);
+    expect((await stockAnchorForBookings(ctx(db), ['a1'])).get('a1')).toEqual({
+      open: 0,
+      realized: 2,
+      released: 0,
+      realizedEntryId: null,
+    });
+  });
+
+  it('lets a failed read throw — the caller maps it to unavailable, never to no accrual', async () => {
+    const { db } = createMockDb();
+    (db.select as unknown as { mockImplementation: (f: () => never) => void }).mockImplementation(
+      () => {
+        throw new Error('boom');
+      },
+    );
+    await expect(stockAnchorForBookings(ctx(db), ['a1'])).rejects.toThrow('boom');
   });
 });

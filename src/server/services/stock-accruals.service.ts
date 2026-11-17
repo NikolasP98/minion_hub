@@ -643,3 +643,61 @@ export async function accrualSummaryForSources(
   }
   return [...bySource.values()];
 }
+
+/** What one visit anchor's booking accruals look like — counts only, no cost (spec 126). */
+export interface AnchorAccrual {
+  open: number;
+  realized: number;
+  released: number;
+  /** Null when no row, or several DISTINCT realized entries (never an arbitrary first). */
+  realizedEntryId: string | null;
+}
+
+const ANCHOR_READ_LIMIT = 1000;
+
+/**
+ * Cost-free accrual counts for the SERVER-RESOLVED visit anchors (spec 126
+ * decision 4). A complete read with no rows leaves an anchor out of the map, so
+ * the caller can say "no accrual" only when the read really succeeded; a throw
+ * is the caller's `unavailable`, never an empty map. Selects no value column.
+ */
+export async function stockAnchorForBookings(
+  ctx: CoreCtx,
+  anchorIds: string[],
+): Promise<Map<string, AnchorAccrual>> {
+  const out = new Map<string, AnchorAccrual>();
+  const ids = [...new Set(anchorIds)];
+  if (!ids.length) return out;
+  if (ids.length > ANCHOR_READ_LIMIT) throw new Error('capacity');
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        sourceId: stkAccruals.sourceId,
+        status: stkAccruals.status,
+        realizedEntryId: stkAccruals.realizedEntryId,
+      })
+      .from(stkAccruals)
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, 'booking'),
+          inArray(stkAccruals.sourceId, ids),
+        ),
+      ),
+  );
+  const entries = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const a = out.get(r.sourceId) ?? { open: 0, realized: 0, released: 0, realizedEntryId: null };
+    if (r.status === 'open') a.open++;
+    else if (r.status === 'realized') a.realized++;
+    else a.released++;
+    if (r.realizedEntryId) {
+      const set = entries.get(r.sourceId) ?? new Set<string>();
+      set.add(r.realizedEntryId);
+      entries.set(r.sourceId, set);
+    }
+    out.set(r.sourceId, a);
+  }
+  for (const [id, set] of entries) if (set.size === 1) out.get(id)!.realizedEntryId = [...set][0]!;
+  return out;
+}

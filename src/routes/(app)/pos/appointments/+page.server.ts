@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
+import { canReadFinancialFields, datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listResources,
   listEventTypes,
@@ -68,6 +68,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
         to,
         eventTypes,
         pos: true,
+        canReadFinancialFields: await canReadFinancialFields(locals),
         foreign: { pos: ctx, stock: stk, crm },
       }),
       // The same column's VALUE list — previewed when the operator hovers the

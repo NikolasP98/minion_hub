@@ -21,12 +21,16 @@ vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
 vi.mock('./stock-accruals.service', () => ({
   accrueConsumption: async () => 0,
   accrualSummaryForSources: async () => [],
+  stockAnchorForBookings: async () => new Map(),
   releaseAccruals: (ctx: unknown, source: string, sourceId: string) =>
     mocks.releaseAccruals(ctx, source, sourceId),
 }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => false }));
 vi.mock('./pos-packages.service', () => ({ getGrant: async () => null }));
-vi.mock('./pos-accounts.service', () => ({ getPlan: async () => null }));
+vi.mock('./pos-accounts.service', () => ({
+  getPlan: async () => null,
+  bookingTicketLinks: async () => new Map(),
+}));
 vi.mock('./tag-links.service', () => ({
   getTagLinks: async () => new Map(),
   getContactTagsBulk: async () => new Map(),

@@ -4,6 +4,7 @@ const state = vi.hoisted(() => ({
   user: { id: 'u1' } as unknown,
   ctx: { db: {}, tenantId: 'org-1' } as { db: object; tenantId: string } | null,
   enabled: true,
+  canReadMoney: true,
   required: vi.fn(),
   resources: [{ id: 'r1', active: true, timezone: 'America/Lima' }],
   eventTypes: [{ id: 'e1', productId: null, kindId: null }],
@@ -27,6 +28,9 @@ vi.mock('$server/auth/authorize', () => ({
   },
 }));
 vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: () => Promise.resolve(state.ctx) }));
+vi.mock('$server/auth/dataset-ctx', () => ({
+  canReadFinancialFields: () => Promise.resolve(state.canReadMoney),
+}));
 vi.mock('$server/services/modules.service', () => ({
   isModuleEnabled: () => Promise.resolve(state.enabled),
 }));
@@ -53,6 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.ctx = { db: {}, tenantId: 'org-1' };
   state.enabled = true;
+  state.canReadMoney = true;
 });
 
 const url = (qs: string) => new URL(`http://localhost/api/pos/appointments${qs}`);
@@ -69,7 +74,11 @@ describe('GET /api/pos/appointments', () => {
     expect(state.window).toHaveBeenCalledWith(
       state.ctx,
       { user: state.user },
-      expect.objectContaining({ eventTypes: state.eventTypes, pos: true }),
+      expect.objectContaining({
+        eventTypes: state.eventTypes,
+        pos: true,
+        canReadFinancialFields: true,
+      }),
     );
     expect(await response.json()).toEqual({
       bookings: [],
@@ -78,6 +87,20 @@ describe('GET /api/pos/appointments', () => {
       tagOptions: [],
       calendarScope: JSON.stringify(['org-1', 'America/Lima']),
     });
+  });
+
+  it('passes money admission to the window: the gift flag needs finance, not just POS (spec 126)', async () => {
+    const { GET } = await import('./+server');
+    state.canReadMoney = false;
+    await GET({
+      locals: { user: state.user },
+      url: url('?from=2026-09-07&to=2026-09-13'),
+    } as never);
+    expect(state.window).toHaveBeenCalledWith(
+      state.ctx,
+      { user: state.user },
+      expect.objectContaining({ canReadFinancialFields: false }),
+    );
   });
 
   it('resolves the window in the first active resource timezone, half-open past the last day', async () => {

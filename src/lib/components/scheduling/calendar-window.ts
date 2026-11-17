@@ -12,6 +12,12 @@
 
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 import { instantDateKey } from '$lib/time/zoned';
+import {
+  decodeSoldFacet,
+  soldRows,
+  type SoldFacet,
+  type SoldProductBasic,
+} from './booking-product-facets';
 
 export type CalendarView = 'day' | 'week' | 'month' | 'agenda';
 
@@ -192,33 +198,28 @@ export interface CalendarBooking {
   /** How the service is settled (the drawer's rule: grant → plan → cash). */
   funding?: 'cash' | 'grant' | 'plan';
   /** The non-void tickets that charged this booking (POS calendar only). */
-  tickets?: {
-    id: string;
-    humanId: string | null;
-    /** The sale's product lines (spec 120); absent on older payloads. */
-    products?: SoldProduct[];
-  }[];
+  tickets?: { id: string; humanId: string | null }[];
+  /** Spec 126: what the visit SOLD (server projection shared with the detail drawer).
+   *  Missing or malformed means unavailable, never "nothing sold". */
+  sold?: SoldFacet;
 }
 
-/** A product line of a sale that charged a visit. */
-export interface SoldProduct {
-  description: string;
-  qty: number;
-  total: number;
-}
+/** A product line of a sale that belongs to the visit. */
+export type SoldProduct = SoldProductBasic;
 
-/** Products sold with a visit: the product lines of every sale that charged
- *  one of its bookings, each sale counted once. One row per sale line. */
+/** Products sold with a visit: the available sold rows of its members, deduplicated
+ *  by (ticketId, lineId) — every member of a visit carries the same facet. */
 export function productsForVisit(
-  members: ReadonlyArray<Pick<CalendarBooking, 'tickets'>>,
+  members: ReadonlyArray<Pick<CalendarBooking, 'sold'>>,
 ): SoldProduct[] {
   const seen = new Set<string>();
   const out: SoldProduct[] = [];
   for (const m of members)
-    for (const t of m.tickets ?? []) {
-      if (seen.has(t.id)) continue;
-      seen.add(t.id);
-      out.push(...(t.products ?? []));
+    for (const r of soldRows(decodeSoldFacet(m.sold))) {
+      const key = `${r.ticketId}:${r.lineId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(r);
     }
   return out;
 }

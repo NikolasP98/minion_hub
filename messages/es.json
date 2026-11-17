@@ -7602,5 +7602,11 @@
   "stock_corr_receipt_replacement_link": "Ver el reemplazo",
   "stock_corr_receipt_owner_only": "Cambiar una tarifa cambia el valor del stock, así que solo un propietario puede confirmarlo.",
   "stock_corr_receipt_replaces": "Esta entrada reemplaza a una que fue corregida.",
-  "stock_corr_receipt_original_link": "Ver la original"
+  "stock_corr_receipt_original_link": "Ver la original",
+  "sched_detail_sold": "Vendido con esta visita",
+  "sched_detail_sold_empty": "No se vendieron productos en la venta vinculada.",
+  "sched_detail_sold_denied": "Tu rol no puede ver las ventas vinculadas a esta visita.",
+  "sched_detail_sold_unavailable": "No se pudieron cargar los productos vendidos. Recarga para reintentar.",
+  "sched_detail_sold_unassigned": "sin servicio asignado",
+  "sched_detail_sold_sale": "Venta {ticket}"
 }

@@ -12,6 +12,7 @@ vi.mock('$server/events/emit', () => ({ emitHubEvent: async () => {} }));
 vi.mock('./stock-accruals.service', () => ({
   accrueConsumption: async () => 0,
   accrualSummaryForSources: async () => [],
+  stockAnchorForBookings: async () => new Map(),
   releaseAccruals: async () => 0,
 }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => false }));

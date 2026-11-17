@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
+import { canReadFinancialFields, datasetCtx } from '$server/auth/dataset-ctx';
 import {
   createBooking,
   createBookingGroup,
@@ -207,8 +208,18 @@ export async function bookingDetailResponse(
   locals: Locals,
   id: string,
 ): Promise<Response> {
+  // Spec 126: POS and stock facets come through THEIR dataset handles (a denied
+  // one is a `denied` facet, not a scheduling-handle read); the gift flag reveals
+  // a money fact, so it needs finance view AND the finance field tier.
+  const [pos, stock, canReadMoney] = await Promise.all([
+    datasetCtx(locals, 'pos'),
+    datasetCtx(locals, 'stock'),
+    canReadFinancialFields(locals),
+  ]);
   const detail = await getBookingDetail(ctx, id, {
     maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
+    foreign: { pos, stock },
+    canReadFinancialFields: canReadMoney,
   });
   if (!detail) throw error(404, 'booking not found');
   return json(detail);

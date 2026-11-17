@@ -41,6 +41,7 @@
   import { resolveCalendarInstant } from './calendar-time';
   import { canAct } from '$lib/access/can.svelte';
   import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
+  import { decodeSoldFacet } from './booking-product-facets';
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
@@ -177,6 +178,8 @@
     products: VisitProductLine[];
     /** Catalog price of an ungrouped booking's service (`BookingDetail.unitPrice`). */
     unitPrice?: number | null;
+    /** Spec 126: what the visit SOLD — decoded strictly (`decodeSoldFacet`), never trusted as typed. */
+    sold?: unknown;
   };
 
   type Props = {
@@ -801,6 +804,8 @@
   //    convention as the Services section above, always written against
   //    `anchorId`. ──────────────────────────────────────────────────────
   const productRows = $derived(detail?.products ?? []);
+  // Spec 126: sold lines of the visit — the same projection the POS hover shows.
+  const soldFacet = $derived(decodeSoldFacet(detail?.sold));
   let productBusyId = $state<string | null>(null);
 
   type ProductOption = { productId: string; name: string; unitPrice: number | null };
@@ -1324,6 +1329,35 @@
               <Plus size={iconSizes.sm} />{m.sched_detail_product_add()}
             </Button>
           </div>
+        {/if}
+      </section>
+
+      <!-- Sold with this visit (spec 126): product lines of the linked non-void
+           sale(s), labelled by sale — a sale line is NOT a planned product and NOT a
+           stock movement, and an unassigned line is not claimed by this booking. -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_sold()}</h4>
+        {#if soldFacet.state === 'available'}
+          <ul class="sold-list">
+            {#each soldFacet.value.rows as row (`${row.ticketId}:${row.lineId}`)}
+              <li class="t-body sold-row">
+                <span>{row.qty} × {row.description}</span>
+                {#if row.gift === true}<span class="t-caption">({m.pos_calendar_gift()})</span>{/if}
+                <a class="crm-link t-caption" href={`/pos/tickets/${row.ticketId}`}
+                  >{m.sched_detail_sold_sale({ ticket: row.ticketHumanId ?? '' })}</a
+                >
+                {#if row.relation === 'co_ticket_unassigned'}
+                  <span class="t-caption">{m.sched_detail_sold_unassigned()}</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else if soldFacet.state === 'empty'}
+          <p class="t-caption">{m.sched_detail_sold_empty()}</p>
+        {:else if soldFacet.state === 'denied'}
+          <p class="t-caption">{m.sched_detail_sold_denied()}</p>
+        {:else}
+          <p class="t-caption">{m.sched_detail_sold_unavailable()}</p>
         {/if}
       </section>
 
@@ -1882,6 +1916,21 @@
   }
   .wrap {
     flex-wrap: wrap;
+  }
+  /* Sold lines (spec 126): a plain stack, one wrapping row per sale line. */
+  .sold-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sold-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
   }
   /* Services: one bordered list, rows on a shared column grid (index · service
      + minutes · money · status/paid chips · actions) so money, chips and

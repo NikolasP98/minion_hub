@@ -195,32 +195,42 @@ describe('calendar window', () => {
   });
 });
 
-describe('productsForVisit (spec 120)', () => {
-  const faja = { description: 'Faja L', qty: 1, total: 0 };
-  const crema = { description: 'Crema', qty: 2, total: 80 };
-
-  it('lists the product lines of the sales that charged the visit', () => {
-    const out = productsForVisit([
-      { tickets: [{ id: 't1', humanId: 'POS-1', products: [faja, crema] }] },
-    ]);
-    expect(out).toEqual([faja, crema]);
+describe('productsForVisit (spec 120, 126)', () => {
+  const row = (lineId: string, over: Record<string, unknown> = {}) => ({
+    ticketId: 't1',
+    lineId,
+    productId: 'p1',
+    bookingId: null,
+    ticketHumanId: 'POS-1',
+    description: 'Faja L',
+    qty: 1,
+    relation: 'co_ticket_unassigned' as const,
+    gift: true,
+    ...over,
+  });
+  const facet = (...rows: ReturnType<typeof row>[]) => ({
+    state: 'available' as const,
+    value: { rows },
   });
 
-  it('counts a sale once when it charged several bookings of the visit', () => {
-    const sale = { id: 't1', humanId: 'POS-1', products: [faja] };
-    expect(productsForVisit([{ tickets: [sale] }, { tickets: [sale] }])).toEqual([faja]);
+  it('lists the sold rows of the visit', () => {
+    const out = productsForVisit([{ sold: facet(row('l1'), row('l2', { description: 'Crema' })) }]);
+    expect(out.map((r) => r.description)).toEqual(['Faja L', 'Crema']);
   });
 
-  it('keeps one row per line across two sales, with no merging', () => {
-    const out = productsForVisit([
-      { tickets: [{ id: 't1', humanId: null, products: [faja] }] },
-      { tickets: [{ id: 't2', humanId: null, products: [faja] }] },
-    ]);
-    expect(out).toEqual([faja, faja]);
+  it('counts a line once when several members of the visit carry the same facet', () => {
+    const sold = facet(row('l1'));
+    expect(productsForVisit([{ sold }, { sold }])).toHaveLength(1);
   });
 
-  it('is empty for an unpaid visit and for payloads without products', () => {
-    expect(productsForVisit([{}, { tickets: [] }])).toEqual([]);
-    expect(productsForVisit([{ tickets: [{ id: 't1', humanId: null }] }])).toEqual([]);
+  it('keeps two lines with the same description (distinct line ids)', () => {
+    expect(productsForVisit([{ sold: facet(row('l1'), row('l2')) }])).toHaveLength(2);
+  });
+
+  it('is empty for an unpaid visit, a missing facet and a malformed one', () => {
+    expect(productsForVisit([{}, { sold: { state: 'empty' } }])).toEqual([]);
+    expect(
+      productsForVisit([{ sold: { state: 'available', value: { rows: [{}] } } as never }]),
+    ).toEqual([]);
   });
 });

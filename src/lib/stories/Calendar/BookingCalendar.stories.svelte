@@ -123,16 +123,36 @@
     booking(DAYS[4], '12:00', 45, {
       attendeeName: 'Paid visit',
       paid: true,
-      tickets: [
-        {
-          id: 'tk1',
-          humanId: 'F001-000123',
-          products: [
-            { description: 'Faja post-operatoria L', qty: 1, total: 0 },
-            { description: 'Crema cicatrizante', qty: 2, total: 90 },
+      tickets: [{ id: 'tk1', humanId: 'F001-000123' }],
+      sold: {
+        state: 'available',
+        value: {
+          rows: [
+            {
+              ticketId: 'tk1',
+              lineId: 'tk1-l1',
+              productId: null,
+              bookingId: null,
+              ticketHumanId: 'F001-000123',
+              description: 'Faja post-operatoria L',
+              qty: 1,
+              relation: 'co_ticket_unassigned',
+              gift: true,
+            },
+            {
+              ticketId: 'tk1',
+              lineId: 'tk1-l2',
+              productId: null,
+              bookingId: null,
+              ticketHumanId: 'F001-000123',
+              description: 'Crema cicatrizante',
+              qty: 2,
+              relation: 'co_ticket_unassigned',
+              gift: false,
+            },
           ],
         },
-      ],
+      },
     }),
     booking(DAYS[5], '10:00', 240, {
       resourceId: 'r-mar',
