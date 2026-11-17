@@ -6,7 +6,8 @@
  *   status:             preview flags + --status --operation-key U --action correct|compensate --manifest-sha256 D
  *   draft (producer):   --org U --actor-user U --draft-input P --output P --draft            (writes an unsigned manifest; no writes)
  *
- * Private env only: FACES_RECEIPT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY.
+ * Private env only: FACES_RECEIPT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY,
+ * FACES_OPERATOR_AUTH_URL (the only URL the token is sent to; the manifest's target.authUrl must equal it).
  * Exit: 0 ok | 2 admission | 3 incomplete | 4 refused/stale/status absent | 5 unknown outcome.
  */
 import postgres from 'postgres';
@@ -267,6 +268,7 @@ export async function runCorrect(argv: readonly string[], deps: CorrectDeps): Pr
       principal = await deps.verifyPrincipal({
         accessToken: token,
         authUrl: target.authUrl,
+        trustedAuthUrl: deps.env.FACES_OPERATOR_AUTH_URL,
         anonKey: anon,
         expectedProfileId: expectedProfile,
         targetFingerprint: target,

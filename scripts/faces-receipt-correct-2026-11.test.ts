@@ -70,6 +70,7 @@ beforeEach(() => {
       FACES_RECEIPT_DATABASE_URL: DB_URL,
       FACES_OPERATOR_ACCESS_TOKEN: 't',
       FACES_OPERATOR_ANON_KEY: 'k',
+      FACES_OPERATOR_AUTH_URL: 'https://auth.example.org',
     },
     readFile: readPrivateFile,
     writeFile: writePrivateFile,
@@ -174,6 +175,10 @@ describe('modes, outcomes and exits', () => {
     expect(await runCorrect(preview(), deps)).toBe(0);
     expect(run.mock.calls[0][0]).toMatchObject({ mode: 'preview', orgId: m.orgId });
     expect(statSync(out()).mode & 0o777).toBe(0o600);
+    // The token goes only to the env-trusted auth URL, never a manifest-only one.
+    expect(verifyPrincipal.mock.calls[0][0]).toMatchObject({
+      trustedAuthUrl: 'https://auth.example.org',
+    });
     expect(readFileSync(out(), 'utf8')).not.toMatch(/FACES_|secret|postgres:\/\//);
   });
   it('apply passes the decoded command and exits 0 for applied and identical replay', async () => {

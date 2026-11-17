@@ -4,7 +4,8 @@
  *   bun --no-env-file scripts/faces-receipt-valuation-2026-11.ts --org <uuid> --entry <uuid> --line <uuid> \
  *     --evidence-manifest <private-json> --output <private-json>
  *
- * Private env only: FACES_RECEIPT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY.
+ * Private env only: FACES_RECEIPT_DATABASE_URL, FACES_OPERATOR_ACCESS_TOKEN, FACES_OPERATOR_ANON_KEY,
+ * FACES_OPERATOR_AUTH_URL (the only URL the token is sent to; the manifest's target.authUrl must equal it).
  * Exit 0 complete (document absent/unverified still useful) | 2 admission | 3 incomplete/output | 4 integrity/unsupported.
  */
 import { createHash, randomUUID } from 'node:crypto';
@@ -507,6 +508,7 @@ export async function runDiagnose(argv: readonly string[], deps: CliDeps): Promi
       principal = await deps.verifyPrincipal({
         accessToken: token,
         authUrl: manifest.target.authUrl,
+        trustedAuthUrl: deps.env.FACES_OPERATOR_AUTH_URL,
         anonKey: anon,
         expectedProfileId: manifest.actorProfileId,
         targetFingerprint: manifest.target,

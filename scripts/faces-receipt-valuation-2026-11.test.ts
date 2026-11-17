@@ -174,6 +174,7 @@ beforeEach(() => {
       FACES_RECEIPT_DATABASE_URL: DB_URL,
       FACES_OPERATOR_ACCESS_TOKEN: 't',
       FACES_OPERATOR_ANON_KEY: 'k',
+      FACES_OPERATOR_AUTH_URL: 'https://auth.example.org',
     },
     readFile: readPrivateFile,
     writeFile: (p, t) => (writes.push(t), writePrivateFile(p, t)),
