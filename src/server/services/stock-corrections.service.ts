@@ -879,3 +879,15 @@ export async function getStockCorrectionByOperationKey(
     } as CorrectionResult;
   });
 }
+
+/** The entry that replaced this receipt/sale movement, if a correction cancelled it (for the "corrected" link on the page). */
+export async function getReplacementEntryId(ctx: CoreCtx, entryId: string): Promise<string | null> {
+  return withOrgCore(ctx, async (tx) => {
+    const [row] = await tx
+      .select({ replacementEntryId: stkCorrections.replacementEntryId })
+      .from(stkCorrections)
+      .where(and(eq(stkCorrections.orgId, ctx.tenantId), eq(stkCorrections.sourceEntryId, entryId)))
+      .limit(1);
+    return row?.replacementEntryId ?? null;
+  });
+}
