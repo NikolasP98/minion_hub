@@ -978,9 +978,10 @@ export async function stockRecoveryForBookings(
       const released = count('released');
       const active = entries.filter((e) => e.sourceId === mb.bookingId);
       const entry = active.length === 1 ? active[0]! : null;
+      const entryStatus = entry?.status;
       const sourceEntry =
-        entry && (entry.status === 'draft' || entry.status === 'submitted')
-          ? { id: entry.id, status: entry.status }
+        entry && (entryStatus === 'draft' || entryStatus === 'submitted')
+          ? { id: entry.id, status: entryStatus }
           : null;
       let eligibility: RecoveryEligibility;
       if (mb.status !== 'completed') eligibility = 'not_needed';

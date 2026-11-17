@@ -470,6 +470,8 @@ describe('payableEventFrom allowServiceFallback (spec 126)', () => {
     status: 'completed',
     paid: false,
     price: 100,
+    paidAmount: 0,
+    currency: null as string | null,
     funding: 'cash' as const,
     ...over,
   });

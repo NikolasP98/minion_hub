@@ -562,13 +562,24 @@ describe('listRecoveryOpenAccrualsInTx fingerprint', () => {
 describe('realizeAccruals recovery precondition', () => {
   const run = async (
     sequence: unknown[][],
-    recovery = { expectedOpenCount: 1, expectedOpenFingerprint: 'x' },
+    recovery: {
+      expectedOpenCount: number;
+      expectedOpenFingerprint: string;
+      host?: 'pos' | 'scheduling';
+      platformAdmin?: boolean;
+    } = { expectedOpenCount: 1, expectedOpenFingerprint: 'x' },
   ) => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence(sequence);
     const result = realizeAccruals(
       { ...ctx(db), profileId: 'p1' },
-      { source: 'booking', sourceId: 'b1', lines: [], actor, recovery },
+      {
+        source: 'booking',
+        sourceId: 'b1',
+        lines: [],
+        actor,
+        recovery: { host: 'scheduling', ...recovery },
+      },
     );
     return { db, result };
   };

@@ -102,7 +102,10 @@ describe('GET /api/pos/appointments', () => {
 
   it('answers HTTP 409 refresh_required with NO window read when the version header is missing or wrong', async () => {
     const { GET } = await import('./+server');
-    for (const headers of [{}, { 'X-Minion-Booking-Products-Version': '2' }]) {
+    for (const headers of [{}, { 'X-Minion-Booking-Products-Version': '2' }] as Record<
+      string,
+      string
+    >[]) {
       const response = await GET({
         locals: { user: state.user },
         request: new Request('http://x', { headers }),

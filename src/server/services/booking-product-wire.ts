@@ -11,6 +11,7 @@ import type {
   BookingFinancialProjection,
   BookingProductFacets,
   BookingStockCostFacet,
+  RecoveryFacet,
   ServiceFinancialRow,
 } from '$lib/components/scheduling/booking-product-facets';
 
@@ -123,7 +124,10 @@ export function buildBookingProductFacets(
         : d.stockAnchor.state === 'available'
           ? {
               state: 'available',
-              value: { anchorAccrual: d.stockAnchor.value.accrual, recovery: d.stockRecovery },
+              value: {
+                anchorAccrual: d.stockAnchor.value.accrual,
+                recovery: d.stockRecovery as unknown as RecoveryFacet,
+              },
             }
           : d.stockAnchor,
   };
@@ -139,6 +143,7 @@ export function bookingDetailBody(d: BookingDetail, adm: DetailAdmission) {
     booking,
     eventType: d.eventType,
     resource: d.resource,
+    // TODO(handoff): contact/tags ride the detail without the versioned-facet gate; they should be read via the scheduling dataset handle. Ledger: proposals/2026-11-17-hub-booking-product-consistency-handoff.md
     contact: d.contact,
     tags: d.tags,
     statusHistory: d.statusHistory,

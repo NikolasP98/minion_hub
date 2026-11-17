@@ -232,9 +232,13 @@ describe('productsForVisit (spec 120, 126)', () => {
   });
 
   it('is empty for an unpaid visit, a missing facet and a malformed one', () => {
-    expect(productsForVisit([{}, { sold: { state: 'empty' } }])).toEqual([]);
     expect(
-      productsForVisit([{ sold: { state: 'available', value: { rows: [{}] } } as never }]),
+      productsForVisit([{}, { productFacets: { sold: { state: 'empty' } } as never }]),
+    ).toEqual([]);
+    expect(
+      productsForVisit([
+        { productFacets: { sold: { state: 'available', value: { rows: [{}] } } } as never },
+      ]),
     ).toEqual([]);
   });
 });
