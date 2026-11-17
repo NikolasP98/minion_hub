@@ -94,10 +94,13 @@ describe('stock corrections routes', () => {
     mocks.status.mockResolvedValue({ outcome: 'not_found' });
     const url = (h: string) =>
       new URL(`http://localhost/api/stock/corrections?operationKey=${U(9)}&payloadHash=${h}`);
-    const res = await GET({ locals: {}, url: url('b'.repeat(64)) } as never);
+    const res = await GET({ locals: { user: { id: 'u' } }, url: url('b'.repeat(64)) } as never);
     expect(await res.json()).toEqual({ outcome: 'not_found' });
-    await expect(GET({ locals: {}, url: url('zz') } as never)).rejects.toMatchObject({
-      status: 400,
+    await expect(
+      GET({ locals: { user: { id: 'u' } }, url: url('zz') } as never),
+    ).rejects.toMatchObject({ status: 400 });
+    await expect(GET({ locals: {}, url: url('b'.repeat(64)) } as never)).rejects.toMatchObject({
+      status: 401,
     });
   });
 });
