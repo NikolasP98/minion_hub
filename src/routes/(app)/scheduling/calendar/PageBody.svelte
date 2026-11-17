@@ -57,6 +57,11 @@
   } from '$lib/components/scheduling/calendar-window';
   import { mondayOf } from '$lib/components/scheduling/runway';
   import { visibleTagOptions } from '$lib/components/scheduling/tag-filter-range';
+  import {
+    BOOKING_PRODUCTS_VERSION,
+    BOOKING_PRODUCTS_VERSION_HEADER,
+    decodeBookingCalendarProjection,
+  } from '$lib/components/scheduling/booking-product-facets';
   import { createCalendarWindowCache } from '$lib/components/scheduling/kit/window-cache.svelte';
   import { createSettledDay } from '$lib/components/scheduling/kit/settled-day.svelte';
   import { createBookingMover } from '$lib/components/scheduling/kit/booking-mover';
@@ -84,12 +89,24 @@
   type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions'>;
   const winCache = createCalendarWindowCache<WindowPayload>({
     fetchWindow: async (from, to, signal) => {
-      const res = await fetch(`/api/scheduling/calendar?from=${from}&to=${to}`, { signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const { calendarScope, ...payload } = (await res.json()) as WindowPayload & {
-        calendarScope: string | null;
+      const res = await fetch(`/api/scheduling/calendar?from=${from}&to=${to}`, {
+        signal,
+        headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+      });
+      if (!res.ok)
+        throw new Error(res.status === 409 ? m.pos_appt_refresh_required() : `HTTP ${res.status}`);
+      const json = (await res.json()) as { calendarScope: string | null };
+      // Strict decode before the cache: this host carries NO money, sold or stock rows (its facets
+      // are `not_in_slice`/`denied`), and an old or malformed protocol is refused, not cached.
+      const projection = decodeBookingCalendarProjection<WindowPayload['bookings'][number]>(json);
+      if (!projection) throw new Error(m.pos_appt_refresh_required());
+      return {
+        calendarScope: json.calendarScope,
+        payload: {
+          bookings: projection.bookings,
+          tagOptions: projection.tagOptions as WindowPayload['tagOptions'],
+        },
       };
-      return { calendarScope, payload };
     },
     merge: (parts) => {
       const bookings: WindowPayload['bookings'] = [];

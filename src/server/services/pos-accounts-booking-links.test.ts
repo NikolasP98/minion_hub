@@ -27,8 +27,25 @@ describe('bookingTicketLinks — sales and their products per booking (spec 120)
         { bookingId: 'b3', id: 't2', humanId: 'POS-2' },
       ],
       [
-        { ticketId: 't1', description: 'Faja L', qty: '1', total: '0.00' },
-        { ticketId: 't1', description: 'Crema', qty: '2', total: '80.00' },
+        // The reported case: a garment with no booking link and a zero total.
+        {
+          ticketId: 't1',
+          lineId: 'l1',
+          productId: 'p-faja',
+          bookingId: null,
+          description: 'Faja M',
+          qty: '1',
+          total: '0.00',
+        },
+        {
+          ticketId: 't1',
+          lineId: 'l2',
+          productId: 'p-crema',
+          bookingId: 'b1',
+          description: 'Crema',
+          qty: '2',
+          total: '80.00',
+        },
       ],
     ]);
 
@@ -36,8 +53,26 @@ describe('bookingTicketLinks — sales and their products per booking (spec 120)
 
     expect(db.select).toHaveBeenCalledTimes(2);
     const products = [
-      { description: 'Faja L', qty: 1, total: 0 },
-      { description: 'Crema', qty: 2, total: 80 },
+      {
+        ticketId: 't1',
+        ticketHumanId: 'POS-1',
+        lineId: 'l1',
+        productId: 'p-faja',
+        bookingId: null,
+        description: 'Faja M',
+        qty: 1,
+        total: 0,
+      },
+      {
+        ticketId: 't1',
+        ticketHumanId: 'POS-1',
+        lineId: 'l2',
+        productId: 'p-crema',
+        bookingId: 'b1',
+        description: 'Crema',
+        qty: 2,
+        total: 80,
+      },
     ];
     expect(out.get('b1')).toEqual([{ id: 't1', humanId: 'POS-1', products }]);
     expect(out.get('b2')).toEqual([{ id: 't1', humanId: 'POS-1', products }]);

@@ -21,6 +21,14 @@
    * ANY member (stock module off, no mapping) → empty state + a plain
    * Complete. Confirm POSTs `…/[memberId]/complete` for every member in turn
    * (`completionLinesFor` splits the merged row list back out per member).
+   *
+   * `mode="recover_stock"` (spec 126) is the STOCK-ONLY retry of members that are
+   * ALREADY completed: it never reads the defaults map and never completes or
+   * re-statuses anything. It reads the server's persisted recovery facts for the visit
+   * (`GET ${apiBase}/${bookingId}` → `stockRecovery`) and, per eligible member in id
+   * order, POSTs `…/complete` sequentially: `{}` to retry a saved stock entry, or the
+   * reviewed `lines` plus the `recovery` precondition (open-set count and fingerprint)
+   * to confirm the open expectation. A non-2xx or lost response stops the rest.
    */
   import { RotateCcw } from 'lucide-svelte';
   import { untrack } from 'svelte';
@@ -29,6 +37,14 @@
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
   import * as m from '$lib/paraglide/messages';
+  import {
+    BOOKING_PRODUCTS_VERSION,
+    BOOKING_PRODUCTS_VERSION_HEADER,
+    basicMembers,
+    decodeBookingDetailWire,
+    type RecoveryFacet,
+    type StockRecoveryMemberWire,
+  } from './booking-product-facets';
   import {
     completionLinesFor,
     mergeCompleteResults,
@@ -54,8 +70,16 @@
     apiBase?: string;
     onclose: () => void;
     /** Completion succeeded — the host refreshes and surfaces `stockWarning`. */
-    oncompleted: (result: CompleteResult) => void | Promise<void>;
+    oncompleted?: (result: CompleteResult) => void | Promise<void>;
+    /** `complete` (default) is the ordinary completion flow; `recover_stock` retries the
+     *  stock of already-completed members and never touches a status. */
+    mode?: 'complete' | 'recover_stock';
+    /** Recovery only: fired after every attempt (the host reloads its detail/list); it must
+     *  not complete anything. Receives the per-member outcome. */
+    onrecovered?: (results: Record<string, RecoveryOutcome>) => void | Promise<void>;
   };
+
+  export type RecoveryOutcome = 'resolved' | 'warning' | 'error' | 'unknown';
 
   let {
     bookingId,
@@ -64,7 +88,11 @@
     apiBase = '/api/scheduling/bookings',
     onclose,
     oncompleted,
+    mode = 'complete',
+    onrecovered,
   }: Props = $props();
+
+  const recovering = $derived(mode === 'recover_stock');
 
   const members = $derived(membersProp ?? (bookingId ? [{ bookingId, productId, title: '' }] : []));
 
@@ -134,6 +162,137 @@
   }
 
   let gen = 0;
+
+  // ── recover_stock ───────────────────────────────────────────────────────────
+  let facet = $state<RecoveryFacet | null>(null);
+  let titles = $state<Record<string, string>>({});
+  let outcomes = $state<Record<string, { kind: RecoveryOutcome; message?: string }>>({});
+  const eligible = $derived(
+    facet?.state === 'available'
+      ? facet.value
+          .filter((r) => r.eligibility === 'retry_saved' || r.eligibility === 'confirm_open')
+          .sort((a, b) => a.bookingId.localeCompare(b.bookingId))
+      : [],
+  );
+  const manual = $derived(
+    facet?.state === 'available'
+      ? facet.value.filter((r) => r.eligibility === 'manual_review')
+      : [],
+  );
+
+  /** Fresh persisted facts → rows of the `confirm_open` members (expected = accrued, actual starts equal). */
+  async function loadRecovery(id: string) {
+    const token = ++gen;
+    loading = true;
+    loadError = false;
+    err = null;
+    try {
+      const res = await fetch(`${apiBase}/${id}`, {
+        headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+      });
+      if (res.status === 403) {
+        if (token === gen) facet = { state: 'denied' };
+        return;
+      }
+      if (!res.ok) throw new Error(String(res.status));
+      const d = decodeBookingDetailWire<object>(await res.json());
+      if (token !== gen) return;
+      if (!d) throw new Error('refresh_required');
+      // The recovery facts ride the stock facet of the versioned envelope; an unavailable or denied
+      // stock facet is never "nothing to recover".
+      const stock = d.productFacets.stock;
+      const next: RecoveryFacet =
+        stock.state === 'available'
+          ? stock.value.recovery
+          : stock.state === 'denied'
+            ? { state: 'denied' }
+            : { state: 'unavailable', reason: 'invalid_projection' };
+      titles = Object.fromEntries(
+        basicMembers(d.productFacets).map((x) => [x.id, x.eventTypeTitle]),
+      );
+      rows = (next.state === 'available' ? next.value : [])
+        .filter((r) => r.eligibility === 'confirm_open' && r.confirmation)
+        .flatMap((r) =>
+          r.confirmation!.rows.map((o) => ({
+            bookingId: r.bookingId,
+            itemId: o.itemId,
+            itemName: o.itemName,
+            uom: o.uom,
+            consumptionUom: o.consumptionUom,
+            unitsPerStockUom: o.unitsPerStockUom,
+            subunitsPerStockUom: o.subunitsPerStockUom,
+            diagramEnabled: o.diagramEnabled,
+            expected: o.qtyConsumption,
+            actual: o.qtyConsumption,
+          })),
+        );
+      facet = next;
+    } catch {
+      if (token === gen) {
+        facet = null;
+        rows = [];
+        loadError = true;
+      }
+    } finally {
+      if (token === gen) loading = false;
+    }
+  }
+
+  async function recover() {
+    if (!recovering || busy || loading || loadError || eligible.length === 0) return;
+    busy = true;
+    err = null;
+    const results: Record<string, RecoveryOutcome> = {};
+    const mark = (id: string, kind: RecoveryOutcome, message?: string) => {
+      results[id] = kind;
+      outcomes = { ...outcomes, [id]: { kind, message } };
+    };
+    const target = bookingId;
+    try {
+      // Sequential and in id order. A non-2xx or a lost response stops the rest: the
+      // outcome of that member is not known until the persisted facts are read again.
+      for (const mb of [...eligible] as StockRecoveryMemberWire[]) {
+        const body =
+          mb.eligibility === 'retry_saved'
+            ? {}
+            : {
+                lines: completionLinesFor(rows, mb.bookingId) ?? [],
+                recovery: {
+                  mode: 'confirm_open',
+                  expectedOpenCount: mb.confirmation!.openCount,
+                  expectedOpenFingerprint: mb.confirmation!.expectedOpenFingerprint,
+                },
+              };
+        let res: Response;
+        try {
+          res = await fetch(`${apiBase}/${mb.bookingId}/complete`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+        } catch {
+          mark(mb.bookingId, 'unknown');
+          break;
+        }
+        if (!res.ok) {
+          const j = (await res.json().catch(() => null)) as { error?: string } | null;
+          mark(mb.bookingId, 'error', j?.error === 'stock_forbidden' ? 'denied' : undefined);
+          if (j?.error === 'recovery_preview_stale') err = m.sched_recover_stale();
+          break;
+        }
+        const j = (await res.json().catch(() => null)) as CompleteResult | null;
+        if (j?.stockWarning) mark(mb.bookingId, 'warning', j.stockWarning.message);
+        else mark(mb.bookingId, 'resolved');
+      }
+    } finally {
+      busy = false;
+    }
+    // Host reload first, then the dialog re-reads its own facts: success alone is not proof.
+    await onrecovered?.(results);
+    if (target) await loadRecovery(target);
+    if (eligible.length === 0 && Object.values(results).every((k) => k === 'resolved')) onclose();
+  }
+
   function load(ms: ConfirmMember[]) {
     const token = ++gen;
     loading = true;
@@ -167,6 +326,13 @@
       rows = [];
       err = null;
       loadError = false;
+      facet = null;
+      outcomes = {};
+      return;
+    }
+    if (untrack(() => recovering)) {
+      outcomes = {};
+      void loadRecovery(id);
       return;
     }
     // Snapshot: `members` is re-derived from props on every parent render, and
@@ -205,7 +371,7 @@
       // Host first, close second: the host's handler still needs to know WHICH
       // booking completed (it reads the same state that drives `bookingId`),
       // and closing on refreshed data beats a flash of the stale calendar.
-      if (merged) await oncompleted(merged);
+      if (merged) await oncompleted?.(merged);
       onclose();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
@@ -216,15 +382,95 @@
 </script>
 
 <!-- `md`, like the modal this replaced: a gauge row needs the width. -->
-<Dialog open={bookingId !== null} title={m.sched_complete_title()} {onclose}>
+<Dialog
+  open={bookingId !== null}
+  title={recovering ? m.sched_recover_title() : m.sched_complete_title()}
+  {onclose}
+>
   <div class="body">
     {#if loading}
       <div class="center"><Spinner /></div>
     {:else if loadError}
       <div class="acts">
         <p class="t-caption bad" role="alert">{m.common_error()}</p>
-        <Button size="sm" variant="ghost" onclick={() => load(members)}>{m.common_retry()}</Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onclick={() => (recovering && bookingId ? loadRecovery(bookingId) : load(members))}
+          >{m.common_retry()}</Button
+        >
       </div>
+    {:else if recovering}
+      {#if facet?.state === 'denied'}
+        <p class="t-caption">{m.sched_recover_denied()}</p>
+      {:else if facet?.state !== 'available' && facet?.state !== 'empty'}
+        <!-- Missing or failed evidence is NOT "nothing to recover". -->
+        <p class="t-caption bad" role="alert">{m.sched_recover_unavailable()}</p>
+      {:else if eligible.length === 0 && manual.length === 0}
+        <p class="t-caption">{m.sched_recover_none()}</p>
+      {:else}
+        {#if eligible.length > 0}<p class="t-caption">{m.sched_recover_hint()}</p>{/if}
+        {#each [...eligible, ...manual] as mb (mb.bookingId)}
+          {@const memberRows = rows.filter((r) => r.bookingId === mb.bookingId)}
+          {@const outcome = outcomes[mb.bookingId]}
+          {#if titles[mb.bookingId]}
+            <p class="t-label member-heading">{titles[mb.bookingId]}</p>
+          {/if}
+          {#if mb.eligibility === 'manual_review'}
+            <p class="t-caption">{m.sched_recover_manual()}</p>
+          {:else if mb.eligibility === 'retry_saved' && mb.sourceEntry}
+            <p class="t-caption">
+              {m.sched_recover_saved({ status: mb.sourceEntry.status })}
+              <a class="crm-link" href={`/stock/entries/${mb.sourceEntry.id}`}
+                >{mb.sourceEntry.id.slice(0, 8)}</a
+              >
+            </p>
+          {:else}
+            <p class="t-caption">{m.sched_recover_open_hint()}</p>
+            {#each memberRows as r (r.itemId)}
+              {@const gMax = maxOf(r)}
+              <div class="line">
+                <div class="line-text">
+                  <span class="line-name">{r.itemName}</span>
+                  <span class="t-caption"
+                    >{m.sched_complete_expected({ qty: r.expected, unit: unitOf(r) })}</span
+                  >
+                </div>
+                {#if gMax > 0}
+                  <ConsumptionGauge
+                    max={gMax}
+                    unit={unitOf(r)}
+                    bind:value={() => r.actual, (v) => (r.actual = v)}
+                  />
+                {:else}
+                  <input
+                    class="qty"
+                    type="number"
+                    min="0"
+                    step="any"
+                    aria-label={r.itemName}
+                    value={r.actual}
+                    oninput={(e) => (r.actual = Number(e.currentTarget.value) || 0)}
+                  />
+                  <span class="t-caption">{unitOf(r)}</span>
+                {/if}
+              </div>
+            {/each}
+          {/if}
+          {#if outcome}
+            <p class="t-caption" class:bad={outcome.kind === 'error' || outcome.kind === 'unknown'}>
+              {#if outcome.kind === 'resolved'}{m.sched_recover_resolved()}
+              {:else if outcome.kind === 'warning'}{m.sched_recover_warning({
+                  message: outcome.message ?? '',
+                })}
+              {:else if outcome.kind === 'error'}{outcome.message === 'denied'
+                  ? m.sched_recover_denied()
+                  : m.sched_recover_error()}
+              {:else}{m.sched_recover_unknown()}{/if}
+            </p>
+          {/if}
+        {/each}
+      {/if}
     {:else if rows.length === 0}
       <p class="t-caption">{m.sched_complete_no_defaults()}</p>
     {:else}
@@ -284,9 +530,19 @@
   </div>
   {#snippet footer()}
     <div class="acts">
-      <Button disabled={busy || loading || loadError} loading={busy} onclick={confirm}>
-        {rows.length === 0 ? m.sched_mark_complete() : m.sched_complete_confirm()}
-      </Button>
+      {#if recovering}
+        <Button
+          disabled={busy || loading || loadError || eligible.length === 0}
+          loading={busy}
+          onclick={recover}
+        >
+          {m.sched_recover_confirm()}
+        </Button>
+      {:else}
+        <Button disabled={busy || loading || loadError} loading={busy} onclick={confirm}>
+          {rows.length === 0 ? m.sched_mark_complete() : m.sched_complete_confirm()}
+        </Button>
+      {/if}
       <Button variant="ghost" disabled={busy} onclick={onclose}>{m.sched_cancel()}</Button>
     </div>
   {/snippet}

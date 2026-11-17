@@ -1,4 +1,16 @@
-import { and, desc, eq, inArray, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notInArray,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -10,6 +22,7 @@ import {
   type PosPaymentPlan,
 } from '$server/db/pg-pos-schema';
 import { schedBookings } from '$server/db/pg-scheduling-schema';
+import type { SoldLineRecord } from '$lib/components/scheduling/booking-product-facets';
 import { getPosSettingsInTx } from './pos/settings';
 import type { Actor } from './pos/actor';
 import { admitPlanOperation } from './pos/plan-operation';
@@ -637,8 +650,9 @@ export interface CalendarTicket {
 export interface BookingTicketLink {
   id: string;
   humanId: string | null;
-  /** The sale's product lines — what else left with the visit (spec 120). */
-  products: { description: string; qty: number; total: number }[];
+  /** The sale's product lines (spec 120), with the stable ids spec 126 needs.
+   *  Carries `total`: it stays server side — `soldRowsForVisit` turns it into the `gift` flag. */
+  products: SoldLineRecord[];
 }
 
 /**
@@ -685,6 +699,9 @@ export async function bookingTicketLinks(
     tx
       .select({
         ticketId: posTicketLines.ticketId,
+        lineId: posTicketLines.id,
+        productId: posTicketLines.finProductId,
+        bookingId: posTicketLines.bookingId,
         description: posTicketLines.description,
         qty: posTicketLines.qty,
         total: posTicketLines.total,
@@ -696,12 +713,23 @@ export async function bookingTicketLinks(
           inArray(posTicketLines.ticketId, ticketIds),
           eq(posTicketLines.kind, 'product'),
         ),
-      ),
+      )
+      .orderBy(asc(posTicketLines.lineNo)),
   );
+  const humanByTicket = new Map(rows.map((r) => [r.id, r.humanId]));
   const productsByTicket = new Map<string, BookingTicketLink['products']>();
   for (const p of productRows) {
     const list = productsByTicket.get(p.ticketId) ?? [];
-    list.push({ description: p.description, qty: Number(p.qty), total: Number(p.total) });
+    list.push({
+      ticketId: p.ticketId,
+      ticketHumanId: humanByTicket.get(p.ticketId) ?? null,
+      lineId: p.lineId,
+      productId: p.productId ?? null,
+      bookingId: p.bookingId ?? null,
+      description: p.description,
+      qty: Number(p.qty),
+      total: Number(p.total),
+    });
     productsByTicket.set(p.ticketId, list);
   }
   // One sale linked to several bookings shares the same list.

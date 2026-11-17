@@ -41,6 +41,19 @@
   import { resolveCalendarInstant } from './calendar-time';
   import { canAct } from '$lib/access/can.svelte';
   import ConsumptionConfirmDialog from './ConsumptionConfirmDialog.svelte';
+  import {
+    BOOKING_PRODUCTS_VERSION,
+    BOOKING_PRODUCTS_VERSION_HEADER,
+    basicMembers,
+    decodeBookingDetailWire,
+    financialVisitRows,
+    visitAnchorIdFromFacets,
+    type BookingProductFacets,
+    type BookingReadFacet,
+    type FullBookingTicketWire,
+    type RecoveryFacet,
+    type SoldFacet,
+  } from './booking-product-facets';
   import TagsField from '$lib/components/tags/TagsField.svelte';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
@@ -53,14 +66,11 @@
   import { fetchJson } from '$lib/api/fetch-json';
   import SaveIndicator from '$lib/records/SaveIndicator.svelte';
   import {
-    canRemoveService,
     chargeableRows,
     nextOrder,
     payableEventFrom,
-    visitAnchorId,
     visitHeaderStatus,
     visitHeaderTitle,
-    visitRows,
     visitSummary,
     type BookingVisit,
     type PayableEvent,
@@ -106,26 +116,6 @@
       changedAt: string;
       changedByName: string | null;
     }>;
-    grant: {
-      grant: {
-        id: string;
-        sessionsTotal: number;
-        unitValue: string;
-        expiresAt: string | null;
-      };
-      sessionsUsed: number;
-      sessionsRemaining: number;
-      status: string;
-      packageName: string | null;
-    } | null;
-    plan: {
-      plan: { id: string; title: string; totalAmount: string; currency: string; status: string };
-      paidToDate: number;
-      remaining: number;
-      isPaid: boolean;
-      nextDue: { dueOn: string; amount: number } | null;
-      scheduleIssue: 'invalid_rows' | 'principal_mismatch' | 'too_many_rows' | null;
-    } | null;
     series: {
       seriesId: string;
       index: number | null;
@@ -138,45 +128,10 @@
         status: string;
       }>;
     } | null;
-    accrual: {
-      open: number;
-      realized: number;
-      released: number;
-      estValue: number;
-      realizedValue: number;
-      realizedEntryId: string | null;
-    } | null;
-    tickets: Array<{
-      ticketId: string;
-      humanId: string | null;
-      submittedAt: string | null;
-      status: string;
-      currency: string;
-      lineTotal: string;
-      subtotal: string;
-      discount: string;
-      total: string;
-      note: string | null;
-      payments: Array<{ method: string; amount: string }>;
-      otherLines: string[];
-      lineCount: number;
-      emission: {
-        docType: string;
-        serie: string;
-        correlativo: number;
-        status: string;
-      } | null;
-      createdByName: string | null;
-      invoiceId: string | null;
-    }>;
     tags: { own: CalTag[]; contact: CalTag[]; service: CalTag[] };
-    /** The event's services when it has more than one (`$lib/components/scheduling/visit`). */
-    visit: BookingVisit | null;
-    /** The event's PRODUCT lines (spec 2026-10-10-hub-catalog-service-unification
-     *  §Slice 4) — always keyed by the visit's anchor. Empty, never undefined. */
-    products: VisitProductLine[];
-    /** Catalog price of an ungrouped booking's service (`BookingDetail.unitPrice`). */
-    unitPrice?: number | null;
+    /** Spec 126: the versioned envelope. Money, products, plan, tickets and stock live ONLY in its
+     *  facets, strictly decoded; no top-level legacy field exists to hand to a helper. */
+    productFacets: BookingProductFacets;
   };
 
   type Props = {
@@ -276,6 +231,8 @@
 
   // "Mark completed" → confirm the consumed stock first (owner 2026-09-25).
   let completeOpen = $state(false);
+  // Stock-only retry of already-completed members (spec 126) — never the ordinary completion.
+  let recoverOpen = $state(false);
 
   // Cancel confirmation, inline inside the drawer.
   let cancelOpen = $state(false);
@@ -293,14 +250,24 @@
    * every write describe the whole event — the tray is anchored on the event
    * (owner ask 2026-10-07), not on whichever service was clicked.
    */
+  /** One versioned GET, strictly decoded: an old protocol (409) or a malformed envelope throws, and
+   *  nothing of it is shown. */
+  async function fetchDetail(id: string): Promise<Detail | null> {
+    const res = await fetch(`${apiBase}/${id}`, {
+      headers: { [BOOKING_PRODUCTS_VERSION_HEADER]: String(BOOKING_PRODUCTS_VERSION) },
+    });
+    if (!res.ok)
+      throw new Error(res.status === 409 ? m.pos_appt_refresh_required() : String(res.status));
+    return decodeBookingDetailWire<Omit<Detail, 'productFacets'>>(await res.json());
+  }
+
   async function loadDetail(id: string): Promise<Detail> {
-    const res = await fetch(`${apiBase}/${id}`);
-    if (!res.ok) throw new Error(String(res.status));
-    const d: Detail = await res.json();
-    const lead = visitAnchorId(d);
+    const d = await fetchDetail(id);
+    if (!d) throw new Error(m.pos_appt_refresh_required());
+    const lead = visitAnchorIdFromFacets(d.productFacets);
     if (!lead || lead === d.booking.id) return d;
-    const again = await fetch(`${apiBase}/${lead}`);
-    return again.ok ? ((await again.json()) as Detail) : d;
+    // Decode BEFORE the canonical-anchor redirect; a failed second read keeps the clicked member's detail.
+    return (await fetchDetail(lead).catch(() => null)) ?? d;
   }
 
   let gen = 0;
@@ -327,6 +294,7 @@
     editOpen = false;
     cancelOpen = false;
     completeOpen = false;
+    recoverOpen = false;
     cancelReason = '';
     cancelScope = 'one';
     statusApplied = null;
@@ -430,7 +398,20 @@
   const fmtTime = (iso: string) => formatTime(iso, timeZone);
 
   /** Every write targets the event's LEAD service, never the clicked row. */
-  const anchorId = $derived(visitAnchorId(detail) ?? bookingId);
+  const facets = $derived(detail?.productFacets ?? null);
+  const members = $derived(basicMembers(facets));
+  /** Legacy `visit` shape of the structural facts only (null for a single-service event). */
+  const visit = $derived(
+    facets?.basic.state === 'available' && facets.basic.value.groupId
+      ? { groupId: facets.basic.value.groupId, members }
+      : null,
+  );
+  /** Money, only from an `available` payment facet whose identity sets agree with the basic facet. */
+  const fin = $derived(financialVisitRows(facets));
+  const finRows = $derived(fin.state === 'available' ? fin.value.rows : []);
+  const finById = $derived(new Map(finRows.map((r) => [r.id, r])));
+  const pay = $derived(facets?.payment.state === 'available' ? facets.payment.value : null);
+  const anchorId = $derived(visitAnchorIdFromFacets(facets) ?? bookingId);
   /** The loaded detail belongs to the selected booking. Until it does the body
    *  shows the loading state and every writer below does nothing (spec 116
    *  FR-008). Members of one visit share one detail (`loadDetail` swaps to the
@@ -438,23 +419,17 @@
   const detailIsCurrent = $derived(
     !!detail &&
       !loading &&
-      (detail.booking.id === bookingId ||
-        (detail.visit?.members ?? []).some((mb) => mb.id === bookingId)),
+      (detail.booking.id === bookingId || members.some((mb) => mb.id === bookingId)),
   );
   /** What the event reads as: its first ACTIVE service, falling back to the
    *  lead when every one of them is closed — the same rule the calendar box
    *  uses (`statusLead`, booking-groups.ts), so badge and box agree. */
-  const headStatus = $derived(
-    visitHeaderStatus(detail?.visit?.members ?? [], detail?.booking.status ?? ''),
-  );
+  const headStatus = $derived(visitHeaderStatus(members, detail?.booking.status ?? ''));
   const isLive = $derived(headStatus === 'accepted' || headStatus === 'pending');
   /** A visit's services, in order, " · "-joined — a multi-service event has no
    *  title of its own; a single-service one keeps its event type's. */
   const headTitle = $derived(
-    visitHeaderTitle(detail?.visit?.members ?? []) ??
-      detail?.eventType?.title ??
-      detail?.booking.title ??
-      '—',
+    visitHeaderTitle(members) ?? detail?.eventType?.title ?? detail?.booking.title ?? '—',
   );
   const canEdit = $derived(canEditProp ?? canAct('scheduling', 'edit'));
 
@@ -485,7 +460,7 @@
     err = null;
     statusApplied = null;
     try {
-      const res = detail?.visit
+      const res = visit
         ? await fetch(`${apiBase}/${id}/group`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -567,7 +542,7 @@
         end: new Date(start.instant.getTime() + duration).toISOString(),
         resourceId: editResource || detail.booking.resourceId,
       };
-      const res = detail.visit
+      const res = visit
         ? await fetch(`${apiBase}/${id}/group`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -597,38 +572,34 @@
   //    services… users add/remove services straight from the tray") ──────────
   // Rows: the visit's members in order, or the booking standing in as its own
   // only service when it has no visit yet (a single-service event).
-  const svcRows = $derived(
-    detail
-      ? visitRows({
-          visit: detail.visit,
-          booking: detail.booking,
-          eventTypeTitle: detail.eventType?.title ?? detail.booking.title ?? '—',
-          minutes: Math.round(
-            (new Date(detail.booking.endTime).getTime() -
-              new Date(detail.booking.startTime).getTime()) /
-              60_000,
-          ),
-          // A VOIDED ticket took no money — it must not read as paid, or the
-          // event loses its charge button (the old gate skipped voided too).
-          paid: detail.tickets.some((t) => t.status !== 'voided'),
-          tickets: detail.tickets,
-          funding: detail.grant ? 'grant' : detail.plan ? 'plan' : 'cash',
-          price: detail.unitPrice,
-        })
-      : [],
+  // Structural rows only (title, minutes, status): money for a row is `finById.get(row.id)`, present
+  // ONLY when the payment facet is available. Nothing below invents paid/unpaid/0 for a blocked one.
+  type SvcRow = Pick<VisitRow, 'id' | 'eventTypeId' | 'title' | 'minutes' | 'status'> & {
+    canRemove: boolean;
+  };
+  const svcRows = $derived<SvcRow[]>(
+    members.map((mb) => ({
+      id: mb.id,
+      eventTypeId: mb.eventTypeId,
+      title: mb.eventTypeTitle,
+      minutes: mb.minutes,
+      status: mb.status,
+      canRemove: mb.canRemoveService === true,
+    })),
   );
-  const svcSummary = $derived(visitSummary(svcRows));
+  const moneyOk = $derived(fin.state === 'available');
+  const svcSummary = $derived(visitSummary(finRows));
 
   /** Every service the till can still charge — the shared rule (`visit.ts`),
    *  which the calendar's context menu applies to the same payload. */
-  const chargeRows = $derived(chargeableRows(svcRows));
+  const chargeRows = $derived(chargeableRows(finRows));
   /** Nothing to sell, but the anchor is on an open instalment plan: the till
    *  takes the next instalment (the single-booking behaviour, unchanged). */
   const instalmentOnly = $derived(
     chargeRows.length === 0 &&
-      svcRows[0]?.funding === 'plan' &&
-      detail?.plan != null &&
-      !detail.plan.isPaid,
+      finRows[0]?.funding === 'plan' &&
+      pay?.plan != null &&
+      !pay.plan.isPaid,
   );
   /** A charge makes sense for anything that will (or did) happen and still owes
    *  money — the EVENT's services, not the clicked row. Whether a payment is
@@ -636,6 +607,7 @@
    *  here. */
   const payOfferable = $derived(
     detail !== null &&
+      moneyOk &&
       !['cancelled', 'rejected', 'no_show'].includes(headStatus) &&
       (chargeRows.length > 0 || instalmentOnly),
   );
@@ -666,7 +638,7 @@
     }
   }
 
-  async function separateService(row: VisitRow) {
+  async function separateService(row: SvcRow) {
     if (!detailIsCurrent) return;
     svcBusyId = row.id;
     err = null;
@@ -677,7 +649,7 @@
         body: JSON.stringify({ detach: true }),
       });
       if (!res.ok) throw new Error(String(res.status));
-      track('visit_service_separated', { members: detail?.visit?.members.length ?? 1 });
+      track('visit_service_separated', { members: members.length || 1 });
       await reloadDetail();
     } catch (e) {
       err = e instanceof Error ? e.message : 'error';
@@ -690,8 +662,8 @@
   // flows elsewhere in the module) — the server's 409 `referenced` becomes the
   // dialog's own failure message, never a silent no-op.
   let removeOpen = $state(false);
-  let removeRow = $state<VisitRow | null>(null);
-  function openRemove(row: VisitRow) {
+  let removeRow = $state<SvcRow | null>(null);
+  function openRemove(row: SvcRow) {
     removeRow = row;
     removeOpen = true;
   }
@@ -710,13 +682,13 @@
       throw new Error('referenced');
     }
     if (!res.ok) throw new Error(String(res.status));
-    track('visit_service_removed', { members: detail?.visit?.members.length ?? 1 });
+    track('visit_service_removed', { members: members.length || 1 });
     if (removedId === anchorId) {
       // The anchor's row is gone server-side — re-fetching the same id 404s.
       // Jump to a surviving member instead; `onnavigate` sets `bookingId`,
       // whose effect reloads the detail (and the member count > 1 guard on
       // the Remove button means a survivor always exists).
-      const survivorId = detail?.visit?.members.find((mb) => mb.id !== removedId)?.id;
+      const survivorId = members.find((mb) => mb.id !== removedId)?.id;
       if (survivorId) onnavigate?.(survivorId);
       await onchanged?.();
     } else {
@@ -760,8 +732,7 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ addEventTypeId: eventTypeId }),
       });
-      if (res.ok)
-        track('visit_service_added', { members: (detail.visit?.members.length ?? 1) + 1 });
+      if (res.ok) track('visit_service_added', { members: (members.length || 1) + 1 });
       if (res.status === 409) {
         const j = await res.json().catch(() => ({}));
         conflictEventTypeId = eventTypeId;
@@ -790,7 +761,7 @@
     });
     if (!res.ok) throw new Error(String(res.status));
     track('visit_service_added', {
-      members: (detail.visit?.members.length ?? 1) + 1,
+      members: (members.length || 1) + 1,
       override: true,
     });
     await reloadDetail();
@@ -800,7 +771,44 @@
   //    "allow products to be added to events as well") — same group-route
   //    convention as the Services section above, always written against
   //    `anchorId`. ──────────────────────────────────────────────────────
-  const productRows = $derived(detail?.products ?? []);
+  // Planned products: names and quantities always; price and paid only from the payment facet.
+  const productRows = $derived(
+    facets?.planned.state === 'available'
+      ? facets.planned.value.rows.map((r) => {
+          const money =
+            fin.state === 'available'
+              ? fin.value.products.find((p) => p.productId === r.productId)
+              : undefined;
+          return { ...r, money: money ? { unitPrice: money.unitPrice, paid: money.paid } : null };
+        })
+      : [],
+  );
+  // Spec 126: sold lines of the visit — the same projection the POS hover shows.
+  const soldFacet: SoldFacet = $derived(
+    facets?.sold ?? { state: 'unavailable', reason: 'invalid_projection' },
+  );
+  // Offered only from FRESH persisted facts: an unavailable or denied facet is no proof
+  // that anything is unposted, so it offers nothing.
+  const recoveryFacet: RecoveryFacet = $derived(
+    facets?.stock.state === 'available'
+      ? facets.stock.value.recovery
+      : facets?.stock.state === 'denied'
+        ? { state: 'denied' }
+        : { state: 'unavailable', reason: 'invalid_projection' },
+  );
+  const stockAnchor = $derived(
+    facets?.stock.state === 'available' ? facets.stock.value.anchorAccrual : null,
+  );
+  const canRecover = $derived(
+    canEdit &&
+      recoveryFacet.state === 'available' &&
+      recoveryFacet.value.some(
+        (r) =>
+          r.eligibility === 'retry_saved' ||
+          // confirm_open posts through the stock:manage-gated recovery endpoint.
+          (r.eligibility === 'confirm_open' && canAct('stock', 'manage')),
+      ),
+  );
   let productBusyId = $state<string | null>(null);
 
   type ProductOption = { productId: string; name: string; unitPrice: number | null };
@@ -910,7 +918,7 @@
      No customer name, no ticket number, no paid amount or date — those are on
      the chip itself. Money rows appear only when the ticket is more than this
      one booking (a discount, or more than one line). -->
-{#snippet ticketCard(t: Detail['tickets'][number])}
+{#snippet ticketCard(t: FullBookingTicketWire)}
   {@const showMoney = Number(t.discount || 0) !== 0 || t.lineCount > 1}
   {@const extra = t.otherLines.slice(0, 4)}
   {@const hidden = t.otherLines.length - extra.length}
@@ -1131,6 +1139,7 @@
           {#each svcRows as row, idx (row.id)}
             {@const inactive = isInactiveMemberStatus(row.status)}
             {@const rowBusy = svcBusyId === row.id}
+            {@const fin_row = finById.get(row.id)}
             <li class="svc-row" class:is-inactive={inactive}>
               <span class="t-caption svc-idx" aria-hidden="true">{idx + 1}</span>
               <div class="svc-info">
@@ -1143,26 +1152,30 @@
                    is paid, its list price while it is not, and the funding
                    source in place of a price when the till is not the payer. -->
               <span class="t-caption svc-money">
-                {#if row.paid}
-                  {formatMoney(row.paidAmount, row.currency ?? undefined)}
-                {:else if row.funding === 'grant'}
-                  {m.sched_detail_funding_grant()}
-                {:else if row.funding === 'plan'}
-                  {m.sched_detail_funding_plan()}
-                {:else if row.price !== null}
-                  {formatMoney(row.price, row.currency ?? undefined)}
-                {:else}
-                  —
+                {#if fin_row}
+                  {#if fin_row.paid}
+                    {formatMoney(fin_row.paidAmount, fin_row.currency ?? undefined)}
+                  {:else if fin_row.funding === 'grant'}
+                    {m.sched_detail_funding_grant()}
+                  {:else if fin_row.funding === 'plan'}
+                    {m.sched_detail_funding_plan()}
+                  {:else if fin_row.price !== null}
+                    {formatMoney(fin_row.price, fin_row.currency ?? undefined)}
+                  {:else}
+                    —
+                  {/if}
                 {/if}
               </span>
               <div class="svc-chips">
                 <Badge size="sm" {...statusBadge(row.status)}>{statusLabel(row.status)}</Badge>
-                {#if row.paid}
-                  <Badge size="sm" variant="semantic" value="success">
-                    {m.sched_detail_service_paid()}
-                  </Badge>
-                {:else}
-                  <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                {#if fin_row}
+                  {#if fin_row.paid}
+                    <Badge size="sm" variant="semantic" value="success">
+                      {m.sched_detail_service_paid()}
+                    </Badge>
+                  {:else}
+                    <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                  {/if}
                 {/if}
               </div>
               {#if canEdit}
@@ -1202,10 +1215,8 @@
                     size="xs"
                     variant="ghost"
                     aria-label={m.sched_detail_service_remove()}
-                    title={canRemoveService(row.referenced)
-                      ? undefined
-                      : m.sched_detail_service_remove_blocked()}
-                    disabled={rowBusy || !!svcBusyId || !canRemoveService(row.referenced)}
+                    title={row.canRemove ? undefined : m.sched_detail_service_remove_blocked()}
+                    disabled={rowBusy || !!svcBusyId || !row.canRemove}
                     onclick={() => openRemove(row)}
                   >
                     <Trash2 size={iconSizes.xs} />
@@ -1216,7 +1227,7 @@
           {/each}
         </ul>
         <div class="svc-foot">
-          {#if svcRows.length > 1}
+          {#if svcRows.length > 1 && moneyOk}
             <p class="t-caption svc-summary">
               {m.sched_detail_services_summary({
                 n: String(svcSummary.n),
@@ -1283,15 +1294,19 @@
                   {/if}
                 </div>
                 <span class="t-caption svc-money">
-                  {row.unitPrice !== null ? formatMoney(row.unitPrice * row.qty) : '—'}
+                  {#if row.money}{row.money.unitPrice !== null
+                      ? formatMoney(row.money.unitPrice * row.qty)
+                      : '—'}{/if}
                 </span>
                 <div class="svc-chips">
-                  {#if row.paid}
-                    <Badge size="sm" variant="semantic" value="success">
-                      {m.sched_detail_service_paid()}
-                    </Badge>
-                  {:else}
-                    <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                  {#if row.money}
+                    {#if row.money.paid}
+                      <Badge size="sm" variant="semantic" value="success">
+                        {m.sched_detail_service_paid()}
+                      </Badge>
+                    {:else}
+                      <Badge size="sm">{m.sched_detail_service_unpaid()}</Badge>
+                    {/if}
                   {/if}
                 </div>
                 {#if canEdit}
@@ -1327,179 +1342,236 @@
         {/if}
       </section>
 
+      <!-- Sold with this visit (spec 126): product lines of the linked non-void
+           sale(s), labelled by sale — a sale line is NOT a planned product and NOT a
+           stock movement, and an unassigned line is not claimed by this booking. -->
+      <section class="blk">
+        <h4 class="t-label">{m.sched_detail_sold()}</h4>
+        {#if soldFacet.state === 'available'}
+          <ul class="sold-list">
+            {#each soldFacet.value.rows as row (`${row.ticketId}:${row.lineId}`)}
+              <li class="t-body sold-row">
+                <span>{row.qty} × {row.description}</span>
+                {#if row.gift === true}<span class="t-caption">({m.pos_calendar_gift()})</span>{/if}
+                <a class="crm-link t-caption" href={`/pos/tickets/${row.ticketId}`}
+                  >{m.sched_detail_sold_sale({ ticket: row.ticketHumanId ?? '' })}</a
+                >
+                {#if row.relation === 'co_ticket_unassigned'}
+                  <span class="t-caption">{m.sched_detail_sold_unassigned()}</span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {:else if soldFacet.state === 'empty'}
+          <p class="t-caption">{m.sched_detail_sold_empty()}</p>
+        {:else if soldFacet.state === 'denied'}
+          <p class="t-caption">{m.sched_detail_sold_denied()}</p>
+        {:else}
+          <p class="t-caption">{m.sched_detail_sold_unavailable()}</p>
+        {/if}
+      </section>
+
       <!-- Payment: ONE section for whatever the agreement is — the tickets that
            charged this booking, the package it draws on, the instalment plan it
            pays off — and the single verb, which hands off to the till. Direct vs
            in parts is chosen there (`/pos/sell?step=pay`), not here. -->
       <section class="blk">
         <h4 class="t-label">{m.sched_detail_payment()}</h4>
-        {#if d.tickets.length > 0}
-          <div class="row wrap">
-            {#each d.tickets as t (t.ticketId)}
-              <Tooltip
-                asChild
-                interactive
-                bare
-                placement="top"
-                openDelay={180}
-                closeDelay={320}
-                id="tk-{t.ticketId}"
+        {#if !pay || !moneyOk}
+          <!-- Spec 126: never "unpaid", "cash" or 0 from a denied, failed or mismatched payment facet. -->
+          <p class="t-caption">
+            {facets?.payment.state === 'denied'
+              ? m.sched_detail_payment_denied()
+              : m.sched_detail_payment_unavailable()}
+          </p>
+        {:else}
+          {#if pay.tickets.length > 0}
+            <div class="row wrap">
+              {#each pay.tickets as t (t.ticketId)}
+                <Tooltip
+                  asChild
+                  interactive
+                  bare
+                  placement="top"
+                  openDelay={180}
+                  closeDelay={320}
+                  id="tk-{t.ticketId}"
+                >
+                  {#snippet content()}
+                    {@render ticketCard(t)}
+                  {/snippet}
+                  {#snippet children(trigger)}
+                    <a {...trigger ?? {}} class="ticket-link" href={`/pos/tickets/${t.ticketId}`}>
+                      <Badge variant="semantic" value={t.status === 'voided' ? 'error' : 'success'}>
+                        {t.status === 'voided'
+                          ? m.sched_detail_ticket_voided()
+                          : m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })}
+                      </Badge>
+                      <span class="t-caption">
+                        #{t.humanId ?? t.ticketId.slice(0, 8)}{t.submittedAt
+                          ? ` · ${fmtDateTime(t.submittedAt)}`
+                          : ''}
+                      </span>
+                    </a>
+                  {/snippet}
+                </Tooltip>
+              {/each}
+            </div>
+          {/if}
+          {#if pay.grant}
+            <div class="row wrap">
+              <span class="t-caption">{m.sched_detail_covered_package()}</span>
+              {#if pay.grant.packageName}<span>{pay.grant.packageName}</span>{/if}
+              <Badge
+                variant="semantic"
+                value={pay.grant.sessionsRemaining > 0 ? 'info' : 'warning'}
               >
-                {#snippet content()}
-                  {@render ticketCard(t)}
-                {/snippet}
-                {#snippet children(trigger)}
-                  <a {...trigger ?? {}} class="ticket-link" href={`/pos/tickets/${t.ticketId}`}>
-                    <Badge variant="semantic" value={t.status === 'voided' ? 'error' : 'success'}>
-                      {t.status === 'voided'
-                        ? m.sched_detail_ticket_voided()
-                        : m.sched_detail_paid({ value: formatMoney(t.lineTotal, t.currency) })}
-                    </Badge>
-                    <span class="t-caption">
-                      #{t.humanId ?? t.ticketId.slice(0, 8)}{t.submittedAt
-                        ? ` · ${fmtDateTime(t.submittedAt)}`
-                        : ''}
-                    </span>
-                  </a>
-                {/snippet}
-              </Tooltip>
-            {/each}
-          </div>
-        {/if}
-        {#if d.grant}
-          <div class="row wrap">
-            <span class="t-caption">{m.sched_detail_covered_package()}</span>
-            {#if d.grant.packageName}<span>{d.grant.packageName}</span>{/if}
-            <Badge variant="semantic" value={d.grant.sessionsRemaining > 0 ? 'info' : 'warning'}>
-              {m.sched_detail_package_sessions({
-                remaining: String(d.grant.sessionsRemaining),
-                total: String(d.grant.grant.sessionsTotal),
-              })}
-            </Badge>
-            <span class="t-caption">
-              {d.grant.grant.expiresAt
-                ? m.sched_detail_package_expires({ date: d.grant.grant.expiresAt })
-                : m.sched_detail_package_no_expiry()}
-            </span>
-            <span class="t-caption">
-              {m.sched_detail_package_unit_value({
-                value: formatMoney(d.grant.grant.unitValue),
-              })}
-            </span>
-          </div>
-        {:else if d.plan}
-          <div class="row wrap">
-            <span>{d.plan.plan.title}</span>
-            <Badge variant="semantic" value={d.plan.isPaid ? 'success' : 'warning'}>
-              {m.sched_detail_plan_paid({
-                paid: formatMoney(d.plan.paidToDate, d.plan.plan.currency),
-                total: formatMoney(d.plan.plan.totalAmount, d.plan.plan.currency),
-              })}
-            </Badge>
-            <span class="t-caption">
-              {m.sched_detail_plan_remaining({
-                value: formatMoney(d.plan.remaining, d.plan.plan.currency),
-              })}
-            </span>
-            {#if d.plan.nextDue}
+                {m.sched_detail_package_sessions({
+                  remaining: String(pay.grant.sessionsRemaining),
+                  total: String(pay.grant.grant.sessionsTotal),
+                })}
+              </Badge>
               <span class="t-caption">
-                {m.sched_detail_plan_next_due({
-                  date: d.plan.nextDue.dueOn,
-                  value: formatMoney(d.plan.nextDue.amount, d.plan.plan.currency),
+                {pay.grant.grant.expiresAt
+                  ? m.sched_detail_package_expires({ date: pay.grant.grant.expiresAt })
+                  : m.sched_detail_package_no_expiry()}
+              </span>
+              <span class="t-caption">
+                {m.sched_detail_package_unit_value({
+                  value: formatMoney(pay.grant.grant.unitValue),
                 })}
               </span>
-            {/if}
-            <PlanScheduleWarning issue={d.plan.scheduleIssue} />
-          </div>
-        {/if}
-        <!-- The EVENT's money, not the lead service's: what the till took, what
+            </div>
+          {:else if pay.plan}
+            <div class="row wrap">
+              <span>{pay.plan.plan.title}</span>
+              <Badge variant="semantic" value={pay.plan.isPaid ? 'success' : 'warning'}>
+                {m.sched_detail_plan_paid({
+                  paid: formatMoney(pay.plan.paidToDate, pay.plan.plan.currency),
+                  total: formatMoney(pay.plan.plan.totalAmount, pay.plan.plan.currency),
+                })}
+              </Badge>
+              <span class="t-caption">
+                {m.sched_detail_plan_remaining({
+                  value: formatMoney(pay.plan.remaining, pay.plan.plan.currency),
+                })}
+              </span>
+              {#if pay.plan.nextDue}
+                <span class="t-caption">
+                  {m.sched_detail_plan_next_due({
+                    date: pay.plan.nextDue.dueOn,
+                    value: formatMoney(pay.plan.nextDue.amount, pay.plan.plan.currency),
+                  })}
+                </span>
+              {/if}
+              <PlanScheduleWarning issue={pay.plan.scheduleIssue} />
+            </div>
+          {/if}
+          <!-- The EVENT's money, not the lead service's: what the till took, what
              it still owes, and how many services are behind each. A grant or
              plan facet above describes the anchor service only (it is per-row
              data), so it no longer suppresses this line. -->
-        {#if d.visit}
-          <p class="t-caption svc-summary">
-            {#if svcSummary.currency}
-              {m.sched_detail_payment_summary({
-                paid: formatMoney(svcSummary.paidTotal, svcSummary.currency),
-                pending: formatMoney(svcSummary.pendingTotal, svcSummary.currency),
-                n: String(svcSummary.n),
-                unpaid: String(svcSummary.unpaid),
-              })}
-              {#if svcSummary.pendingUnknown > 0}
-                · {m.sched_detail_payment_pending_unknown({
-                  k: String(svcSummary.pendingUnknown),
+          {#if visit}
+            <p class="t-caption svc-summary">
+              {#if svcSummary.currency}
+                {m.sched_detail_payment_summary({
+                  paid: formatMoney(svcSummary.paidTotal, svcSummary.currency),
+                  pending: formatMoney(svcSummary.pendingTotal, svcSummary.currency),
+                  n: String(svcSummary.n),
+                  unpaid: String(svcSummary.unpaid),
+                })}
+                {#if svcSummary.pendingUnknown > 0}
+                  · {m.sched_detail_payment_pending_unknown({
+                    k: String(svcSummary.pendingUnknown),
+                  })}
+                {/if}
+              {:else}
+                <!-- Services priced in different currencies: counts only, never a
+                   nominal sum of two currencies. -->
+                {m.sched_detail_services_summary({
+                  n: String(svcSummary.n),
+                  paid: String(svcSummary.paid),
+                  unpaid: String(svcSummary.unpaid),
                 })}
               {/if}
-            {:else}
-              <!-- Services priced in different currencies: counts only, never a
-                   nominal sum of two currencies. -->
-              {m.sched_detail_services_summary({
-                n: String(svcSummary.n),
-                paid: String(svcSummary.paid),
-                unpaid: String(svcSummary.unpaid),
-              })}
-            {/if}
-          </p>
-        {:else if !d.grant && !d.plan && d.tickets.length === 0}
-          <span class="t-caption">{m.sched_detail_unpaid()}</span>
-        {/if}
-        {#if onpay && payOfferable}
-          <div class="row">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy || !canAct('pos', 'create')}
-              loading={busy}
-              title={canAct('pos', 'create') ? undefined : m.no_permission()}
-              onclick={() =>
-                detailIsCurrent &&
-                onpay(
-                  payableEventFrom({
+            </p>
+          {:else if !pay.grant && !pay.plan && pay.tickets.length === 0}
+            <span class="t-caption">{m.sched_detail_unpaid()}</span>
+          {/if}
+          {#if onpay && payOfferable}
+            <div class="row">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !canAct('pos', 'create')}
+                loading={busy}
+                title={canAct('pos', 'create') ? undefined : m.no_permission()}
+                onclick={() => {
+                  if (!detailIsCurrent || fin.state !== 'available') return;
+                  // Guarded handoff: no chargeable service means no fabricated first service (only an
+                  // open instalment plan keeps that fallback); products alone still hand off.
+                  const base = {
                     booking: d.booking,
                     contactPartyId: d.contact?.partyId ?? null,
-                    // `anchorId` is only null when `bookingId` (the prop) is —
-                    // unreachable here, the drawer is open on a loaded `d`.
-                    // `d.booking.id` is the honest fallback.
                     anchorId: anchorId ?? d.booking.id,
-                    rows: svcRows,
-                    products: d.products,
-                  }),
-                  d.plan?.plan.id ?? null,
-                )}
-            >
-              <ShoppingCart size={iconSizes.sm} />{instalmentOnly
-                ? m.sched_detail_take_instalment()
-                : m.sched_detail_take_payment()}
-            </Button>
-          </div>
+                    rows: fin.value.rows,
+                    products: fin.value.products,
+                  };
+                  const offer = instalmentOnly
+                    ? payableEventFrom({ ...base, allowServiceFallback: true })
+                    : payableEventFrom({ ...base, allowServiceFallback: false });
+                  if (offer) onpay(offer, pay.plan?.plan.id ?? null);
+                }}
+              >
+                <ShoppingCart size={iconSizes.sm} />{instalmentOnly
+                  ? m.sched_detail_take_instalment()
+                  : m.sched_detail_take_payment()}
+              </Button>
+            </div>
+          {/if}
         {/if}
       </section>
 
-      <!-- Stock accrual rollup -->
-      {#if d.accrual && (d.accrual.open || d.accrual.realized || d.accrual.released)}
+      <!-- Stock rollup of the visit ANCHOR: quantities only. Cost scalars have no verified valuation
+           currency, so the state is stated instead of a number (spec 126). -->
+      {#if stockAnchor && (stockAnchor.open || stockAnchor.realized || stockAnchor.released)}
         <section class="blk">
           <h4 class="t-label">{m.sched_detail_stock()}</h4>
           <div class="row">
-            {#if d.accrual.open > 0}
+            {#if stockAnchor.open > 0}
               <Badge variant="semantic" value="warning"
-                >{m.sched_stock_committed({ value: formatMoney(d.accrual.estValue) })}</Badge
+                >{m.sched_stock_open_qty({ n: String(stockAnchor.open) })}</Badge
               >
             {/if}
-            {#if d.accrual.realized > 0}
+            {#if stockAnchor.realized > 0}
               <a
                 class="crm-link"
-                href={d.accrual.realizedEntryId
-                  ? `/stock/entries/${d.accrual.realizedEntryId}`
+                href={stockAnchor.realizedEntryId
+                  ? `/stock/entries/${stockAnchor.realizedEntryId}`
                   : '/stock'}
               >
                 <Badge variant="semantic" value="success"
-                  >{m.sched_stock_realized({ value: formatMoney(d.accrual.realizedValue) })}</Badge
+                  >{m.sched_stock_posted_qty({ n: String(stockAnchor.realized) })}</Badge
                 >
               </a>
             {/if}
-            {#if d.accrual.released > 0}
+            {#if stockAnchor.released > 0}
               <Badge>{m.sched_stock_released()}</Badge>
             {/if}
+            <span class="t-caption">{m.sched_stock_cost_unavailable()}</span>
+          </div>
+        </section>
+      {/if}
+
+      <!-- Stock recovery (spec 126): a completed visit whose stock was never posted keeps
+           this action after reload — it retries the stock only, never the status. -->
+      {#if canRecover}
+        <section class="blk">
+          <h4 class="t-label">{m.sched_detail_stock()}</h4>
+          <div class="row">
+            <Button size="sm" variant="outline" onclick={() => (recoverOpen = true)}>
+              {m.sched_recover_action()}
+            </Button>
           </div>
         </section>
       {/if}
@@ -1644,7 +1716,7 @@
                 <textarea class="txt" rows="2" bind:value={cancelReason}></textarea>
               </label>
               <!-- A visit is ONE occurrence: a series scope would be a lie. -->
-              {#if detail.series && !detail.visit}
+              {#if detail.series && !visit}
                 <SegmentedControl
                   aria-label={m.sched_detail_cancel_scope()}
                   bind:value={cancelScope}
@@ -1662,7 +1734,7 @@
                   loading={busy}
                   onclick={() =>
                     patchStatus('cancelled', {
-                      scope: detail?.series && !detail?.visit ? cancelScope : 'one',
+                      scope: detail?.series && !visit ? cancelScope : 'one',
                       reason: cancelReason || null,
                     })}>{m.sched_detail_cancel_confirm()}</Button
                 >
@@ -1751,12 +1823,20 @@
      it in the top layer, while nesting it inside the drawer's <dialog> would
      trap it in the drawer's scroll box. -->
 <ConsumptionConfirmDialog
+  mode="recover_stock"
+  bookingId={recoverOpen ? anchorId : null}
+  {apiBase}
+  onclose={() => (recoverOpen = false)}
+  onrecovered={() => reloadDetail()}
+/>
+
+<ConsumptionConfirmDialog
   bookingId={completeOpen ? anchorId : null}
   productId={detail?.booking.productId ?? null}
-  members={completeOpen && detail?.visit
+  members={completeOpen && visit
     ? // Only the members still live: `/complete` refuses a cancelled/rejected
       // booking, and a no-show or already-completed member is left alone.
-      detail.visit.members
+      visit.members
         .filter((mb) => !isInactiveMemberStatus(mb.status) && mb.status !== 'completed')
         .map((mb) => ({
           bookingId: mb.id,
@@ -1773,7 +1853,7 @@
     // dialog didn't touch (e.g. one with no stock mapping at all) and to
     // apply the event's status in the one place every other status change
     // goes through.
-    if (detail?.visit) await patchStatus('completed');
+    if (visit) await patchStatus('completed');
     else await reloadDetail();
     if (result.stockWarning && !err) err = result.stockWarning.message;
   }}
@@ -1882,6 +1962,21 @@
   }
   .wrap {
     flex-wrap: wrap;
+  }
+  /* Sold lines (spec 126): a plain stack, one wrapping row per sale line. */
+  .sold-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sold-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
   }
   /* Services: one bordered list, rows on a shared column grid (index · service
      + minutes · money · status/paid chips · actions) so money, chips and

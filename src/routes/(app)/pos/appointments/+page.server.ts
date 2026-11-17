@@ -1,6 +1,6 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
+import { canReadFinancialFields, datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import {
   listResources,
   listEventTypes,
@@ -60,7 +60,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
 
   // These three are mutually independent (none consumes another's result) —
   // run them concurrently instead of three sequential round trips.
-  const [{ bookings, invoices, accrualSummaries, tagOptions }, categories, pending] =
+  const [{ productProjectionVersion, bookings, ticketOverlay, tagOptions }, categories, pending] =
     await Promise.all([
       // pos/stock/crm slices of the window come through THEIR handles (a denied one degrades its slice).
       loadCalendarWindow(sched, locals, {
@@ -68,6 +68,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
         to,
         eventTypes,
         pos: true,
+        canReadFinancialFields: await canReadFinancialFields(locals),
         foreign: { pos: ctx, stock: stk, crm },
       }),
       // The same column's VALUE list — previewed when the operator hovers the
@@ -112,8 +113,9 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       pageView,
       /** Event-scope registry + every tag present on a shown event — the filter's options. */
       tagOptions,
+      productProjectionVersion,
       bookings,
-      invoices,
+      ticketOverlay,
       resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
       hours,
       eventTypes: eventTypes.map((e) => ({
@@ -140,7 +142,6 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       /** `fin_product_categories` for the org — the `category` source's values. */
       categories: categories.map((c) => ({ name: c.name, color: c.color })),
       stockEnabled: locals.moduleStates?.stock ?? true,
-      accrualSummaries,
       pending: pending.map((p) => ({ ...p, submittedAt: p.submittedAt.toISOString() })),
     },
   };

@@ -1,9 +1,9 @@
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { isDenied, type DatasetDenied } from '$lib/permissions';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { listBookings } from '$server/services/scheduling-bookings.service';
+import { listBookings, visitsOfBookings } from '$server/services/scheduling-bookings.service';
 import { categoryColorsForProducts } from '$server/services/finance-products.service';
-import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
+import { stockAnchorForBookings } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
 import {
@@ -12,6 +12,17 @@ import {
   type BookingTicketLink,
 } from '$server/services/pos-accounts.service';
 import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-window';
+import {
+  soldRowsForVisit,
+  type CalendarProductFacets,
+  type SoldFacet,
+  type TicketOverlayFacet,
+} from '$lib/components/scheduling/booking-product-facets';
+
+const DENIED = (module: 'pos' | 'stock' | 'crm'): DatasetDenied => ({
+  denied: module,
+  verb: 'view',
+});
 
 /** The subset of an event type the window needs for `kindId`/`productOf`
  *  resolution — callers already have the full list loaded (once per page
@@ -48,18 +59,28 @@ export async function loadCalendarWindow(
     to: Date;
     eventTypes: CalendarWindowEventType[];
     pos: boolean;
+    /** `finance:view` + the finance field tier: only then do sold rows carry the `gift` flag
+     *  (spec 126 decision 3); otherwise it is null. Omitted → not admitted. */
+    canReadFinancialFields?: boolean;
     /** `ctx` is the SCHEDULING handle. Each foreign dataset is read through its own handle (spec
      *  039): a denied one degrades its slice (no money, chips, colours or tags), never leaks.
-     *  Omitted by the guarded JSON endpoints, which authorize at the route (S5 migrates them). */
+     *  Omitted (or a missing member) = DENIED for that dataset: every caller resolves them with
+     *  `datasetCtx(locals, …)`. */
     foreign?: {
-      pos: CoreCtx | DatasetDenied;
-      stock: CoreCtx | DatasetDenied;
-      crm: CoreCtx | DatasetDenied;
+      pos?: CoreCtx | DatasetDenied;
+      stock?: CoreCtx | DatasetDenied;
+      crm?: CoreCtx | DatasetDenied;
     };
   },
 ) {
   const { from, to, eventTypes } = opts;
-  const foreign = opts.foreign ?? { pos: ctx, stock: ctx, crm: ctx };
+  // Fail closed: a caller that omits `foreign` (or a member of it) gets that dataset DENIED, never a read
+  // through the scheduling handle, which would bypass the pos/stock/crm dataset gates.
+  const foreign = {
+    pos: opts.foreign?.pos ?? DENIED('pos'),
+    stock: opts.foreign?.stock ?? DENIED('stock'),
+    crm: opts.foreign?.crm ?? DENIED('crm'),
+  };
   const pos = opts.pos && !isDenied(foreign.pos);
 
   // TODO(handoff): no status filter — every status reaches the grid, including
@@ -89,33 +110,105 @@ export async function loadCalendarWindow(
 
   // Submitted tickets in the same window — the "Invoiced" half of the POS split
   // view. Money never reaches the scheduling calendar, which has no such column.
-  const tickets =
-    pos && !isDenied(foreign.pos)
-      ? await listTicketsForCalendar(foreign.pos, { from, to }).catch(() => [])
-      : [];
+  // Spec 126: the overlay is a READ facet — a failed or capped read is `unavailable`, never a
+  // successful `[]`. Only the POS host with POS view AND finance admission reads it (it carries
+  // ticket totals); the scheduling host answers `denied` without a read.
+  // TODO(handoff): the contract's owned REPEATABLE READ READ ONLY reader with line/text/byte limits is
+  // not built; this reuses `listTicketsForCalendar` (capped at 2,000 headers → `capacity`).
+  const money = opts.canReadFinancialFields === true;
+  let ticketOverlay: TicketOverlayFacet = { state: 'denied' };
+  if (pos && !isDenied(foreign.pos) && money) {
+    try {
+      const tickets = await listTicketsForCalendar(foreign.pos, { from, to });
+      ticketOverlay =
+        tickets.length === 0
+          ? { state: 'empty' }
+          : tickets.length >= 2000
+            ? { state: 'unavailable', reason: 'capacity' }
+            : {
+                state: 'available',
+                value: {
+                  rows: tickets.map((t) => ({
+                    id: t.id,
+                    humanId: t.humanId,
+                    at: t.submittedAt.toISOString(),
+                    total: Number(t.total),
+                    currency: t.currency,
+                    customerName: t.customerName,
+                    lines: t.lines,
+                  })),
+                },
+              };
+    } catch {
+      ticketOverlay = { state: 'unavailable', reason: 'read_failed' };
+    }
+  }
   // Per-booking paid-ness for the event context menu (spec 2026-10-13 D3):
   // anchored on the line's booking_id, NOT the window — a ticket sold weeks
   // ago still marks its booking paid. Two statements over the window's ids.
+  let ticketLinksFailed = false;
   const ticketLinks =
     pos && !isDenied(foreign.pos)
       ? await bookingTicketLinks(
           foreign.pos,
           bookings.map((b) => b.id),
-        ).catch(() => new Map<string, BookingTicketLink[]>())
+        ).catch(() => {
+          ticketLinksFailed = true;
+          return new Map<string, BookingTicketLink[]>();
+        })
       : new Map<string, BookingTicketLink[]>();
+  // Spec 126: the SAME sold projection the detail uses, per visit (anchor +
+  // authorized members resolved from the window's rows). The scheduling host
+  // reads no sales, so its sold facet is `not_in_slice`, never an empty list.
+  const visits = visitsOfBookings(bookings);
+  const soldFor = (b: (typeof bookings)[number]): SoldFacet => {
+    if (!opts.pos) return { state: 'unavailable', reason: 'not_in_slice' };
+    if (isDenied(foreign.pos)) return { state: 'denied' };
+    if (ticketLinksFailed) return { state: 'unavailable', reason: 'read_failed' };
+    const visit = visits.get(b.id) ?? { anchorId: b.id, memberIds: new Set([b.id]) };
+    const lines = [...visit.memberIds].flatMap((id) =>
+      (ticketLinks.get(id) ?? []).flatMap((t) => t.products),
+    );
+    return soldRowsForVisit(lines, visit, opts.canReadFinancialFields === true);
+  };
 
-  let accrualSummaries: Awaited<ReturnType<typeof accrualSummaryForSources>> = [];
+  // Reduced payment facet (the window has no price or amount readers): present only with POS view AND
+  // the finance field tier; the legacy `paid`/`funding`/`tickets` aliases below exist only then.
+  const paymentFor = (b: (typeof bookings)[number]): CalendarProductFacets['payment'] => {
+    if (!opts.pos) return { state: 'unavailable', reason: 'not_in_slice' };
+    if (isDenied(foreign.pos) || !money) return { state: 'denied' };
+    if (ticketLinksFailed) return { state: 'unavailable', reason: 'read_failed' };
+    const links = ticketLinks.get(b.id) ?? [];
+    return {
+      state: 'available',
+      value: {
+        paid: links.length > 0,
+        funding: b.packageGrantId ? 'grant' : b.paymentPlanId ? 'plan' : 'cash',
+        tickets: links.map((t) => ({ id: t.id, humanId: t.humanId })),
+      },
+    };
+  };
+
+  // Cost-free accrual counts for the SERVER-RESOLVED visit anchors (spec decision 4). One read; a
+  // failure or over-limit window makes the stock facet unavailable, never the bookings.
+  let stockAnchors: Awaited<ReturnType<typeof stockAnchorForBookings>> | null = null;
+  let stockFailure: 'read_failed' | 'capacity' | null = null;
   if (pos && !isDenied(foreign.stock)) {
     try {
-      accrualSummaries = await accrualSummaryForSources(
-        foreign.stock,
-        'booking',
-        bookings.map((b) => b.id),
-      );
-    } catch {
-      // stock module absent/off — bookings render without chips
+      stockAnchors = await stockAnchorForBookings(foreign.stock, [
+        ...new Set(bookings.map((b) => (visits.get(b.id) ?? { anchorId: b.id }).anchorId)),
+      ]);
+    } catch (e) {
+      stockFailure = e instanceof Error && e.message === 'capacity' ? 'capacity' : 'read_failed';
     }
   }
+  const stockFor = (b: (typeof bookings)[number]): CalendarProductFacets['stock'] => {
+    if (!opts.pos) return { state: 'unavailable', reason: 'not_in_slice' };
+    if (isDenied(foreign.stock)) return { state: 'denied' };
+    if (stockFailure) return { state: 'unavailable', reason: stockFailure };
+    const anchorId = (visits.get(b.id) ?? { anchorId: b.id }).anchorId;
+    return { state: 'available', value: { anchorAccrual: stockAnchors?.get(anchorId) ?? null } };
+  };
 
   // Tags on each event: own (event scope) + the client's + the service's —
   // dots on the boxes and the toolbar filter. Fail-soft: a tag read must never
@@ -179,7 +272,28 @@ export async function loadCalendarWindow(
     // tags absent — calendar renders without dots/filter options
   }
 
+  /** The facets, plus the legacy `paid`/`funding`/`tickets` aliases ONLY when derived from an
+   *  admitted payment facet (never `paid: false` or `cash` from a denied or failed read). */
+  const bookingProductProjection = (b: (typeof bookings)[number]) => {
+    const payment = paymentFor(b);
+    const productFacets: CalendarProductFacets = {
+      version: 1,
+      sold: soldFor(b),
+      payment,
+      stock: stockFor(b),
+    };
+    return payment.state === 'available'
+      ? {
+          productFacets,
+          paid: payment.value.paid,
+          funding: payment.value.funding,
+          tickets: payment.value.tickets,
+        }
+      : { productFacets };
+  };
+
   return {
+    productProjectionVersion: 1 as const,
     bookings: bookings.map((b) => ({
       id: b.id,
       resourceId: b.resourceId,
@@ -205,24 +319,9 @@ export async function loadCalendarWindow(
       kindId: b.kindId ?? eventTypes.find((e) => e.id === b.eventTypeId)?.kindId ?? null,
       category: categories.get(productOf(b) ?? '')?.name ?? null,
       categoryColor: categories.get(productOf(b) ?? '')?.color ?? null,
-      /** A non-void ticket line charged this booking (menu: delete vs cancel-paid). */
-      paid: (ticketLinks.get(b.id)?.length ?? 0) > 0,
-      /** Same rule as the drawer's `visitForBooking`: grant → plan → cash. */
-      funding: (b.packageGrantId ? 'grant' : b.paymentPlanId ? 'plan' : 'cash') as
-        'cash' | 'grant' | 'plan',
-      /** The non-void tickets that charged it — the cancel-paid dialog voids these. */
-      tickets: ticketLinks.get(b.id) ?? [],
+      ...bookingProductProjection(b),
     })),
-    invoices: tickets.map((t) => ({
-      id: t.id,
-      humanId: t.humanId,
-      at: t.submittedAt.toISOString(),
-      total: Number(t.total),
-      currency: t.currency,
-      customerName: t.customerName,
-      lines: t.lines,
-    })),
-    accrualSummaries,
     tagOptions: [...tagOptions.values()],
+    ticketOverlay,
   };
 }

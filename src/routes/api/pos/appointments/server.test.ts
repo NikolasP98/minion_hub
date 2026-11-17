@@ -4,6 +4,8 @@ const state = vi.hoisted(() => ({
   user: { id: 'u1' } as unknown,
   ctx: { db: {}, tenantId: 'org-1' } as { db: object; tenantId: string } | null,
   enabled: true,
+  canReadMoney: true,
+  denied: [] as string[],
   required: vi.fn(),
   resources: [{ id: 'r1', active: true, timezone: 'America/Lima' }],
   eventTypes: [{ id: 'e1', productId: null, kindId: null }],
@@ -12,7 +14,12 @@ const state = vi.hoisted(() => ({
       _ctx: unknown,
       _locals: unknown,
       _opts: { from: Date; to: Date; eventTypes: unknown[] },
-    ) => ({ bookings: [], invoices: [], accrualSummaries: [], tagOptions: [] }),
+    ) => ({
+      productProjectionVersion: 1,
+      bookings: [],
+      tagOptions: [],
+      ticketOverlay: { state: 'empty' },
+    }),
   ),
   createBookingResponse: vi.fn(
     async (_ctx: unknown, _locals: unknown, _request: unknown) =>
@@ -27,6 +34,11 @@ vi.mock('$server/auth/authorize', () => ({
   },
 }));
 vi.mock('$server/auth/core-ctx', () => ({ getCoreCtx: () => Promise.resolve(state.ctx) }));
+vi.mock('$server/auth/dataset-ctx', () => ({
+  canReadFinancialFields: () => Promise.resolve(state.canReadMoney),
+  datasetCtx: (_l: unknown, module: string) =>
+    Promise.resolve(state.denied.includes(module) ? { denied: module, verb: 'view' } : state.ctx),
+}));
 vi.mock('$server/services/modules.service', () => ({
   isModuleEnabled: () => Promise.resolve(state.enabled),
 }));
@@ -53,8 +65,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.ctx = { db: {}, tenantId: 'org-1' };
   state.enabled = true;
+  state.canReadMoney = true;
+  state.denied = [];
 });
 
+const v1 = () => new Request('http://x', { headers: { 'X-Minion-Booking-Products-Version': '1' } });
 const url = (qs: string) => new URL(`http://localhost/api/pos/appointments${qs}`);
 
 describe('GET /api/pos/appointments', () => {
@@ -62,6 +77,7 @@ describe('GET /api/pos/appointments', () => {
     const { GET } = await import('./+server');
     const response = await GET({
       locals: { user: state.user },
+      request: v1(),
       url: url('?from=2026-09-07&to=2026-09-13'),
     } as never);
 
@@ -69,21 +85,76 @@ describe('GET /api/pos/appointments', () => {
     expect(state.window).toHaveBeenCalledWith(
       state.ctx,
       { user: state.user },
-      expect.objectContaining({ eventTypes: state.eventTypes, pos: true }),
+      expect.objectContaining({
+        eventTypes: state.eventTypes,
+        pos: true,
+        canReadFinancialFields: true,
+      }),
     );
     expect(await response.json()).toEqual({
-      bookings: [],
-      invoices: [],
-      accrualSummaries: [],
-      tagOptions: [],
       calendarScope: JSON.stringify(['org-1', 'America/Lima']),
+      productProjectionVersion: 1,
+      bookings: [],
+      tagOptions: [],
+      ticketOverlay: { state: 'empty' },
     });
+  });
+
+  it('answers HTTP 409 refresh_required with NO window read when the version header is missing or wrong', async () => {
+    const { GET } = await import('./+server');
+    for (const headers of [{}, { 'X-Minion-Booking-Products-Version': '2' }] as Record<
+      string,
+      string
+    >[]) {
+      const response = await GET({
+        locals: { user: state.user },
+        request: new Request('http://x', { headers }),
+        url: url('?from=2026-09-07&to=2026-09-13'),
+      } as never);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: 'refresh_required' });
+    }
+    expect(state.window).not.toHaveBeenCalled();
+    // normal admission still runs first
+    expect(state.required).toHaveBeenCalled();
+  });
+
+  it('resolves pos/stock/crm through their OWN dataset handles (a denied one is passed as denied)', async () => {
+    const { GET } = await import('./+server');
+    state.denied = ['stock'];
+    await GET({
+      locals: { user: state.user },
+      request: v1(),
+      url: url('?from=2026-09-07&to=2026-09-13'),
+    } as never);
+    const opts = state.window.mock.calls[0]![2] as unknown as {
+      foreign: Record<string, unknown>;
+    };
+    expect(opts.foreign.pos).toBe(state.ctx);
+    expect(opts.foreign.crm).toBe(state.ctx);
+    expect(opts.foreign.stock).toEqual({ denied: 'stock', verb: 'view' });
+  });
+
+  it('passes money admission to the window: the gift flag needs finance, not just POS (spec 126)', async () => {
+    const { GET } = await import('./+server');
+    state.canReadMoney = false;
+    await GET({
+      locals: { user: state.user },
+      request: v1(),
+      url: url('?from=2026-09-07&to=2026-09-13'),
+    } as never);
+    expect(state.window).toHaveBeenCalledWith(
+      state.ctx,
+      { user: state.user },
+      expect.objectContaining({ canReadFinancialFields: false }),
+    );
   });
 
   it('resolves the window in the first active resource timezone, half-open past the last day', async () => {
     const { GET } = await import('./+server');
     const response = await GET({
       locals: { user: state.user },
+      request: v1(),
       url: url('?from=2026-09-07&to=2026-09-07'),
     } as never);
 
@@ -97,7 +168,7 @@ describe('GET /api/pos/appointments', () => {
   it('400s when from or to is missing', async () => {
     const { GET } = await import('./+server');
     await expect(
-      GET({ locals: { user: state.user }, url: url('?from=2026-09-07') } as never),
+      GET({ locals: { user: state.user }, request: v1(), url: url('?from=2026-09-07') } as never),
     ).rejects.toMatchObject({ status: 400 });
   });
 
@@ -106,6 +177,7 @@ describe('GET /api/pos/appointments', () => {
     await expect(
       GET({
         locals: { user: state.user },
+        request: v1(),
         url: url('?from=2026-9-7&to=2026-09-13'),
       } as never),
     ).rejects.toMatchObject({ status: 400 });
@@ -116,6 +188,7 @@ describe('GET /api/pos/appointments', () => {
     await expect(
       GET({
         locals: { user: state.user },
+        request: v1(),
         url: url('?from=2026-09-13&to=2026-09-07'),
       } as never),
     ).rejects.toMatchObject({ status: 400 });
@@ -126,6 +199,7 @@ describe('GET /api/pos/appointments', () => {
     await expect(
       GET({
         locals: { user: state.user },
+        request: v1(),
         url: url('?from=2026-01-01&to=2026-03-10'), // 69 days
       } as never),
     ).rejects.toMatchObject({ status: 400 });
@@ -136,6 +210,7 @@ describe('GET /api/pos/appointments', () => {
     await expect(
       GET({
         locals: { user: state.user },
+        request: v1(),
         url: url('?from=2026-01-01&to=2026-03-03'), // 62 days inclusive
       } as never),
     ).resolves.toBeInstanceOf(Response);
@@ -145,7 +220,11 @@ describe('GET /api/pos/appointments', () => {
     state.enabled = false;
     const { GET } = await import('./+server');
     await expect(
-      GET({ locals: { user: state.user }, url: url('?from=2026-09-07&to=2026-09-13') } as never),
+      GET({
+        locals: { user: state.user },
+        request: v1(),
+        url: url('?from=2026-09-07&to=2026-09-13'),
+      } as never),
     ).rejects.toMatchObject({ status: 403 });
     expect(state.required).not.toHaveBeenCalled();
   });
@@ -154,7 +233,11 @@ describe('GET /api/pos/appointments', () => {
     state.ctx = null;
     const { GET } = await import('./+server');
     await expect(
-      GET({ locals: { user: state.user }, url: url('?from=2026-09-07&to=2026-09-13') } as never),
+      GET({
+        locals: { user: state.user },
+        request: v1(),
+        url: url('?from=2026-09-07&to=2026-09-13'),
+      } as never),
     ).rejects.toMatchObject({ status: 401 });
     expect(state.required).not.toHaveBeenCalled();
   });

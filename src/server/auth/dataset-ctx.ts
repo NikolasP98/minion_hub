@@ -1,6 +1,10 @@
 import { error } from '@sveltejs/kit';
 import { getCoreCtx, type CoreCtx } from './core-ctx';
-import { resolveCapabilities, type Module } from '$server/services/rbac.service';
+import {
+  resolveCapabilities,
+  shouldMaskSensitive,
+  type Module,
+} from '$server/services/rbac.service';
 import { isDenied, type DatasetDenied } from '$lib/permissions';
 
 export { isDenied, type DatasetDenied };
@@ -23,6 +27,13 @@ export async function datasetCtx(
   if (!profileId) return { denied: module, verb: 'view' };
   const caps = await resolveCapabilities(ctx.tenantId, profileId);
   return caps.can(module, 'view') ? ctx : { denied: module, verb: 'view' };
+}
+
+/** Money facts (e.g. a sold line's gift flag) need `finance:view` AND the finance field tier —
+ *  never a POS or stock permission (spec 126 decision 3). */
+export async function canReadFinancialFields(locals: App.Locals): Promise<boolean> {
+  const finance = await datasetCtx(locals, 'finance');
+  return !isDenied(finance) && !(await shouldMaskSensitive(locals, 'finance'));
 }
 
 /** datasetCtx + run `fn` only when allowed. */

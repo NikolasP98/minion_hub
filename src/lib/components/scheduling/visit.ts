@@ -92,6 +92,9 @@ export interface VisitRow {
   referenced: VisitReference[];
 }
 
+/** A service row without `referenced`: what the money helpers use (`financialVisitRows` builds these). */
+export type FinancialVisitRow = Omit<VisitRow, 'referenced'>;
+
 /** One of the event's POS tickets, as the ungrouped fallback reads it. */
 type RowTicket = { status: string; lineTotal: string | number; currency: string | null };
 
@@ -164,7 +167,12 @@ export interface VisitSummary {
 /** The section's summary line: counts, and the money behind them. A grant-drawn
  *  service owes nothing; an instalment-plan one is pending against the PLAN's
  *  own remaining figure, not this event's, so neither joins `pendingTotal`. */
-export function visitSummary(rows: VisitRow[]): VisitSummary {
+export function visitSummary(
+  rows: readonly Pick<
+    VisitRow,
+    'paid' | 'paidAmount' | 'currency' | 'funding' | 'status' | 'price'
+  >[],
+): VisitSummary {
   const currencies = new Set<string>();
   let paid = 0;
   let unpaid = 0;
@@ -279,7 +287,9 @@ export function servicesTitle(
  *  two can never disagree about what is still owed. A service priced exactly 0
  *  (a free follow-up "Control") can never be charged, so it is never owed; a
  *  null price (no catalog product) still is. SQL twin: `UNBILLED_BOOKING_WHERE`. */
-export function chargeableRows(rows: readonly VisitRow[]): VisitRow[] {
+export function chargeableRows<R extends Pick<VisitRow, 'funding' | 'paid' | 'status' | 'price'>>(
+  rows: readonly R[],
+): R[] {
   return rows.filter(
     (r) => r.funding === 'cash' && !r.paid && !isInactiveMemberStatus(r.status) && r.price !== 0,
   );
@@ -336,18 +346,49 @@ export type PayableEvent = {
  * along — an instalment charge stages neither, since `stageSellChargeHandoff`
  * short-circuits on `planId`.
  */
-export function payableEventFrom(input: {
+type PayableRow = Pick<
+  VisitRow,
+  'id' | 'eventTypeId' | 'title' | 'funding' | 'paid' | 'status' | 'price'
+>;
+type PayableInput = {
   booking: PayableBooking;
   /** Older bookings remember only their contact — hand the till the contact's
    *  party so the client is not a ticket-only name. */
   contactPartyId?: string | null;
   /** The event's anchor/lead booking id, which every product line rides on. */
   anchorId: string;
-  rows: readonly VisitRow[];
+  rows: readonly PayableRow[];
   products?: readonly VisitProductLine[];
-}): PayableEvent {
+};
+
+/** `allowServiceFallback: false` (the guarded paths): no chargeable service means NO fabricated
+ *  first service; unpaid products still hand off as products only, and with neither there is no
+ *  handoff (`null`). The default keeps the legacy runtime behaviour for existing callers. */
+export function payableEventFrom(
+  input: PayableInput & { allowServiceFallback: false },
+): PayableEvent | null;
+export function payableEventFrom(
+  input: PayableInput & { allowServiceFallback?: true },
+): PayableEvent;
+export function payableEventFrom(
+  input: PayableInput & { allowServiceFallback?: boolean },
+): PayableEvent | null {
   const chargeable = chargeableRows(input.rows);
-  const lines = chargeable.length ? chargeable : input.rows.slice(0, 1);
+  const lines = chargeable.length
+    ? chargeable
+    : input.allowServiceFallback === false
+      ? []
+      : input.rows.slice(0, 1);
+  const products = (input.products ?? [])
+    .filter((p) => !p.paid)
+    .map((p) => ({
+      bookingId: input.anchorId,
+      productId: p.productId,
+      title: p.name,
+      qty: p.qty,
+    }));
+  if (input.allowServiceFallback === false && lines.length === 0 && products.length === 0)
+    return null;
   return {
     booking: input.booking,
     partyId: input.booking.partyId ?? input.contactPartyId ?? null,
@@ -357,13 +398,6 @@ export function payableEventFrom(input: {
       eventTypeId: r.eventTypeId,
       title: r.title,
     })),
-    products: (input.products ?? [])
-      .filter((p) => !p.paid)
-      .map((p) => ({
-        bookingId: input.anchorId,
-        productId: p.productId,
-        title: p.name,
-        qty: p.qty,
-      })),
+    products,
   };
 }

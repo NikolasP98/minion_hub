@@ -1,6 +1,8 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { canReadFinancialFields, datasetCtx } from '$server/auth/dataset-ctx';
+import { requireProductsVersion } from '$server/api/booking-products-version';
 import { requireAuth } from '$server/auth/authorize';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { requireOrgCapability } from '$server/services/rbac.service';
@@ -40,7 +42,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
  * (`calendarLoadWindow` in the page load). Same shape the page's own load
  * returns for `bookings`/`invoices`/`accrualSummaries`/`tagOptions`.
  */
-export const GET: RequestHandler = async ({ locals, url }) => {
+export const GET: RequestHandler = async ({ locals, url, request }) => {
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
@@ -50,6 +52,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   // `apiWriteCapability`; this is the matching read gate — see
   // /api/pos/appointments/[id] and /api/pos/accounts for the same pattern).
   await requireOrgCapability(locals, 'pos', 'view');
+  const stale = requireProductsVersion(request);
+  if (stale) return stale;
 
   const fromRaw = url.searchParams.get('from');
   const toRaw = url.searchParams.get('to');
@@ -72,6 +76,18 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
-  const payload = await loadCalendarWindow(ctx, locals, { from, to, eventTypes, pos: true });
-  return json({ ...payload, calendarScope: calendarWindowScope(ctx.tenantId, orgTz) });
+  const payload = await loadCalendarWindow(ctx, locals, {
+    from,
+    to,
+    eventTypes,
+    pos: true,
+    canReadFinancialFields: await canReadFinancialFields(locals),
+    // Each foreign dataset through ITS OWN handle (denied = degraded slice), as the page loader does.
+    foreign: {
+      pos: await datasetCtx(locals, 'pos'),
+      stock: await datasetCtx(locals, 'stock'),
+      crm: await datasetCtx(locals, 'crm'),
+    },
+  });
+  return json({ calendarScope: calendarWindowScope(ctx.tenantId, orgTz), ...payload });
 };

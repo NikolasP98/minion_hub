@@ -98,6 +98,21 @@
   //    reads, the rows and the POST; this view only remembers which booking is open.
   let completeFor = $state<{ id: string; productId: string | null } | null>(null);
   let stockWarnings = $state<Record<string, string>>({}); // bookingId → message
+  // Stock-only retry of an ALREADY completed booking (spec 126): never the ordinary
+  // completion dialog, which falls back to the service's default consumption.
+  let recoverFor = $state<string | null>(null);
+
+  async function afterRecover(id: string, results: Record<string, string>) {
+    if (
+      Object.values(results).length > 0 &&
+      Object.values(results).every((r) => r === 'resolved')
+    ) {
+      const next = { ...stockWarnings };
+      delete next[id];
+      stockWarnings = next;
+    }
+    await invalidate(invalidateKey);
+  }
 
   function openComplete(id: string) {
     const et = data.eventTypes.find(
@@ -188,6 +203,9 @@
                 <div class="t-caption">{b.attendeePhone ?? ''}</div>
               </div>
               <Badge>{(STATUS_LABEL[b.status] ?? (() => b.status))()}</Badge>
+              <!-- TODO(handoff): estValue/realizedValue money chips read the stock accrual outside the
+                   spec 126 versioned facets (no money gate, spec 126 is quantity-only). Replace with the
+                   stock facet or gate on finance view. Ledger: proposals/2026-11-17-hub-booking-product-consistency-handoff.md -->
               {#if accrualBySource.get(b.id)}
                 {@const acc = accrualBySource.get(b.id)!}
                 {#if acc.open > 0}
@@ -214,7 +232,7 @@
                     variant="ghost"
                     size="sm"
                     class="underline"
-                    onclick={() => openComplete(b.id)}>{m.sched_stock_retry_post()}</Button
+                    onclick={() => (recoverFor = b.id)}>{m.sched_stock_retry_post()}</Button
                   >
                 </span>
               {/if}
@@ -334,6 +352,14 @@
   apiBase="/api/scheduling/bookings"
   onclose={() => (completeFor = null)}
   oncompleted={(result) => afterComplete(completeFor?.id ?? '', result)}
+/>
+
+<ConsumptionConfirmDialog
+  mode="recover_stock"
+  bookingId={recoverFor}
+  apiBase="/api/scheduling/bookings"
+  onclose={() => (recoverFor = null)}
+  onrecovered={(results) => afterRecover(recoverFor ?? '', results)}
 />
 
 <style>

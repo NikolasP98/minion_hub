@@ -12,7 +12,8 @@
  *
  * Design: docs/superpowers/specs/2026-07-05-consumption-accrual-scheduling-stock-design.md
  */
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
@@ -21,11 +22,13 @@ import {
   stkConsumption,
   stkItemComponents,
   stkItems,
+  stkEntries,
   stkLedger,
   stkWarehouses,
   type StkAccrual,
   type StkEntry,
 } from '$server/db/pg-schema/stock';
+import { schedBookings } from '$server/db/pg-scheduling-schema';
 import { consumptionToStockQty, edgesByParent, explodeToStockLeaves, round4 } from './stock.logic';
 import { memoRequest } from '$server/db/request-memo';
 import {
@@ -346,6 +349,38 @@ export interface RealizeInput {
   partyId?: string | null;
   note?: string | null;
   actor: Actor;
+  /**
+   * Spec 126 `confirm_open` recovery: the operator reviewed THIS open set. Inside the
+   * passed transaction, before any write, the set must still be the one reviewed (same
+   * count and fingerprint), the booking still completed and no source entry present —
+   * else `RecoveryPreviewStaleError`, with no effect at all. Never inferred from `lines`.
+   */
+  recovery?: {
+    expectedOpenCount: number;
+    expectedOpenFingerprint: string;
+    /** SERVER-derived literal of the route family that received the request (never from a body). The
+     *  host's edit capability plus `stock:view`/`stock:manage` are re-checked inside the write
+     *  transaction, after the F3 gate, from fresh (locked) authority rows. */
+    host: 'pos' | 'scheduling';
+    /** True for a platform admin (the route-level bypass); capabilities are then not consulted. */
+    platformAdmin?: boolean;
+  };
+}
+
+/** The caller no longer holds the host edit right or stock view/manage at write time. */
+export class RecoveryForbiddenError extends Error {
+  readonly code = 'stock_forbidden';
+  constructor() {
+    super('stock:manage and the host edit right are required to recover stock');
+  }
+}
+
+/** The reviewed open set changed (or the booking/source did) between preview and confirm. */
+export class RecoveryPreviewStaleError extends Error {
+  readonly code = 'recovery_preview_stale';
+  constructor() {
+    super('the open stock set changed since it was reviewed; refresh and review again');
+  }
 }
 
 /**
@@ -374,6 +409,7 @@ export async function realizeAccrualsInTx(
   guard: StockWriteGuard,
   input: RealizeInput,
 ): Promise<RealizeResult> {
+  if (input.recovery) await assertRecoveryPreviewInTx(tx, ctx, input);
   const open = await tx
     .select()
     .from(stkAccruals)
@@ -642,4 +678,340 @@ export async function accrualSummaryForSources(
     bySource.set(r.sourceId, s);
   }
   return [...bySource.values()];
+}
+
+/** What one visit anchor's booking accruals look like — counts only, no cost (spec 126). */
+export interface AnchorAccrual {
+  open: number;
+  realized: number;
+  released: number;
+  /** Null when no row, or several DISTINCT realized entries (never an arbitrary first). */
+  realizedEntryId: string | null;
+}
+
+const ANCHOR_READ_LIMIT = 1000;
+
+/**
+ * Cost-free accrual counts for the SERVER-RESOLVED visit anchors (spec 126
+ * decision 4). A complete read with no rows leaves an anchor out of the map, so
+ * the caller can say "no accrual" only when the read really succeeded; a throw
+ * is the caller's `unavailable`, never an empty map. Selects no value column.
+ */
+export async function stockAnchorForBookings(
+  ctx: CoreCtx,
+  anchorIds: string[],
+): Promise<Map<string, AnchorAccrual>> {
+  const out = new Map<string, AnchorAccrual>();
+  const ids = [...new Set(anchorIds)];
+  if (!ids.length) return out;
+  if (ids.length > ANCHOR_READ_LIMIT) throw new Error('capacity');
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({
+        sourceId: stkAccruals.sourceId,
+        status: stkAccruals.status,
+        realizedEntryId: stkAccruals.realizedEntryId,
+      })
+      .from(stkAccruals)
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, 'booking'),
+          inArray(stkAccruals.sourceId, ids),
+        ),
+      ),
+  );
+  const entries = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const a = out.get(r.sourceId) ?? { open: 0, realized: 0, released: 0, realizedEntryId: null };
+    if (r.status === 'open') a.open++;
+    else if (r.status === 'realized') a.realized++;
+    else a.released++;
+    if (r.realizedEntryId) {
+      const set = entries.get(r.sourceId) ?? new Set<string>();
+      set.add(r.realizedEntryId);
+      entries.set(r.sourceId, set);
+    }
+    out.set(r.sourceId, a);
+  }
+  for (const [id, set] of entries) if (set.size === 1) out.get(id)!.realizedEntryId = [...set][0]!;
+  return out;
+}
+
+// ── Spec 126 US2: persistent stock-recovery read model ───────────────────────
+
+export type RecoveryEligibility = 'retry_saved' | 'confirm_open' | 'not_needed' | 'manual_review';
+
+/** One open accrual of a member, with what `completionLinesFor` needs; quantity only, no cost. */
+export interface RecoveryOpenRow {
+  accrualId: string;
+  itemId: string;
+  itemName: string;
+  uom: string;
+  consumptionUom: string | null;
+  unitsPerStockUom: number | null;
+  subunitsPerStockUom: number | null;
+  diagramEnabled: boolean;
+  qty: number;
+  qtyConsumption: number;
+}
+
+export interface RecoveryConfirmation {
+  openCount: number;
+  rows: RecoveryOpenRow[];
+  /** SHA-256 over the reviewed rows; server-produced freshness evidence, never an approval. */
+  expectedOpenFingerprint: string;
+}
+
+export type RecoveryConfirmationRead =
+  | { state: 'available'; value: RecoveryConfirmation }
+  | { state: 'unavailable'; reason: 'capacity' | 'invalid_projection' };
+
+export interface StockRecoveryMember {
+  bookingId: string;
+  status: string;
+  openCount: number;
+  realizedCount: number;
+  releasedCount: number;
+  sourceEntry: { id: string; status: 'draft' | 'submitted' } | null;
+  eligibility: RecoveryEligibility;
+  /** Only for `confirm_open` members. */
+  confirmation: RecoveryConfirmationRead | null;
+}
+
+const RECOVERY_OPEN_LIMIT = 1000;
+
+/**
+ * The open accruals of one booking as a COMPLETE reviewable set, in ONE statement
+ * (so rows and count share a snapshot): at most 1,000, each joined to a same-org
+ * item. More than 1,000 or a lost item join is `unavailable`, never a shorter list.
+ * Runs on the passed transaction (the F3 write transaction for the precondition).
+ */
+export async function listRecoveryOpenAccrualsInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  bookingId: string,
+): Promise<RecoveryConfirmationRead> {
+  const rows = await tx
+    .select({
+      accrual: stkAccruals,
+      itemName: stkItems.name,
+      itemUom: stkItems.uom,
+      consumptionUom: stkItems.consumptionUom,
+      unitsPerStockUom: stkItems.unitsPerStockUom,
+      subunitsPerStockUom: stkItems.subunitsPerStockUom,
+      diagramEnabled: stkItems.diagramEnabled,
+    })
+    .from(stkAccruals)
+    .leftJoin(
+      stkItems,
+      and(eq(stkItems.id, stkAccruals.itemId), eq(stkItems.orgId, stkAccruals.orgId)),
+    )
+    .where(
+      and(
+        eq(stkAccruals.orgId, ctx.tenantId),
+        eq(stkAccruals.source, 'booking'),
+        eq(stkAccruals.sourceId, bookingId),
+        eq(stkAccruals.status, 'open'),
+      ),
+    )
+    .orderBy(asc(stkAccruals.id))
+    .limit(RECOVERY_OPEN_LIMIT + 1);
+  if (rows.length > RECOVERY_OPEN_LIMIT) return { state: 'unavailable', reason: 'capacity' };
+  const out: RecoveryOpenRow[] = [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const qty = Number(r.accrual.qty);
+    const qtyConsumption = Number(r.accrual.qtyConsumption);
+    if (
+      r.itemName === null ||
+      r.itemUom === null ||
+      seen.has(r.accrual.id) ||
+      !Number.isFinite(qty) ||
+      !Number.isFinite(qtyConsumption)
+    )
+      return { state: 'unavailable', reason: 'invalid_projection' };
+    seen.add(r.accrual.id);
+    out.push({
+      accrualId: r.accrual.id,
+      itemId: r.accrual.itemId,
+      itemName: r.itemName,
+      uom: r.itemUom,
+      consumptionUom: r.consumptionUom ?? null,
+      unitsPerStockUom: r.unitsPerStockUom == null ? null : Number(r.unitsPerStockUom),
+      subunitsPerStockUom: r.subunitsPerStockUom == null ? null : Number(r.subunitsPerStockUom),
+      diagramEnabled: Boolean(r.diagramEnabled),
+      qty,
+      qtyConsumption,
+    });
+  }
+  // Hash the stored text of every value the operator reviewed or that decides the issue
+  // (quantities, the item conversion facts), in id order — no Number reserialization.
+  // shortcut: selected columns, not PostgreSQL `to_jsonb(row)::text`; upgrade if a column
+  // outside this list can change what the issue books.
+  const fingerprint = createHash('sha256')
+    .update(
+      JSON.stringify({
+        orgId: ctx.tenantId,
+        bookingId,
+        sourceEntryState: 'absent',
+        openCount: rows.length,
+        accrualRows: rows.map((r) => [
+          r.accrual.id,
+          r.accrual.itemId,
+          r.accrual.status,
+          r.accrual.qty,
+          r.accrual.qtyConsumption,
+          r.accrual.warehouseId,
+        ]),
+        itemRows: rows.map((r) => [
+          r.accrual.itemId,
+          r.itemUom,
+          r.consumptionUom,
+          r.unitsPerStockUom,
+          r.subunitsPerStockUom,
+        ]),
+      }),
+    )
+    .digest('hex');
+  return {
+    state: 'available',
+    value: { openCount: out.length, rows: out, expectedOpenFingerprint: fingerprint },
+  };
+}
+
+/** Precondition of `confirm_open`; runs inside the write transaction after the F3 gate.
+ *  Proven against real PostgreSQL in F3's semantic case 9 (`stock-corrections.sql.integration.test.ts`).
+ */
+async function assertRecoveryPreviewInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  input: RealizeInput,
+): Promise<void> {
+  const want = input.recovery!;
+  // Fresh authority after both gates, through F7's guarded-write authority bridge (the org authority lock is held, so a concurrent role or module
+  // change cannot slip past): the host's own edit right, plus stock view and manage.
+  if (!want.platformAdmin) {
+    const { resolveFreshOperatorCapabilitiesForWriteInTransaction } =
+      await import('./rbac.service');
+    const profileId = ctx.profileId;
+    const caps = profileId
+      ? (await resolveFreshOperatorCapabilitiesForWriteInTransaction(tx, ctx.tenantId, profileId))
+          .capabilities
+      : null;
+    const hostModule = want.host === 'pos' ? 'pos' : 'scheduling';
+    if (
+      !caps ||
+      !caps.can(hostModule, 'edit') ||
+      !caps.can('stock', 'view') ||
+      !caps.can('stock', 'manage')
+    )
+      throw new RecoveryForbiddenError();
+  }
+  const [booking] = await tx
+    .select({ status: schedBookings.status })
+    .from(schedBookings)
+    .where(and(eq(schedBookings.id, input.sourceId), eq(schedBookings.orgId, ctx.tenantId)))
+    .limit(1);
+  if (booking?.status !== 'completed') throw new RecoveryPreviewStaleError();
+  if (await findEntryBySourceInTx(tx, ctx, input.source, input.sourceId))
+    throw new RecoveryPreviewStaleError();
+  const current = await listRecoveryOpenAccrualsInTx(tx, ctx, input.sourceId);
+  if (
+    current.state !== 'available' ||
+    current.value.openCount < 1 ||
+    current.value.openCount !== want.expectedOpenCount ||
+    current.value.expectedOpenFingerprint !== want.expectedOpenFingerprint
+  )
+    throw new RecoveryPreviewStaleError();
+}
+
+/**
+ * Per-member recovery facts for the server-resolved visit members (at most 8, passed by the
+ * scheduling caller — never from a client body, and this module does not import the bound).
+ * Counts accrual states and the active source entry; one decision per member:
+ *  - completed + saved entry (draft, or submitted with open rows) → `retry_saved`
+ *  - completed + no entry + open rows → `confirm_open` (with the reviewable open set)
+ *  - completed + everything realized/released (or submitted, nothing open) → `not_needed`
+ *  - no evidence at all, several active entries, unreadable open set → `manual_review`
+ *  - a member that is not completed is never a recovery target → `not_needed`
+ * A throw means the facet is unavailable; it is never read as "nothing to recover".
+ */
+export async function stockRecoveryForBookings(
+  ctx: CoreCtx,
+  members: ReadonlyArray<{ bookingId: string; status: string }>,
+): Promise<StockRecoveryMember[]> {
+  if (!members.length) return [];
+  const ids = members.map((m) => m.bookingId);
+  return withOrgCore(ctx, async (tx) => {
+    const accruals = await tx
+      .select({ sourceId: stkAccruals.sourceId, status: stkAccruals.status })
+      .from(stkAccruals)
+      .where(
+        and(
+          eq(stkAccruals.orgId, ctx.tenantId),
+          eq(stkAccruals.source, 'booking'),
+          inArray(stkAccruals.sourceId, ids),
+        ),
+      );
+    const entries = await tx
+      .select({
+        id: stkEntries.id,
+        status: stkEntries.status,
+        sourceId: sql<string>`${stkEntries.metadata}->>'sourceId'`,
+      })
+      .from(stkEntries)
+      .where(
+        and(
+          eq(stkEntries.orgId, ctx.tenantId),
+          ne(stkEntries.status, 'cancelled'),
+          sql`${stkEntries.metadata}->>'source' = 'booking'`,
+          sql`${stkEntries.metadata}->>'sourceId' in ${ids}`,
+        ),
+      );
+    const out: StockRecoveryMember[] = [];
+    for (const mb of members) {
+      const mine = accruals.filter((a) => a.sourceId === mb.bookingId);
+      const count = (st: string) => mine.filter((a) => a.status === st).length;
+      const open = count('open');
+      const realized = count('realized');
+      const released = count('released');
+      const active = entries.filter((e) => e.sourceId === mb.bookingId);
+      const entry = active.length === 1 ? active[0]! : null;
+      const entryStatus = entry?.status;
+      const sourceEntry: StockRecoveryMember['sourceEntry'] =
+        entry && (entryStatus === 'draft' || entryStatus === 'submitted')
+          ? { id: entry.id, status: entryStatus }
+          : null;
+      let eligibility: RecoveryEligibility;
+      if (mb.status !== 'completed') eligibility = 'not_needed';
+      else if (active.length > 1 || (active.length === 1 && !sourceEntry))
+        eligibility = 'manual_review';
+      else if (sourceEntry)
+        eligibility = sourceEntry.status === 'draft' || open > 0 ? 'retry_saved' : 'not_needed';
+      else if (open > 0) eligibility = 'confirm_open';
+      else eligibility = realized + released > 0 ? 'not_needed' : 'manual_review';
+      let confirmation: RecoveryConfirmationRead | null = null;
+      if (eligibility === 'confirm_open') {
+        confirmation = await listRecoveryOpenAccrualsInTx(tx, ctx, mb.bookingId);
+        if (confirmation.state === 'unavailable') eligibility = 'manual_review';
+        else if (confirmation.value.openCount !== open) {
+          // Two reads disagree (an accrual moved between them): never offer a stale set.
+          confirmation = { state: 'unavailable', reason: 'invalid_projection' };
+          eligibility = 'manual_review';
+        }
+      }
+      out.push({
+        bookingId: mb.bookingId,
+        status: mb.status,
+        openCount: open,
+        realizedCount: realized,
+        releasedCount: released,
+        sourceEntry,
+        eligibility,
+        confirmation,
+      });
+    }
+    return out;
+  });
 }

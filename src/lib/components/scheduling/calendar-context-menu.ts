@@ -16,14 +16,18 @@
  */
 import { isInactiveMemberStatus, type BookingBox } from './booking-groups';
 import type { CalendarBooking } from './calendar-window';
-import { visitRows, type BookingVisit, type VisitProductLine, type VisitRow } from './visit';
+import {
+  financialVisitRows,
+  paymentReady,
+  type BookingProductFacets,
+} from './booking-product-facets';
 
 /**
- * The slice of `GET /api/{pos/appointments,scheduling/bookings}/[id]` the
- * CHARGE action reads once picked (the till handoff needs the drawer's rows
- * and products) — the detail drawer's own serialized `Detail`, narrowed (a
- * client module must not import from `$server`, and `json()` turns every Date
- * into a string).
+ * The slice of `GET /api/{pos/appointments,scheduling/bookings}/[id]` the CHARGE action reads once
+ * picked: the structural booking fields plus the DECODED `productFacets` (spec 126). Money, products,
+ * plan and tickets are only ever read through `financialVisitRows`; there is no top-level legacy field
+ * to hand to a helper. (A client module must not import from `$server`, and `json()` turns every Date
+ * into a string.)
  */
 export interface EventMenuDetail {
   booking: {
@@ -40,13 +44,7 @@ export interface EventMenuDetail {
   };
   eventType: { title: string } | null;
   contact: { partyId: string | null } | null;
-  grant: unknown | null;
-  plan: { plan: { id: string }; isPaid: boolean } | null;
-  tickets: ReadonlyArray<{ status: string; lineTotal: string; currency: string | null }>;
-  visit: BookingVisit | null;
-  products: VisitProductLine[];
-  /** Catalog price of an ungrouped booking's service (`BookingDetail.unitPrice`). */
-  unitPrice?: number | null;
+  productFacets: BookingProductFacets;
 }
 
 export type CalendarMenuKind =
@@ -64,22 +62,10 @@ export interface CalendarMenuEntry {
   children?: CalendarMenuEntry[];
 }
 
-/** The event's services, exactly as the drawer's Services section reads them. */
-export function eventServiceRows(d: EventMenuDetail): VisitRow[] {
-  return visitRows({
-    visit: d.visit,
-    booking: d.booking,
-    eventTypeTitle: d.eventType?.title ?? d.booking.title ?? '—',
-    minutes: Math.round(
-      (new Date(d.booking.endTime).getTime() - new Date(d.booking.startTime).getTime()) / 60_000,
-    ),
-    // A VOIDED ticket took no money — it must not read as paid, or the event
-    // loses its charge entry (same gate as the drawer).
-    paid: d.tickets.some((t) => t.status !== 'voided'),
-    tickets: d.tickets,
-    funding: d.grant ? 'grant' : d.plan ? 'plan' : 'cash',
-    price: d.unitPrice,
-  });
+/** The event's financial rows, or why there are none: only an `available` facet may reach the
+ *  summary, charge and till helpers. */
+export function eventServiceRows(d: EventMenuDetail) {
+  return financialVisitRows(d.productFacets);
 }
 
 /** A member still open for work: not closed, not already performed. */
@@ -103,11 +89,13 @@ export function calendarMenuEntries(input: {
   canVoid: boolean;
 }): CalendarMenuEntry[] {
   const members = input.box.members;
+  // Payment actions (charge, sale, paid-cancel, delete) infer settlement, so they need an AVAILABLE
+  // payment facet on every member; denied/unavailable/missing offers detail and split only.
+  const money = paymentReady(members);
   // A charged visit opens its sale, where a wrong product is corrected (meta
   // spec 120). Completed visits too: that is when the mistake is found.
-  const sale: CalendarMenuEntry[] = cancelPaidTickets(members).length
-    ? [{ id: 'sale', kind: 'sale' }]
-    : [];
+  const sale: CalendarMenuEntry[] =
+    money && cancelPaidTickets(members).length ? [{ id: 'sale', kind: 'sale' }] : [];
   if (!members.some(isActive)) return [{ id: 'detail', kind: 'detail' }, ...sale];
 
   const entries: CalendarMenuEntry[] = [];
@@ -117,6 +105,7 @@ export function calendarMenuEntries(input: {
   // not in the window payload. The drawer still offers it. Ledger:
   // proposals/2026-10-13-hub-calendar-context-menu-followups.md
   if (
+    money &&
     input.canPay &&
     members.some((m) => isActive(m) && (m.funding ?? 'cash') === 'cash' && !m.paid)
   )
@@ -144,10 +133,13 @@ export function calendarMenuEntries(input: {
   // ticket first (spec 2026-10-13 I3/I6).
   // A host who may edit but not void gets NO destructive entry on a paid event
   // (FACES 2026-10-16: `staff` holds pos edit, not manage — the entry 403'd).
-  if (input.canEdit) {
+  if (input.canEdit && money) {
     if (!members.some((m) => m.paid)) entries.push({ id: 'delete', kind: 'delete', danger: true });
     else if (input.canVoid) entries.push({ id: 'cancel-paid', kind: 'cancel-paid', danger: true });
   }
+
+  // A blocked payment facet still leaves the event openable: never an empty mounted menu.
+  if (!money) entries.unshift({ id: 'detail', kind: 'detail' });
 
   return entries;
 }

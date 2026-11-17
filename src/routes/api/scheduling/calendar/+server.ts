@@ -2,6 +2,8 @@ import { requireSchedulingRead } from '$server/auth/scheduling-read';
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { listResources, listEventTypes } from '$server/services/scheduling.service';
+import { datasetCtx } from '$server/auth/dataset-ctx';
+import { requireProductsVersion } from '$server/api/booking-products-version';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import { zonedDayWindow } from '$lib/components/dashboard/date-range/url';
 import {
@@ -24,8 +26,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * instants: the window-cache kit asks for whole ISO weeks and the org's business
  * timezone — not UTC — decides where a day starts, exactly like the POS twin.
  */
-export const GET: RequestHandler = async ({ locals, url }) => {
+export const GET: RequestHandler = async ({ locals, url, request }) => {
   const ctx = await requireSchedulingRead(locals);
+  const stale = requireProductsVersion(request);
+  if (stale) return stale;
 
   const fromRaw = url.searchParams.get('from');
   const toRaw = url.searchParams.get('to');
@@ -45,15 +49,16 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
-  const { bookings, tagOptions } = await loadCalendarWindow(ctx, locals, {
+  const payload = await loadCalendarWindow(ctx, locals, {
     from,
     to,
     eventTypes,
     pos: false,
+    // Tags/colours through their own handles (denied = degraded); no pos/stock facets on this host.
+    foreign: {
+      pos: await datasetCtx(locals, 'pos'),
+      crm: await datasetCtx(locals, 'crm'),
+    },
   });
-  return json({
-    bookings,
-    tagOptions,
-    calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
-  });
+  return json({ calendarScope: calendarWindowScope(ctx.tenantId, orgTz), ...payload });
 };

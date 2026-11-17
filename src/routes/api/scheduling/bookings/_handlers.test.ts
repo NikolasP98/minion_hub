@@ -94,6 +94,7 @@ vi.mock('$server/services/rbac.service', () => ({ shouldMaskSensitive: vi.fn() }
 vi.mock('$server/services/stock-accruals.service', () => ({
   realizeAccruals: (...args: unknown[]) => realizeAccruals(...args),
   listAccruals: (...args: unknown[]) => listAccruals(...args),
+  RecoveryPreviewStaleError: class extends Error {},
 }));
 vi.mock('$server/services/stock.service', () => ({
   listConsumption: (...args: unknown[]) => listConsumption(...args),

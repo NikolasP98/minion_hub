@@ -24,10 +24,10 @@ async function gate(locals: App.Locals) {
   return ctx;
 }
 
-export const GET: RequestHandler = async ({ locals, params }) => {
+export const GET: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await gate(locals);
   await requireOrgCapability(locals, 'pos', 'view');
-  return bookingDetailResponse(ctx, locals, params.id!);
+  return bookingDetailResponse(ctx, locals, params.id!, request);
 };
 
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {

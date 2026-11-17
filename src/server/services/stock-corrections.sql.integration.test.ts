@@ -27,7 +27,13 @@ import {
   cancelEntryInTx,
 } from './stock.service';
 import { setModuleEnabled } from './modules.service';
-import { realizeAccruals } from './stock-accruals.service';
+import {
+  RecoveryForbiddenError,
+  RecoveryPreviewStaleError,
+  realizeAccruals,
+  releaseAccruals,
+  stockRecoveryForBookings,
+} from './stock-accruals.service';
 import { setConsumption, updateWarehouse } from './stock.service';
 import { updateFinSettings } from './finance.service';
 import { postTicketStock, setBundleComponent } from './pos.service';
@@ -990,6 +996,197 @@ describe('stock corrections against PostgreSQL', () => {
         await owner`select count(*)::int n from public.stk_ledger where entry_id=${first.entry!.id}`
       )[0].n,
     ).toBe(1);
+
+    // ── Spec 126 (F5): the `confirm_open` recovery precondition, same case, real PostgreSQL ──────────
+    const resource = String(
+      (
+        await owner`insert into public.sched_resources(org_id,name) values (${wd.org},'R') returning id`
+      )[0].id,
+    );
+    const eventType = String(
+      (
+        await owner`insert into public.sched_event_types(org_id,slug,title,length) values (${wd.org},'s','S',30) returning id`
+      )[0].id,
+    );
+    const completedBooking = async (status = 'completed') =>
+      String(
+        (
+          await owner`insert into public.sched_bookings(org_id,uid,event_type_id,resource_id,start_time,end_time,status)
+            values (${wd.org},${randomUUID()},${eventType},${resource},now(),now() + interval '30 minutes',${status}) returning id`
+        )[0].id,
+      );
+    const accrue = (bk: string, item: string, q: number) =>
+      owner`insert into public.stk_accruals(org_id,source,source_id,fin_product_id,item_id,warehouse_id,qty_consumption,qty,status)
+        values (${wd.org},'booking',${bk},${wd.PM},${item},${wd.wh},${q},${q},'open')`;
+    const mgr = await addProfile(wd.org, 'member', [
+      ['stock', true, true, true, 0],
+      ['scheduling', true, true, false, 0],
+    ]);
+    const noHost = await addProfile(wd.org, 'member', [['stock', true, true, true, 0]]);
+    const preview = async (bk: string) => {
+      const [m] = await stockRecoveryForBookings(ctxFor(wd.org, mgr), [
+        { bookingId: bk, status: 'completed' },
+      ]);
+      return m!;
+    };
+    const recover = (
+      bk: string,
+      confirm: { openCount: number; expectedOpenFingerprint: string },
+      lines: { itemId: string; qty: number; qtyConsumption: number }[],
+      as = mgr,
+    ) =>
+      realizeAccruals(ctxFor(wd.org, as), {
+        source: 'booking',
+        sourceId: bk,
+        finProductId: wd.PM,
+        warehouseId: wd.wh,
+        actor: actorOf(as),
+        lines,
+        recovery: {
+          expectedOpenCount: confirm.openCount,
+          expectedOpenFingerprint: confirm.expectedOpenFingerprint,
+          host: 'scheduling',
+        },
+      });
+    const effects = async (bk: string) => ({
+      entries: (
+        await owner`select count(*)::int n from public.stk_entries where org_id=${wd.org} and metadata->>'sourceId'=${bk}`
+      )[0].n as number,
+      accruals: (
+        await owner`select status, item_id from public.stk_accruals where org_id=${wd.org} and source_id=${bk} order by item_id, status`
+      ).map((r) => `${r.item_id}:${r.status}`),
+      bins: (
+        await owner`select item_id, qty::text from public.stk_bins where org_id=${wd.org} order by item_id`
+      ).map((r) => `${r.item_id}:${r.qty}`),
+    });
+    const reviewed = async (bk: string) => {
+      const m = await preview(bk);
+      expect(m.eligibility).toBe('confirm_open');
+      if (m.confirmation?.state !== 'available') throw new Error('no confirmation');
+      return m.confirmation.value;
+    };
+    const stale = async (promise: Promise<unknown>) =>
+      expect(promise).rejects.toBeInstanceOf(RecoveryPreviewStaleError);
+
+    // (a) every kind of change between preview and confirm is refused with ZERO effect.
+    const changes: Array<[string, (bk: string) => Promise<unknown>]> = [
+      [
+        'quantity changed',
+        (bk) =>
+          owner`update public.stk_accruals set qty_consumption=3 where org_id=${wd.org} and source_id=${bk} and item_id=${wd.M}`,
+      ],
+      [
+        'conversion changed',
+        () =>
+          owner`update public.stk_items set units_per_stock_uom=250 where org_id=${wd.org} and id=${wd.M}`,
+      ],
+      [
+        'row released',
+        (bk) =>
+          owner`update public.stk_accruals set status='released' where org_id=${wd.org} and source_id=${bk} and item_id=${wd.L}`,
+      ],
+      [
+        'row removed',
+        (bk) =>
+          owner`delete from public.stk_accruals where org_id=${wd.org} and source_id=${bk} and item_id=${wd.L}`,
+      ],
+      ['row added', (bk) => accrue(bk, wd.X, 1)],
+      [
+        'draft entry appeared',
+        (bk) =>
+          owner`insert into public.stk_entries(org_id,type,status,metadata) values (${wd.org},'issue','draft',${owner.json({ source: 'booking', sourceId: bk })})`,
+      ],
+      [
+        'booking no longer completed',
+        (bk) =>
+          owner`update public.sched_bookings set status='accepted' where org_id=${wd.org} and id=${bk}`,
+      ],
+    ];
+    for (const [label, change] of changes) {
+      const bk = await completedBooking();
+      await accrue(bk, wd.M, 1);
+      await accrue(bk, wd.L, 1);
+      const seen = await reviewed(bk);
+      await change(bk);
+      const before = await effects(bk);
+      await recover(bk, seen, [{ itemId: wd.M, qty: 1, qtyConsumption: 1 }]).then(
+        () => {
+          throw new Error(`NOT REFUSED: ${label}`);
+        },
+        (e: unknown) => expect(e, label).toBeInstanceOf(RecoveryPreviewStaleError),
+      );
+      const after = await effects(bk);
+      expect(after.accruals).toEqual(before.accruals);
+      expect(after.bins).toEqual(before.bins);
+      expect(after.entries).toBe(before.entries); // the appeared draft is the only one
+      await owner`update public.stk_items set units_per_stock_uom=null where org_id=${wd.org} and id=${wd.M}`;
+    }
+
+    // (b) an unchanged set posts the CONFIRMED lines once; a repeat can never post a second issue.
+    const ok = await completedBooking();
+    await accrue(ok, wd.M, 1);
+    await accrue(ok, wd.L, 1);
+    const okSeen = await reviewed(ok);
+    const binM = Number(await bin(wd.org, wd.M));
+    const done = await recover(ok, okSeen, [{ itemId: wd.M, qty: 1, qtyConsumption: 1 }]);
+    expect(done.entry?.status).toBe('submitted');
+    expect(Number(await bin(wd.org, wd.M))).toBe(binM - 1);
+    await stale(recover(ok, okSeen, [{ itemId: wd.M, qty: 1, qtyConsumption: 1 }]));
+    expect((await effects(ok)).entries).toBe(1);
+
+    // (c) a deliberately confirmed zero releases the reviewed set and books nothing.
+    const zero = await completedBooking();
+    await accrue(zero, wd.M, 1);
+    const zeroSeen = await reviewed(zero);
+    const none = await recover(zero, zeroSeen, []);
+    expect(none.entry).toBeNull();
+    expect(await effects(zero)).toMatchObject({ entries: 0, accruals: [`${wd.M}:released`] });
+
+    // (d) authority is re-read inside the gate: stock rights without the host edit right refuse, no effect.
+    const lacking = await completedBooking();
+    await accrue(lacking, wd.M, 1);
+    const lackingSeen = await reviewed(lacking);
+    const lackBefore = await effects(lacking);
+    await expect(
+      recover(lacking, lackingSeen, [{ itemId: wd.M, qty: 1, qtyConsumption: 1 }], noHost),
+    ).rejects.toBeInstanceOf(RecoveryForbiddenError);
+    expect(await effects(lacking)).toEqual(lackBefore);
+
+    // (e) races under the F3 write gate: two identical confirmations, then a confirmation against a
+    // release (both arrival orders). Exactly one winner; the loser is stale or a no-op; ONE entry at most.
+    const twin = await completedBooking();
+    await accrue(twin, wd.M, 1);
+    const twinSeen = await reviewed(twin);
+    const lines = [{ itemId: wd.M, qty: 1, qtyConsumption: 1 }];
+    const twins = await Promise.allSettled([
+      recover(twin, twinSeen, lines),
+      recover(twin, twinSeen, lines),
+    ]);
+    expect(twins.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(twins.find((r) => r.status === 'rejected')).toMatchObject({
+      reason: expect.any(RecoveryPreviewStaleError),
+    });
+    expect((await effects(twin)).entries).toBe(1);
+    for (const releaseFirst of [true, false]) {
+      const bk = await completedBooking();
+      await accrue(bk, wd.M, 1);
+      const seen = await reviewed(bk);
+      const doRelease = () => releaseAccruals(ctxFor(wd.org, mgr), 'booking', bk);
+      const doRecover = () => recover(bk, seen, lines);
+      const [a, b] = releaseFirst
+        ? await Promise.allSettled([doRelease(), doRecover()])
+        : await Promise.allSettled([doRecover(), doRelease()]);
+      const recovered = releaseFirst ? b : a;
+      const e = await effects(bk);
+      // released-then-recovery is stale; recovery-then-release leaves the realized accrual alone.
+      if (recovered!.status === 'fulfilled') expect(e.entries).toBe(1);
+      else {
+        expect((recovered as PromiseRejectedResult).reason).toBeInstanceOf(
+          RecoveryPreviewStaleError,
+        );
+        expect(e.entries).toBe(0);
+      }
+    }
   });
 });
 

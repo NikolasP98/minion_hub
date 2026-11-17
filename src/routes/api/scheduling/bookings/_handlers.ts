@@ -2,7 +2,10 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { shouldMaskSensitive } from '$server/services/rbac.service';
+import { hasOrgCapability, shouldMaskSensitive } from '$server/services/rbac.service';
+import { canReadFinancialFields, datasetCtx, isDenied } from '$server/auth/dataset-ctx';
+import { requireProductsVersion } from '$server/api/booking-products-version';
+import { bookingDetailBody } from '$server/services/booking-product-wire';
 import {
   createBooking,
   createBookingGroup,
@@ -28,8 +31,14 @@ import {
   addProductToVisit,
   removeProductFromVisit,
   setVisitProductQty,
+  setBookingStatus,
 } from '$server/services/scheduling-bookings.service';
-import { listAccruals, realizeAccruals } from '$server/services/stock-accruals.service';
+import {
+  listAccruals,
+  realizeAccruals,
+  RecoveryForbiddenError,
+  RecoveryPreviewStaleError,
+} from '$server/services/stock-accruals.service';
 import { listConsumption } from '$server/services/stock.service';
 import { CustomPropertyError } from '$server/services/custom-properties.service';
 import { requireCustomPropertyAccess } from '$server/services/custom-properties-access';
@@ -206,12 +215,31 @@ export async function bookingDetailResponse(
   ctx: CoreCtx,
   locals: Locals,
   id: string,
+  request: Request,
 ): Promise<Response> {
+  const stale = requireProductsVersion(request);
+  if (stale) return stale;
+  // Spec 126: POS and stock facets come through THEIR dataset handles (a denied
+  // one is a `denied` facet, not a scheduling-handle read); money needs finance view
+  // AND the finance field tier, never a POS or stock permission.
+  const [pos, stock, canReadMoney] = await Promise.all([
+    datasetCtx(locals, 'pos'),
+    datasetCtx(locals, 'stock'),
+    canReadFinancialFields(locals),
+  ]);
   const detail = await getBookingDetail(ctx, id, {
     maskAttendeePii: await shouldMaskSensitive(locals, 'scheduling'),
+    foreign: { pos, stock },
+    canReadFinancialFields: canReadMoney,
   });
   if (!detail) throw error(404, 'booking not found');
-  return json(detail);
+  return json(
+    bookingDetailBody(detail, {
+      pos: !isDenied(pos),
+      stock: !isDenied(stock),
+      money: !isDenied(pos) && canReadMoney,
+    }),
+  );
 }
 
 /** Trimmed nullable string: '' and missing both collapse to null (spec S5 —
@@ -745,4 +773,120 @@ async function visitStatusResponse(
     stockWarning: warnings[0] ?? null,
     warnings: warnings.slice(1),
   });
+}
+
+const completeSchema = z
+  .object({
+    lines: z
+      .array(
+        z.object({
+          itemId: z.string().min(1),
+          qty: z.number().positive(),
+          qtyConsumption: z.number().positive().nullable().optional(),
+        }),
+      )
+      .nullable()
+      .optional(),
+    warehouseId: z.string().max(200).nullable().optional(),
+    /** Spec 126 `confirm_open`: the operator reviewed this open set. Only the recovery UI sends it. */
+    recovery: z
+      .object({
+        mode: z.literal('confirm_open'),
+        expectedOpenCount: z.number().int().min(1).max(1000),
+        expectedOpenFingerprint: z.string().regex(/^[0-9a-f]{64}$/),
+      })
+      .optional(),
+  })
+  // Recovery is never inferred from `lines`, and a confirmed zero (`[]`) must be explicit.
+  .refine((b) => !b.recovery || Array.isArray(b.lines), {
+    message: 'recovery requires explicit lines',
+  });
+
+/**
+ * POST …/[id]/complete { lines?, warehouseId?, recovery? } — the ONE implementation behind both
+ * `/api/scheduling/bookings/[id]/complete` and `/api/pos/appointments/[id]/complete`.
+ * Two deliberate steps, not one tx (submitEntry owns its own tx): (1) status → completed — the
+ * business fact commits first; (2) realize the accrued stock. A short bin never blocks completion:
+ * the response carries stockWarning and a re-POST retries the realize alone (idempotent).
+ *
+ * With `recovery` (spec 126) the booking must ALREADY be completed: no status mutation, and the
+ * realization runs behind a precondition that the reviewed open set is unchanged (409
+ * `recovery_preview_stale`, no effect) — before the generic stockWarning catch, so no HTTP 200
+ * `realize_failed` can hide the conflict.
+ */
+export async function completeBookingResponse(
+  ctx: CoreCtx,
+  locals: Locals,
+  request: Request,
+  id: string,
+  host: 'pos' | 'scheduling',
+): Promise<Response> {
+  const b = await parseBody(request, completeSchema);
+
+  const booking = await getBooking(ctx, id);
+  if (!booking) throw error(404, 'booking not found');
+  if (b.recovery) {
+    if (booking.status !== 'completed')
+      return json(
+        { error: 'recovery_not_completed', message: 'only a completed booking can be recovered' },
+        { status: 409 },
+      );
+    if (
+      !(await hasOrgCapability(locals, 'stock', 'view')) ||
+      !(await hasOrgCapability(locals, 'stock', 'manage'))
+    )
+      return json({ error: 'stock_forbidden', message: 'stock:manage required' }, { status: 403 });
+  } else {
+    // The status owner refuses completing a closed booking (spec 116 FR-009);
+    // completing a completed one stays idempotent.
+    try {
+      if (booking.status !== 'completed') await setBookingStatus(ctx, id, 'completed');
+    } catch (e) {
+      if (e instanceof BookingTransitionError)
+        return json({ error: e.code, message: e.message }, { status: 409 });
+      throw e;
+    }
+  }
+
+  try {
+    const r = await realizeAccruals(ctx, {
+      source: 'booking',
+      sourceId: id,
+      lines: b.lines ?? null,
+      warehouseId: b.warehouseId ?? null,
+      finProductId: booking.productId ?? null,
+      partyId: booking.partyId ?? null,
+      note: `Booking: ${booking.title}`,
+      actor: {
+        id: ctx.profileId ?? null,
+        name: locals.user?.displayName ?? locals.user?.email ?? null,
+      },
+      ...(b.recovery
+        ? {
+            recovery: {
+              expectedOpenCount: b.recovery.expectedOpenCount,
+              expectedOpenFingerprint: b.recovery.expectedOpenFingerprint,
+              // Server-derived; the body cannot set it. The write transaction re-checks the host's
+              // edit right and stock:view/manage from fresh authority.
+              host,
+              platformAdmin: locals.user?.role === 'admin',
+            },
+          }
+        : {}),
+    });
+    return json({ ok: true, entryId: r.entry?.id ?? null, stockWarning: r.stockWarning });
+  } catch (e) {
+    if (e instanceof RecoveryPreviewStaleError)
+      return json({ error: e.code, message: e.message }, { status: 409 });
+    if (e instanceof RecoveryForbiddenError)
+      return json({ error: e.code, message: e.message }, { status: 403 });
+    return json({
+      ok: true,
+      entryId: null,
+      stockWarning: {
+        code: 'realize_failed',
+        message: e instanceof Error ? e.message : 'stock realize failed',
+      },
+    });
+  }
 }

@@ -66,13 +66,14 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
     Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
 
-  const { bookings, tagOptions } = await loadCalendarWindow(ctx, locals, {
-    from,
-    to,
-    eventTypes,
-    pos: false,
-    foreign: { pos, stock, crm },
-  });
+  const { productProjectionVersion, bookings, tagOptions, ticketOverlay } =
+    await loadCalendarWindow(ctx, locals, {
+      from,
+      to,
+      eventTypes,
+      pos: false,
+      foreign: { pos, stock, crm },
+    });
 
   // The `category` colour source's VALUE list (previewed in the colour picker).
   // Fail-soft for the same reason POS's is: a missing POS module must never
@@ -114,6 +115,8 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
       showInheritedTags,
       /** Event-scope registry + every tag present on a shown event — the filter's options. */
       tagOptions,
+      productProjectionVersion,
+      ticketOverlay,
       bookings,
       resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
       hours,
