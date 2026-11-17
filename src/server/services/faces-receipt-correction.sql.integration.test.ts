@@ -197,6 +197,7 @@ async function basisFor(w: World, chainEntryIds: string[]): Promise<DocumentBasi
   );
   const byId = new Map(rows.map((r) => [String(r.id), r]));
   const qty = String(w.receiptQty);
+  const res = receiptRateBasis(w.total, qty).rateRoundingResidual;
   return {
     policy: 'verified_document_total',
     reference: 'F-001',
@@ -206,7 +207,7 @@ async function basisFor(w: World, chainEntryIds: string[]): Promise<DocumentBasi
     totalValuation: w.total,
     fxEvidenceSha256: H(71),
     taxFreightAllocationSha256: H(72),
-    roundingResidual: '0.0031',
+    roundingResidual: String(Number(res.numerator) / Number(res.denominator)),
     residualAccepted: true,
     unitQualification: {
       schemaVersion: 1,
@@ -743,6 +744,19 @@ describe('FACES receipt correction against PostgreSQL', () => {
       replayed: false,
       receipt: { action: 'compensate', inverseOfOperationId: corrId },
     });
+    // exactness vs the prior originals (not only bin qty/rate): issue costs within 1e-8, accrual values = round4(-original cost)
+    inv.intended.effects
+      .filter((x) => x.phase === 'issue')
+      .forEach((x, i) =>
+        expect(Math.abs(Number(x.valueDelta) - Number(m.entries[i + 1].valueDelta))).toBeLessThan(
+          1e-8,
+        ),
+      );
+    inv.consumers.forEach((c) => {
+      if (c.kind !== 'stock_accrual') return;
+      const j = m.entryMap.findIndex((x) => x.replacementEntryId === c.currentEntryId);
+      expect(Number(c.intendedRealizedValue)).toBeCloseTo(-Number(m.entries[j].valueDelta), 4);
+    });
     // economic state restored; history preserved (two cancelled generations, two operation receipts)
     const restored = await bin(w);
     expect(Number(restored.qty)).toBe(Number(originalBin.qty));
@@ -771,6 +785,16 @@ describe('FACES receipt correction against PostgreSQL', () => {
         )
       )[0].e,
     ).toBe(inv.entryMap[2].replacementEntryId);
+    // the compensating receipt drops the corrected receipt's document hash and keeps the FIRST original time
+    const metaOf = async (id: string) =>
+      (await owner.unsafe(`select metadata m from public.stk_entries where id='${id}'`))[0]
+        .m as Record<string, unknown>;
+    const corrected = await metaOf(m.entryMap[0].replacementEntryId);
+    const compensating = await metaOf(inv.entryMap[0].replacementEntryId);
+    expect(corrected.correctionDocumentSha256).toBeTruthy();
+    expect(compensating.correctionDocumentSha256).toBeUndefined();
+    expect(compensating.originalPostedAt).toBe(corrected.originalPostedAt);
+    expect(compensating.compensatesOperation).toBe(corrId);
     expect(await applyReceiptCorrection(w.ctx, cmd, actorOf(w.boss))).toMatchObject({
       replayed: true,
     });
@@ -783,6 +807,62 @@ describe('FACES receipt correction against PostgreSQL', () => {
     expect(await code(compensationDraft(w, corrId))).toBe('unsupported_movement');
     const invId = done.receipt.correctionId;
     expect(await code(compensationDraft(w, invId))).toBe('unsupported_movement');
+  });
+
+  it('a corrected chain is never corrected again and status of the first operation stays applied', async () => {
+    const w = await world();
+    const m = await draft(w);
+    const applied = await applyReceiptCorrection(w.ctx, await command(w, m), actorOf(w.boss));
+    const rw = { ...w, receipt: m.entryMap[0].replacementEntryId };
+    const ledger = await count('stk_ledger', w.org);
+    expect(await code(draft(rw))).toBe('unsupported_movement');
+    expect(await count('stk_ledger', w.org)).toBe(ledger);
+    expect(await count('stk_corrections', w.org)).toBe(1);
+    expect(await getReceiptCorrectionStatus(w.ctx, statusInput(w, m))).toMatchObject({
+      outcome: 'applied',
+      currentState: 'matches',
+    });
+    // an idempotent replay is still owner-gated: a demoted actor learns nothing
+    const cmd = {
+      manifest: m,
+      approvedPlanSha256: receiptManifestSha256(m),
+      previewHash: applied.receipt.previewHash,
+    };
+    expect(await applyReceiptCorrection(w.ctx, cmd, actorOf(w.boss))).toMatchObject({
+      replayed: true,
+    });
+    await owner.unsafe(
+      `update public.organization_members set role='member' where organization_id='${w.org}' and profile_id='${w.boss}'`,
+    );
+    expect(await code(applyReceiptCorrection(w.ctx, cmd, actorOf(w.boss)))).toBe(
+      'actor_unavailable',
+    );
+  });
+
+  it('the document basis must match the org valuation currency and the exact rounding residual', async () => {
+    const w = await world();
+    const chain = await owner.unsafe(
+      `select l.entry_id::text id from public.stk_ledger l where l.org_id='${w.org}' and l.id >= (select min(id) from public.stk_ledger where entry_id='${w.receipt}') order by l.id`,
+    );
+    const basis = await basisFor(
+      w,
+      chain.map((r) => String(r.id)),
+    );
+    const attempt = (b: DocumentBasis) =>
+      draftReceiptCorrectionManifest(w.ctx, {
+        target: TARGET,
+        sourceCodeSha: SHA40,
+        operationKey: randomUUID(),
+        receiptEntryId: w.receipt,
+        receiptLineId: basis.unitQualification.receiptLineId,
+        basis: b,
+        postedAt: new Date().toISOString(),
+        reason: 'Invoice total correction',
+        ownerApprovalReference: 'owner-ok',
+      });
+    expect(await code(attempt({ ...basis, valuationCurrency: 'USD' }))).toBe('invariant_failed');
+    expect(await code(attempt({ ...basis, roundingResidual: '0.0032' }))).toBe('invariant_failed');
+    expect(await code(attempt(basis))).toBeNull();
   });
 
   it('read only preview status and foreign denied principals cannot bypass shared authority or append only grants', async () => {

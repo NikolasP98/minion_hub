@@ -10,6 +10,7 @@
  * FACES_OPERATOR_AUTH_URL (the only URL the token is sent to; the manifest's target.authUrl must equal it).
  * Exit: 0 ok | 2 admission | 3 incomplete | 4 refused/stale/status absent | 5 unknown outcome.
  */
+import { existsSync } from 'node:fs';
 import postgres from 'postgres';
 import {
   RECEIPT_CORRECTION_EXIT,
@@ -170,6 +171,7 @@ export type CorrectDeps = {
   env: Readonly<Record<string, string | undefined>>;
   readFile(path: string): string;
   writeFile(path: string, text: string): void;
+  fileExists(path: string): boolean;
   verifyPrincipal: typeof verifyOperatorPrincipal;
   /** Business graph + owned database: only reached after argument, target and principal admission. */
   run(request: RunRequest): Promise<{ outcome: string; [k: string]: unknown }>;
@@ -276,6 +278,8 @@ export async function runCorrect(argv: readonly string[], deps: CorrectDeps): Pr
     } catch {
       throw new CliError(2, 'actor_unavailable');
     }
+    // refuse an existing output BEFORE running: apply must not commit and then fail to write its receipt
+    if (deps.fileExists(a.output)) throw new CliError(3, 'output_failed');
     const result = await deps.run({
       ...request,
       databaseUrl: url,
@@ -352,6 +356,7 @@ if (import.meta.main) {
       env: process.env,
       readFile: readPrivateFile,
       writeFile: writePrivateFile,
+      fileExists: existsSync,
       verifyPrincipal: verifyOperatorPrincipal,
       run: realRun,
     });

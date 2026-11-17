@@ -74,6 +74,7 @@ beforeEach(() => {
     },
     readFile: readPrivateFile,
     writeFile: writePrivateFile,
+    fileExists: existsSync,
     verifyPrincipal: verifyPrincipal as never,
     run: run as never,
   };
@@ -265,7 +266,8 @@ describe('modes, outcomes and exits', () => {
   });
   it('an output path that already exists is a failure (exit 3), never a clobber', async () => {
     writeFileSync(out(), 'keep', { mode: 0o600 });
-    expect(await runCorrect(preview(), deps)).toBe(3);
+    expect(await runCorrect(apply(), deps)).toBe(3);
+    expect(run).not.toHaveBeenCalled(); // apply must not commit and then fail to write its receipt
     expect(readFileSync(out(), 'utf8')).toBe('keep');
   });
 });

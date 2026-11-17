@@ -453,6 +453,7 @@ function invariants(m: ReceiptChainManifestV1): ReceiptChainManifestV1 {
     )
       bad(`$.consumers[${e.entryId}]`);
     const c = cs[0];
+    if (c.kind === 'pos_ticket' && c.id !== e.source.id) bad(`$.consumers[${e.entryId}]`);
     if (
       c.kind === 'stock_accrual' &&
       (c.sourceId !== e.source.id ||
@@ -503,11 +504,9 @@ function invariants(m: ReceiptChainManifestV1): ReceiptChainManifestV1 {
       m.basis.unitQualification.stockUom !== m.stockUom
     )
       bad('$.basis');
-    if (
-      receiptRateBasis(m.basis.totalValuation, m.basis.stockQty).receiptRate !==
-      m.intended.receiptRate
-    )
-      bad('$.intended.receiptRate');
+    const rb = receiptRateBasis(m.basis.totalValuation, m.basis.stockQty);
+    if (rb.receiptRate !== m.intended.receiptRate) bad('$.intended.receiptRate');
+    if (!residualMatches(m.basis)) bad('$.basis.roundingResidual');
     if (
       m.basis.unitQualification.receiptEntryId !== m.sourceReceiptId ||
       m.basis.unitQualification.receiptLineId !== m.sourceReceiptLineId
@@ -515,6 +514,17 @@ function invariants(m: ReceiptChainManifestV1): ReceiptChainManifestV1 {
       bad('$.basis.unitQualification');
   }
   return m;
+}
+
+/** The stated rounding residual must be exactly total - qty x rate(total, qty): a client-supplied residual is never trusted. */
+export function residualMatches(b: {
+  totalValuation: string;
+  stockQty: string;
+  roundingResidual: string;
+}): boolean {
+  const r = receiptRateBasis(b.totalValuation, b.stockQty).rateRoundingResidual;
+  const x = parseRat(b.roundingResidual);
+  return x.n * BigInt(r.denominator) === BigInt(r.numerator) * x.d;
 }
 
 export function decodeReceiptChainManifestV1(value: unknown): ReceiptChainManifestV1 {

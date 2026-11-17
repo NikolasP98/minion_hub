@@ -8,6 +8,7 @@ import {
   receiptManifestSha256,
   receiptPayloadHash,
   receiptPreviewHash,
+  residualMatches,
 } from './faces-receipt-correction.logic';
 
 describe('planCorrectEffects (the only author of effect strings)', () => {
@@ -108,6 +109,17 @@ describe('decodeReceiptChainManifestV1', () => {
     expect(decodeReceiptChainManifestV1(comp).action).toBe('compensate');
     const { inverseOfOperationId: _i, ...noInverse } = comp;
     expect(() => decodeReceiptChainManifestV1(noInverse)).toThrow();
+  });
+  it('refuses a wrong rounding residual and a POS consumer that is not the issue source ticket', () => {
+    const wrong = json(manifest());
+    wrong.basis.roundingResidual = '0.0032';
+    expect(() => decodeReceiptChainManifestV1(wrong)).toThrow(/roundingResidual/);
+    expect(
+      residualMatches({ totalValuation: '5474.58', stockQty: '89', roundingResidual: '0.0031' }),
+    ).toBe(true);
+    const other = manifest();
+    (other.consumers.find((c) => c.kind === 'pos_ticket') as { id: string }).id = U(999);
+    expect(() => decodeReceiptChainManifestV1(json(other))).toThrow(/consumers/);
   });
   it('preserves raw null UOM through decode and hash', () => {
     expect(

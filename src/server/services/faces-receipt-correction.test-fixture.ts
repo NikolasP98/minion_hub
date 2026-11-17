@@ -94,7 +94,7 @@ export function manifest(over: Record<string, unknown> = {}): ReceiptChainManife
   const consumers = [
     {
       kind: 'pos_ticket',
-      id: U(401),
+      id: U(301),
       rowSha256: H(50),
       currentEntryId: U(101),
       financialFiscalSha256: H(51),

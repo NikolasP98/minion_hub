@@ -54,6 +54,7 @@ import {
   type EntryEvidence,
   type EntryReplacement,
   type ReceiptChainManifestV1,
+  residualMatches,
   type ReceiptCorrectionCode,
   type ReceiptManifestBase,
 } from './faces-receipt-correction.logic';
@@ -185,6 +186,8 @@ type FreshChain = {
   latestLedgerRowSha256: string;
   rangeLedgerIds: string[];
   timezone: string | null;
+  /** fin_settings.currency: stock is valued in this currency (foreign typed rates are converted at entry time). */
+  currency: string | null;
   lockedPeriods: string[];
   /** Metadata/party/note of each original entry, needed to copy the replacements. */
   originals: Map<
@@ -215,12 +218,15 @@ type Probe = {
   warehouseId: string;
   entryIds: readonly string[];
   firstLedgerId: string;
+  /** Compensate reads the prior replacement chain, which is corrected provenance by design. */
+  compensate?: boolean;
 };
 const probeOf = (m: ReceiptChainManifestV1): Probe => ({
   itemId: m.itemId,
   warehouseId: m.warehouseId,
   entryIds: m.entries.map((e) => e.entryId),
   firstLedgerId: m.entries[0].ledgerId,
+  compensate: m.action === 'compensate',
 });
 
 async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Promise<FreshChain> {
@@ -280,12 +286,22 @@ async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Pro
     tx,
     sql`select to_jsonb(i)::text row_text from stk_items i where i.org_id=${org} and i.id=${m.itemId}::uuid`,
   );
-  const [settings] = await run(tx, sql`select timezone from fin_settings where org_id=${org}`);
+  const [settings] = await run(
+    tx,
+    sql`select timezone, currency from fin_settings where org_id=${org}`,
+  );
   const locks = await run(
     tx,
     sql`select period from pos_period_locks where org_id=${org} order by period`,
   );
   if (!bin || !item || entries.length !== ids.length) fail('stale_preview');
+  if (!m.compensate) {
+    const [replaced] = await run(
+      tx,
+      sql`select 1 from stk_corrections where org_id=${org} and kind='receipt_chain' and replacement_entry_id in (${idList(ids)}) limit 1`,
+    );
+    if (replaced) fail('unsupported_movement');
+  }
 
   const byEntry = (rows: Rows, id: string) => rows.filter((r) => String(r.entry_id) === id);
   const originals: FreshChain['originals'] = new Map();
@@ -296,6 +312,9 @@ async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Pro
     const lg = byEntry(ledger, id);
     // shape errors are unsupported history, not a silently first-row-selected plan
     if (e.status !== 'submitted' || ls.length !== 1 || lg.length !== 1)
+      fail('unsupported_movement');
+    // correct mode never re-corrects: corrected provenance in the chain is unsupported (only compensate may read it)
+    if (!m.compensate && ('correctionOf' in meta || 'compensatesOperation' in meta))
       fail('unsupported_movement');
     const kind = kindOf(meta, String(e.type));
     const srcId =
@@ -374,6 +393,7 @@ async function readFresh(tx: CoreTx, ctx: CoreCtx, m: Probe, lock: boolean): Pro
     latestLedgerRowSha256: sha256(String(last?.row_text ?? '')),
     rangeLedgerIds: range.map((r) => String(r.id)),
     timezone: (settings?.timezone as string | undefined) ?? null,
+    currency: (settings?.currency as string | undefined) ?? null,
     lockedPeriods: locks.map((r) => String(r.period)),
     originals,
   };
@@ -418,6 +438,8 @@ function verifyFresh(
     f.latestLedgerRowSha256 !== b.latestLedgerRowSha256
   )
     fail('stale_preview');
+  // the document total is only trusted in the org's stock valuation currency
+  if (m.action === 'correct' && m.basis.valuationCurrency !== f.currency) fail('invariant_failed');
   // period policy: verified zone equals fresh finance settings; correction month unlocked
   if (
     f.timezone === null ||
@@ -690,6 +712,9 @@ export async function draftReceiptCorrectionManifest(
         firstLedgerId: String(own.id),
       };
       const f = await readFresh(tx, ctx, probe, false);
+      const rb = receiptRateBasis(input.basis.totalValuation, input.basis.stockQty);
+      if (input.basis.valuationCurrency !== f.currency || !residualMatches(input.basis))
+        return fail('invariant_failed');
       return assemble(ctx, profile, probe, f, {
         target: input.target,
         sourceCodeSha: input.sourceCodeSha,
@@ -698,7 +723,7 @@ export async function draftReceiptCorrectionManifest(
         reason: input.reason,
         ownerApprovalReference: input.ownerApprovalReference,
         replacementIds: input.replacementIds,
-        receiptRate: receiptRateBasis(input.basis.totalValuation, input.basis.stockQty).receiptRate,
+        receiptRate: rb.receiptRate,
         receiptQty: input.basis.stockQty,
         stockUom: input.basis.unitQualification.stockUom,
         tail: { action: 'correct', basis: input.basis },
@@ -750,6 +775,18 @@ async function assertPrior(tx: CoreTx, ctx: CoreCtx, m: ReceiptChainManifestV1):
     Number(m.intended.receiptQty) === Number(p.entries[0].qty) &&
     sameConsumers;
   if (!ok) fail('invariant_failed');
+  // every restored issue cost and accrual value equals the prior originals (correction.md §129), not just bin qty/rate
+  const near = (a: unknown, b: unknown) => Math.abs(Number(a) - Number(b)) <= 1e-8;
+  const issueFx = m.intended.effects.filter((x) => x.phase === 'issue');
+  const exact =
+    issueFx.length === p.entries.length - 1 &&
+    issueFx.every((x, i) => near(x.valueDelta, p.entries[i + 1].valueDelta)) &&
+    m.consumers.every((c) => {
+      if (c.kind !== 'stock_accrual') return true;
+      const j = p.entryMap.findIndex((x) => x.replacementEntryId === c.currentEntryId);
+      return j > 0 && near(c.intendedRealizedValue, round4(-Number(p.entries[j].valueDelta)));
+    });
+  if (!exact) fail('invariant_failed');
 }
 
 export type DraftReceiptCompensationInput = {
@@ -789,6 +826,7 @@ export async function draftReceiptCompensationManifest(
         warehouseId: p.warehouseId,
         entryIds: replacementIds,
         firstLedgerId: String(own.id),
+        compensate: true,
       };
       const f = await readFresh(tx, ctx, probe, false);
       return assemble(ctx, profile, probe, f, {
@@ -874,7 +912,11 @@ export async function applyReceiptCorrection(
     fail('target_mismatch');
   try {
     return await writeTransaction(ctx, async (tx, guard) => {
-      // 1. idempotency first (org-global key namespace)
+      // 1. fresh authority under both gates (also for replays), then idempotency (org-global key namespace)
+      requireOwnerWithCost(
+        await resolveFreshOperatorCapabilitiesForWriteInTransaction(tx, ctx.tenantId, profile),
+        true,
+      );
       const [existing] = await tx
         .select()
         .from(stkCorrections)
@@ -900,11 +942,7 @@ export async function applyReceiptCorrection(
           receipt: receiptOf(existing),
         } as ReceiptCorrectionResult;
       }
-      // 2. fresh authority under both gates, then module state read directly
-      requireOwnerWithCost(
-        await resolveFreshOperatorCapabilitiesForWriteInTransaction(tx, ctx.tenantId, profile),
-        true,
-      );
+      // 2. module state read directly
       await assertStockModulesEnabledInTx(tx, ctx, guard, ['stock', 'finances']);
       // 3. lock + re-read everything the approval covers
       await assertPrior(tx, ctx, m);
@@ -924,11 +962,16 @@ export async function applyReceiptCorrection(
       for (const [i, e] of m.entries.entries()) {
         const o = fresh.originals.get(e.entryId)!;
         const replacementId = m.entryMap[i].replacementEntryId;
+        // an inverse restores the pre-correction document: drop the corrected receipt's document hash, keep the first original time
+        const { correctionDocumentSha256: _stale, ...inherited } = o.metadata;
         const metadata = {
-          ...o.metadata,
+          ...(m.action === 'compensate' ? inherited : o.metadata),
           correctionOf: e.entryId,
           correctionOperationKey: m.operationKey,
-          originalPostedAt: o.postedAt,
+          originalPostedAt:
+            m.action === 'compensate' && typeof o.metadata.originalPostedAt === 'string'
+              ? o.metadata.originalPostedAt
+              : o.postedAt,
           ...(m.action === 'compensate' ? { compensatesOperation: m.inverseOfOperationId } : {}),
           ...(i === 0 && m.action === 'correct'
             ? { correctionDocumentSha256: m.basis.sha256 }
@@ -1117,7 +1160,7 @@ export async function getReceiptCorrectionStatus(
         const receipt = receiptOf(row);
         const [later] = await run(
           tx,
-          sql`select 1 from stk_corrections where org_id=${ctx.tenantId} and kind='receipt_chain' and source_entry_id=${receipt.replacementReceiptId}::uuid limit 1`,
+          sql`select 1 from stk_corrections where org_id=${ctx.tenantId} and kind='receipt_chain' and source_entry_id=${receipt.replacementReceiptId}::uuid and intended->>'action'='compensate' and intended->>'inverseOfOperationId'=${receipt.correctionId} limit 1`,
         );
         const [latest] = await run(
           tx,
