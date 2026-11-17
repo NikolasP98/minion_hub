@@ -76,7 +76,7 @@ export interface BookingEvidenceFacts {
   evidenceConflict: boolean;
 }
 
-const fail = (code: string): never => {
+const fail: (code: string) => never = (code) => {
   throw new EvidenceInputError(code);
 };
 const isObj = (v: unknown): v is Record<string, unknown> =>
