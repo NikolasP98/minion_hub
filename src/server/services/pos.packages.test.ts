@@ -29,8 +29,18 @@ vi.mock('./stock.service', () => ({
   getEntry: vi.fn(async () => null),
   StockError: MockStockError,
   listAllComponentEdges: vi.fn(async () => []),
+  listAllComponentEdgesInTx: vi.fn(async () => []),
+  lockStockWrite: vi.fn(async () => ({})),
+  assertStockWriteGuard: vi.fn(),
+  createSourcedIssueInTx: vi.fn(),
+  findEntryBySourceInTx: vi.fn(async () => null),
+  getEntryInTx: vi.fn(async () => null),
+  submitEntryInTx: vi.fn(),
 }));
-vi.mock('./stock-accruals.service', () => ({ resolveDefaultWarehouse: vi.fn(async () => null) }));
+vi.mock('./stock-accruals.service', () => ({
+  resolveDefaultWarehouse: vi.fn(async () => null),
+  defaultWarehouseInTx: vi.fn(async () => null),
+}));
 // Stock OFF: the post-commit stock hook is pos.tickets.test.ts's subject, and
 // skipping it keeps every sequence below the money path and nothing else.
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => false }));

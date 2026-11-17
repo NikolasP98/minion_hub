@@ -50,12 +50,34 @@ vi.mock('./stock.service', () => ({
   StockError: MockStockError,
   // Slice 1b: resolveIssueLines expands results through the component DAG.
   listAllComponentEdges: (ctx: unknown) => listAllComponentEdgesMock(ctx),
+  // Same-transaction seams (spec 124) delegate to the same mocks, so the flow assertions stay valid.
+  listAllComponentEdgesInTx: (_tx: unknown, ctx: unknown) => listAllComponentEdgesMock(ctx),
+  lockStockWrite: async () => ({}),
+  assertStockWriteGuard: () => undefined,
+  createSourcedIssueInTx: (_tx: unknown, ctx: unknown, _guard: unknown, input: unknown) =>
+    createSourcedIssueMock(ctx, input),
+  findEntryBySourceInTx: (_tx: unknown, ctx: unknown, source: string, sourceId: string) =>
+    findEntryBySourceMock(ctx, source, sourceId),
+  getEntryInTx: (_tx: unknown, ctx: unknown, id: string) => getEntryMock(ctx, id),
+  submitEntryInTx: async (
+    _tx: unknown,
+    ctx: unknown,
+    _guard: unknown,
+    id: string,
+    actor: unknown,
+  ) => ({
+    // The old one-call `createSourcedIssue(submit:true)` needed no submit mock; keep that contract.
+    entry: (await submitEntryMock(ctx, id, actor)) ?? { id },
+    transitioned: true,
+  }),
 }));
 
 // ── stock-accruals.service mock (resolveDefaultWarehouse) ──
 const resolveDefaultWarehouseMock = vi.fn<(ctx: unknown) => Promise<string | null>>();
 vi.mock('./stock-accruals.service', () => ({
   resolveDefaultWarehouse: (ctx: unknown) => resolveDefaultWarehouseMock(ctx),
+  defaultWarehouseInTx: (_tx: unknown, orgId: string) =>
+    resolveDefaultWarehouseMock({ tenantId: orgId }),
 }));
 
 // ── modules.service mock (isModuleEnabled) ──

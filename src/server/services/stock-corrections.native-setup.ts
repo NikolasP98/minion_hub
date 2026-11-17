@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import postgres from 'postgres';
 import { openDisposablePostgres } from '../../../scripts/qc/disposable-postgres';
@@ -68,6 +68,9 @@ export async function openCorrectionNativeChild(): Promise<CorrectionNativeChild
       add column if not exists default_role_key text;
       alter table public.profiles add column if not exists deletion_pending boolean not null default false`);
     await assertOperatorNativeAuthFixture(owner, identity);
+    // Replay every committed migration newer than the baseline snapshot, in order, so the child has
+    // the real current POS / scheduling / stock shape (same set CI's production runner applies).
+    await applyMigrationsAfterBaseline(owner);
     return { identity, owner, url, close };
   } catch (error) {
     await close();
@@ -78,6 +81,30 @@ export async function openCorrectionNativeChild(): Promise<CorrectionNativeChild
 async function ensureRole(owner: postgres.Sql, role: string, attrs: string) {
   const [row] = await owner.unsafe(`select 1 from pg_roles where rolname='${role}'`);
   if (!row) await owner.unsafe(`CREATE ROLE ${role} ${attrs}`).catch(() => undefined);
+}
+
+/** Only the POS / scheduling / stock / authority shape this suite exercises; notification/pulse/crm migrations need a production-faithful auth boundary the fixture does not model. */
+const WANTED_MIGRATIONS =
+  /_(pos_|fin_product|fin_products_kind|sched_booking_products|stk_|retire_sellable|event_types_follow|operator_authority|stock_corrections)/;
+
+/** Files strictly newer than the baseline ledger version, ascending (includes the F7 bridge and F3 migrations). */
+async function applyMigrationsAfterBaseline(owner: postgres.Sql): Promise<void> {
+  const { maxLedgerVersion } = JSON.parse(
+    readFileSync(join(ROOT, 'supabase/qa/baseline/baseline.json'), 'utf8'),
+  ) as { maxLedgerVersion: string };
+  const dir = join(ROOT, 'supabase/migrations');
+  for (const file of readdirSync(dir)
+    .filter(
+      (f) =>
+        f.endsWith('.sql') && f.replace(/_.*/, '') > maxLedgerVersion && WANTED_MIGRATIONS.test(f),
+    )
+    .sort()) {
+    try {
+      await owner.unsafe(readFileSync(join(dir, file), 'utf8'));
+    } catch (error) {
+      throw new Error(`native fixture: migration ${file} failed: ${(error as Error).message}`);
+    }
+  }
 }
 
 function migration(file: string): string {
