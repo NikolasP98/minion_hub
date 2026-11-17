@@ -1084,18 +1084,119 @@ export async function requireOrgCapability(
   return caps;
 }
 
-/** Uncached row adapter for short admission transactions; same role semantics as navigation. */
-export async function resolveFreshCapabilitiesInTransaction(
-  tx: import('$server/db/with-org-core').CoreTx,
-  orgId: string,
-  profileId: string,
-): Promise<{
+export interface FreshCapabilitySnapshot {
   capabilities: Capabilities;
   roles: string[];
   membershipRole: string | null;
   realCapabilities: Capabilities;
   realRoles: string[];
-}> {
+}
+
+/** Neutral input of the shared pure composer; legacy rows and bridge rows both normalize to it. */
+interface AuthorityCompositionInput {
+  membershipRole: string | null;
+  assignedRoleKeys: readonly string[];
+  roleModel: string | null;
+  defaultRoleKey: string | null;
+  localRoleKeys: readonly string[];
+  rules: readonly CapabilityOverrideRow[];
+}
+
+/** Pure policy composition (no SQL/pool/network): the single copy of the role/simulation semantics. */
+function composeFreshCapabilities(
+  input: AuthorityCompositionInput,
+  effective: ReturnType<typeof currentEffectiveAuthority>,
+  parsePolicy: (org: { role_model: string | null; default_role_key: string | null }) => {
+    roleModel: OrganizationRoleModel;
+  },
+): FreshCapabilitySnapshot {
+  const policy = parsePolicy({
+    role_model: input.roleModel,
+    default_role_key: input.defaultRoleKey,
+  });
+  const rules = [...input.rules];
+  const roles = resolveMemberRoleKeys(
+    input.assignedRoleKeys,
+    input.membershipRole,
+    policy.roleModel,
+    policy.roleModel === 'organization' ? input.localRoleKeys : [],
+  );
+  const realCapabilities = buildCapabilities(roles, rules);
+  const simulatedRoles =
+    effective &&
+    !effective.invalid &&
+    (policy.roleModel === 'legacy' ||
+      (policy.roleModel === 'organization' && input.localRoleKeys.includes(effective.roleKey)))
+      ? [effective.roleKey]
+      : [];
+  return {
+    // A live simulation cannot restore grants revoked from the real actor.
+    capabilities: effective
+      ? narrowAdmittedCapabilities(
+          narrowAdmittedCapabilities(
+            buildCapabilities(simulatedRoles, rules),
+            effective.capabilities,
+          ),
+          realCapabilities,
+        )
+      : realCapabilities,
+    roles: effective ? simulatedRoles : roles,
+    membershipRole: input.membershipRole,
+    realCapabilities,
+    realRoles: roles,
+  };
+}
+
+/** Compose a snapshot from the operator authority bridge rows (reads the effective authority once). */
+export async function composeFreshCapabilitiesFromAuthorityRows(
+  rows: import('$server/auth/active-operator-principal').OperatorAuthorityRows,
+  orgId: string,
+  profileId: string,
+): Promise<FreshCapabilitySnapshot> {
+  const { parseOrganizationRolePolicy } = await import('./organization-role-policy');
+  return composeFreshCapabilities(
+    { ...rows },
+    currentEffectiveAuthority(orgId, profileId),
+    parseOrganizationRolePolicy,
+  );
+}
+
+/** Operator snapshot path: bridge false mode (READ ONLY RR, no locks), then the shared composer. */
+export async function resolveFreshCapabilitiesReadOnlyInTransaction(
+  tx: import('$server/db/with-org-core').CoreTx,
+  orgId: string,
+  profileId: string,
+): Promise<FreshCapabilitySnapshot> {
+  const { readOperatorAuthorityReadOnlyInTx } =
+    await import('$server/auth/active-operator-principal');
+  return composeFreshCapabilitiesFromAuthorityRows(
+    await readOperatorAuthorityReadOnlyInTx(tx, orgId, profileId),
+    orgId,
+    profileId,
+  );
+}
+
+/** Operator write-admission path: bridge true mode (advisory + row locks), then the shared composer. */
+export async function resolveFreshOperatorCapabilitiesForWriteInTransaction(
+  tx: import('$server/db/with-org-core').CoreTx,
+  orgId: string,
+  profileId: string,
+): Promise<FreshCapabilitySnapshot> {
+  const { readOperatorAuthorityForWriteInTx } =
+    await import('$server/auth/active-operator-principal');
+  return composeFreshCapabilitiesFromAuthorityRows(
+    await readOperatorAuthorityForWriteInTx(tx, orgId, profileId),
+    orgId,
+    profileId,
+  );
+}
+
+/** Uncached row adapter for short admission transactions; same role semantics as navigation. Legacy callers only. */
+export async function resolveFreshCapabilitiesInTransaction(
+  tx: import('$server/db/with-org-core').CoreTx,
+  orgId: string,
+  profileId: string,
+): Promise<FreshCapabilitySnapshot> {
   const { sql } = await import('drizzle-orm');
   const members = await tx.execute<{ role: string | null }>(
     sql`select role from organization_members where organization_id=${orgId}::uuid and profile_id=${profileId}::uuid for share`,
@@ -1125,37 +1226,19 @@ export async function resolveFreshCapabilitiesInTransaction(
           sql`select key from org_roles where org_id=${orgId} for share`,
         )
       : [];
-  const roles = resolveMemberRoleKeys(
-    assigned.map((row) => row.role_key),
-    members[0].role,
-    policy.roleModel,
-    localRoles.map((row) => row.key),
-  );
   const rules = await tx.execute<CapabilityOverrideRow & Record<string, unknown>>(
     sql`select role_key,module,can_view,can_create,can_edit,can_delete,can_export,can_manage,if_owner,field_level from permission_rules where org_id=${orgId}::uuid for share`,
   );
-  const effective = currentEffectiveAuthority(orgId, profileId);
-  const realCapabilities = buildCapabilities(roles, [...rules]);
-  const simulatedRoles =
-    effective &&
-    !effective.invalid &&
-    (policy.roleModel === 'legacy' || localRoles.some((role) => role.key === effective.roleKey))
-      ? [effective.roleKey]
-      : [];
-  return {
-    // A live simulation cannot restore grants revoked from the real actor.
-    capabilities: effective
-      ? narrowAdmittedCapabilities(
-          narrowAdmittedCapabilities(
-            buildCapabilities(simulatedRoles, [...rules]),
-            effective.capabilities,
-          ),
-          realCapabilities,
-        )
-      : realCapabilities,
-    roles: effective ? simulatedRoles : roles,
-    membershipRole: members[0].role,
-    realCapabilities,
-    realRoles: roles,
-  };
+  return composeFreshCapabilities(
+    {
+      membershipRole: members[0].role,
+      assignedRoleKeys: assigned.map((row) => row.role_key),
+      roleModel: organization?.role_model ?? null,
+      defaultRoleKey: organization?.default_role_key ?? null,
+      localRoleKeys: localRoles.map((row) => row.key),
+      rules,
+    },
+    currentEffectiveAuthority(orgId, profileId),
+    parseOrganizationRolePolicy,
+  );
 }
