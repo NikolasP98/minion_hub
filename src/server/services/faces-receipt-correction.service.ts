@@ -3,6 +3,7 @@
  * One atomic reverse-and-replay of a single item/warehouse segment using the F3 transaction-accepting primitives.
  * Original ledger rows stay immutable; originals are cancelled (signed reversal rows) and linked replacements are created.
  */
+import { instantMonthKey } from '$lib/time/zoned';
 import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -550,14 +551,7 @@ export type DraftReceiptCorrectionInput = {
   /** Preallocated replacement UUIDs in entry order; generated when omitted so a retry can reuse a saved draft instead. */
   replacementIds?: readonly string[];
 };
-const monthOf = (iso: string, tz: string): string => {
-  const p = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date(iso));
-  return `${p.find((x) => x.type === 'year')!.value}-${p.find((x) => x.type === 'month')!.value}`;
-};
+const monthOf = (iso: string, tz: string): string => instantMonthKey(new Date(iso), tz);
 
 type AssembleInput = {
   target: ReceiptManifestBase['target'];

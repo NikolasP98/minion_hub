@@ -3,6 +3,7 @@
  * (minion-meta spec 123 contracts/command-envelope.md). No DB, alias, CLI or environment import; DocumentBasis /
  * UnitQualification and every wire combinator come from the already-created pure replay module.
  */
+import { instantMonthKey } from '$lib/time/zoned';
 import {
   canonical,
   decodeDocumentBasis,
@@ -375,14 +376,7 @@ const compensateV = obj({
   }) as V<CompensateBasis>,
 });
 
-const monthIn = (iso: string, tz: string): string => {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date(iso));
-  return `${parts.find((q) => q.type === 'year')!.value}-${parts.find((q) => q.type === 'month')!.value}`;
-};
+const monthIn = (iso: string, tz: string): string => instantMonthKey(new Date(iso), tz);
 
 function invariants(m: ReceiptChainManifestV1): ReceiptChainManifestV1 {
   const n = m.entries.length;
