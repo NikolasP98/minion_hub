@@ -55,7 +55,7 @@ export type MappingState = {
   preservedLMappingSha256: Digest;
 };
 export type CensusRow = {
-  sourceType: 'pos_ticket' | 'booking';
+  sourceType: 'pos_ticket' | 'booking' | 'invoice' | 'service';
   sourceId: UUID;
   entryId: UUID | null;
   accrualId: UUID | null;
@@ -134,7 +134,7 @@ const dRowRef: (v: unknown) => RowRef = dObj<RowRef>({
   rowSha256: dDigest,
 });
 const dCensusRow = dObj<CensusRow>({
-  sourceType: dEnum('pos_ticket', 'booking'),
+  sourceType: dEnum('pos_ticket', 'booking', 'invoice', 'service'),
   sourceId: dUuid,
   entryId: dNullable(dUuid),
   accrualId: dNullable(dUuid),

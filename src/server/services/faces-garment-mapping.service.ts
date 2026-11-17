@@ -307,21 +307,48 @@ export async function readCensus(tx: CoreTx, org: string, id: MappingIdentity) {
       )
     ).map((r) => str(r.id)),
   );
+  // Invoice-sourced issues: a line for M is a hit; an invoice with no lines or any unmatched (null-product) line cannot be ruled out.
+  const invoiceIds = decoded.flatMap(({ src }) => (src.kind === 'invoice' ? [src.id] : []));
+  const invoiceFacts = new Map(
+    (
+      await run(
+        tx,
+        sql`select i.id::text as id, coalesce(bool_or(x.product_id = ${id.productId}::uuid), false) as hit,
+              (count(x.id) = 0 or bool_or(x.product_id is null)) as unmatched
+            from fin_invoices i left join fin_invoice_items x on x.invoice_id = i.id
+            where i.org_id = ${org} and i.id in (${uuidList(invoiceIds)}) group by i.id`,
+      )
+    ).map((r) => [str(r.id), { hit: r.hit === true, unmatched: r.unmatched === true }]),
+  );
   const pending: CensusRow[] = [];
   const submitted: CensusRow[] = [];
   for (const { e, src } of decoded) {
     if (src.kind === 'unknown') throw new MappingError('entry source undecodable', 'incomplete');
     const sourceType =
-      src.kind === 'pos' ? 'pos_ticket' : src.kind === 'booking' ? 'booking' : null;
-    if (!sourceType) continue;
-    const hit =
       src.kind === 'pos'
-        ? mTickets.has((src as { id: string }).id)
-        : mBookings.has((src as { id: string }).id);
+        ? 'pos_ticket'
+        : src.kind === 'booking'
+          ? 'booking'
+          : src.kind === 'invoice'
+            ? 'invoice'
+            : src.kind === 'service'
+              ? 'service'
+              : null;
+    if (!sourceType) continue;
+    let hit: boolean;
+    if (src.kind === 'pos') hit = mTickets.has(src.id);
+    else if (src.kind === 'booking') hit = mBookings.has(src.id);
+    else if (src.kind === 'service') hit = src.finProductId === id.productId;
+    else {
+      const inv = invoiceFacts.get((src as { id: string }).id);
+      if ((!inv || (!inv.hit && inv.unmatched)) && e.status === 'draft')
+        throw new MappingError('invoice draft cannot be matched to the product', 'incomplete');
+      hit = inv?.hit === true;
+    }
     if (!hit) continue;
     const row: CensusRow = {
       sourceType,
-      sourceId: (src as { id: string }).id,
+      sourceId: src.kind === 'service' ? (src.id ?? str(e.id)) : (src as { id: string }).id,
       entryId: str(e.id),
       accrualId: null,
       state: e.status === 'draft' ? 'draft' : 'submitted',
