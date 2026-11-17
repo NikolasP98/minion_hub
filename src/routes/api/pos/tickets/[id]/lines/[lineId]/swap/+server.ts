@@ -17,6 +17,10 @@ const swapSchema = z.object({
  *  `{ productId, expectedProductId }`. Replaces the product of one line on a
  *  submitted sale with another of the same catalogue price; money does not
  *  move and stock follows (meta spec 120, S4). Needs `pos:edit`. */
+// TODO(handoff): spec 124 T015/T017 — delegate this route to the shared correction engine
+// (POST /api/stock/corrections with reason/key/previewHash/payloadHash, typed refresh_required for old
+// tabs) together with the ticket PageBody reason/preview UI. Left on the legacy swap on purpose until
+// delegation and the UI are tested; see meta proposals/2026-11-17-hub-stock-correction-handoff.md.
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
