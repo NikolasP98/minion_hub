@@ -1,8 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-
-type Rendered = Pick<ReturnType<typeof render>, 'getByRole' | 'getAllByRole'>;
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import * as m from '$lib/paraglide/messages';
 vi.mock('$app/environment', () => ({ browser: true }));
 import CrmHygiene from './CrmHygiene.svelte';
@@ -27,14 +25,17 @@ let fetcher: ReturnType<typeof vi.fn>;
 const posts = () =>
   fetcher.mock.calls.filter((c) => (c[1] as RequestInit | undefined)?.method === 'POST');
 
-async function openResolver(r: Rendered) {
-  await fireEvent.click(r.getByRole('button', { name: new RegExp(m.crm_possible_duplicates()) }));
+// Queries go through `screen` (render mounts into document.body); `r` only marks which render a step belongs to.
+async function openResolver(r: unknown) {
+  await fireEvent.click(
+    screen.getByRole('button', { name: new RegExp(m.crm_possible_duplicates()) }),
+  );
   await fireEvent.click(groupBtn(r));
 }
 // Both buttons read "Merge": the group's entry button comes first, the dialog's Confirm last.
-const mergeButtons = (r: Rendered) => r.getAllByRole('button', { name: 'Merge' });
-const groupBtn = (r: Rendered) => mergeButtons(r)[0];
-const confirmBtn = (r: Rendered) => mergeButtons(r).at(-1)!;
+const mergeButtons = (_r: unknown) => screen.getAllByRole('button', { name: 'Merge' });
+const groupBtn = (r: unknown) => mergeButtons(r)[0];
+const confirmBtn = (r: unknown) => mergeButtons(r).at(-1)!;
 
 beforeEach(() => {
   fetcher = vi.fn();
