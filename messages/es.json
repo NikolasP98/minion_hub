@@ -7551,7 +7551,7 @@
   "crm_sensitive_fields_read_only": "Solo los roles con acceso a campos sensibles pueden editar este valor.",
   "stock_mv_scope_notice": "La búsqueda, el orden, los filtros y la exportación se aplican solo a esta página de movimientos.",
   "stock_mv_older": "Anteriores",
-  "stock_mv_newest": "Más recientes",
+  "stock_mv_newest": "Más reciente",
   "stock_mv_page_no_match": "Ningún movimiento de esta página coincide. Usa Anteriores o quita los filtros.",
   "stock_mv_page_empty": "No hay movimientos en esta página.",
   "stock_mv_unavailable": "Los detalles de ítems y valores no están disponibles en esta página por su tamaño. Abre un movimiento para ver el detalle.",
