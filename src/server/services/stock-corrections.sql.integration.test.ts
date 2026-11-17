@@ -325,11 +325,11 @@ async function addProfile(
   );
   if (rules.length) {
     await owner.unsafe(
-      `insert into public.member_roles(org_id,profile_id,role_key) values ('${org}','${id}','custom')`,
+      `insert into public.member_roles(org_id,profile_id,role_key) values ('${org}','${id}','r${id.slice(0, 8)}')`,
     );
     for (const [mod, view, edit, manage, level] of rules)
       await owner.unsafe(
-        `insert into public.permission_rules(org_id,role_key,module,can_view,can_edit,can_manage,field_level) values ('${org}','custom','${mod}',${view},${edit},${manage},${level})`,
+        `insert into public.permission_rules(org_id,role_key,module,can_view,can_edit,can_manage,field_level) values ('${org}','r${id.slice(0, 8)}','${mod}',${view},${edit},${manage},${level})`,
       );
   }
   return id;
@@ -537,6 +537,47 @@ describe('stock corrections against PostgreSQL', () => {
       (await owner`select fin_product_id from public.pos_ticket_lines where id=${t2.lineIds[0]}`)[0]
         .fin_product_id,
     ).toBe(wd.PM);
+    // An actor with NO relevant capability gets the identical refusal for an existing and a missing
+    // source (no existence oracle), and apply takes no lock: it answers while another backend holds the gate.
+    const nobody = await addProfile(wd.org, 'member', [
+      ['pos', false, false, false, 0],
+      ['stock', false, false, false, 0],
+    ]);
+    const nobodyCtx = ctxFor(wd.org, nobody);
+    const holder = ctxFor(wd.org, wd.boss);
+    let release!: () => void;
+    const hold = new Promise<void>((r) => (release = r));
+    let held!: () => void;
+    const holding = new Promise<void>((r) => (held = r));
+    const blocker = withOrgCore(holder, async (tx) => {
+      await lockStockWrite(tx, holder);
+      held();
+      await hold;
+    });
+    await holding;
+    const missing = randomUUID();
+    const answers = [];
+    for (const line of [t2.lineIds[0], missing]) {
+      const r = swapRequest(line, wd.PM, wd.PL);
+      const cmd = {
+        request: r,
+        operationKey: randomUUID(),
+        previewHash: 'a'.repeat(64),
+        payloadHash: 'b'.repeat(64),
+        reason: 'x',
+      };
+      const pv = await previewStockCorrection(nobodyCtx, r, 'x').catch((e) => [e.code, e.message]);
+      const ap = await Promise.race([
+        applyStockCorrection(nobodyCtx, cmd, actorOf(nobody)).catch((e) => [e.code, e.message]),
+        new Promise((x) => setTimeout(() => x('BLOCKED ON LOCK'), 3000)),
+      ]);
+      answers.push([pv, ap]);
+    }
+    release();
+    await blocker;
+    expect(answers[0]).toEqual(answers[1]);
+    expect(answers[0][0]).toEqual(['forbidden', 'not allowed']);
+    expect(answers[0][1]).toEqual(['forbidden', 'not allowed']);
     // A different price is refused as price_differs (409), still no writes.
     expect(
       await refusal(
