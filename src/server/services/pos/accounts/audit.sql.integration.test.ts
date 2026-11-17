@@ -16,6 +16,9 @@ import {
 } from '$server/services/rbac.service';
 import { invoiceLinkBlocksProposal, loadAuditInvoiceLinks, runAuditInventory } from './audit';
 import type { AuditScope, AuditSink, ResidualRecord, AuditSubject } from './audit.types';
+import { admitEvidence, bookingEvidenceFacts, EvidenceInputError } from './audit.evidence';
+import { classifyBooking } from './audit.logic';
+import { createHash } from 'node:crypto';
 import { migrationSql, openAuditNativeChild, type AuditNativeChild } from './audit.native-setup';
 
 /**
@@ -153,6 +156,18 @@ const ids = {
 async function seedFaces() {
   await owner.unsafe('set session_replication_role = replica');
   try {
+    await owner.unsafe(
+      `insert into public.organizations(id,name) values ('${FORG}','audit-faces') on conflict do nothing`,
+    );
+    await owner.unsafe(
+      `insert into auth.users(id,email) values ('${FPROFILE}','owner@audit.test')`,
+    );
+    await owner.unsafe(
+      `insert into public.profiles(id,email) values ('${FPROFILE}','owner@audit.test')`,
+    );
+    await owner.unsafe(
+      `insert into public.organization_members(organization_id,profile_id,role) values ('${FORG}','${FPROFILE}','owner')`,
+    );
     await owner.unsafe(
       `insert into public.fin_settings(org_id,timezone) values ('${FORG}','America/Lima'),('${XORG}','America/Lima')`,
     );
@@ -580,7 +595,154 @@ describe('faces receivables audit against PostgreSQL', () => {
     ).toBe(true);
     await owner.unsafe(`delete from public.sched_bookings where uid='late'`);
   });
-  it('admits only approved matched evidence and preserves uncertainty', () => pending('T017/T018'));
+  it('admits only approved matched evidence and preserves uncertainty', async () => {
+    // Snapshot facts come from the real inventory; the actor's role comes from the real authority bridge.
+    const sink = new MemorySink();
+    await inventory(sink);
+    const status = new Map(
+      sink.subjects.filter((x) => x.kind === 'booking').map((x) => [x.id, x.status]),
+    );
+    const [{ id: target }] = await owner.unsafe(`select md5('b10')::uuid::text as id`);
+    const targetId = String(target);
+    expect(status.get(targetId)).toBe('accepted');
+    const membership = (p: string) =>
+      asApp(
+        FORG,
+        p,
+        'ro',
+        async (tx) => (await readOperatorAuthorityReadOnlyInTx(tx, FORG, p)).membershipRole,
+      ).catch(() => null);
+    expect(await membership(FPROFILE)).toBe('owner');
+    const RUN = new Date().toISOString();
+    const DOC = randomUUID();
+    const PRODUCT = randomUUID();
+    const mk = (kind: string, values: Record<string, unknown>, subject = targetId) => ({
+      assertionId: randomUUID(),
+      subject: { kind: 'booking', id: subject },
+      kind,
+      values,
+      documentIds: [DOC],
+      verifiedByProfileId: FPROFILE,
+      verifiedAt: '2026-11-16T00:00:00.000Z',
+    });
+    const admit = (
+      assertions: ReturnType<typeof mk>[],
+      role: string | null,
+      approved = assertions.map((a) => a.assertionId),
+    ) => {
+      const manifest = {
+        schemaVersion: 1,
+        orgId: FORG,
+        approvalRef: 'ap',
+        documents: [{ documentId: DOC, sha256: 'a'.repeat(64), privateRef: 'vault/1' }],
+        assertions,
+      };
+      const bytes = JSON.stringify(manifest);
+      return admitEvidence(
+        manifest,
+        bytes,
+        {
+          sha256: createHash('sha256').update(bytes).digest('hex'),
+          approvedAssertionIds: approved,
+        },
+        {
+          orgId: FORG,
+          approvalRef: 'ap',
+          actorProfileId: FPROFILE,
+          membershipRole: role,
+          runStart: RUN,
+          bookingStatus: (id) => status.get(id) ?? null,
+          lineKnown: (id) => sink.subjects.some((x) => x.id === id),
+        },
+      );
+    };
+    const delivery = mk('service_delivery', {
+      bookingMemberId: targetId,
+      productId: PRODUCT,
+      quantity: '1',
+      deliveredAt: '2026-05-10T15:00:00.000Z',
+    });
+    const charge = mk('historical_charge', {
+      bookingMemberId: targetId,
+      productId: PRODUCT,
+      quantity: '1',
+      amount: '100.00',
+      currency: 'PEN',
+      agreedAt: '2026-05-01T00:00:00.000Z',
+    });
+    const unused = mk('unused_reservation', {
+      bookingMemberId: targetId,
+      used: false,
+      asOf: '2026-11-01T00:00:00.000Z',
+    });
+    const global = {
+      sourceCorrupt: false,
+      identity: 'ok' as const,
+      finiteScope: false,
+      proposalEligible: false,
+      proposalBlockers: [],
+    };
+    const classify = (admitted: ReturnType<typeof admit> | null, closure: 'A' | 'none') => {
+      const e = admitted
+        ? bookingEvidenceFacts(admitted, targetId, 'accepted')
+        : {
+            delivery: false,
+            validUnused: false,
+            validStale: false,
+            staleNoChange: false,
+            historicalCharge: false,
+            evidenceConflict: false,
+          };
+      return classifyBooking({
+        ...global,
+        status: 'accepted',
+        currentCatalogFree: false,
+        currentPriceKnown: true,
+        ...e,
+        closure: { shape: closure, blockers: [] },
+      });
+    };
+    // Only the owner (actual membership role) can bring evidence; a capable non-owner is refused before admission.
+    expect(await membership(CUSTOM)).toBeNull();
+    expect(() => admit([delivery], 'admin')).toThrow(EvidenceInputError);
+    // Approved matched evidence admits and supports a debt candidate (the zero-settlement closure shape A is supplied here).
+    expect(classify(admit([delivery, charge], 'owner'), 'A')).toMatchObject({
+      primaryClassification: 'genuine-debt candidate',
+      recommendedNextAction: 'normal_collection_review',
+    });
+    // Without evidence uncertainty is preserved: nothing is inferred from the current catalog or the date.
+    expect(classify(null, 'none')).toMatchObject({
+      primaryClassification: 'unresolved',
+      uncertainty: expect.arrayContaining([
+        'historical_charge_unverified',
+        'service_delivery_unverified',
+      ]),
+    });
+    // Contradiction (delivery + unused) stays unresolved and is never resolved by recency.
+    expect(classify(admit([delivery, unused], 'owner'), 'none')).toMatchObject({
+      primaryClassification: 'unresolved',
+      reasonCodes: ['external_evidence_conflict'],
+    });
+    // An unapproved assertion is not admitted; a subject outside the audited snapshot is refused.
+    expect(admit([delivery, charge], 'owner', [delivery.assertionId]).assertions).toHaveLength(1);
+    const foreignBooking = (
+      await owner.unsafe(
+        `select id::text from public.sched_bookings where org_id='${XORG}' limit 1`,
+      )
+    )[0].id as string;
+    expect(() =>
+      admit(
+        [
+          mk(
+            'service_delivery',
+            { ...delivery.values, bookingMemberId: foreignBooking },
+            foreignBooking,
+          ),
+        ],
+        'owner',
+      ),
+    ).toThrow(/subject_not_in_scope/);
+  });
   it('applies exact accounting timezone cohort and approved scope boundaries', async () => {
     // [2026-05-31, 2026-06-01): 05:00:00Z is local midnight (inside), 04:59:59Z is the previous local day (outside).
     const sink = new MemorySink();
