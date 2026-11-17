@@ -14,7 +14,7 @@ import {
   composeFreshCapabilitiesFromAuthorityRows,
   resolveFreshCapabilitiesInTransaction,
 } from '$server/services/rbac.service';
-import { runAuditInventory } from './audit';
+import { invoiceLinkBlocksProposal, loadAuditInvoiceLinks, runAuditInventory } from './audit';
 import type { AuditScope, AuditSink, ResidualRecord, AuditSubject } from './audit.types';
 import { migrationSql, openAuditNativeChild, type AuditNativeChild } from './audit.native-setup';
 
@@ -347,8 +347,112 @@ describe('faces receivables audit against PostgreSQL', () => {
     const again = await inventory(new MemorySink());
     expect(again.controls).toEqual(summary.controls);
   });
-  it('resolves explicit and provider invoice links without unsupported repair candidates', () =>
-    pending('T017'));
+  it('resolves explicit and provider invoice links without unsupported repair candidates', async () => {
+    const uid = () => randomUUID();
+    const I1 = uid(); // paid, nonshadowed
+    const IVOID = uid();
+    const booking = uid();
+    const make = {
+      explicitOnly: uid(), // invoice-linked, no POS line
+      viaTicket: uid(), // reconciled ticket, no explicit id
+      dupProvider: uid(),
+      shadowOnly: uid(),
+      foreignRef: uid(),
+      broken: uid(),
+      voidInvoice: uid(),
+      bothPaths: uid(),
+      plain: uid(),
+    };
+    await owner.unsafe('set session_replication_role = replica');
+    try {
+      const inv = (
+        id: string,
+        org: string,
+        provider: string,
+        ref: string,
+        status: string,
+        shadowed = false,
+      ) =>
+        owner.unsafe(
+          `insert into public.fin_invoices(id,org_id,provider,provider_ref,status,shadowed) values ('${id}','${org}','${provider}','${ref}','${status}',${shadowed})`,
+        );
+      await inv(I1, FORG, 'susii', 'REF-1', 'paid');
+      await inv(IVOID, FORG, 'susii', 'REF-V', 'void');
+      await inv(uid(), FORG, 'susii', 'REF-2', 'paid');
+      await inv(uid(), FORG, 'nubefact', 'REF-2', 'paid'); // same ref, second provider
+      await inv(uid(), FORG, 'susii', 'REF-3', 'paid', true); // shadowed only
+      await inv(uid(), XORG, 'susii', 'REF-4', 'paid'); // same ref, FOREIGN org
+      const bk = (id: string, invoiceId: string | null) =>
+        owner.unsafe(`insert into public.sched_bookings(id,org_id,uid,event_type_id,resource_id,start_time,end_time,party_id,invoice_id)
+          values ('${id}','${FORG}','${id}',gen_random_uuid(),gen_random_uuid(),'${MAY}','${MAY}',md5('p9')::uuid,${invoiceId ? `'${invoiceId}'` : 'null'})`);
+      const ticketFor = async (bookingId: string, ref: string) => {
+        const t = uid();
+        await owner.unsafe(`insert into public.pos_tickets(id,org_id,shift_id,status,subtotal,total,submitted_at,invoice_provider_ref)
+          values ('${t}','${FORG}',gen_random_uuid(),'submitted',10,10,'${MAY}','${ref}')`);
+        await owner.unsafe(`insert into public.pos_ticket_lines(id,org_id,ticket_id,kind,description,qty,unit_price,total,booking_id)
+          values (gen_random_uuid(),'${FORG}','${t}','service','svc',1,10,10,'${bookingId}')`);
+        return t;
+      };
+      await bk(make.explicitOnly, I1);
+      await bk(make.viaTicket, null);
+      await ticketFor(make.viaTicket, 'REF-1');
+      await bk(make.dupProvider, null);
+      await ticketFor(make.dupProvider, 'REF-2');
+      await bk(make.shadowOnly, null);
+      await ticketFor(make.shadowOnly, 'REF-3');
+      await bk(make.foreignRef, null);
+      await ticketFor(make.foreignRef, 'REF-4');
+      await bk(make.broken, uid());
+      await bk(make.voidInvoice, IVOID);
+      await bk(make.bothPaths, I1);
+      await ticketFor(make.bothPaths, 'REF-1');
+      await bk(make.plain, null);
+      void booking;
+    } finally {
+      await owner.unsafe('set session_replication_role = origin');
+    }
+    const links = await asApp(FORG, FPROFILE, 'ro', (tx) =>
+      loadAuditInvoiceLinks(tx, FORG, Object.values(make), []),
+    );
+    const byId = new Map(links.bookings.map((b) => [b.bookingId, b]));
+    const ticketOf = (b: (typeof links.bookings)[number]) =>
+      links.tickets.find((t) => b.providerMatches.some((m) => m.ticketId === t.ticketId));
+    // One entry per subject, even with explicit + ticket paths.
+    expect(links.bookings).toHaveLength(Object.keys(make).length);
+    const g = (k: keyof typeof make) => byId.get(make[k])!;
+    expect(g('explicitOnly')).toMatchObject({
+      explicitInvoiceId: I1,
+      explicitResolved: true,
+      ticketLineIds: [],
+    });
+    expect(g('viaTicket').explicitInvoiceId).toBeNull();
+    expect(ticketOf(g('viaTicket'))?.state).toBe('one_nonshadowed');
+    expect(ticketOf(g('dupProvider'))?.state).toBe('ambiguous');
+    expect(ticketOf(g('dupProvider'))?.matches.map((m) => m.provider)).toEqual([
+      'nubefact',
+      'susii',
+    ]);
+    expect(ticketOf(g('shadowOnly'))?.state).toBe('ambiguous');
+    expect(ticketOf(g('foreignRef'))?.state).toBe('unresolved'); // the foreign-org invoice is never matched
+    expect(g('broken')).toMatchObject({ explicitResolved: false });
+    expect(g('voidInvoice')).toMatchObject({ explicitInvoiceId: IVOID, explicitResolved: true }); // void stays linked evidence
+    expect(g('bothPaths').providerMatches).toHaveLength(1);
+    // Every linked/ambiguous/unresolved shape blocks a repair proposal; the plain booking does not.
+    for (const key of Object.keys(make) as (keyof typeof make)[]) {
+      expect(invoiceLinkBlocksProposal(g(key), ticketOf(g(key))), key).toBe(key !== 'plain');
+    }
+    // Badge/list controls are unchanged by evidence reads.
+    const after = await inventory(new MemorySink());
+    expect(after.controls.badgePaidLines.count).toBe(2);
+    // Remove this behavior's rows so the other behaviors keep their independent counts.
+    const list = Object.values(make)
+      .map((id) => `'${id}'`)
+      .join(',');
+    await owner.unsafe(`delete from public.pos_ticket_lines where booking_id in (${list})`);
+    await owner.unsafe(`delete from public.pos_tickets where invoice_provider_ref like 'REF-%'`);
+    await owner.unsafe(`delete from public.sched_bookings where id in (${list})`);
+    await owner.unsafe(`delete from public.fin_invoices where provider_ref like 'REF-%'`);
+  });
   it('matches locking authority composition without locks or stale cache', async () => {
     const compare = (
       a: Awaited<ReturnType<typeof composeFreshCapabilitiesFromAuthorityRows>>,

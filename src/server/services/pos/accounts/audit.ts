@@ -5,6 +5,9 @@ import {
   AuditAdmissionError,
   AuditIncompleteError,
   type AuditControlName,
+  type AuditInvoiceRef,
+  type BookingInvoiceLink,
+  type TicketInvoiceLink,
   type AuditInterval,
   type AuditScope,
   type AuditSink,
@@ -202,4 +205,139 @@ export async function runAuditInventory(
     },
     residualCounts,
   };
+}
+
+/**
+ * Same-snapshot invoice linkage for the given bookings and tickets (contracts/invoice-linkage.md). Every
+ * lookup equates the organization; provider_ref is matched byte-for-byte (no trim or case folding); an
+ * explicit link whose target is missing is `invoice_link_unresolved`, never "unlinked". Caller bounds the id lists.
+ */
+export async function loadAuditInvoiceLinks(
+  tx: CoreTx,
+  orgId: string,
+  bookingIds: readonly string[],
+  ticketIds: readonly string[],
+): Promise<{ bookings: BookingInvoiceLink[]; tickets: TicketInvoiceLink[] }> {
+  const bookingList = [...new Set(bookingIds)].sort();
+  const bookings: BookingInvoiceLink[] = [];
+  const ticketSet = new Set(ticketIds);
+  const perBooking = new Map<string, { lines: string[]; tickets: string[] }>();
+  if (bookingList.length) {
+    const rows = await tx.execute<{ booking_id: string; line_id: string; ticket_id: string }>(sql`
+      select tl.booking_id::text as booking_id, tl.id::text as line_id, t.id::text as ticket_id
+      from public.pos_ticket_lines tl
+      join public.pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
+      where tl.org_id = ${orgId} and tl.booking_id = any(${sql.raw(`array[${bookingList.map((id) => `'${assertUuid(id)}'`).join(',')}]::uuid[]`)})
+      order by tl.id`);
+    for (const row of rows) {
+      const entry = perBooking.get(row.booking_id) ?? { lines: [], tickets: [] };
+      entry.lines.push(row.line_id);
+      entry.tickets.push(row.ticket_id);
+      ticketSet.add(row.ticket_id);
+      perBooking.set(row.booking_id, entry);
+    }
+  }
+  const explicit = new Map<string, string | null>();
+  if (bookingList.length) {
+    const rows = await tx.execute<{ id: string; invoice_id: string | null }>(sql`
+      select id::text as id, invoice_id::text as invoice_id from public.sched_bookings
+      where org_id = ${orgId} and id = any(${sql.raw(`array[${bookingList.map((id) => `'${assertUuid(id)}'`).join(',')}]::uuid[]`)})`);
+    for (const row of rows) explicit.set(row.id, row.invoice_id);
+  }
+  const explicitIds = [
+    ...new Set([...explicit.values()].filter((v): v is string => v !== null)),
+  ].sort();
+  const explicitFound = new Set<string>();
+  if (explicitIds.length) {
+    const rows = await tx.execute<{ id: string }>(sql`
+      select id::text as id from public.fin_invoices
+      where org_id = ${orgId} and id = any(${sql.raw(`array[${explicitIds.map((id) => `'${assertUuid(id)}'`).join(',')}]::uuid[]`)})`);
+    for (const row of rows) explicitFound.add(row.id);
+  }
+  const ticketList = [...ticketSet].sort();
+  const refs = new Map<string, string | null>();
+  if (ticketList.length) {
+    const rows = await tx.execute<{ id: string; ref: string | null }>(sql`
+      select id::text as id, nullif(invoice_provider_ref, '') as ref from public.pos_tickets
+      where org_id = ${orgId} and id = any(${sql.raw(`array[${ticketList.map((id) => `'${assertUuid(id)}'`).join(',')}]::uuid[]`)})`);
+    for (const row of rows) refs.set(row.id, row.ref);
+  }
+  const distinctRefs = [
+    ...new Set([...refs.values()].filter((v): v is string => v !== null)),
+  ].sort();
+  const matchesByRef = new Map<string, AuditInvoiceRef[]>();
+  for (const ref of distinctRefs) {
+    const rows = await tx.execute<{
+      id: string;
+      provider: string;
+      provider_ref: string;
+      status: string | null;
+      shadowed: boolean;
+    }>(sql`
+      select id::text as id, provider, provider_ref, status, shadowed from public.fin_invoices
+      where org_id = ${orgId} and provider_ref = ${ref}
+      order by provider collate "C", id`);
+    matchesByRef.set(
+      ref,
+      rows.map((r) => ({
+        invoiceId: r.id,
+        provider: r.provider,
+        providerRef: r.provider_ref,
+        status: r.status,
+        shadowed: r.shadowed,
+      })),
+    );
+  }
+  const tickets: TicketInvoiceLink[] = ticketList.map((ticketId) => {
+    const providerRef = refs.get(ticketId) ?? null;
+    const matches = providerRef ? (matchesByRef.get(providerRef) ?? []) : [];
+    const live = matches.filter((m) => !m.shadowed);
+    const state =
+      providerRef === null
+        ? 'none'
+        : matches.length === 0
+          ? 'unresolved'
+          : live.length === 1 && matches.length === 1
+            ? 'one_nonshadowed'
+            : 'ambiguous';
+    return { ticketId, providerRef, matches, state };
+  });
+  const byTicket = new Map(tickets.map((t) => [t.ticketId, t]));
+  for (const bookingId of bookingList) {
+    const direct = perBooking.get(bookingId);
+    const explicitInvoiceId = explicit.get(bookingId) ?? null;
+    bookings.push({
+      bookingId,
+      explicitInvoiceId,
+      explicitResolved: explicitInvoiceId === null || explicitFound.has(explicitInvoiceId),
+      ticketLineIds: direct?.lines ?? [],
+      providerMatches: [...new Set(direct?.tickets ?? [])].flatMap((ticketId) => {
+        const t = byTicket.get(ticketId);
+        return t?.providerRef ? [{ ticketId, providerRef: t.providerRef, matches: t.matches }] : [];
+      }),
+    });
+  }
+  return { bookings, tickets };
+}
+
+function assertUuid(id: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id))
+    throw new Error('invalid uuid in audit id list');
+  return id;
+}
+
+/**
+ * True when invoice facts forbid a paid-line->booking proposal: any explicit invoice link, any nonempty ticket
+ * provider reference, an ambiguous match, or an unresolved target. Facts are evidence, never settlement proof.
+ */
+export function invoiceLinkBlocksProposal(
+  link: BookingInvoiceLink,
+  ticket?: TicketInvoiceLink,
+): boolean {
+  return (
+    link.explicitInvoiceId !== null ||
+    !link.explicitResolved ||
+    link.providerMatches.length > 0 ||
+    (ticket !== undefined && ticket.state !== 'none')
+  );
 }

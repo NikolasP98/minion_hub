@@ -248,3 +248,29 @@ export interface RepairProposal {
   intent: LinkIntent;
   evidenceFileRefs: string[];
 }
+
+// ---- Invoice linkage closure (T017, contracts/invoice-linkage.md) -------------------------------
+export interface AuditInvoiceRef {
+  invoiceId: string;
+  provider: string;
+  providerRef: string;
+  status: string | null;
+  shadowed: boolean;
+}
+export interface BookingInvoiceLink {
+  bookingId: string;
+  /** Explicit booking->invoice id; non-null even when the target is missing. */
+  explicitInvoiceId: string | null;
+  explicitResolved: boolean;
+  /** Direct same-org ticket lines that reference this booking (live, void and voided kept). */
+  ticketLineIds: string[];
+  /** Tickets of those lines carrying a nonempty invoice_provider_ref, with every exact byte-equal match. */
+  providerMatches: { ticketId: string; providerRef: string; matches: AuditInvoiceRef[] }[];
+}
+export interface TicketInvoiceLink {
+  ticketId: string;
+  providerRef: string | null;
+  matches: AuditInvoiceRef[];
+  /** none | one_nonshadowed (via ticket_provider_ref) | ambiguous (several, or only shadowed) | unresolved (ref set, no match). */
+  state: 'none' | 'one_nonshadowed' | 'ambiguous' | 'unresolved';
+}
