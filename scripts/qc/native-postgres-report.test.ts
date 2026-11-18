@@ -116,4 +116,56 @@ describe('native PostgreSQL semantic report gate', () => {
     report.numPassedTests += 1;
     expect(assertNativePostgresReport(lane, report).passed).toBe(report.numTotalTests);
   });
+
+  describe('exactAssertions admission', () => {
+    const AUDIT = 'src/server/services/pos/accounts/audit.sql.integration.test.ts';
+    const auditRow = (report: MutableReport) =>
+      report.testResults.find((row) => row.name.endsWith(`/${AUDIT}`))!;
+    const bump = (report: MutableReport) => {
+      report.numTotalTests += 1;
+      report.numPassedTests += 1;
+    };
+
+    it('accepts the exact eight-name set', () => {
+      const report = completeReport('qa-native');
+      expect(auditRow(report).assertionResults).toHaveLength(8);
+      expect(assertNativePostgresReport('qa-native', report).passed).toBe(report.numTotalTests);
+    });
+
+    it('rejects an extra passing assertion when exactAssertions is true', () => {
+      const report = completeReport('qa-native');
+      auditRow(report).assertionResults.push({ status: 'passed', fullName: 'extra behavior' });
+      bump(report);
+      expect(() => assertNativePostgresReport('qa-native', report)).toThrow(
+        `Native fixture assertion count mismatch: ${AUDIT}`,
+      );
+    });
+
+    it.each(['missing', 'duplicate', 'unnamed', 'failed', 'skipped'] as const)(
+      'rejects a %s required behavior',
+      (kind) => {
+        const report = completeReport('qa-native');
+        const results = auditRow(report).assertionResults;
+        if (kind === 'missing') {
+          results.pop();
+          report.numTotalTests -= 1;
+          report.numPassedTests -= 1;
+        }
+        if (kind === 'duplicate') results[1].fullName = results[0].fullName;
+        if (kind === 'unnamed') results[0].fullName = '';
+        if (kind === 'failed' || kind === 'skipped') {
+          results[0].status = kind === 'failed' ? 'failed' : 'skipped';
+        }
+        expect(() => assertNativePostgresReport('qa-native', report)).toThrow();
+      },
+    );
+
+    it('keeps an omitted flag additive for legacy admissions', () => {
+      const report = completeReport('qa-native');
+      const legacy = report.testResults.find((row) => !row.name.endsWith(`/${AUDIT}`))!;
+      legacy.assertionResults.push({ status: 'passed', fullName: 'extra legacy behavior' });
+      bump(report);
+      expect(assertNativePostgresReport('qa-native', report).passed).toBe(report.numTotalTests);
+    });
+  });
 });

@@ -68,6 +68,12 @@ export function assertNativePostgresReport(lane: NativePostgresLane, value: unkn
         throw new Error(`Native behavior missing from ${admission.file}: ${behavior}`);
       }
     }
+    if (
+      admission.exactAssertions === true &&
+      row.assertionResults.length !== admission.requiredBehaviors.length
+    ) {
+      throw new Error(`Native fixture assertion count mismatch: ${admission.file}`);
+    }
     total += row.assertionResults.length;
   }
   if (total !== report.numTotalTests) throw new Error('Native assertion totals disagree');

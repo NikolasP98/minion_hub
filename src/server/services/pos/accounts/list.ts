@@ -7,6 +7,24 @@ import { parseBalanceBuckets, parsePlanBuckets } from './decoders';
 import { UNBILLED_BOOKING_WHERE } from './unbilled';
 import type { ClientAccountSummary, WalletIdentityStatus } from './types';
 
+/**
+ * Canonical client key shared by the wallet list and the receivables audit: a party id wins; else a
+ * NON-deleted contact bridged to a party; else the contact itself. Requires the `contact_bridge` CTE joined as `c`.
+ * `alias` is a fixed table alias chosen in code, never user input.
+ */
+export function clientKeySql(alias: 'l' | 'p' | 'g' | 't' | 'b') {
+  return sql.raw(`case
+                 when ${alias}.party_id is not null then 'party:' || ${alias}.party_id::text
+                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
+                 else 'contact:' || ${alias}.crm_contact_id::text
+               end`);
+}
+
+/** List pending-scheduling line predicate (over tl = pos_ticket_lines, t = pos_tickets); identity is required, void tickets excluded. */
+export const LIST_PENDING_LINE_WHERE = sql.raw(`tl.kind = 'service'
+          and tl.booking_id is null and tl.plan_id is null and t.status <> 'void'
+          and (t.party_id is not null or t.crm_contact_id is not null)`);
+
 /** Bounded canonical wallet list projection. */
 export async function listClientAccounts(
   ctx: CoreCtx,
@@ -25,11 +43,7 @@ export async function listClientAccounts(
         select id, party_id, deleted_at
         from public.crm_contacts where org_id = ${ctx.tenantId}
       ), ledger_grouped as (
-        select case
-                 when l.party_id is not null then 'party:' || l.party_id::text
-                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
-                 else 'contact:' || l.crm_contact_id::text
-               end as client_key,
+        select ${clientKeySql('l')} as client_key,
                l.currency, sum(l.amount) as balance
         from public.pos_client_ledger l
         left join contact_bridge c on c.id = l.crm_contact_id
@@ -41,11 +55,7 @@ export async function listClientAccounts(
                     order by currency collate "C") as balances
         from ledger_grouped group by client_key
       ), plans_grouped as (
-        select case
-                 when p.party_id is not null then 'party:' || p.party_id::text
-                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
-                 else 'contact:' || p.crm_contact_id::text
-               end as client_key,
+        select ${clientKeySql('p')} as client_key,
                p.currency, count(*)::int as count, sum(p.total_amount) as total
         from public.pos_payment_plans p
         left join contact_bridge c on c.id = p.crm_contact_id
@@ -58,11 +68,7 @@ export async function listClientAccounts(
           sum(count)::int as total_count
         from plans_grouped group by client_key
       ), grants as (
-        select case
-                 when g.party_id is not null then 'party:' || g.party_id::text
-                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
-                 else 'contact:' || g.crm_contact_id::text
-               end as client_key,
+        select ${clientKeySql('g')} as client_key,
                count(*)::int as active_grants
         from public.pos_package_grants g
         left join contact_bridge c on c.id = g.crm_contact_id
@@ -76,26 +82,16 @@ export async function listClientAccounts(
             ((CURRENT_TIMESTAMP at time zone (select timezone from policy))::date))
         group by 1
       ), pending as (
-        select case
-                 when t.party_id is not null then 'party:' || t.party_id::text
-                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
-                 else 'contact:' || t.crm_contact_id::text
-               end as client_key,
+        select ${clientKeySql('t')} as client_key,
                count(*)::int as pending_count,
                (array_agg(t.id::text order by t.submitted_at desc))[1] as pending_ticket_id
         from public.pos_ticket_lines tl
         join public.pos_tickets t on t.id = tl.ticket_id and t.org_id = tl.org_id
         left join contact_bridge c on c.id = t.crm_contact_id
-        where tl.org_id = ${ctx.tenantId} and tl.kind = 'service'
-          and tl.booking_id is null and tl.plan_id is null and t.status <> 'void'
-          and (t.party_id is not null or t.crm_contact_id is not null)
+        where tl.org_id = ${ctx.tenantId} and ${LIST_PENDING_LINE_WHERE}
         group by 1
       ), unbilled as (
-        select case
-                 when b.party_id is not null then 'party:' || b.party_id::text
-                 when c.party_id is not null and c.deleted_at is null then 'party:' || c.party_id::text
-                 else 'contact:' || b.crm_contact_id::text
-               end as client_key,
+        select ${clientKeySql('b')} as client_key,
                count(*)::int as unbilled_count,
                to_char((min(b.start_time) at time zone (select timezone from policy))::date,
                        'YYYY-MM-DD') as unbilled_day

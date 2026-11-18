@@ -20,7 +20,12 @@ export function validateNativePostgresOwnership(
   discovered: readonly string[],
   manifest: Record<
     string,
-    readonly { file: string; requiredBehaviors: readonly string[]; minimumAssertions: number }[]
+    readonly {
+      file: string;
+      requiredBehaviors: readonly string[];
+      minimumAssertions: number;
+      exactAssertions?: boolean;
+    }[]
   >,
   present: (file: string) => boolean,
 ) {
@@ -67,6 +72,12 @@ describe('native PostgreSQL ownership manifest', () => {
     validateNativePostgresOwnership(discovered, NATIVE_POSTGRES_MANIFEST, existsSync);
     expect(discovered.length).toBeGreaterThan(0);
     expect(NATIVE_POSTGRES_LANES).toHaveLength(9);
+    const audit = NATIVE_POSTGRES_MANIFEST['qa-native'].filter(
+      ({ file }) => file === 'src/server/services/pos/accounts/audit.sql.integration.test.ts',
+    );
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ exactAssertions: true, minimumAssertions: 8 });
+    expect(audit[0].requiredBehaviors).toHaveLength(8);
     const crmBulk = NATIVE_POSTGRES_MANIFEST['qa-native'].find(
       ({ file }) => file === 'src/server/services/crm-contact-tags-bulk.sql.integration.test.ts',
     );
