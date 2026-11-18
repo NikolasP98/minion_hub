@@ -4,6 +4,7 @@ import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { getEntry, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
+import { itemLabel } from '$lib/components/stock/item-label';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
   uuidParamOr404(params.id);
@@ -32,9 +33,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
       partyName: party?.name ?? null,
       lines: result.lines.map((l) => ({
         ...l,
-        itemLabel: itemById.get(l.itemId)
-          ? `${itemById.get(l.itemId)!.code} — ${itemById.get(l.itemId)!.name}`
-          : l.itemId,
+        itemLabel: itemLabel(itemById.get(l.itemId), l.itemId),
         fromWarehouseName: l.fromWarehouseId
           ? (warehouseById.get(l.fromWarehouseId)?.name ?? l.fromWarehouseId)
           : null,
