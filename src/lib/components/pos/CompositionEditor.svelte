@@ -336,6 +336,8 @@
 
   function add(c: Candidate) {
     if (picked.has(c.id)) return;
+    // Captured now: the queued write may run after the picker reopened elsewhere.
+    const t = pickTarget;
     void run(c.id, async () => {
       switch (writePathFor(c.kind)) {
         case 'package':
@@ -347,7 +349,6 @@
             note: null,
             choicePath: null,
           };
-          const t = pickTarget;
           return writeConsumption(
             t.kind === 'or'
               ? addAlternative(consumptionRows, t.itemId, row)
