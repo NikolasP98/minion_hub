@@ -5,11 +5,14 @@ import {
   listItems,
   listWarehouses,
   getBins,
-  getLedger,
   listConsumption,
-  listEntryRefs,
   itemSupplyInfo,
 } from '$server/services/stock.service';
+import {
+  listItemLedgerPage,
+  resolveMovementAdmission,
+  MovementError,
+} from '$server/services/stock-entries-read.service';
 import { distinctUoms } from '$server/services/stock.logic';
 import { getParty } from '$server/services/party.service';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
@@ -17,12 +20,13 @@ import { getInheritedItemTags } from '$server/services/tag-links.service';
 import { listTags } from '$server/services/crm-contacts.service';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
 
-export const load: PageServerLoad = async ({ locals, params, depends }) => {
+export const load: PageServerLoad = async ({ locals, params, depends, url }) => {
   uuidParamOr404(params.id);
   const ctx = await datasetCtx(locals, 'stock');
   if (isDenied(ctx)) return { stock: ctx }; // rendered by DataSource (spec 039)
   depends('stock:item-detail');
   const crm = await datasetCtx(locals, 'crm');
+  const admission = await resolveMovementAdmission(locals, ctx);
 
   // includeArchived: true — this is the record's OWN resolution (reached from
   // a ledger/entry link, [ / ] nav, or a direct URL) so an archived item must
@@ -31,7 +35,7 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     items,
     warehouses,
     bins,
-    ledger,
+    movements,
     consumedBy,
     supply,
     itemTags,
@@ -41,7 +45,14 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
     listItems(ctx, { includeArchived: true }),
     listWarehouses(ctx),
     getBins(ctx, { itemId: params.id }),
-    getLedger(ctx, params.id),
+    // Spec 125: one bounded page (50) of this item's ledger, labelled inside one snapshot.
+    listItemLedgerPage(ctx, admission, {
+      itemId: params.id,
+      cursor: url.searchParams.get('ledgerCursor'),
+    }).catch((e) => {
+      if (e instanceof MovementError) throw error(e.status, e.code);
+      throw e;
+    }),
     listConsumption(ctx, { itemId: params.id }),
     itemSupplyInfo(ctx),
     isDenied(crm)
@@ -60,11 +71,6 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
       ? await getParty(crm, item.defaultSupplierPartyId)
       : null;
   const supplyInfo = supply.get(item.id) ?? null;
-  // Batch-resolve the ledger's entry human ids (Stock card's `entry` column,
-  // spec Bundle C #2) — one query for every distinct entryId.
-  const entryRefs = await listEntryRefs(ctx, [...new Set(ledger.map((l) => l.entryId))]);
-  const humanIdByEntry = new Map(entryRefs.map((r) => [r.id, r.humanId]));
-
   return {
     stock: {
       // Units already in use in this org — the UOM picker's options. Derived from
@@ -84,11 +90,8 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
         ...b,
         warehouseName: warehouseById.get(b.warehouseId)?.name ?? b.warehouseId,
       })),
-      ledger: ledger.map((l) => ({
-        ...l,
-        warehouseName: warehouseById.get(l.warehouseId)?.name ?? l.warehouseId,
-        entryHumanId: humanIdByEntry.get(l.entryId) ?? null,
-      })),
+      movements,
+      ledgerCursor: url.searchParams.get('ledgerCursor'),
       consumedBy,
       tags: itemTags.get(params.id)?.own ?? [],
       inheritedTags: itemTags.get(params.id)?.inherited ?? [],

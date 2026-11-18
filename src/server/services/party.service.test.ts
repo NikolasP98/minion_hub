@@ -286,3 +286,47 @@ describe('searchParties tokenised, accent-folded multi-word search', () => {
     await client.close();
   }, 20_000);
 });
+
+describe('listPartyLabelsForReadInTx (spec 125 movement labels)', () => {
+  const P_OWNED = '11111111-1111-1111-1111-111111111111';
+  const P_OTHER = '22222222-2222-2222-2222-222222222222';
+  const P_UNLINKED = '33333333-3333-3333-3333-333333333333';
+  const P_FOREIGN = '44444444-4444-4444-4444-444444444444';
+  const ME = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const THEM = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  async function seeded() {
+    const client = new PGlite();
+    const db = drizzle(client);
+    await client.exec(`
+      create table parties (id uuid primary key, org_id text not null, type text not null default 'person',
+        name text, email text, doc_number text, phone9 text, dni_verified boolean not null default false);
+      create table crm_contacts (id uuid primary key default gen_random_uuid(), org_id text not null,
+        party_id uuid, owner_id uuid, deleted_at timestamptz);
+      insert into parties (id, org_id, name, email, phone9) values
+        ('${P_OWNED}','org-1','Owned One','a@x.test','999888777'),
+        ('${P_OTHER}','org-1','Other Owner','b@x.test',null),
+        ('${P_UNLINKED}','org-1','Unlinked',null,null),
+        ('${P_FOREIGN}','org-2','Foreign Org',null,null);
+      insert into crm_contacts (org_id, party_id, owner_id) values
+        ('org-1','${P_OWNED}','${ME}'), ('org-1','${P_OTHER}','${THEM}');
+    `);
+    return { client, db };
+  }
+  it('returns id+name only; owner scope admits owned, hides other-owner, unlinked only with allowUnlinked; foreign org never', async () => {
+    const { client, db } = await seeded();
+    const { listPartyLabelsForReadInTx } = await import('./party.service');
+    const ctx = { db, tenantId: 'org-1' } as unknown as CoreCtx;
+    const ids = [P_OWNED, P_OTHER, P_UNLINKED, P_FOREIGN];
+    const call = (scope: object) =>
+      db.transaction((tx) => listPartyLabelsForReadInTx(tx as never, ctx, ids, scope));
+    const all = await call({});
+    expect([...all.keys()].sort()).toEqual([P_OWNED, P_OTHER, P_UNLINKED].sort());
+    expect([...all.values()].every((v) => typeof v === 'string')).toBe(true);
+    const strict = await call({ ownerId: ME, allowUnlinked: false });
+    expect([...strict.keys()]).toEqual([P_OWNED]);
+    const lenient = await call({ ownerId: ME, allowUnlinked: true, maskSensitive: true });
+    expect([...lenient.keys()].sort()).toEqual([P_OWNED, P_UNLINKED].sort());
+    expect(lenient.get(P_OWNED)).toBe('Owned One'); // basic name stays visible under maskSensitive
+    await client.close();
+  }, 30_000);
+});
