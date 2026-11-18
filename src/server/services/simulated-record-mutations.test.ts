@@ -342,7 +342,11 @@ describe('simulated domain mutations execute under selected action and own-recor
       expect(await setOrderStatus(ctx, foreign, 'confirmed', actor)).toBeNull();
       expect(await updateIssue(ctx, foreign, { description: 'No' })).toBeNull();
       await expect(
-        createContact({ ...ctx, profileId: undefined }, { displayName: 'No actor' }),
+        createContact(
+          { ...ctx, profileId: undefined },
+          { displayName: 'No actor' },
+          { canWriteSensitiveFields: false },
+        ),
       ).rejects.toMatchObject({ status: 403 });
     });
   });
@@ -367,7 +371,11 @@ describe('simulated domain mutations execute under selected action and own-recor
     await inScope(async () => {
       expect(await setOrderStatus(ctx, foreign, 'confirmed', actor, new Date(0))).toBeNull();
       expect(await updateIssue(ctx, foreign, { subject: 'x' }, actor, new Date(0))).toBeNull();
-      expect(await updateContact(ctx, foreign, { displayName: 'x' }, new Date(0))).toBeNull();
+      expect(
+        await updateContact(ctx, foreign, { displayName: 'x' }, new Date(0), {
+          canWriteSensitiveFields: false,
+        }),
+      ).toBeNull();
     });
   });
   it.each(['crm', 'sales', 'support'])(
@@ -375,7 +383,10 @@ describe('simulated domain mutations execute under selected action and own-recor
     async (module) => {
       const mutation: () => Promise<unknown> =
         module === 'crm'
-          ? () => updateContact(ctx, own, { displayName: 'No' })
+          ? () =>
+              updateContact(ctx, own, { displayName: 'No' }, undefined, {
+                canWriteSensitiveFields: false,
+              })
           : module === 'sales'
             ? () => setOrderStatus(ctx, own, 'confirmed', actor)
             : () => updateIssue(ctx, own, { description: 'No' });
@@ -390,26 +401,46 @@ describe('simulated domain mutations execute under selected action and own-recor
   it('unscoped selected role and ordinary caller retain real edits to other owners', async () => {
     expect(
       (
-        await inScope(() => updateContact(ctx, foreign, { displayName: 'Selected edit' }), {
-          owner: false,
-        })
+        await inScope(
+          () =>
+            updateContact(ctx, foreign, { displayName: 'Selected edit' }, undefined, {
+              canWriteSensitiveFields: false,
+            }),
+          {
+            owner: false,
+          },
+        )
       )?.displayName,
     ).toBe('Selected edit');
-    expect((await updateContact(ctx, foreign, { displayName: 'Ordinary edit' }))?.displayName).toBe(
-      'Ordinary edit',
-    );
+    expect(
+      (
+        await updateContact(ctx, foreign, { displayName: 'Ordinary edit' }, undefined, {
+          canWriteSensitiveFields: false,
+        })
+      )?.displayName,
+    ).toBe('Ordinary edit');
   });
   it('fresh actual own-record roles use the same mutation ceiling as simulated roles', async () => {
     const admitted = scope();
     await runWithRequestCapabilities(admitted, async () => {
-      expect(await updateContact(ctx, foreign, { displayName: 'Forbidden' })).toBeNull();
-      expect((await updateContact(ctx, own, { displayName: 'Actual own edit' }))?.displayName).toBe(
-        'Actual own edit',
-      );
+      expect(
+        await updateContact(ctx, foreign, { displayName: 'Forbidden' }, undefined, {
+          canWriteSensitiveFields: false,
+        }),
+      ).toBeNull();
+      expect(
+        (
+          await updateContact(ctx, own, { displayName: 'Actual own edit' }, undefined, {
+            canWriteSensitiveFields: false,
+          })
+        )?.displayName,
+      ).toBe('Actual own edit');
       await expect(addNote(ctx, foreign, 'Forbidden', actorId)).rejects.toMatchObject({
         status: 404,
       });
-      await expect(updateContact(ctx, own, { ownerId: other })).rejects.toMatchObject({
+      await expect(
+        updateContact(ctx, own, { ownerId: other }, undefined, { canWriteSensitiveFields: false }),
+      ).rejects.toMatchObject({
         status: 403,
       });
     });
@@ -419,20 +450,33 @@ describe('simulated domain mutations execute under selected action and own-recor
   });
   it('ordinary platform admins keep their bypass but a selected role still governs their writes', async () => {
     await runWithRequestCapabilities({ ...scope(), platformAdmin: true }, async () => {
-      expect((await updateContact(ctx, foreign, { displayName: 'Admin edit' }))?.displayName).toBe(
-        'Admin edit',
-      );
       expect(
-        await inScope(() => updateContact(ctx, foreign, { displayName: 'Forbidden' })),
+        (
+          await updateContact(ctx, foreign, { displayName: 'Admin edit' }, undefined, {
+            canWriteSensitiveFields: false,
+          })
+        )?.displayName,
+      ).toBe('Admin edit');
+      expect(
+        await inScope(() =>
+          updateContact(ctx, foreign, { displayName: 'Forbidden' }, undefined, {
+            canWriteSensitiveFields: false,
+          }),
+        ),
       ).toBeNull();
     });
   });
   it('owned creates are assigned to actual actor; explicit transfer/unassignment fails before insertion', async () => {
     await inScope(async () => {
-      expect((await createContact(ctx, { displayName: 'New' })).ownerId).toBe(actorId);
+      expect(
+        (await createContact(ctx, { displayName: 'New' }, { canWriteSensitiveFields: false }))
+          .ownerId,
+      ).toBe(actorId);
       expect((await createIssue(ctx, { subject: 'New' })).ownerId).toBe(actorId);
       for (const ownerId of [other, null]) {
-        await expect(updateContact(ctx, own, { ownerId })).rejects.toMatchObject({ status: 403 });
+        await expect(
+          updateContact(ctx, own, { ownerId }, undefined, { canWriteSensitiveFields: false }),
+        ).rejects.toMatchObject({ status: 403 });
         await expect(updateIssue(ctx, own, { ownerId })).rejects.toMatchObject({ status: 403 });
       }
       await expect(
@@ -444,11 +488,17 @@ describe('simulated domain mutations execute under selected action and own-recor
   it('CRM updates/delete paths and low-level custom-field setter protect actual owner', async () => {
     await inScope(async () => {
       expect(
-        await updateContact(ctx, foreign, {
-          displayName: 'No',
-          phone: '999999999',
-          dob: '1990-01-01',
-        }),
+        await updateContact(
+          ctx,
+          foreign,
+          {
+            displayName: 'No',
+            phone: '999999999',
+            dob: '1990-01-01',
+          },
+          undefined,
+          { canWriteSensitiveFields: false },
+        ),
       ).toBeNull();
       await expect(softDeleteContact(ctx, foreign)).rejects.toMatchObject({ status: 404 });
       await expect(hardDeleteContact(ctx, foreign)).rejects.toMatchObject({ status: 404 });
@@ -480,7 +530,11 @@ describe('simulated domain mutations execute under selected action and own-recor
         () => applyTagBulk(ctx, tag, [own, foreign]),
         () => addGuardian(ctx, own, foreign),
         () => removeGuardian(ctx, own, foreign),
-        () => mergeContacts(ctx, own, [foreign]),
+        () =>
+          mergeContacts(ctx, own, [foreign], undefined, {
+            canWriteSensitiveFields: false,
+            ownerId: actorId,
+          }),
         () => addComment(ctx, 'crm_contact', foreign, 'No', actor),
       ])
         await expect(run()).rejects.toMatchObject({ status: 404 });
@@ -497,7 +551,11 @@ describe('simulated domain mutations execute under selected action and own-recor
   it('shared party DOB rejects a foreign linked facet and rolls back contact changes', async () => {
     await client.query('update crm_contacts set party_id=$1 where id=$2', [ownParty, foreign]);
     await expect(
-      inScope(() => updateContact(ctx, own, { displayName: 'Must roll back', dob: '1990-01-01' })),
+      inScope(() =>
+        updateContact(ctx, own, { displayName: 'Must roll back', dob: '1990-01-01' }, undefined, {
+          canWriteSensitiveFields: false,
+        }),
+      ),
     ).rejects.toMatchObject({ status: 404 });
     expect(
       (
@@ -563,7 +621,12 @@ describe('simulated domain mutations execute under selected action and own-recor
         ),
       ).rejects.toMatchObject({ status: 404 });
       await expect(
-        ensureContactFacetForParty(ctx, foreignParty, { displayName: null, customFields: {} }),
+        ensureContactFacetForParty(
+          ctx,
+          foreignParty,
+          { displayName: null, customFields: {} },
+          { canWriteSensitiveFields: false },
+        ),
       ).rejects.toMatchObject({ status: 404 });
       await expect(
         ensureParty(ctx, { name: 'Backfill', phone: '900000002' }),
@@ -625,5 +688,172 @@ describe('simulated domain mutations execute under selected action and own-recor
       (await inScope(() => processMembershipCycles(ctx, new Date('2026-01-02')), { owner: false }))
         .spawned,
     ).toBe(1);
+  });
+});
+
+describe('tag apply/remove contact admission for unscoped actors', () => {
+  const missing = '20000000-0000-4000-8000-0000000000ff';
+  const tagRows = async () => (await rows('crm_contact_tags')).length;
+  it('rejects foreign-org, missing, deleted and malformed contacts with 404 and zero changes', async () => {
+    await client.query('update crm_contacts set deleted_at=now() where id=$1', [foreign]);
+    for (const id of [crossOrg, missing, foreign, 'not-a-uuid']) {
+      await expect(applyTag(ctx, id, tag, actorId)).rejects.toMatchObject({
+        status: 404,
+        body: { message: 'Contact not found' },
+      });
+      await expect(removeTag(ctx, id, tag)).rejects.toMatchObject({ status: 404 });
+    }
+    expect(await tagRows()).toBe(0);
+  });
+  it('applies and removes on a live contact; rule-based and non-customer tags give 400', async () => {
+    await applyTag(ctx, own, tag, actorId);
+    expect(await tagRows()).toBe(1);
+    await removeTag(ctx, own, tag);
+    expect(await tagRows()).toBe(0);
+    const auto = '40000000-0000-4000-8000-000000000002',
+      event = '40000000-0000-4000-8000-000000000003';
+    await client.query(
+      `insert into crm_tags(id,org_id,name,kind,scope) values($1,$3,'Auto','auto','crm'),($2,$3,'MODELO','manual','event')`,
+      [auto, event, org],
+    );
+    for (const t of [auto, event])
+      await expect(applyTag(ctx, own, t, actorId)).rejects.toMatchObject({ status: 400 });
+    expect(await tagRows()).toBe(0);
+  });
+});
+
+describe('merge participant admission and masked-field policy', () => {
+  const unscoped = (can: boolean) => ({ canWriteSensitiveFields: can, ownerId: null });
+  const third = '20000000-0000-4000-8000-000000000004';
+  const missing = '20000000-0000-4000-8000-0000000000ff';
+  const ids = async () => (await rows('crm_contacts')).map((r) => r.id).sort();
+  beforeEach(async () => {
+    await client.query(
+      `insert into crm_contacts(id,org_id,owner_id,display_name,source) values($1,$2,$3,'Third','manual')`,
+      [third, org, actorId],
+    );
+  });
+  it.each([
+    ['missing survivor', missing, [own]],
+    ['foreign-org survivor', crossOrg, [own]],
+    ['missing loser', own, [missing]],
+    ['foreign-org loser', own, [crossOrg]],
+    ['mixed subset', own, [third, crossOrg]],
+    ['malformed id', own, ['not-a-uuid']],
+    ['empty losers, missing survivor', missing, []],
+  ])('%s gives 404 with zero effects', async (_n, survivor, losers) => {
+    const before = await ids();
+    await expect(
+      mergeContacts(ctx, survivor, losers, undefined, unscoped(true)),
+    ).rejects.toMatchObject({ status: 404, body: { message: 'Contact not found' } });
+    expect(await ids()).toEqual(before);
+  });
+  it('self and duplicate losers collapse; empty losers is a no-op after admission', async () => {
+    await mergeContacts(ctx, own, [own], undefined, unscoped(true));
+    await mergeContacts(ctx, own, [], undefined, unscoped(true));
+    expect(await ids()).toContain(own);
+    await mergeContacts(ctx, own, [third, third.toUpperCase()], undefined, unscoped(true));
+    expect(await ids()).not.toContain(third);
+    await expect(mergeContacts(ctx, own, [third], undefined, unscoped(true))).rejects.toMatchObject(
+      { status: 404 },
+    );
+  });
+  it('an owner-scoped caller cannot merge an unowned participant', async () => {
+    const before = await ids();
+    await expect(
+      inScope(() =>
+        mergeContacts(ctx, own, [foreign], undefined, {
+          canWriteSensitiveFields: true,
+          ownerId: actorId,
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      mergeContacts(ctx, own, [third], undefined, {
+        canWriteSensitiveFields: true,
+        ownerId: other,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(await ids()).toEqual(before);
+  });
+  it.each([
+    ['survivor', own],
+    ['loser', third],
+    ['a participant with a case-variant key', third],
+  ])(
+    'a restricted merge refuses atomically when the %s stores an Instagram key',
+    async (n, holder) => {
+      const key = n.includes('case') ? 'Instagram_Handle' : 'instagram';
+      await client.query(`update crm_contacts set custom_fields=$2::jsonb where id=$1`, [
+        holder,
+        JSON.stringify({ [key]: 'synthetic' }),
+      ]);
+      const before = await ids();
+      await expect(
+        mergeContacts(ctx, own, [third], undefined, unscoped(false)),
+      ).rejects.toMatchObject({ status: 403, body: { message: 'sensitive_fields_restricted' } });
+      expect(await ids()).toEqual(before);
+      // An authorized merge keeps its backfill semantics.
+      await mergeContacts(ctx, own, [third], undefined, unscoped(true));
+      expect(await ids()).not.toContain(third);
+    },
+  );
+  it('a restricted merge drops masked overrides but applies the others', async () => {
+    await mergeContacts(
+      ctx,
+      own,
+      [third],
+      { customFields: { instagram_handle: 'forged', distrito: 'Lince' } },
+      unscoped(false),
+    );
+    const [r] = (
+      await client.query<{ custom_fields: Record<string, unknown> }>(
+        'select custom_fields from crm_contacts where id=$1',
+        [own],
+      )
+    ).rows;
+    expect(r.custom_fields).toEqual({ distrito: 'Lince' });
+  });
+});
+
+describe('manual Instagram keys on create paths', () => {
+  const input = { instagram_handle: 'synthetic', Instagram: 'x', distrito: 'Lince' };
+  const stored = async (id: string) =>
+    (
+      await client.query<{ custom_fields: Record<string, unknown> }>(
+        'select custom_fields from crm_contacts where id=$1',
+        [id],
+      )
+    ).rows[0].custom_fields;
+  it.each([
+    [false, { distrito: 'Lince' }],
+    [true, input],
+  ])('createContact canWriteSensitiveFields=%s', async (can, expected) => {
+    // Owner-scoped creation takes the actor as owner, so auto-assignment is not reached.
+    const row = await inScope(() =>
+      createContact(
+        ctx,
+        { displayName: 'N', customFields: input },
+        { canWriteSensitiveFields: can },
+      ),
+    );
+    expect(await stored(row.id)).toEqual(expected);
+    expect(await rows('crm_contact_tags')).toHaveLength(0);
+    expect(
+      (await client.query(`select 1 from crm_contact_identities where channel='instagram'`)).rows,
+    ).toHaveLength(0);
+  });
+  it.each([
+    [false, { distrito: 'Lince' }],
+    [true, input],
+  ])('party quick-add facet canWriteSensitiveFields=%s', async (can, expected) => {
+    await client.query('delete from crm_contacts where party_id=$1', [foreignParty]);
+    const id = await ensureContactFacetForParty(
+      ctx,
+      foreignParty,
+      { displayName: 'N', customFields: input },
+      { canWriteSensitiveFields: can },
+    );
+    expect(await stored(id)).toEqual(expected);
   });
 });

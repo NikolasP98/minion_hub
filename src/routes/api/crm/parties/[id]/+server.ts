@@ -11,8 +11,9 @@ import {
   setPartyDocument,
   setPartyPhone,
 } from '$server/services/party.service';
-import { hasOrgCapability, ownerFilter } from '$server/services/rbac.service';
+import { hasOrgCapability, ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import { StaleWriteError } from '$server/services/errors';
+import { maskPii } from '$lib/pii';
 import type { Party } from '$server/db/pg-party-schema';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,14 +42,15 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 };
 
 /** The picker-row shape — never the raw row (`metadata` holds registry verdicts). */
-function pickerRow(p: PartySearchRow & Pick<Party, 'updatedAt'>) {
+function pickerRow(p: PartySearchRow & Pick<Party, 'updatedAt'>, mask = false) {
+  const m = (v: string | null) => (mask && v ? maskPii(v) : v);
   return {
     id: p.id,
     name: p.name,
     type: p.type,
-    email: p.email,
-    docNumber: p.docNumber,
-    phone9: p.phone9,
+    email: m(p.email),
+    docNumber: m(p.docNumber),
+    phone9: m(p.phone9),
     dniVerified: p.dniVerified,
     updatedAt: p.updatedAt,
   };
@@ -105,6 +107,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     throw error(400, 'dob YYYY-MM-DD required');
   }
 
+  // Phone and document are masked for this principal: refuse rather than overwrite them.
+  const maskSensitive = await shouldMaskSensitive(locals, 'crm');
+  if (maskSensitive && (wantsPhone || wantsDoc)) throw error(403, 'sensitive_fields_restricted');
+
   const out: {
     ok: true;
     dniVerified?: boolean;
@@ -149,7 +155,10 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     }
   } catch (e) {
     if (e instanceof StaleWriteError)
-      return json({ error: 'stale', current: pickerRow(e.current as Party) }, { status: 409 });
+      return json(
+        { error: 'stale', current: pickerRow(e.current as Party, maskSensitive) },
+        { status: 409 },
+      );
     throw e;
   }
   if (wantsDob) {

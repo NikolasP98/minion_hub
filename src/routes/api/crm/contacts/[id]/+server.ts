@@ -60,6 +60,8 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     throw error(404, 'Contact not found');
   }
   const body = await parseBody(request, patchSchema);
+  // The phone is masked for this principal: refuse rather than silently ignore it.
+  if (maskSensitive && body.phone !== undefined) throw error(403, 'sensitive_fields_restricted');
   try {
     const contact = await updateContact(
       ctx,
@@ -73,6 +75,7 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
         dob: body.dob,
       },
       body.expectedUpdatedAt,
+      { canWriteSensitiveFields: !maskSensitive },
     );
     if (!contact) throw error(404, 'Contact not found');
     // Same principal-aware sanitizer as GET/getContact — a masked/unowned

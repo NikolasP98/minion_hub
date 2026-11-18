@@ -196,7 +196,9 @@ describe('crm contacts audit (§B.2)', () => {
     const { tx, insertCalls } = buildTx();
     const { ctx, transactions } = countingCtx(tx);
 
-    await updateContact(ctx, 'c1', { displayName: 'Jane' });
+    await updateContact(ctx, 'c1', { displayName: 'Jane' }, undefined, {
+      canWriteSensitiveFields: false,
+    });
 
     // Assert the shipped write, not a spy on the collaborator: the audit row
     // itself, on the same `tx` object the contact UPDATE ran on.
@@ -221,7 +223,9 @@ describe('crm contacts audit (§B.2)', () => {
     const { tx, insertCalls } = buildTx();
     const { ctx, transactions } = countingCtx(tx);
 
-    await expect(createContact(ctx, { displayName: 'Jane' })).resolves.toMatchObject({
+    await expect(
+      createContact(ctx, { displayName: 'Jane' }, { canWriteSensitiveFields: false }),
+    ).resolves.toMatchObject({
       id: 'c-created',
       displayName: 'Jane',
     });

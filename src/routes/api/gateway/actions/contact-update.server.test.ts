@@ -84,14 +84,14 @@ import { POST as contactUpdatePOST } from './contact-update/+server';
 const ORG = 'org-1';
 const PRINCIPAL = '11111111-1111-4111-8111-111111111111';
 
-function makeCaps(allowed: Record<string, boolean> = {}): Capabilities {
+function makeCaps(allowed: Record<string, boolean> = {}, fieldLevel = 1): Capabilities {
   return {
     roles: ['staff'],
     can: (module, action) => allowed[`${module}.${action}`] ?? false,
     canRunAnalytics: () => false,
     visibleModules: () => [],
     ownerScoped: () => false,
-    fieldLevel: () => 0,
+    fieldLevel: () => fieldLevel,
     explicitView: () => undefined,
   };
 }
@@ -405,6 +405,54 @@ describe('POST /api/gateway/actions/contact-update — the email write is atomic
       expect((await readFields(client, contactId))._funnel).toEqual({
         stage: 'customer',
         auto: false,
+      });
+    } finally {
+      await client.close();
+    }
+  }, 30_000);
+});
+
+describe('POST /api/gateway/actions/contact-update — restricted delegated principal', () => {
+  const restricted = {
+    principalId: PRINCIPAL,
+    orgId: ORG,
+    capabilities: makeCaps({ 'crm.edit': true }, 0),
+  };
+  it.each([{ phone: '999111222' }, { email: 'a@example.test' }])(
+    '403s on %j before any write',
+    async (field) => {
+      const { client } = await createDb();
+      try {
+        const contactId = await seed(client, { instagram_handle: 'synthetic_123' });
+        mockResolveAssistantPrincipal.mockResolvedValue(restricted);
+        await expect(
+          contactUpdatePOST(makeEvent({ confirm: true, contactId, ...field })),
+        ).rejects.toMatchObject({ status: 403, body: { message: 'sensitive_fields_restricted' } });
+        await expect(
+          contactUpdatePOST(makeEvent({ confirm: false, contactId, ...field })),
+        ).rejects.toMatchObject({ status: 403 });
+        expect(await readFields(client, contactId)).toEqual({ instagram_handle: 'synthetic_123' });
+      } finally {
+        await client.close();
+      }
+    },
+    30_000,
+  );
+
+  it('a name edit succeeds and the response never carries a raw masked value', async () => {
+    const { client } = await createDb();
+    try {
+      const contactId = await seed(client, { instagram_handle: 'synthetic_123', edad: '34' });
+      mockResolveAssistantPrincipal.mockResolvedValue(restricted);
+      const res = await contactUpdatePOST(makeEvent({ confirm: true, contactId, name: 'Ana M' }));
+      const { contact } = (await res.json()) as {
+        contact: { customFields: Record<string, unknown> };
+      };
+      expect(contact.customFields.instagram_handle).toBe('••••••••_123');
+      expect(contact.customFields.edad).toBe('34');
+      expect(await readFields(client, contactId)).toEqual({
+        instagram_handle: 'synthetic_123',
+        edad: '34',
       });
     } finally {
       await client.close();

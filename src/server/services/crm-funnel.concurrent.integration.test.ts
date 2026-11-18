@@ -404,9 +404,15 @@ describe.runIf(Boolean(databaseUrl))(
       contactId: string,
       client: ReturnType<typeof postgres>,
     ) =>
-      updateContact({ db: drizzle(client) as never, tenantId: orgId }, contactId, {
-        customFieldsPatch: { favoriteColor: 'blue' },
-      });
+      updateContact(
+        { db: drizzle(client) as never, tenantId: orgId },
+        contactId,
+        {
+          customFieldsPatch: { favoriteColor: 'blue' },
+        },
+        undefined,
+        { canWriteSensitiveFields: false },
+      );
 
     const writeFunnelViaSetContactCustomField = (
       orgId: string,

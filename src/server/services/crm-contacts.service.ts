@@ -1,8 +1,14 @@
 import { error } from '@sveltejs/kit';
-import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, isNull, sql, type SQL } from 'drizzle-orm';
 import { cached, invalidateTags, keys, tags } from '@minion-stack/cache';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { maskPii, sanitizeContactFields } from '$lib/pii';
+import {
+  CRM_PII_FIELD_KEYS,
+  maskPii,
+  omitManualInstagramFields,
+  omitMaskedFields,
+  sanitizeContactFields,
+} from '$lib/pii';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   crmContacts,
@@ -1182,7 +1188,11 @@ async function runRankQuery(
     if (f.maskSensitive)
       out = out.map((r) => ({
         ...r,
-        identities: r.identities.map((i) => ({ ...i, externalId: maskPii(i.externalId) })),
+        identities: r.identities.map((i) => ({
+          ...i,
+          externalId: maskPii(i.externalId),
+          handle: i.handle ? maskPii(i.handle) : i.handle,
+        })),
       }));
     return { rows: out, total, hasMore, financeEnabled: withFinance };
   });
@@ -1425,7 +1435,12 @@ export async function getContact(
     // channel identities (external_id = phone/email/handle) AND the custom_fields
     // (the detail page renders telefono/dni/email from there, same as the list).
     const identities = maskSensitive
-      ? identitiesRaw.map((i) => ({ ...i, externalId: maskPii(i.externalId), masked: true }))
+      ? identitiesRaw.map((i) => ({
+          ...i,
+          externalId: maskPii(i.externalId),
+          handle: i.handle ? maskPii(i.handle) : i.handle,
+          masked: true,
+        }))
       : identitiesRaw;
     // sanitizeContactFields always strips `_relationshipClaim` (internal
     // lease lock, no principal should ever see it) and additionally strips
@@ -1541,6 +1556,7 @@ export async function getContactTimeline(ctx: CoreCtx, id: string, limit = 100) 
 export async function createContact(
   ctx: CoreCtx,
   data: { displayName?: string | null; customFields?: Record<string, unknown> },
+  options: ContactWriteOptions,
 ) {
   const ownerId = simulatedMutationOwner(ctx, 'crm', 'create');
   const row = await withOrgCore(ctx, async (tx) => {
@@ -1551,7 +1567,9 @@ export async function createContact(
         displayName: data.displayName ?? null,
         source: 'manual',
         ownerId,
-        customFields: data.customFields ?? {},
+        customFields: options.canWriteSensitiveFields
+          ? (data.customFields ?? {})
+          : omitManualInstagramFields(data.customFields ?? {}),
       })
       .returning();
     await recordAuditInTx(tx, ctx, {
@@ -1573,6 +1591,11 @@ export async function createContact(
   return row;
 }
 
+/** Server-derived write authority: false for a principal whose CRM field level masks PII. */
+export interface ContactWriteOptions {
+  canWriteSensitiveFields: boolean;
+}
+
 /**
  * Client-writable `custom_fields` merge for PATCH (root cause fix, spec R6):
  * a client sending `customFields` used to replace the WHOLE jsonb object,
@@ -1584,12 +1607,24 @@ export async function createContact(
  * PRE-update row (same trick `atomicSetRelationship` uses), so this is one
  * atomic statement with no pre-image read.
  */
-export function customFieldsMergeSql(clientFields: Record<string, unknown>) {
+export function customFieldsMergeSql(
+  clientFields: Record<string, unknown>,
+  options: ContactWriteOptions,
+) {
   const stripped = Object.fromEntries(
-    Object.entries(clientFields).filter(([k]) => !isReservedMetaKey(k)),
+    Object.entries(
+      options.canWriteSensitiveFields ? clientFields : omitMaskedFields(clientFields),
+    ).filter(([k]) => !isReservedMetaKey(k)),
   );
+  // Restricted principals also keep every stored masked key (their projection is only a mask).
+  const keep = options.canWriteSensitiveFields
+    ? sql`left(key, 1) = '_'`
+    : sql`left(key, 1) = '_' or lower(key) in (${sql.join(
+        [...CRM_PII_FIELD_KEYS].map((k) => sql`${k}`),
+        sql`, `,
+      )})`;
   return sql`coalesce(${JSON.stringify(stripped)}::jsonb, '{}'::jsonb) || coalesce(
-    (select jsonb_object_agg(key, value) from jsonb_each(coalesce(${crmContacts.customFields}, '{}'::jsonb)) where left(key, 1) = '_'),
+    (select jsonb_object_agg(key, value) from jsonb_each(coalesce(${crmContacts.customFields}, '{}'::jsonb)) where ${keep}),
     '{}'::jsonb
   )`;
 }
@@ -1612,9 +1647,14 @@ export function customFieldsMergeSql(clientFields: Record<string, unknown>) {
  * client or agent may not forge `_funnel`/`_relationship`; those are written
  * only through `setContactCustomField`.
  */
-export function customFieldsPatchSql(clientFields: Record<string, unknown>) {
+export function customFieldsPatchSql(
+  clientFields: Record<string, unknown>,
+  options: ContactWriteOptions,
+) {
   const stripped = Object.fromEntries(
-    Object.entries(clientFields).filter(([k]) => !isReservedMetaKey(k)),
+    Object.entries(
+      options.canWriteSensitiveFields ? clientFields : omitMaskedFields(clientFields),
+    ).filter(([k]) => !isReservedMetaKey(k)),
   );
   return sql`coalesce(${crmContacts.customFields}, '{}'::jsonb) || coalesce(${JSON.stringify(stripped)}::jsonb, '{}'::jsonb)`;
 }
@@ -1642,7 +1682,8 @@ export async function updateContact(
     /** Canonical party-spine DOB (YYYY-MM-DD), updated atomically with contact fields. */
     dob?: string | null;
   },
-  expectedUpdatedAt?: Date,
+  expectedUpdatedAt: Date | undefined,
+  options: ContactWriteOptions,
 ) {
   simulatedOwnerAssignment(ctx, 'crm', 'edit', data.ownerId);
   const ownership = simulatedMutationPredicate(ctx, 'crm', 'edit', crmContacts.ownerId);
@@ -1655,9 +1696,10 @@ export async function updateContact(
       'updateContact: pass either customFields (whole namespace) or customFieldsPatch (partial), not both',
     );
   }
-  if (data.customFields !== undefined) set.customFields = customFieldsMergeSql(data.customFields);
+  if (data.customFields !== undefined)
+    set.customFields = customFieldsMergeSql(data.customFields, options);
   if (data.customFieldsPatch !== undefined)
-    set.customFields = customFieldsPatchSql(data.customFieldsPatch);
+    set.customFields = customFieldsPatchSql(data.customFieldsPatch, options);
   if (data.dob !== undefined) {
     const parsed = data.dob === null ? null : new Date(`${data.dob}T00:00:00Z`);
     if (
@@ -1715,7 +1757,12 @@ export async function updateContact(
         field,
         label: field,
         old: null,
-        new: field === 'customFields' ? (data.customFields ?? data.customFieldsPatch) : value,
+        new:
+          field === 'customFields'
+            ? options.canWriteSensitiveFields
+              ? (data.customFields ?? data.customFieldsPatch)
+              : omitMaskedFields(data.customFields ?? data.customFieldsPatch ?? {})
+            : value,
       }));
     // `recordAuditInTx`, NOT `recordAudit`: the latter opens its OWN
     // `withOrgCore` transaction, which checks a second connection out of the
@@ -1735,7 +1782,8 @@ export async function updateContact(
         actor: { id: ctx.profileId ?? null, name: null },
       });
     }
-    if (data.phone !== undefined) {
+    // A restricted principal only ever holds the mask of the phone: never write it back.
+    if (data.phone !== undefined && options.canWriteSensitiveFields) {
       const digits = (data.phone ?? '').replace(/\D/g, '');
       await tx
         .delete(crmContactIdentities)
@@ -2041,6 +2089,71 @@ export async function deleteTag(ctx: CoreCtx, tagId: string) {
   await bustCrmList(ctx.tenantId);
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Lock live contacts of this org (and the optional owner predicate) in id order.
+ * Malformed, missing, foreign, deleted or inaccessible IDs all give the same 404
+ * so existence never leaks; the foreign key on crm_contact_tags is not org-aware.
+ */
+export async function lockContactsInOrg(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  ids: string[],
+  ownerPredicate: SQL | undefined,
+  /** This id is locked FOR NO KEY UPDATE (merge survivor); every other id FOR UPDATE. */
+  weakLockId?: string,
+): Promise<string[]> {
+  if (ids.some((id) => !UUID_RE.test(id))) throw error(404, 'Contact not found');
+  const wanted = [...new Set(ids.map((id) => id.toLowerCase()))].sort();
+  if (weakLockId) {
+    // One statement per id, in sorted order, so each gets its own lock strength.
+    const got: string[] = [];
+    for (const id of wanted) {
+      const [r] = await tx
+        .select({ id: crmContacts.id })
+        .from(crmContacts)
+        .where(
+          and(
+            eq(crmContacts.orgId, ctx.tenantId),
+            eq(crmContacts.id, id),
+            isNull(crmContacts.deletedAt),
+            ownerPredicate,
+          ),
+        )
+        .for(id === weakLockId.toLowerCase() ? 'no key update' : 'update');
+      if (!r) throw error(404, 'Contact not found');
+      got.push(r.id.toLowerCase());
+    }
+    return got;
+  }
+  const found = await tx
+    .select({ id: crmContacts.id })
+    .from(crmContacts)
+    .where(
+      and(
+        eq(crmContacts.orgId, ctx.tenantId),
+        inArray(crmContacts.id, wanted),
+        isNull(crmContacts.deletedAt),
+        ownerPredicate,
+      ),
+    )
+    .orderBy(crmContacts.id)
+    .for('update');
+  const got = found.map((r) => r.id.toLowerCase());
+  if (got.length !== wanted.length || got.some((id, i) => id !== wanted[i]))
+    throw error(404, 'Contact not found');
+  return got;
+}
+
+/** Admit a contact for tagging before any tag is created (same checks as applyTag). */
+export async function assertContactTaggable(ctx: CoreCtx, contactId: string) {
+  await withOrgCore(ctx, async (tx) => {
+    await lockContactsInOrg(tx, ctx, [contactId], undefined);
+    await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
+  });
+}
+
 export async function applyTag(
   ctx: CoreCtx,
   contactId: string,
@@ -2048,17 +2161,18 @@ export async function applyTag(
   appliedBy: string | null,
 ) {
   await withOrgCore(ctx, async (tx) => {
+    await lockContactsInOrg(tx, ctx, [contactId], undefined);
     await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     // Only customer-scoped tags may land on a contact (stock/catalog/event tags never).
     const [t] = await tx
       .select({ scope: crmTags.scope, kind: crmTags.kind })
       .from(crmTags)
       .where(and(eq(crmTags.id, tagId), eq(crmTags.orgId, ctx.tenantId)));
-    if (!t || t.scope !== 'crm') throw new Error('tag is not a customer tag of this org');
+    if (!t || t.scope !== 'crm') throw error(400, 'tag is not a customer tag of this org');
     // A rule-based tag (auto / ai) is DERIVED from the score at read time and
     // never stored as a contact_tags row — hand-applying one would only ever
     // contradict its rule.
-    if (t.kind !== 'manual') throw new Error('tag is rule-based and cannot be applied by hand');
+    if (t.kind !== 'manual') throw error(400, 'tag is rule-based and cannot be applied by hand');
     await tx
       .insert(crmContactTags)
       .values({ orgId: ctx.tenantId, contactId, tagId, appliedBy })
@@ -2069,6 +2183,7 @@ export async function applyTag(
 
 export async function removeTag(ctx: CoreCtx, contactId: string, tagId: string) {
   await withOrgCore(ctx, async (tx) => {
+    await lockContactsInOrg(tx, ctx, [contactId], undefined);
     await assertSimulatedRecordAccess(tx, ctx, 'crm', contactId, 'edit');
     await tx
       .delete(crmContactTags)

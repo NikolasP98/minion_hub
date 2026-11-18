@@ -24,6 +24,7 @@
   } from 'lucide-svelte';
   import { PageHeader, Button, Select, Badge, Toggle, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
+  import { CRM_PII_FIELD_KEYS } from '$lib/pii';
   import { appLocale, formatDate, formatMoney } from '$lib/utils/format';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
@@ -55,6 +56,7 @@
     isEmailKey,
     metaEntries,
     isReservedMetaKey,
+    pickStoredKeys,
   } from '$lib/components/crm/crm-meta';
   import { IdCard, Cake, Phone, Mail, MapPin, Stethoscope, Megaphone, User } from 'lucide-svelte';
   import { createBackNav } from '$lib/nav/back-nav.svelte';
@@ -126,6 +128,14 @@
     },
   ];
   const STD_ALIASES = new Set(STD.flatMap((f) => f.keys));
+
+  // Display hint from the loader (the server is authoritative): without sensitive-field
+  // access every masked field is read-only, so a save can never write a mask back.
+  const canEditSensitive = $derived(data.canEditSensitiveFields !== false);
+  const isMaskedKey = (key: string) => CRM_PII_FIELD_KEYS.has(key.trim().toLowerCase());
+  const stdLocked = (f: StdField) =>
+    !canEditSensitive &&
+    (f.kind === 'phone' || f.kind === 'dni' || (f.kind === 'cf' && f.keys.some(isMaskedKey)));
 
   function cfValue(keys: string[]): string {
     for (const k of keys) {
@@ -232,21 +242,28 @@
     for (const [k, v] of Object.entries(fields)) if (isReservedMetaKey(k)) next[k] = v;
     // standard cf fields → canonical key (clear stale aliases by simply not copying them)
     for (const f of STD) {
-      if (f.kind === 'cf') {
+      if (f.kind === 'cf' && !stdLocked(f)) {
         const val = (stdDraft[f.id] ?? '').trim();
         if (val) next[f.keys[0]] = val;
       }
     }
+    // dni / dob are not edited as custom fields: keep their stored keys (a contact with no
+    // party holds its DNI only here, and the whole-namespace save would delete it).
+    for (const f of STD)
+      if (f.kind === 'dni' || f.kind === 'dob') Object.assign(next, pickStoredKeys(fields, f.keys));
     // phone mirrored into custom_fields too (canonical 'telefono')
     const phone = (stdDraft.phone ?? '').trim();
-    if (phone) next['telefono'] = phone;
+    if (phone && canEditSensitive) next['telefono'] = phone;
     // additional rows (non-standard)
     for (const [k, v] of addDraft) {
       const key = k.trim();
-      if (key && !isReservedMetaKey(key) && !STD_ALIASES.has(key.toLowerCase())) next[key] = v;
+      if (key && !isReservedMetaKey(key) && !STD_ALIASES.has(key.toLowerCase())) {
+        if (canEditSensitive || !isMaskedKey(key)) next[key] = v;
+      }
     }
     if (
       newKey.trim() &&
+      (canEditSensitive || !isMaskedKey(newKey)) &&
       !isReservedMetaKey(newKey.trim()) &&
       !STD_ALIASES.has(newKey.trim().toLowerCase())
     )
@@ -254,7 +271,7 @@
 
     const body: Record<string, unknown> = {
       customFields: next,
-      phone,
+      ...(canEditSensitive ? { phone } : {}),
       dob: (stdDraft.dob ?? '').trim() || null,
     };
     const name = (stdDraft.name ?? '').trim();
@@ -720,12 +737,13 @@
                   oninput={() => (dniLookup = { state: 'idle' })}
                   placeholder={m.crm_field_empty()}
                   inputmode="numeric"
+                  readonly={stdLocked(f)}
                 />
                 <Button
                   variant="outline"
                   size="sm"
                   onclick={lookupDni}
-                  disabled={!dniValid || dniLookup.state === 'loading'}
+                  disabled={!dniValid || dniLookup.state === 'loading' || stdLocked(f)}
                   loading={dniLookup.state === 'loading'}
                   title={m.crm_dni_lookup_hint()}
                 >
@@ -750,7 +768,14 @@
                 class="meta-val"
                 bind:value={stdDraft[f.id]}
                 placeholder={m.crm_field_empty()}
+                readonly={stdLocked(f)}
+                aria-describedby={stdLocked(f) ? `std-${f.id}-ro` : undefined}
               />
+              {#if stdLocked(f)}
+                <span class="t-caption" id={`std-${f.id}-ro`}
+                  >{m.crm_sensitive_fields_read_only()}</span
+                >
+              {/if}
             {/if}
           </div>
           {#if f.id === 'dni' && dniLookup.state !== 'idle' && dniLookup.state !== 'loading'}
@@ -783,9 +808,24 @@
         {/each}
         <div class="add-sep">{m.crm_details_additional()}</div>
         {#each addDraft as row, i (i)}
+          {@const locked = !canEditSensitive && isMaskedKey(row[0])}
           <div class="meta-row">
-            <input class="meta-key" bind:value={row[0]} placeholder={m.crm_meta_key()} />
-            <input class="meta-val" bind:value={row[1]} placeholder={m.crm_meta_value()} />
+            <input
+              class="meta-key"
+              bind:value={row[0]}
+              placeholder={m.crm_meta_key()}
+              readonly={locked}
+            />
+            <input
+              class="meta-val"
+              bind:value={row[1]}
+              placeholder={m.crm_meta_value()}
+              readonly={locked}
+              title={locked ? m.crm_sensitive_fields_read_only() : undefined}
+            />
+            {#if locked}
+              <span class="t-caption">{m.crm_sensitive_fields_read_only()}</span>
+            {/if}
             <Button
               variant="ghost"
               size="sm"
@@ -797,6 +837,9 @@
         {/each}
         <div class="meta-row new">
           <input class="meta-key" bind:value={newKey} placeholder={m.crm_meta_new_key()} />
+          {#if !canEditSensitive && isMaskedKey(newKey)}
+            <span class="t-caption">{m.crm_sensitive_fields_read_only()}</span>
+          {/if}
           <input class="meta-val" bind:value={newVal} placeholder={m.crm_meta_value()} />
           <span class="icon-btn ghost"><Plus size={iconSizes.sm} /></span>
         </div>

@@ -3,13 +3,19 @@ import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { parseBody } from '$server/api/validate';
 import { requireAssistantCapability } from '../../_shared/action-auth';
-import { applyTag, removeTag, listTags, createTag } from '$server/services/crm-contacts.service';
+import {
+  applyTag,
+  assertContactTaggable,
+  removeTag,
+  listTags,
+  createTag,
+} from '$server/services/crm-contacts.service';
 
 const bodySchema = z
   .object({
     confirm: z.boolean(),
     contactId: z.string().min(1).max(200),
-    tagId: z.string().min(1).max(200).optional(),
+    tagId: z.string().uuid().optional(),
     // Agent-ergonomic alternative: a tag NAME, resolved case-insensitively;
     // unknown names are created as manual tags on 'add'.
     tag: z.string().min(1).max(500).optional(),
@@ -54,6 +60,8 @@ export const POST: RequestHandler = async ({ locals, url, request }) => {
   }
 
   if (!tagId && b.tag && b.op === 'add') {
+    // Admit the contact first so a refused request leaves no orphan tag behind.
+    await assertContactTaggable(ctx, b.contactId);
     const created = await createTag(ctx, { name: b.tag.trim(), kind: 'manual' }, principalId);
     tagId = created.id;
   }

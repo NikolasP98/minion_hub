@@ -172,10 +172,13 @@ describe('ensureAccountInScope', () => {
 describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved keys)', () => {
   it('strips a client-supplied `_`-prefixed key before it ever reaches SQL', () => {
     const query = new PgDialect().sqlToQuery(
-      customFieldsMergeSql({
-        distrito: 'Miraflores',
-        _relationship: { label: 'mamá', category: 'family', source: 'user', updatedAt: 'now' },
-      }),
+      customFieldsMergeSql(
+        {
+          distrito: 'Miraflores',
+          _relationship: { label: 'mamá', category: 'family', source: 'user', updatedAt: 'now' },
+        },
+        { canWriteSensitiveFields: true },
+      ),
     );
     // The client's `_relationship` value must never appear as a bound param —
     // only the non-reserved key made it into the stripped JSON payload.
@@ -185,7 +188,9 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
   });
 
   it('an empty client payload still merges in whatever reserved keys are stored on the row', () => {
-    const query = new PgDialect().sqlToQuery(customFieldsMergeSql({}));
+    const query = new PgDialect().sqlToQuery(
+      customFieldsMergeSql({}, { canWriteSensitiveFields: true }),
+    );
     // The merge expression must reference the existing row's custom_fields
     // (preserving stored `_`-prefixed keys), not just the client's payload.
     expect(query.sql).toContain('jsonb_each');
@@ -196,7 +201,10 @@ describe('customFieldsMergeSql (spec F3b — client cannot forge/delete reserved
 
   it('non-reserved keys pass through untouched', () => {
     const query = new PgDialect().sqlToQuery(
-      customFieldsMergeSql({ distrito: 'Miraflores', edad: '34' }),
+      customFieldsMergeSql(
+        { distrito: 'Miraflores', edad: '34' },
+        { canWriteSensitiveFields: true },
+      ),
     );
     const jsonParam = query.params.find((p) => typeof p === 'string' && p.includes('distrito'));
     expect(jsonParam).toBe(JSON.stringify({ distrito: 'Miraflores', edad: '34' }));

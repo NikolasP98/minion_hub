@@ -132,4 +132,5 @@ export const contactData: Data = {
   guardians: [],
   guardianCandidates: [],
   customProperties: EMPTY_BUNDLE,
+  canEditSensitiveFields: true,
 };

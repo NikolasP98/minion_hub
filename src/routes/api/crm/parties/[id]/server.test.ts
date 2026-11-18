@@ -18,7 +18,7 @@ const ownerFilterMock = vi.fn<(locals: unknown, module: string) => Promise<strin
   async () => 'owner-1',
 );
 vi.mock('$server/services/rbac.service', () => ({
-  shouldMaskSensitive: async () => false,
+  shouldMaskSensitive: async () => maskMock(),
   apiReadCapability: () => ({
     module: 'crm',
     action: 'view',
@@ -29,6 +29,7 @@ vi.mock('$server/services/rbac.service', () => ({
   ownerFilter: (locals: unknown, module: string) => ownerFilterMock(locals, module),
 }));
 
+const maskMock = vi.fn<() => Promise<boolean>>(async () => false);
 const UPDATED = new Date('2026-06-01T00:00:00.000Z');
 type PhoneResult = { phone9: string; updatedAt: Date } | null;
 const setPhoneMock = vi.fn<(id: string, phone: string, expected?: Date) => Promise<PhoneResult>>(
@@ -97,8 +98,28 @@ beforeEach(() => {
     updatedAt: UPDATED,
   }));
   setDobMock.mockImplementation(async () => 'ok');
+  maskMock.mockResolvedValue(false);
   hasOrgCapabilityMock.mockResolvedValue(true);
   ownerFilterMock.mockResolvedValue('owner-1');
+});
+
+describe('PATCH /api/crm/parties/[id] restricted principal', () => {
+  it.each([{ phone: '992376833' }, { docNumber: '48340990' }])(
+    'refuses %j with 403 sensitive_fields_restricted and writes nothing',
+    async (body) => {
+      maskMock.mockResolvedValue(true);
+      await expect(call(PARTY, body)).rejects.toMatchObject({
+        status: 403,
+        body: { message: 'sensitive_fields_restricted' },
+      });
+      expect(setPhoneMock).not.toHaveBeenCalled();
+      expect(setDocMock).not.toHaveBeenCalled();
+    },
+  );
+  it('still lets a restricted principal toggle verification', async () => {
+    maskMock.mockResolvedValue(true);
+    expect((await call(PARTY, { dniVerified: true })).status).toBe(200);
+  });
 });
 
 describe('PATCH /api/crm/parties/[id]', () => {

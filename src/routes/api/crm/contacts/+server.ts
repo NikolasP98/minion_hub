@@ -5,12 +5,14 @@ import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
 import {
+  rankContactsPage,
   rankContactsPageCached,
   createContact,
   listTags,
   ROSTER_CAP,
   type RankFilters,
 } from '$server/services/crm-contacts.service';
+import { sanitizeContactFields } from '$lib/pii';
 import { matchingAutoTagIds } from '$server/services/crm-scoring';
 import { ServerTiming } from '$lib/server/server-timing';
 import { loadCustomPropertyBundle } from '$server/services/custom-property-bundle.service';
@@ -71,6 +73,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     maskSensitive,
   };
 
+  // `fresh=1`: uncached read the merge UI uses to reconcile rows after a merge.
+  // TODO(handoff): `fresh=1` is an uncached whole-org rank with no rate limit; see proposal 2026-11-16-faces-stock-cash-crm-meeting-followups.
+  const fresh = q.get('fresh') === '1';
+  if (fresh && q.get('fields') === 'id') throw error(400, 'fresh reads do not support fields=id');
+
   // Lean id-only variant: same filters, no pagination, no PII, no decoration.
   if (q.get('fields') === 'id') {
     const { rows, total } = await timing.measure('crm_rank', () =>
@@ -89,7 +96,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   }
 
   const [ranked, tags] = await Promise.all([
-    timing.measure('crm_rank', () => rankContactsPageCached(ctx, filters)),
+    timing.measure('crm_rank', () =>
+      fresh ? rankContactsPage(ctx, filters) : rankContactsPageCached(ctx, filters),
+    ),
     timing.measure('crm_tags', () => listTags(ctx, 'crm')),
   ]);
   const { rows, total, hasMore, financeEnabled } = ranked;
@@ -108,8 +117,20 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     withAutoTags.map((contact) => contact.contact_id),
   );
   return json(
-    { contacts: withAutoTags, total, hasMore, financeEnabled, customProperties },
-    { headers: { 'Server-Timing': timing.headerValue() } },
+    {
+      contacts: withAutoTags,
+      total,
+      hasMore,
+      financeEnabled,
+      customProperties,
+      ...(fresh ? { fresh: true } : {}),
+    },
+    {
+      headers: {
+        'Server-Timing': timing.headerValue(),
+        ...(fresh ? { 'Cache-Control': 'private, no-store' } : {}),
+      },
+    },
   );
 };
 
@@ -123,9 +144,25 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   const body = await parseBody(request, postSchema);
-  const contact = await createContact(ctx, {
-    displayName: typeof body.displayName === 'string' ? body.displayName.trim() : null,
-    customFields: body.customFields ?? {},
-  });
-  return json({ contact }, { status: 201 });
+  const maskSensitive = await shouldMaskSensitive(locals, 'crm');
+  const contact = await createContact(
+    ctx,
+    {
+      displayName: typeof body.displayName === 'string' ? body.displayName.trim() : null,
+      customFields: body.customFields ?? {},
+    },
+    { canWriteSensitiveFields: !maskSensitive },
+  );
+  return json(
+    {
+      contact: {
+        ...contact,
+        customFields: sanitizeContactFields(
+          contact.customFields as Record<string, unknown>,
+          maskSensitive,
+        ),
+      },
+    },
+    { status: 201 },
+  );
 };

@@ -17,7 +17,11 @@ export function maskPii(value: string | null | undefined): string {
  * Customers list + contact detail render as Phone / ID columns. Mirrors the
  * phone/email key sets in `crm-meta.ts` plus the common id variants.
  */
+/** Manually recorded Instagram handle keys (profile metadata, never a channel identity). */
+export const CRM_MANUAL_INSTAGRAM_FIELD_KEYS = new Set(['instagram', 'instagram_handle']);
+
 export const CRM_PII_FIELD_KEYS = new Set([
+  ...CRM_MANUAL_INSTAGRAM_FIELD_KEYS,
   'telefono',
   'phone',
   'celular',
@@ -36,6 +40,17 @@ export const CRM_PII_FIELD_KEYS = new Set([
   'pasaporte',
   'passport',
 ]);
+
+const omitKeys = (fields: Record<string, unknown>, keys: Set<string>) =>
+  Object.fromEntries(Object.entries(fields).filter(([k]) => !keys.has(k.toLowerCase())));
+
+/** Drop every masked key (case-insensitive); other keys pass through. */
+export const omitMaskedFields = (fields: Record<string, unknown>) =>
+  omitKeys(fields, CRM_PII_FIELD_KEYS);
+
+/** Drop only the manual Instagram keys (case-insensitive). */
+export const omitManualInstagramFields = (fields: Record<string, unknown>) =>
+  omitKeys(fields, CRM_MANUAL_INSTAGRAM_FIELD_KEYS);
 
 /** Redact PII values inside a contact's custom_fields jsonb (non-PII keys untouched). */
 export function maskContactFields<T extends Record<string, unknown> | null | undefined>(

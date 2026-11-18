@@ -132,6 +132,8 @@ export const load: PageServerLoad = async ({ locals, params, depends, parent }) 
       guardians,
       guardianCandidates,
       customProperties,
+      // Display hint only (the server enforces it): masked fields are read-only when false.
+      canEditSensitiveFields: !maskPii,
     },
   };
 };

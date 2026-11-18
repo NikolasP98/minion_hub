@@ -11,14 +11,16 @@ vi.mock('$server/services/rbac.service', () => ({
 }));
 
 const mockRankContactsPage = vi.fn();
+const mockCreateContact = vi.fn();
+const mockRankFresh = vi.fn();
 const mockListTags = vi.fn(async () => [] as unknown[]);
 const mockLoadCustomPropertyBundle = vi.fn();
 vi.mock('$server/services/crm-contacts.service', () => ({
   ROSTER_CAP: 50_000,
-  rankContactsPage: (...a: unknown[]) => mockRankContactsPage(...a),
+  rankContactsPage: (...a: unknown[]) => mockRankFresh(...a),
   rankContactsPageCached: (...a: unknown[]) => mockRankContactsPage(...a),
   listTags: () => mockListTags(),
-  createContact: vi.fn(),
+  createContact: (...a: unknown[]) => mockCreateContact(...a),
 }));
 
 vi.mock('$server/services/crm-scoring', () => ({
@@ -29,7 +31,7 @@ vi.mock('$server/services/custom-property-bundle.service', () => ({
   loadCustomPropertyBundle: (...a: unknown[]) => mockLoadCustomPropertyBundle(...a),
 }));
 
-import { GET } from './+server';
+import { GET, POST } from './+server';
 
 /** A page row shaped like the service's RankedContact (the golden element shape). */
 const row = (id: string) => ({
@@ -225,4 +227,77 @@ describe('GET /api/crm/contacts (S3 page contract)', () => {
       expect.objectContaining({ maskSensitive: true }),
     );
   });
+});
+
+describe('POST /api/crm/contacts (manual Instagram keys)', () => {
+  const post = (body: unknown) =>
+    POST({
+      locals: {},
+      request: new Request('http://localhost/api/crm/contacts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    } as unknown as Parameters<typeof POST>[0]);
+
+  it.each([
+    [false, true],
+    [true, false],
+  ])(
+    'masked=%s passes canWriteSensitiveFields=%s and sanitizes the response',
+    async (masked, can) => {
+      mockShouldMask.mockResolvedValue(masked);
+      mockCreateContact.mockResolvedValue({
+        id: 'c1',
+        customFields: { instagram_handle: 'synthetic_123', distrito: 'x' },
+      });
+      const res = await post({ displayName: 'Ana', customFields: { instagram_handle: 'forged' } });
+      expect(res.status).toBe(201);
+      expect(mockCreateContact.mock.calls[0][2]).toEqual({ canWriteSensitiveFields: can });
+      const { contact } = await res.json();
+      expect(contact.customFields.instagram_handle).toBe(masked ? '••••••••_123' : 'synthetic_123');
+    },
+  );
+  it('ignores a forged canWriteSensitiveFields in the body', async () => {
+    mockShouldMask.mockResolvedValue(true);
+    mockCreateContact.mockResolvedValue({ id: 'c1', customFields: {} });
+    await post({ canWriteSensitiveFields: true, options: { canWriteSensitiveFields: true } });
+    expect(mockCreateContact.mock.calls[0][2]).toEqual({ canWriteSensitiveFields: false });
+  });
+});
+
+describe('GET /api/crm/contacts?fresh=1', () => {
+  it('reads uncached with the same filters, marks the body and forbids caching', async () => {
+    mockOwnerFilter.mockResolvedValue('p1' as never);
+    mockShouldMask.mockResolvedValue(true);
+    mockRankFresh.mockResolvedValue({
+      rows: [row('a')],
+      total: 1,
+      hasMore: false,
+      financeEnabled: false,
+    });
+    const res = await callGET('?fresh=1&limit=10&offset=5&search=ana');
+    expect(mockRankContactsPage).not.toHaveBeenCalled();
+    expect(mockRankFresh.mock.calls[0][1]).toMatchObject({
+      limit: 10,
+      offset: 5,
+      search: 'ana',
+      ownerId: 'p1',
+      maskSensitive: true,
+    });
+    expect((await res.json()).fresh).toBe(true);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+  });
+  it('rejects fresh with fields=id', async () => {
+    await expect(callGET('?fresh=1&fields=id')).rejects.toMatchObject({ status: 400 });
+  });
+  it.each(['', '?fresh=0', '?fresh=true'])(
+    'a normal request (%s) stays cached with no fresh key',
+    async (qs) => {
+      const body = await (await callGET(qs)).json();
+      expect(mockRankFresh).not.toHaveBeenCalled();
+      expect(mockRankContactsPage).toHaveBeenCalled();
+      expect('fresh' in body).toBe(false);
+    },
+  );
 });
