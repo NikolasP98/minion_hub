@@ -41,7 +41,7 @@
    *                   AND a product parent (meta spec 024: one stock path)
    * A product child is a stock item: what a sale or procedure consumes.
    */
-  import { Trash2, ListFilter, Plus, Split } from 'lucide-svelte';
+  import { Trash2, ListFilter, Plus, Split, Star } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -419,27 +419,30 @@
     <span class="t-caption unit">{r.kind === 'service' ? m.pos_pkg_sessions_per() : r.detail}</span>
     <span class="name">{r.name}</span>
     {#if r.kind === 'service' && r.detail}<span class="t-caption dim">{r.detail}</span>{/if}
-    {#if canEdit && r.kind === 'product'}
-      <Button
-        variant="ghost"
-        size="sm"
-        title={m.pos_comp_or_hint()}
-        onclick={() => openPicker({ kind: 'or', itemId: r.ref })}
-      >
-        <Split size={iconSizes.xs} aria-hidden="true" />
-        <span>{m.pos_comp_or()}</span>
-      </Button>
-    {/if}
     {#if canEdit}
-      <Button
-        variant="ghost"
-        size="sm"
-        aria-label={m.common_remove()}
-        loading={saving.includes(r.id)}
-        onclick={() => remove(r)}
-      >
-        <Trash2 size={iconSizes.xs} />
-      </Button>
+      <span class="acts">
+        {#if r.kind === 'product'}
+          <Button
+            variant="ghost"
+            size="sm"
+            title={m.pos_comp_or_hint()}
+            aria-label={m.pos_comp_or()}
+            onclick={() => openPicker({ kind: 'or', itemId: r.ref })}
+          >
+            <Split size={iconSizes.xs} aria-hidden="true" />
+          </Button>
+        {/if}
+        <Button
+          variant="ghost"
+          size="sm"
+          title={m.common_remove()}
+          aria-label={m.common_remove()}
+          loading={saving.includes(r.id)}
+          onclick={() => remove(r)}
+        >
+          <Trash2 size={iconSizes.xs} aria-hidden="true" />
+        </Button>
+      </span>
     {/if}
   </li>
 {/snippet}
@@ -453,8 +456,8 @@
         <span class="t-caption dim">{m.pos_comp_alternatives()}</span>
         {#each n.options as o, i (o.option)}
           <ul class="rows option">
-            {@render recipeNodes(o.nodes)}
-            <li class="option-acts">
+            <li class="option-head">
+              <span class="t-caption dim">{m.pos_comp_option({ n: i + 1 })}</span>
               {#if i === 0}
                 <Badge size="sm">{m.pos_comp_default()}</Badge>
               {:else if canEdit}
@@ -462,20 +465,27 @@
                   variant="ghost"
                   size="sm"
                   loading={saving.includes(`g${n.group}`)}
-                  onclick={() => setDefault(n.group, o.option)}>{m.pos_comp_make_default()}</Button
+                  onclick={() => setDefault(n.group, o.option)}
                 >
-              {/if}
-              {#if canEdit}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onclick={() => openPicker({ kind: 'and', path: o.path })}
-                >
-                  <Plus size={iconSizes.xs} aria-hidden="true" />
-                  <span>{m.pos_comp_and()}</span>
+                  <Star size={iconSizes.xs} aria-hidden="true" />
+                  <span>{m.pos_comp_make_default()}</span>
                 </Button>
               {/if}
+              {#if canEdit}
+                <span class="acts">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={m.pos_comp_and()}
+                    onclick={() => openPicker({ kind: 'and', path: o.path })}
+                  >
+                    <Plus size={iconSizes.xs} aria-hidden="true" />
+                    <span>{m.pos_comp_add_here()}</span>
+                  </Button>
+                </span>
+              {/if}
             </li>
+            {@render recipeNodes(o.nodes)}
           </ul>
         {/each}
       </li>
@@ -588,16 +598,25 @@
     border-top: 1px solid var(--color-border);
     padding-top: var(--space-1);
   }
-  .option-acts {
+  .option-head {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    min-height: var(--control-height-sm);
+  }
+  /* Actions share one right-aligned column, so every row's icons line up. */
+  .acts {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
   }
   .unit {
     color: var(--color-text-secondary);
     white-space: nowrap;
   }
   .name {
+    flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
   }

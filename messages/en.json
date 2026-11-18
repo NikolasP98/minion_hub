@@ -7632,10 +7632,12 @@
   "stock_corr_receipt_replaces": "This receipt replaces one that was corrected.",
   "stock_corr_receipt_original_link": "View the original",
   "sched_complete_choose": "Which one was used?",
-  "pos_comp_or": "Or…",
+  "pos_comp_or": "Add substitute",
   "pos_comp_or_hint": "Add a substitute: one or the other is consumed, never both",
   "pos_comp_and": "Add to this option",
   "pos_comp_default": "Default",
   "pos_comp_make_default": "Make default",
-  "pos_comp_alternatives": "One of"
+  "pos_comp_alternatives": "One of",
+  "pos_comp_option": "Option {n}",
+  "pos_comp_add_here": "Add"
 }
