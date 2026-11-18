@@ -30,10 +30,12 @@ import { consumptionToStockQty, edgesByParent, explodeToStockLeaves, round4 } fr
 import { memoRequest } from '$server/db/request-memo';
 import {
   buildServiceIssuePreview,
-  createServiceIssue,
-  findEntryBySource,
-  submitEntry,
+  createServiceIssueInTx,
+  findEntryBySourceInTx,
+  lockStockWrite,
+  submitEntryInTx,
   StockError,
+  type StockWriteGuard,
   type Actor,
   type CreateIssueFromInvoiceLine,
   type InvoicePreviewLine,
@@ -44,7 +46,7 @@ export interface AccrualLineInput {
   qtyConsumption: number;
 }
 
-async function defaultWarehouseTx(tx: CoreTx, orgId: string): Promise<string | null> {
+export async function defaultWarehouseInTx(tx: CoreTx, orgId: string): Promise<string | null> {
   const rows = await tx
     .select({ id: stkWarehouses.id, isDefault: stkWarehouses.isDefault })
     .from(stkWarehouses)
@@ -60,7 +62,7 @@ async function defaultWarehouseTx(tx: CoreTx, orgId: string): Promise<string | n
  *  so write call sites (ticket/accrual admission) are unaffected. */
 export function resolveDefaultWarehouse(ctx: CoreCtx): Promise<string | null> {
   return memoRequest(`default-warehouse:${ctx.tenantId}`, () =>
-    withOrgCore(ctx, (tx) => defaultWarehouseTx(tx, ctx.tenantId)),
+    withOrgCore(ctx, (tx) => defaultWarehouseInTx(tx, ctx.tenantId)),
   );
 }
 
@@ -82,6 +84,7 @@ export interface AccrueInput {
  */
 export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
     const orgId = ctx.tenantId;
     const existing = await tx
       .select({ id: stkAccruals.id, status: stkAccruals.status })
@@ -95,7 +98,7 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       );
     if (existing.some((r) => r.status !== 'open')) return 0; // settled — never resurrect
 
-    const warehouseId = input.warehouseId ?? (await defaultWarehouseTx(tx, orgId));
+    const warehouseId = input.warehouseId ?? (await defaultWarehouseInTx(tx, orgId));
     if (!warehouseId) return 0; // nothing to commit against
 
     let lines = (input.lines ?? []).filter((l) => l.qtyConsumption > 0);
@@ -221,26 +224,32 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
 }
 
 /** Cancel / no-show path: open rows → released. Idempotent. */
-export async function releaseAccruals(
+export function releaseAccruals(ctx: CoreCtx, source: string, sourceId: string): Promise<number> {
+  return withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    return releaseAccrualsInTx(tx, ctx, source, sourceId);
+  });
+}
+
+export async function releaseAccrualsInTx(
+  tx: CoreTx,
   ctx: CoreCtx,
   source: string,
   sourceId: string,
 ): Promise<number> {
-  return withOrgCore(ctx, async (tx) => {
-    const rows = await tx
-      .update(stkAccruals)
-      .set({ status: 'released', releasedAt: new Date(), updatedAt: new Date() })
-      .where(
-        and(
-          eq(stkAccruals.orgId, ctx.tenantId),
-          eq(stkAccruals.source, source),
-          eq(stkAccruals.sourceId, sourceId),
-          eq(stkAccruals.status, 'open'),
-        ),
-      )
-      .returning({ id: stkAccruals.id });
-    return rows.length;
-  });
+  const rows = await tx
+    .update(stkAccruals)
+    .set({ status: 'released', releasedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(stkAccruals.orgId, ctx.tenantId),
+        eq(stkAccruals.source, source),
+        eq(stkAccruals.sourceId, sourceId),
+        eq(stkAccruals.status, 'open'),
+      ),
+    )
+    .returning({ id: stkAccruals.id });
+  return rows.length;
 }
 
 export interface AccrualPreviewLine extends InvoicePreviewLine {
@@ -347,25 +356,40 @@ export interface RealizeInput {
  * Accrued items missing from the final issue are released (superseded); items
  * issued but never accrued simply have no accrual row (ledger is the truth).
  */
-export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promise<RealizeResult> {
-  const open = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(stkAccruals)
-      .where(
-        and(
-          eq(stkAccruals.orgId, ctx.tenantId),
-          eq(stkAccruals.source, input.source),
-          eq(stkAccruals.sourceId, input.sourceId),
-          eq(stkAccruals.status, 'open'),
-        ),
-      ),
+export function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promise<RealizeResult> {
+  return withOrgCore(ctx, async (tx) =>
+    realizeAccrualsInTx(tx, ctx, await lockStockWrite(tx, ctx), input),
   );
+}
 
-  let entry = await findEntryBySource(ctx, input.source, input.sourceId);
+/**
+ * Same-transaction realize: every source / open-accrual / draft / submitted lookup is re-read after
+ * the gate pair inside the passed transaction, so concurrent completion retries serialize and
+ * converge on ONE entry. A domain refusal (negative stock, duplicate source) is thrown before any
+ * write, so the established draft + warning outcome still commits.
+ */
+export async function realizeAccrualsInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  input: RealizeInput,
+): Promise<RealizeResult> {
+  const open = await tx
+    .select()
+    .from(stkAccruals)
+    .where(
+      and(
+        eq(stkAccruals.orgId, ctx.tenantId),
+        eq(stkAccruals.source, input.source),
+        eq(stkAccruals.sourceId, input.sourceId),
+        eq(stkAccruals.status, 'open'),
+      ),
+    );
+
+  let entry = await findEntryBySourceInTx(tx, ctx, input.source, input.sourceId);
   // explicit [] = "confirmed nothing used": release, book nothing (null = realize as-is)
   if (!entry && Array.isArray(input.lines) && input.lines.length === 0) {
-    await releaseAccruals(ctx, input.source, input.sourceId);
+    await releaseAccrualsInTx(tx, ctx, input.source, input.sourceId);
     return { entry: null, realized: 0, stockWarning: null };
   }
   if (!entry) {
@@ -380,17 +404,16 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
     const finProductId = input.finProductId ?? open[0]?.finProductId ?? null;
     if (!finProductId) return { entry: null, realized: 0, stockWarning: null };
     const warehouseId =
-      input.warehouseId ?? open[0]?.warehouseId ?? (await resolveDefaultWarehouse(ctx));
+      input.warehouseId ?? open[0]?.warehouseId ?? (await defaultWarehouseInTx(tx, ctx.tenantId));
     if (!warehouseId) throw new StockError('no warehouse configured', 'no_warehouse');
     try {
-      entry = await createServiceIssue(ctx, {
+      entry = await createServiceIssueInTx(tx, ctx, guard, {
         finProductId,
         quantity: 1,
         warehouseId,
         partyId: input.partyId ?? null,
         note: input.note ?? null,
         lines,
-        submit: false,
         actor: input.actor,
         source: input.source,
         sourceId: input.sourceId,
@@ -409,7 +432,7 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
     // ponytail: a draft left by an earlier failed attempt posts as-is; retry
     // lines don't rewrite it (adjust the draft in Stock → Entries if needed).
     try {
-      entry = await submitEntry(ctx, entry.id, input.actor);
+      entry = (await submitEntryInTx(tx, ctx, guard, entry.id, input.actor)).entry;
     } catch (e) {
       if (e instanceof StockError) {
         return {
@@ -423,7 +446,7 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
   }
 
   const entryId = entry.id;
-  const realized = await withOrgCore(ctx, async (tx) => {
+  const realized = await (async () => {
     const ledger = await tx
       .select({
         itemId: stkLedger.itemId,
@@ -462,7 +485,7 @@ export async function realizeAccruals(ctx: CoreCtx, input: RealizeInput): Promis
       }
     }
     return n;
-  });
+  })();
   return { entry, realized, stockWarning: null };
 }
 

@@ -973,6 +973,9 @@ export function apiReadCapability(pathname: string): {
     pathname === '/api/plugins/ui-list'
   )
     return null;
+  // Known-key correction status: the service itself admits pos:view OR stock:view (a POS-only
+  // operator recovering a stockless swap needs no stock access) and answers uniformly otherwise.
+  if (pathname === '/api/stock/corrections') return null;
   if (pathname === '/api/nav/access' || pathname === '/api/roles/overrides')
     return { module: 'roles', action: 'edit' };
   // Parties are shared customer/supplier records, used outside CRM too.
@@ -1022,6 +1025,14 @@ export function apiWriteCapability(
   // the requested DATASET's own module `view` capability — which this central
   // guard cannot express, since the module varies per request body.
   if (pathname === '/api/sandbox/query' && method === 'POST') return null;
+  // Stock corrections (spec 124): the read-only preview and the apply POST (exact paths) authenticate
+  // canonically; the service derives the stock/POS/cost capabilities from the VERIFIED effect, which a
+  // client flag cannot declare (a stockless swap needs no stock:manage). Near-prefix paths stay gated.
+  if (
+    method === 'POST' &&
+    (pathname === '/api/stock/corrections/preview' || pathname === '/api/stock/corrections')
+  )
+    return null;
   // Cancelling an unresolved create request does not cancel an existing plan.
   if (
     method === 'POST' &&

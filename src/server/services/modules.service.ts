@@ -3,6 +3,7 @@ import { cached, keys, invalidateTags, tags } from '@minion-stack/cache';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { appModules } from '$server/db/pg-modules-schema';
+import { lockNavigationPolicy } from './nav-policy-lock';
 
 const moduleTags = (orgId: string) => tags.tenantDomain(orgId, 'modules');
 
@@ -15,8 +16,10 @@ export async function listModuleStates(ctx: CoreCtx): Promise<Record<string, boo
     { ttl: '5m', swr: '1m', tags: [...moduleTags(ctx.tenantId)] },
     async () => {
       const rows = await withOrgCore(ctx, (tx) =>
-        tx.select({ moduleId: appModules.moduleId, enabled: appModules.enabled })
-          .from(appModules).where(eq(appModules.orgId, ctx.tenantId)),
+        tx
+          .select({ moduleId: appModules.moduleId, enabled: appModules.enabled })
+          .from(appModules)
+          .where(eq(appModules.orgId, ctx.tenantId)),
       );
       return Object.fromEntries(rows.map((r) => [r.moduleId, r.enabled]));
     },
@@ -33,10 +36,21 @@ export async function bothEnabled(ctx: CoreCtx, a: string, b: string): Promise<b
   return (states[a] ?? true) && (states[b] ?? true);
 }
 
-export async function setModuleEnabled(ctx: CoreCtx, moduleId: string, enabled: boolean): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx.insert(appModules).values({ orgId: ctx.tenantId, moduleId, enabled, updatedAt: new Date() })
-      .onConflictDoUpdate({ target: [appModules.orgId, appModules.moduleId], set: { enabled, updatedAt: new Date() } }),
-  );
+export async function setModuleEnabled(
+  ctx: CoreCtx,
+  moduleId: string,
+  enabled: boolean,
+): Promise<void> {
+  await withOrgCore(ctx, async (tx) => {
+    // Authority-only writer: the org authority lock (never the stock gate), so an absent row cannot flip mid-correction.
+    await lockNavigationPolicy(tx, ctx.tenantId);
+    await tx
+      .insert(appModules)
+      .values({ orgId: ctx.tenantId, moduleId, enabled, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [appModules.orgId, appModules.moduleId],
+        set: { enabled, updatedAt: new Date() },
+      });
+  });
   await invalidateTags([...moduleTags(ctx.tenantId)]);
 }

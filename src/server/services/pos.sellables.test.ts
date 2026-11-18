@@ -40,6 +40,13 @@ vi.mock('./stock.service', () => ({
   deleteConsumption: (ctx: unknown, id: string) => deleteConsumptionMock(ctx, id),
   listConsumption: (ctx: unknown, filters: unknown) => listConsumptionMock(ctx, filters),
   listAllComponentEdges: async () => [],
+  listAllComponentEdgesInTx: async () => [],
+  lockStockWrite: vi.fn(),
+  assertStockWriteGuard: vi.fn(),
+  createSourcedIssueInTx: vi.fn(),
+  findEntryBySourceInTx: vi.fn(),
+  getEntryInTx: vi.fn(),
+  submitEntryInTx: vi.fn(),
 }));
 
 import {

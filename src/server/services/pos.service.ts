@@ -37,13 +37,23 @@ import {
 import { nextSerialId } from './naming-series';
 import { isModuleEnabled } from './modules.service';
 import { syncEventTypeForSellable } from './scheduling-catalog-sync';
-import { resolveDefaultWarehouse } from './stock-accruals.service';
+import { resolveDefaultWarehouse, defaultWarehouseInTx } from './stock-accruals.service';
 import {
   createSourcedIssue,
+  createSourcedIssueInTx,
   findEntryBySource,
+  findEntryBySourceInTx,
   getEntry,
+  getEntryInTx,
   submitEntry,
+  submitEntryInTx,
   cancelEntry,
+  cancelEntryInTx,
+  createEntryInTx,
+  lockBinsInTx,
+  lockStockWrite,
+  assertStockWriteGuard,
+  type StockWriteGuard,
   StockError,
   createItem,
   getItemUomInfo,
@@ -51,6 +61,7 @@ import {
   deleteConsumption,
   listConsumption,
   listAllComponentEdges,
+  listAllComponentEdgesInTx,
   type CreateIssueFromInvoiceLine,
 } from './stock.service';
 import {
@@ -63,6 +74,7 @@ import {
   type IssueRoot,
   type LineModifier,
 } from './stock.logic';
+import { transformFrozenIssueLines, type FrozenLine } from './stock-corrections.logic';
 import { stkItems, stkConsumption, stkBins, stkEntries } from '$server/db/pg-schema/stock';
 import { schedBookings, schedBookingProducts } from '$server/db/pg-scheduling-schema';
 import { parties } from '$server/db/pg-party-schema';
@@ -688,14 +700,22 @@ export async function previewTicket(
   };
 }
 
-async function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null> {
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(posTickets)
-      .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
-      .limit(1),
-  );
+function loadTicketRow(ctx: CoreCtx, id: string): Promise<PosTicket | null> {
+  return withOrgCore(ctx, (tx) => loadTicketRowInTx(tx, ctx, id));
+}
+
+async function loadTicketRowInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  opts: { forUpdate?: boolean } = {},
+): Promise<PosTicket | null> {
+  const q = tx
+    .select()
+    .from(posTickets)
+    .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
+    .limit(1);
+  const [row] = opts.forUpdate ? await q.for('update') : await q;
   return row ? checkedTicket(row) : null;
 }
 
@@ -704,12 +724,19 @@ async function stampTicketStock(
   id: string,
   patch: { stockEntryId: string | null; stockWarning: StockWarning | null },
 ): Promise<void> {
-  await withOrgCore(ctx, (tx) =>
-    tx
-      .update(posTickets)
-      .set({ stockEntryId: patch.stockEntryId, stockWarning: patch.stockWarning })
-      .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId))),
-  );
+  await withOrgCore(ctx, (tx) => stampTicketStockInTx(tx, ctx, id, patch));
+}
+
+async function stampTicketStockInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  patch: { stockEntryId: string | null; stockWarning: StockWarning | null },
+): Promise<void> {
+  await tx
+    .update(posTickets)
+    .set({ stockEntryId: patch.stockEntryId, stockWarning: patch.stockWarning })
+    .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)));
 }
 
 /**
@@ -727,7 +754,7 @@ async function stampTicketStock(
  * kind. The old 1:1 stk_items.fin_product_id bridge was retired by migration
  * 20261017120000, which turned every bridge-only product into a recipe row.
  */
-interface IssueResolution {
+export interface IssueResolution {
   consumptionByFinProductId: Map<string, { itemId: string; qtyPerUnit: number }[]>;
   byParent: Map<string, ComponentEdge[]>;
   isStockItem: (id: string) => boolean;
@@ -735,21 +762,27 @@ interface IssueResolution {
 
 /** The recipe and the component graph for a set of sellables — two queries
  *  total, shared by ticket issuing and catalog availability. */
-async function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<IssueResolution> {
+function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<IssueResolution> {
+  return withOrgCore(ctx, (tx) => loadIssueResolutionTx(tx, ctx, finIds));
+}
+
+async function loadIssueResolutionTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  finIds: string[],
+): Promise<IssueResolution> {
   const consumptionByFinProductId = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
   if (finIds.length) {
-    const consumptionRows = await withOrgCore(ctx, (tx) =>
-      tx
-        .select({
-          finProductId: stkConsumption.finProductId,
-          itemId: stkConsumption.itemId,
-          qtyPerUnit: stkConsumption.qtyPerUnit,
-        })
-        .from(stkConsumption)
-        .where(
-          and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finIds)),
-        ),
-    );
+    const consumptionRows = await tx
+      .select({
+        finProductId: stkConsumption.finProductId,
+        itemId: stkConsumption.itemId,
+        qtyPerUnit: stkConsumption.qtyPerUnit,
+      })
+      .from(stkConsumption)
+      .where(
+        and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finIds)),
+      );
     for (const r of consumptionRows) {
       const list = consumptionByFinProductId.get(r.finProductId) ?? [];
       list.push({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) });
@@ -757,8 +790,19 @@ async function loadIssueResolution(ctx: CoreCtx, finIds: string[]): Promise<Issu
     }
   }
   // The component graph, loaded once for every line.
-  const { byParent, isStockItem } = await loadComponentGraph(ctx);
+  const { byParent, isStockItem } = await loadComponentGraphTx(tx, ctx);
   return { consumptionByFinProductId, byParent, isStockItem };
+}
+
+/** Same-transaction rule resolution: every recipe/component/bundle read uses the PASSED transaction. */
+export async function loadIssueResolutionInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  finIds: readonly string[],
+): Promise<IssueResolution> {
+  assertStockWriteGuard(tx, ctx, guard);
+  return loadIssueResolutionTx(tx, ctx, [...finIds]);
 }
 
 /** ONE line → stock-leaf quantities (see resolveIssueLines). */
@@ -778,23 +822,44 @@ function explodeLineForIssue(
 
 /** Bundle products among `productIds` — the only unlinked, unredeemed service
  *  lines that still issue at the sale. No query when there is nothing to ask. */
-async function bundleProductIds(ctx: CoreCtx, productIds: string[]): Promise<Set<string>> {
+async function bundleProductIds(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  productIds: string[],
+): Promise<Set<string>> {
   if (!productIds.length) return new Set();
-  const rows = await withOrgCore(ctx, (tx) =>
-    tx
-      .selectDistinct({ id: finProductComponents.bundleProductId })
-      .from(finProductComponents)
-      .where(
-        and(
-          eq(finProductComponents.orgId, ctx.tenantId),
-          inArray(finProductComponents.bundleProductId, productIds),
-        ),
+  const rows = await tx
+    .selectDistinct({ id: finProductComponents.bundleProductId })
+    .from(finProductComponents)
+    .where(
+      and(
+        eq(finProductComponents.orgId, ctx.tenantId),
+        inArray(finProductComponents.bundleProductId, productIds),
       ),
-  );
+    );
   return new Set(rows.map((r) => r.id));
 }
 
-async function resolveIssueLines(
+function resolveIssueLines(
+  ctx: CoreCtx,
+  lines: PosTicketLine[],
+): Promise<CreateIssueFromInvoiceLine[]> {
+  return withOrgCore(ctx, (tx) => resolveIssueLinesTx(tx, ctx, lines));
+}
+
+/** Same-transaction line→issue resolution (product/service/bundle/redemption/modifier semantics unchanged). */
+export async function resolveIssueLinesInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  lines: readonly PosTicketLine[],
+): Promise<CreateIssueFromInvoiceLine[]> {
+  assertStockWriteGuard(tx, ctx, guard);
+  return resolveIssueLinesTx(tx, ctx, [...lines]);
+}
+
+async function resolveIssueLinesTx(
+  tx: CoreTx,
   ctx: CoreCtx,
   lines: PosTicketLine[],
 ): Promise<CreateIssueFromInvoiceLine[]> {
@@ -802,7 +867,7 @@ async function resolveIssueLines(
   const awaiting = lines.filter(
     (l) => l.kind !== 'product' && l.finProductId && !l.bookingId && !l.redemptionId,
   );
-  const bundles = await bundleProductIds(ctx, [
+  const bundles = await bundleProductIds(tx, ctx, [
     ...new Set(awaiting.map((l) => l.finProductId as string)),
   ]);
   const issuesAtSale = (l: PosTicketLine): boolean => {
@@ -812,7 +877,7 @@ async function resolveIssueLines(
     return Boolean(l.redemptionId) || bundles.has(l.finProductId);
   };
   const finIds = [...new Set(lines.filter(issuesAtSale).map((l) => l.finProductId as string))];
-  const res = await loadIssueResolution(ctx, finIds);
+  const res = await loadIssueResolutionTx(tx, ctx, finIds);
 
   // Resolve AND expand per line, not in two phases: modifiers (#9) are a
   // property of the LINE, so an aggregate-then-expand pass would have already
@@ -948,38 +1013,42 @@ async function applyRecipeAvailability(
  * caller treats those as "can't check, don't block the sale", same as the
  * existing post-commit fail-soft path.
  */
-async function checkStockShortfalls(
+function checkStockShortfalls(
+  ctx: CoreCtx,
+  issueLines: CreateIssueFromInvoiceLine[],
+  warehouseId: string,
+): Promise<StockShortfallLine[]> {
+  if (!issueLines.length) return Promise.resolve([]);
+  return withOrgCore(ctx, (tx) => checkStockShortfallsTx(tx, ctx, issueLines, warehouseId));
+}
+
+async function checkStockShortfallsTx(
+  tx: CoreTx,
   ctx: CoreCtx,
   issueLines: CreateIssueFromInvoiceLine[],
   warehouseId: string,
 ): Promise<StockShortfallLine[]> {
   if (!issueLines.length) return [];
   const itemIds = [...new Set(issueLines.map((l) => l.itemId))];
-  const [bins, items] = await Promise.all([
-    withOrgCore(ctx, (tx) =>
-      tx
-        .select({ itemId: stkBins.itemId, qty: stkBins.qty })
-        .from(stkBins)
-        .where(
-          and(
-            eq(stkBins.orgId, ctx.tenantId),
-            eq(stkBins.warehouseId, warehouseId),
-            inArray(stkBins.itemId, itemIds),
-          ),
-        ),
-    ),
-    withOrgCore(ctx, (tx) =>
-      tx
-        .select({
-          id: stkItems.id,
-          name: stkItems.name,
-          code: stkItems.code,
-          unitsPerStockUom: stkItems.unitsPerStockUom,
-        })
-        .from(stkItems)
-        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, itemIds))),
-    ),
-  ]);
+  const bins = await tx
+    .select({ itemId: stkBins.itemId, qty: stkBins.qty })
+    .from(stkBins)
+    .where(
+      and(
+        eq(stkBins.orgId, ctx.tenantId),
+        eq(stkBins.warehouseId, warehouseId),
+        inArray(stkBins.itemId, itemIds),
+      ),
+    );
+  const items = await tx
+    .select({
+      id: stkItems.id,
+      name: stkItems.name,
+      code: stkItems.code,
+      unitsPerStockUom: stkItems.unitsPerStockUom,
+    })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, itemIds)));
   const availableByItem = new Map(bins.map((b) => [b.itemId, Number(b.qty)]));
   const itemById = new Map(items.map((i) => [i.id, i]));
   const shortfalls: StockShortfallLine[] = [];
@@ -1053,6 +1122,21 @@ export async function loadComponentGraph(
   return { byParent: edgesByParent(edges), isStockItem: (id) => stockFlag.get(id) ?? true };
 }
 
+async function loadComponentGraphTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+): Promise<{ byParent: Map<string, ComponentEdge[]>; isStockItem: (id: string) => boolean }> {
+  const edges = await listAllComponentEdgesInTx(tx, ctx);
+  if (edges.length === 0) return { byParent: new Map(), isStockItem: () => true };
+  const involved = new Set<string>(edges.flatMap((e) => [e.parentItemId, e.childItemId]));
+  const flags = await tx
+    .select({ id: stkItems.id, isStockItem: stkItems.isStockItem })
+    .from(stkItems)
+    .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, [...involved])));
+  const stockFlag = new Map(flags.map((r) => [r.id, r.isStockItem]));
+  return { byParent: edgesByParent(edges), isStockItem: (id) => stockFlag.get(id) ?? true };
+}
+
 /**
  * Idempotent post-commit stock engine — both the retry endpoint and the
  * post-commit fail-soft hook in submitTicket call this. Models the same
@@ -1062,22 +1146,43 @@ export async function loadComponentGraph(
  * anything new is created; only a truly fresh ticket resolves lines and
  * creates one.
  */
-export async function postTicketStock(
+export function postTicketStock(
   ctx: CoreCtx,
   ticketId: string,
   actor: Actor,
 ): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
-  const ticket = await loadTicketRow(ctx, ticketId);
+  return withOrgCore(ctx, async (tx) =>
+    postTicketStockInTx(tx, ctx, await lockStockWrite(tx, ctx), ticketId, actor),
+  );
+}
+
+/**
+ * Same-transaction post (spec 124 seam, F5 grouped recovery). Re-reads the source ticket, an existing
+ * submitted/draft entry and the current rules AFTER the gate pair, in the passed transaction: an
+ * already-stamped or submitted source is returned/stamped once (never a second entry), an existing
+ * draft submits its stored lines (changed recipes are ignored, as today), and only a genuinely absent
+ * source resolves lines. A domain refusal (StockError) is thrown before any ledger write, so the
+ * established draft + warning outcome still commits with the transaction.
+ */
+export async function postTicketStockInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  ticketId: string,
+  actor: Actor,
+): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
+  assertStockWriteGuard(tx, ctx, guard);
+  const ticket = await loadTicketRowInTx(tx, ctx, ticketId);
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket is void', 'already_void');
 
   if (ticket.stockEntryId) {
     // A stamp left on a cancelled (or vanished) entry is an interrupted
     // rebuild, not a posted sale: fall through and post again (spec 120).
-    const stamped = await getEntry(ctx, ticket.stockEntryId);
+    const stamped = await getEntryInTx(tx, ctx, ticket.stockEntryId);
     if (stamped && stamped.entry.status !== 'cancelled') {
       if (ticket.stockWarning)
-        await stampTicketStock(ctx, ticketId, {
+        await stampTicketStockInTx(tx, ctx, ticketId, {
           stockEntryId: ticket.stockEntryId,
           stockWarning: null,
         });
@@ -1085,59 +1190,56 @@ export async function postTicketStock(
     }
   }
 
-  const existing = await findEntryBySource(ctx, 'pos', ticketId);
+  const existing = await findEntryBySourceInTx(tx, ctx, 'pos', ticketId);
   if (existing?.status === 'submitted') {
-    await stampTicketStock(ctx, ticketId, { stockEntryId: existing.id, stockWarning: null });
+    await stampTicketStockInTx(tx, ctx, ticketId, {
+      stockEntryId: existing.id,
+      stockWarning: null,
+    });
     return { entryId: existing.id, stockWarning: null };
   }
   if (existing?.status === 'draft') {
     try {
-      const submitted = await submitEntry(ctx, existing.id, actor);
-      await stampTicketStock(ctx, ticketId, { stockEntryId: submitted.id, stockWarning: null });
+      const { entry: submitted } = await submitEntryInTx(tx, ctx, guard, existing.id, actor);
+      await stampTicketStockInTx(tx, ctx, ticketId, {
+        stockEntryId: submitted.id,
+        stockWarning: null,
+      });
       return { entryId: submitted.id, stockWarning: null };
     } catch (e) {
       if (!(e instanceof StockError)) throw e;
       const warning: StockWarning = { code: e.code, message: e.message, draftEntryId: existing.id };
-      await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: warning });
+      await stampTicketStockInTx(tx, ctx, ticketId, { stockEntryId: null, stockWarning: warning });
       return { entryId: null, stockWarning: warning };
     }
   }
 
-  const lines = await withOrgCore(ctx, (tx) =>
-    tx
-      .select()
-      .from(posTicketLines)
-      .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticketId))),
-  );
-  const issueLines = await resolveIssueLines(ctx, lines);
+  const lines = await tx
+    .select()
+    .from(posTicketLines)
+    .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticketId)));
+  const issueLines = await resolveIssueLinesTx(tx, ctx, lines);
   if (!issueLines.length) {
-    await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: null });
+    await stampTicketStockInTx(tx, ctx, ticketId, { stockEntryId: null, stockWarning: null });
     return { entryId: null, stockWarning: null };
   }
 
-  const warehouseId = await resolveDefaultWarehouse(ctx);
+  const warehouseId = await defaultWarehouseInTx(tx, ctx.tenantId);
   if (!warehouseId) {
     const warning: StockWarning = { code: 'no_warehouse', message: 'no default warehouse' };
-    await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: warning });
+    await stampTicketStockInTx(tx, ctx, ticketId, { stockEntryId: null, stockWarning: warning });
     return { entryId: null, stockWarning: warning };
   }
 
-  // Never drop the whole entry for one short item (F-partial-stock-
-  // shortfall). submitTicket already refused the sale up front on a
-  // shortfall it could see — this is a FRESH check, right before the actual
-  // issue, so a line that only went short in the race window between that
-  // preflight and this post-commit step (another concurrent sale, an
-  // allowNegativeStock override, or a retry of this same idempotent call)
-  // still gets excluded here rather than aborting createSourcedIssue's
-  // single all-or-nothing entry and losing every other line with it.
-  // TODO(handoff): this narrows the race window, it does not close it —
-  // the ticket (money) and the stock issue are still two transactions, not
-  // one. A concurrent sale that wins between this check and
-  // createSourcedIssue's own locked-bin check still throws StockError below
-  // and is caught the old fail-soft way (whole entry lost for THIS ticket,
-  // but the winning ticket's stock is correct). Closing it fully means
-  // moving the issue into the same transaction as the ticket insert.
-  const shortfalls = await checkStockShortfalls(ctx, issueLines, warehouseId);
+  // Never drop the whole entry for one short item (F-partial-stock-shortfall).
+  // submitTicket already refused the sale up front on a shortfall it could
+  // see; this is a FRESH check, right before the actual issue, under the
+  // stock gate, so a line that only went short in the race window is excluded
+  // here rather than aborting the single all-or-nothing entry.
+  // TODO(handoff): the ticket (money) and the stock issue are still two
+  // transactions; the gate narrows that window for corrections but closing it
+  // fully means moving the issue into the ticket-insert transaction.
+  const shortfalls = await checkStockShortfallsTx(tx, ctx, issueLines, warehouseId);
   const filteredIssueLines = shortfalls.length
     ? issueLines.filter((l) => !shortfalls.some((s) => s.itemId === l.itemId))
     : issueLines;
@@ -1155,12 +1257,15 @@ export async function postTicketStock(
     : null;
 
   if (!filteredIssueLines.length) {
-    await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: shortfallWarning });
+    await stampTicketStockInTx(tx, ctx, ticketId, {
+      stockEntryId: null,
+      stockWarning: shortfallWarning,
+    });
     return { entryId: null, stockWarning: shortfallWarning };
   }
 
   try {
-    const entry = await createSourcedIssue(ctx, {
+    const draft = await createSourcedIssueInTx(tx, ctx, guard, {
       source: 'pos',
       sourceId: ticketId,
       warehouseId,
@@ -1171,18 +1276,18 @@ export async function postTicketStock(
       actor,
       metadata: { ticketId },
     });
-    await stampTicketStock(ctx, ticketId, {
+    const { entry } = await submitEntryInTx(tx, ctx, guard, draft.id, actor);
+    await stampTicketStockInTx(tx, ctx, ticketId, {
       stockEntryId: entry.id,
       stockWarning: shortfallWarning,
     });
     return { entryId: entry.id, stockWarning: shortfallWarning };
   } catch (e) {
     if (!(e instanceof StockError)) throw e;
-    // ponytail: no follow-up findEntryBySource lookup to recover a
-    // draftEntryId left behind mid-createSourcedIssue — the next
-    // postTicketStock retry finds it itself via findEntryBySource above.
+    // ponytail: no follow-up lookup to recover a draftEntryId left behind by a
+    // refused submit — the next post finds the draft itself via the source lookup above.
     const warning: StockWarning = { code: e.code, message: e.message };
-    await stampTicketStock(ctx, ticketId, { stockEntryId: null, stockWarning: warning });
+    await stampTicketStockInTx(tx, ctx, ticketId, { stockEntryId: null, stockWarning: warning });
     return { entryId: null, stockWarning: warning };
   }
 }
@@ -1304,62 +1409,6 @@ export async function previewTicketRepost(ctx: CoreCtx, ticketId: string): Promi
   };
 }
 
-/**
- * Rebuild a sale's stock movement under the current rule: claim the stamp,
- * cancel the old movement, post again. Refuses (`stock_drift`) any change the
- * caller did not name, so a recipe edited since the sale is never applied
- * silently. A rebuild interrupted after the cancel leaves a `repost_pending`
- * warning; the next `postTicketStock` completes it.
- */
-export async function repostTicketStock(
-  ctx: CoreCtx,
-  ticketId: string,
-  actor: Actor,
-  opts: { allowedItemIds: Set<string>; allowIncreaseItemIds?: Set<string> },
-): Promise<{ entryId: string | null; stockWarning: StockWarning | null; changes: RepostChange[] }> {
-  const preview = await previewTicketRepost(ctx, ticketId);
-  const { changes, drift } = planRepost(preview.oldByItem, preview.newByItem, opts);
-  if (drift.length)
-    throw new PosError(
-      `stock would change outside this correction: ${drift.map((d) => `${d.itemId} ${d.diff > 0 ? '+' : ''}${d.diff}`).join(', ')}`,
-      'stock_drift',
-    );
-  if (!changes.length)
-    return { entryId: preview.entryId, stockWarning: preview.stockWarning, changes };
-
-  // Claim: only one rebuild (or void) may take the stamp it read.
-  const claimed = await withOrgCore(ctx, (tx) =>
-    tx
-      .update(posTickets)
-      .set({
-        stockEntryId: null,
-        stockWarning: { code: 'repost_pending', message: `rebuilding ${preview.entryId}` },
-      })
-      .where(
-        and(
-          eq(posTickets.id, ticketId),
-          eq(posTickets.orgId, ctx.tenantId),
-          eq(posTickets.stockEntryId, preview.entryId),
-          ne(posTickets.status, 'void'),
-        ),
-      )
-      .returning({ id: posTickets.id }),
-  );
-  if (!claimed.length)
-    throw new PosError('the sale changed while it was being corrected', 'operation_conflict');
-
-  try {
-    await cancelEntry(ctx, preview.entryId, actor);
-  } catch (e) {
-    await stampTicketStock(ctx, ticketId, {
-      stockEntryId: preview.entryId,
-      stockWarning: preview.stockWarning,
-    });
-    throw e;
-  }
-  return { ...(await postTicketStock(ctx, ticketId, actor)), changes };
-}
-
 // ---- swap a product on a submitted sale (meta spec 120, S4) ----
 
 /** The visit's product row follows the sale line. When the visit already
@@ -1392,211 +1441,378 @@ async function moveVisitProduct(
     await tx.update(schedBookingProducts).set({ productId: to, updatedAt: new Date() }).where(row);
 }
 
-/**
- * Replace the product of ONE line on a submitted sale with another product of
- * the same catalogue price. The line keeps what was charged; money, payments
- * and the ticket number do not move. Stock follows through `repostTicketStock`.
- *
- * Everything that can refuse is checked BEFORE the line changes, so a refusal
- * leaves the sale exactly as it was. Codes: `not_found`, the
- * `assertTicketMutable` chain (`ticket_void`, `period_locked`, `reconciled`,
- * `emitted`), `line_not_product`, `line_changed`, `price_differs`,
- * `stock_drift`, `negative_stock`, `operation_conflict`.
- */
-export async function swapTicketLineProduct(
+/** The guard chain every fiscal edit runs; `lock` holds the sale for the write. */
+async function assertTicketCorrectableInTx(
+  tx: CoreTx,
   ctx: CoreCtx,
   ticketId: string,
-  lineId: string,
-  input: { productId: string; expectedProductId: string },
-  actor: Actor,
-): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
-  const lineIs = (productId: string) =>
-    and(
-      eq(posTicketLines.id, lineId),
-      eq(posTicketLines.ticketId, ticketId),
-      eq(posTicketLines.orgId, ctx.tenantId),
-      eq(posTicketLines.finProductId, productId),
-    );
+  lock: boolean,
+) {
+  const q = tx
+    .select()
+    .from(posTickets)
+    .where(and(eq(posTickets.id, ticketId), eq(posTickets.orgId, ctx.tenantId)))
+    .limit(1);
+  const [ticket] = lock ? await q.for('update') : await q;
+  if (!ticket) throw new PosError('ticket not found', 'not_found');
+  const [shift] = await tx
+    .select({ status: posShifts.status })
+    .from(posShifts)
+    .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
+    .limit(1);
+  const emissions = await tx
+    .select({ status: posEmissions.status, environment: posEmissions.environment })
+    .from(posEmissions)
+    .where(and(eq(posEmissions.orgId, ctx.tenantId), eq(posEmissions.ticketId, ticketId)));
+  assertTicketMutable(
+    {
+      ticket,
+      shiftStatus: shift?.status ?? 'closed',
+      // A test-environment document binds nothing: only a real one that
+      // did not end in error makes the product a fiscal fact.
+      emitted: emissions.some((e) => e.status !== 'error' && e.environment !== 'beta'),
+      periodLocked: await isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt),
+    },
+    { fiscal: true },
+  );
+  return ticket;
+}
+// ---- shared sale-variant correction engine (spec 124; the service in stock-corrections.service.ts owns hashes/receipts) ----
 
-  /** The guard chain every fiscal edit runs; `lock` holds the sale for the write. */
-  const guardedTicket = async (tx: CoreTx, lock: boolean) => {
-    const q = tx
-      .select()
-      .from(posTickets)
-      .where(and(eq(posTickets.id, ticketId), eq(posTickets.orgId, ctx.tenantId)))
-      .limit(1);
-    const [ticket] = lock ? await q.for('update') : await q;
-    if (!ticket) throw new PosError('ticket not found', 'not_found');
-    const [shift] = await tx
-      .select({ status: posShifts.status })
-      .from(posShifts)
-      .where(and(eq(posShifts.id, ticket.shiftId), eq(posShifts.orgId, ctx.tenantId)))
-      .limit(1);
-    const emissions = await tx
-      .select({ status: posEmissions.status, environment: posEmissions.environment })
-      .from(posEmissions)
-      .where(and(eq(posEmissions.orgId, ctx.tenantId), eq(posEmissions.ticketId, ticketId)));
-    assertTicketMutable(
-      {
-        ticket,
-        shiftStatus: shift?.status ?? 'closed',
-        // A test-environment document binds nothing: only a real one that
-        // did not end in error makes the product a fiscal fact.
-        emitted: emissions.some((e) => e.status !== 'error' && e.environment !== 'beta'),
-        periodLocked: await isTicketPeriodLocked(tx, ctx.tenantId, ticket.submittedAt),
-      },
-      { fiscal: true },
+export interface SaleVariantPlan {
+  ticket: PosTicket;
+  line: PosTicketLine;
+  oldProductId: string;
+  newProduct: { id: string; name: string };
+  movesStock: boolean;
+  /** The live movement being replaced (null for a stockless swap). */
+  liveEntryId: string | null;
+  frozenOriginal: FrozenLine[];
+  oldByItem: Record<string, number>;
+  newByItem: Record<string, number>;
+  /** Replacement issue lines: frozen originals minus the old product plus the new one. */
+  newLines: FrozenLine[];
+  warehouseId: string | null;
+  visitRows: { id: string; productId: string; qty: string }[];
+}
+
+type PlanInput = { lineId: string; expectedProductId: string; productId: string; lock: boolean };
+
+/** Stock-unit quantities by item for one exploded line (consumption units converted by the item's factor). */
+async function stockMapOf(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  ex: ExplodedIssueQuantities,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  for (const [id, q] of ex.stockQtyByItem) out.set(id, round4((out.get(id) ?? 0) + q));
+  const ids = [...ex.consumptionQtyByItem.keys()];
+  const items = ids.length
+    ? await tx
+        .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, ids)))
+    : [];
+  const units = new Map(
+    items.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]),
+  );
+  for (const [id, q] of ex.consumptionQtyByItem)
+    out.set(
+      id,
+      round4(
+        (out.get(id) ?? 0) + consumptionToStockQty({ unitsPerStockUom: units.get(id) ?? null }, q),
+      ),
     );
-    return ticket;
+  return out;
+}
+
+/**
+ * Read-only plan of a same-price product swap on ONE sale line, inside the caller's transaction (a READ
+ * ONLY snapshot for preview, the gated write transaction for apply with `lock: true`). Every refusal
+ * the legacy swap raised is raised here BEFORE any write: PosError codes `not_found`, the
+ * assertTicketMutable chain, `line_not_product`, `line_changed`, `price_differs`, `stock_drift`,
+ * `negative_stock`. Replacement lines are the FROZEN original lines transformed by the two products'
+ * items; a changed recipe since the sale is refused (`stock_drift`), never regenerated.
+ */
+export async function planSaleVariantInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  input: PlanInput,
+): Promise<SaleVariantPlan> {
+  const [lineRow] = await tx
+    .select()
+    .from(posTicketLines)
+    .where(and(eq(posTicketLines.id, input.lineId), eq(posTicketLines.orgId, ctx.tenantId)))
+    .limit(1);
+  if (!lineRow) throw new PosError('line not found', 'not_found');
+  const ticketId = lineRow.ticketId;
+  const ticket = await assertTicketCorrectableInTx(tx, ctx, ticketId, input.lock);
+  const [lineQ] = await tx
+    .select()
+    .from(posTicketLines)
+    .where(and(eq(posTicketLines.id, input.lineId), eq(posTicketLines.orgId, ctx.tenantId)))
+    .limit(1);
+  const line = lineQ ?? lineRow;
+  if (line.kind !== 'product' || !line.finProductId)
+    throw new PosError('only a product line can be swapped', 'line_not_product');
+  if (line.finProductId !== input.expectedProductId)
+    throw new PosError('the line changed since it was read', 'line_changed');
+  const products = await tx
+    .select({
+      id: finProducts.id,
+      name: finProducts.name,
+      kind: finProducts.kind,
+      active: finProducts.active,
+      unitPrice: finProducts.unitPrice,
+    })
+    .from(finProducts)
+    .where(
+      and(
+        eq(finProducts.orgId, ctx.tenantId),
+        inArray(finProducts.id, [line.finProductId, input.productId]),
+      ),
+    );
+  const oldProduct = products.find((p) => p.id === line.finProductId);
+  const newProduct = products.find((p) => p.id === input.productId);
+  if (!newProduct || !newProduct.active) throw new PosError('product not found', 'not_found');
+  if (newProduct.kind !== 'product')
+    throw new PosError('the replacement must be a product', 'line_not_product');
+  if (round2(Number(oldProduct?.unitPrice ?? 0)) !== round2(Number(newProduct.unitPrice ?? 0)))
+    throw new PosError('the replacement has a different price', 'price_differs');
+  if (newProduct.id === line.finProductId)
+    throw new PosError('the replacement is the product already on the line', 'line_changed');
+
+  const oldProductId = line.finProductId;
+  const res = await loadIssueResolutionTx(tx, ctx, [oldProductId, newProduct.id]);
+  const qty = Number(line.qty);
+  const oldEx = explodeLineForIssue(oldProductId, qty, [], res);
+  const newEx = explodeLineForIssue(newProduct.id, qty, [], res);
+  const oldMap = await stockMapOf(tx, ctx, oldEx);
+  const newMap = await stockMapOf(tx, ctx, newEx);
+  const movesStock = oldMap.size > 0 || newMap.size > 0;
+
+  const visitRows = line.bookingId
+    ? await tx
+        .select({
+          id: schedBookingProducts.id,
+          productId: schedBookingProducts.productId,
+          qty: schedBookingProducts.qty,
+        })
+        .from(schedBookingProducts)
+        .where(
+          and(
+            eq(schedBookingProducts.orgId, ctx.tenantId),
+            eq(schedBookingProducts.bookingId, line.bookingId),
+            inArray(schedBookingProducts.productId, [oldProductId, newProduct.id]),
+          ),
+        )
+    : [];
+  const base = {
+    ticket,
+    line,
+    oldProductId,
+    newProduct: { id: newProduct.id, name: newProduct.name },
+    visitRows: visitRows.map((r) => ({ id: r.id, productId: r.productId, qty: String(r.qty) })),
+    oldByItem: Object.fromEntries(oldMap),
+    newByItem: Object.fromEntries(newMap),
   };
-
-  const read = await withOrgCore(ctx, async (tx) => {
-    const ticket = await guardedTicket(tx, false);
-    const [line] = await tx
-      .select()
-      .from(posTicketLines)
-      .where(
-        and(
-          eq(posTicketLines.id, lineId),
-          eq(posTicketLines.ticketId, ticketId),
-          eq(posTicketLines.orgId, ctx.tenantId),
-        ),
-      )
-      .limit(1);
-    if (!line) throw new PosError('line not found', 'not_found');
-    if (line.kind !== 'product' || !line.finProductId)
-      throw new PosError('only a product line can be swapped', 'line_not_product');
-    if (line.finProductId !== input.expectedProductId)
-      throw new PosError('the line changed since it was read', 'line_changed');
-    const products = await tx
-      .select({
-        id: finProducts.id,
-        name: finProducts.name,
-        kind: finProducts.kind,
-        active: finProducts.active,
-        unitPrice: finProducts.unitPrice,
-      })
-      .from(finProducts)
-      .where(
-        and(
-          eq(finProducts.orgId, ctx.tenantId),
-          inArray(finProducts.id, [line.finProductId, input.productId]),
-        ),
-      );
-    const oldProduct = products.find((p) => p.id === line.finProductId);
-    const newProduct = products.find((p) => p.id === input.productId);
-    if (!newProduct || !newProduct.active) throw new PosError('product not found', 'not_found');
-    if (newProduct.kind !== 'product')
-      throw new PosError('the replacement must be a product', 'line_not_product');
-    if (round2(Number(oldProduct?.unitPrice ?? 0)) !== round2(Number(newProduct.unitPrice ?? 0)))
-      throw new PosError('the replacement has a different price', 'price_differs');
-    return { ticket, line, newProduct, oldProductId: line.finProductId };
-  });
-  const { ticket, line, newProduct, oldProductId } = read;
-  if (newProduct.id === oldProductId)
+  if (!movesStock)
     return {
-      entryId: ticket.stockEntryId,
-      stockWarning: (ticket.stockWarning as StockWarning | null) ?? null,
+      ...base,
+      movesStock: false,
+      liveEntryId: null,
+      frozenOriginal: [],
+      newLines: [],
+      warehouseId: null,
     };
 
-  // Stock preflight: nothing below may refuse once the line has changed.
-  const res = await loadIssueResolution(ctx, [oldProductId, newProduct.id]);
-  const qty = Number(line.qty);
-  const itemsOf = (ex: ExplodedIssueQuantities) =>
-    new Set([...ex.stockQtyByItem.keys(), ...ex.consumptionQtyByItem.keys()]);
-  const oldItems = itemsOf(explodeLineForIssue(oldProductId, qty, [], res));
-  const newExploded = explodeLineForIssue(newProduct.id, qty, [], res);
-  const newItems = itemsOf(newExploded);
-  const movesStock = oldItems.size > 0 || newItems.size > 0;
   const drift = (why: string) =>
     new PosError(`the sale's stock cannot be corrected in place: ${why}`, 'stock_drift');
-  if (movesStock) {
-    // Per-line modifiers name items of the OLD recipe; they do not carry over.
-    if (lineModifiersOf(line).length) throw drift('the line has modifiers');
-    if (!ticket.stockEntryId) throw drift('the sale has no stock movement');
-    const before = await previewTicketRepost(ctx, ticketId);
-    if (
-      planRepost(before.oldByItem, before.newByItem, { allowedItemIds: new Set() }).changes.length
-    )
-      throw drift('its recipes changed since the sale');
-    const warehouseId = await resolveDefaultWarehouse(ctx);
-    if (warehouseId) {
-      // shortcut: does not net out an item both products consume, so such a
-      // swap can be refused for stock the return would cover; net it if that bites.
-      const shortfalls = await checkStockShortfalls(
-        ctx,
-        [
-          ...[...newExploded.stockQtyByItem].map(([itemId, q]) => ({ itemId, qty: round4(q) })),
-          ...[...newExploded.consumptionQtyByItem].map(([itemId, q]) => ({
-            itemId,
-            qty: round4(q),
-            qtyConsumption: round4(q),
-          })),
-        ],
-        warehouseId,
-      );
-      if (shortfalls.length)
-        throw new PosError('the replacement is out of stock', 'negative_stock', shortfalls);
-    }
-  }
-
-  await withOrgCore(ctx, async (tx) => {
-    // Re-run the guards under the sale's lock: a void, an accounting lock or
-    // a document issued since the first read must still refuse.
-    await guardedTicket(tx, true);
-    const updated = await tx
-      .update(posTicketLines)
-      .set({ finProductId: newProduct.id, description: newProduct.name })
-      .where(lineIs(oldProductId))
-      .returning({ id: posTicketLines.id });
-    if (!updated.length) throw new PosError('the line changed since it was read', 'line_changed');
-    if (line.bookingId)
-      await moveVisitProduct(tx, ctx.tenantId, line.bookingId, oldProductId, newProduct.id);
-  });
-
-  let stock = {
-    entryId: ticket.stockEntryId,
-    stockWarning: (ticket.stockWarning as StockWarning | null) ?? null,
-  };
-  if (movesStock) {
-    try {
-      stock = await repostTicketStock(ctx, ticketId, actor, {
-        allowedItemIds: oldItems,
-        allowIncreaseItemIds: newItems,
-      });
-    } catch (e) {
-      // The movement was not rebuilt (a void or another correction won the
-      // race): put the line back so the sale and its stock still agree.
-      if (e instanceof PosError)
-        await withOrgCore(ctx, async (tx) => {
-          await tx
-            .update(posTicketLines)
-            .set({ finProductId: oldProductId, description: line.description })
-            .where(lineIs(newProduct.id));
-          if (line.bookingId)
-            await moveVisitProduct(tx, ctx.tenantId, line.bookingId, newProduct.id, oldProductId);
-        });
-      throw e;
-    }
-  }
-
-  await withOrgCore(ctx, (tx) =>
-    recordAuditInTx(tx, ctx, {
-      refType: 'pos_ticket',
-      refId: ticketId,
-      op: 'update',
-      changes: [
-        {
-          field: `line.${lineId}.product`,
-          label: 'Producto',
-          old: line.description,
-          new: newProduct.name,
-        },
-      ],
-      actor,
-    }),
+  // Per-line modifiers name items of the OLD recipe; they do not carry over.
+  if (lineModifiersOf(line).length) throw drift('the line has modifiers');
+  if (!ticket.stockEntryId) throw drift('the sale has no stock movement');
+  const live = await getEntryInTx(tx, ctx, ticket.stockEntryId, { forUpdate: input.lock });
+  if (!live || live.entry.status !== 'submitted')
+    throw new PosError('the sale has no live stock movement', 'no_stock_entry');
+  // Recipes unchanged since the sale: regenerating the CURRENT rule must reproduce the live movement.
+  const ticketLines = await tx
+    .select()
+    .from(posTicketLines)
+    .where(and(eq(posTicketLines.orgId, ctx.tenantId), eq(posTicketLines.ticketId, ticketId)));
+  const issue = await resolveIssueLinesTx(tx, ctx, ticketLines);
+  const regenerated = new Map<string, number>();
+  const conv = issue.filter((l) => l.qtyConsumption != null).map((l) => l.itemId);
+  const unitRows = conv.length
+    ? await tx
+        .select({ id: stkItems.id, unitsPerStockUom: stkItems.unitsPerStockUom })
+        .from(stkItems)
+        .where(and(eq(stkItems.orgId, ctx.tenantId), inArray(stkItems.id, conv)))
+    : [];
+  const unitsByItem = new Map(
+    unitRows.map((i) => [i.id, i.unitsPerStockUom == null ? null : Number(i.unitsPerStockUom)]),
   );
-  return { entryId: stock.entryId, stockWarning: stock.stockWarning };
+  for (const l of issue) {
+    const q =
+      l.qtyConsumption != null
+        ? consumptionToStockQty(
+            { unitsPerStockUom: unitsByItem.get(l.itemId) ?? null },
+            l.qtyConsumption,
+          )
+        : l.qty;
+    regenerated.set(l.itemId, round4((regenerated.get(l.itemId) ?? 0) + q));
+  }
+  const liveByItem = new Map<string, number>();
+  for (const l of live.lines)
+    liveByItem.set(l.itemId, round4((liveByItem.get(l.itemId) ?? 0) + Number(l.qty)));
+  if (planRepost(liveByItem, regenerated, { allowedItemIds: new Set() }).changes.length)
+    throw drift('its recipes changed since the sale');
+
+  const frozenOriginal: FrozenLine[] = live.lines.map((l) => ({
+    itemId: l.itemId,
+    qty: Number(l.qty),
+    fromWarehouseId: l.fromWarehouseId as string,
+  }));
+  const warehouseId = frozenOriginal[0]?.fromWarehouseId ?? null;
+  if (!warehouseId) throw drift('the live movement has no issue warehouse');
+  const newLines = transformFrozenIssueLines(frozenOriginal, oldMap, newMap, warehouseId).map(
+    (l) => l,
+  );
+  const shortfalls = await checkStockShortfallsTx(
+    tx,
+    ctx,
+    [
+      ...[...newEx.stockQtyByItem].map(([itemId, q]) => ({ itemId, qty: round4(q) })),
+      ...[...newEx.consumptionQtyByItem].map(([itemId, q]) => ({
+        itemId,
+        qty: round4(q),
+        qtyConsumption: round4(q),
+      })),
+    ],
+    warehouseId,
+  );
+  if (shortfalls.length)
+    throw new PosError('the replacement is out of stock', 'negative_stock', shortfalls);
+  return {
+    ...base,
+    movesStock: true,
+    liveEntryId: live.entry.id,
+    frozenOriginal,
+    newLines,
+    warehouseId,
+  };
+}
+
+export interface SaleVariantEffects {
+  sourceEntryId: string | null;
+  replacementEntryId: string | null;
+  visitProduct: {
+    bookingId: string;
+    action: 'moved' | 'merged' | 'absent';
+    fromRow: { id: string; productId: string; qty: string } | null;
+    toRow: { id: string; productId: string; qty: string } | null;
+  } | null;
+}
+
+/**
+ * Write a plan inside the gated transaction. Order: line, visit product, then cancel -> create ->
+ * submit -> stamp on ONE shared locked-bin context. Both-empty swaps touch no entry or bin.
+ */
+export async function applySaleVariantPlanInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  guard: StockWriteGuard,
+  plan: SaleVariantPlan,
+  opts: { actor: Actor; operationKey: string },
+): Promise<SaleVariantEffects> {
+  assertStockWriteGuard(tx, ctx, guard);
+  const { ticket, line, oldProductId, newProduct } = plan;
+  const updated = await tx
+    .update(posTicketLines)
+    .set({ finProductId: newProduct.id, description: newProduct.name })
+    .where(
+      and(
+        eq(posTicketLines.id, line.id),
+        eq(posTicketLines.ticketId, ticket.id),
+        eq(posTicketLines.orgId, ctx.tenantId),
+        eq(posTicketLines.finProductId, oldProductId),
+      ),
+    )
+    .returning({ id: posTicketLines.id });
+  if (!updated.length) throw new PosError('the line changed since it was read', 'line_changed');
+
+  let visitProduct: SaleVariantEffects['visitProduct'] = null;
+  if (line.bookingId) {
+    const fromRow = plan.visitRows.find((r) => r.productId === oldProductId) ?? null;
+    const toRow = plan.visitRows.find((r) => r.productId === newProduct.id) ?? null;
+    // moveVisitProduct changes nothing when the booking has no row for the old product ('absent').
+    await moveVisitProduct(tx, ctx.tenantId, line.bookingId, oldProductId, newProduct.id);
+    visitProduct = {
+      bookingId: line.bookingId,
+      action: !fromRow ? 'absent' : toRow ? 'merged' : 'moved',
+      fromRow,
+      toRow,
+    };
+  }
+
+  let replacementEntryId: string | null = null;
+  if (plan.movesStock && plan.liveEntryId) {
+    const bins = await lockBinsInTx(tx, ctx, guard, [
+      ...plan.frozenOriginal.map((l) => ({ itemId: l.itemId, warehouseId: l.fromWarehouseId })),
+      ...plan.newLines.map((l) => ({ itemId: l.itemId, warehouseId: l.fromWarehouseId })),
+    ]);
+    await cancelEntryInTx(tx, ctx, guard, plan.liveEntryId, opts.actor, { bins });
+    if (!plan.newLines.length) {
+      await stampTicketStockInTx(tx, ctx, ticket.id, { stockEntryId: null, stockWarning: null });
+    } else {
+      // The original is cancelled first, so a live duplicate means a competing movement: refuse and roll back.
+      if (await findEntryBySourceInTx(tx, ctx, 'pos', ticket.id))
+        throw new StockError('a stock issue already exists for this source', 'duplicate_source');
+      const draft = await createEntryInTx(
+        tx,
+        ctx,
+        guard,
+        {
+          type: 'issue',
+          partyId: ticket.partyId,
+          note: ticket.humanId,
+          metadata: {
+            source: 'pos',
+            sourceId: ticket.id,
+            ticketId: ticket.id,
+            correctionOf: plan.liveEntryId,
+            correctionOperationKey: opts.operationKey,
+          },
+          lines: plan.newLines.map((l) => ({
+            itemId: l.itemId,
+            qty: l.qty,
+            fromWarehouseId: l.fromWarehouseId,
+          })),
+        },
+        opts.actor,
+      );
+      const { entry } = await submitEntryInTx(tx, ctx, guard, draft.id, opts.actor, { bins });
+      replacementEntryId = entry.id;
+      await stampTicketStockInTx(tx, ctx, ticket.id, {
+        stockEntryId: entry.id,
+        stockWarning: null,
+      });
+    }
+  }
+  await recordAuditInTx(tx, ctx, {
+    refType: 'pos_ticket',
+    refId: ticket.id,
+    op: 'update',
+    changes: [
+      {
+        field: `line.${line.id}.product`,
+        label: 'Producto',
+        old: line.description,
+        new: newProduct.name,
+      },
+    ],
+    actor: opts.actor,
+  });
+  return { sourceEntryId: plan.liveEntryId, replacementEntryId, visitProduct };
 }
 
 // ---- packages, plans, client credit (spec §3) ----
@@ -2827,6 +3043,8 @@ export async function setPeriodLock(
 ): Promise<PosPeriodLock[]> {
   const period = normalizePeriod(input.period);
   await withOrgCore(ctx, async (tx) => {
+    // Gate pair first: receipt_period_v1 reads these rows under the same gate (spec 124).
+    await lockStockWrite(tx, ctx);
     if (!input.locked) {
       await tx
         .delete(posPeriodLocks)
@@ -3571,31 +3789,34 @@ export async function setBundleComponent(
   }
   if (!(input.qty > 0)) throw new PosError('qty must be greater than 0', 'invalid_qty');
 
-  const guard = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+  // Validation and upsert share ONE transaction under the gate pair, so no bundle/nesting
+  // change can slip between them (spec 124).
+  await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    const guard = (await tx.execute(sql`
       select
         (select count(*)::int from fin_products p
           where p.org_id = ${ctx.tenantId}
             and p.id in (${input.bundleProductId}, ${input.childProductId})) as found,
         (select count(*)::int from fin_product_components c
           where c.org_id = ${ctx.tenantId}
-            and c.bundle_product_id = ${input.childProductId}) as child_is_bundle`),
-  )) as unknown as Array<{ found: number; child_is_bundle: number }>;
-  // Both ids must belong to THIS org — an id from another tenant would
-  // otherwise be linkable, since these are plain uuid columns.
-  if ((guard[0]?.found ?? 0) !== 2) throw new PosError('product not found', 'not_found');
-  if ((guard[0]?.child_is_bundle ?? 0) > 0) {
-    throw new PosError('a bundle cannot contain another bundle', 'bundle_nested');
-  }
-
-  await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+            and c.bundle_product_id = ${input.childProductId}) as child_is_bundle`)) as unknown as Array<{
+      found: number;
+      child_is_bundle: number;
+    }>;
+    // Both ids must belong to THIS org — an id from another tenant would
+    // otherwise be linkable, since these are plain uuid columns.
+    if ((guard[0]?.found ?? 0) !== 2) throw new PosError('product not found', 'not_found');
+    if ((guard[0]?.child_is_bundle ?? 0) > 0) {
+      throw new PosError('a bundle cannot contain another bundle', 'bundle_nested');
+    }
+    await tx.execute(sql`
       insert into fin_product_components (org_id, bundle_product_id, child_product_id, qty, line_no)
       values (${ctx.tenantId}, ${input.bundleProductId}, ${input.childProductId},
               ${String(input.qty)}, ${input.lineNo ?? 0})
       on conflict (org_id, bundle_product_id, child_product_id)
-      do update set qty = excluded.qty, line_no = excluded.line_no, updated_at = now()`),
-  );
+      do update set qty = excluded.qty, line_no = excluded.line_no, updated_at = now()`);
+  });
   await bustFinanceCache(ctx);
 }
 
@@ -3642,12 +3863,13 @@ export async function getPackageValidityDays(
 }
 
 export async function deleteBundleComponent(ctx: CoreCtx, id: string): Promise<boolean> {
-  const rows = (await withOrgCore(ctx, (tx) =>
-    tx.execute(sql`
+  const rows = (await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    return tx.execute(sql`
       delete from fin_product_components
       where id = ${id} and org_id = ${ctx.tenantId}
-      returning id`),
-  )) as unknown as unknown[];
+      returning id`);
+  })) as unknown as unknown[];
   if (rows.length) await bustFinanceCache(ctx);
   return rows.length > 0;
 }

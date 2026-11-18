@@ -13,7 +13,8 @@ export interface OperatorAuthorityRows {
   deletionPending: false;
   roleModel: string | null;
   defaultRoleKey: string | null;
-  membershipRole: string;
+  /** organization_members.role is nullable in some schemas; the legacy adapter treats null as viewer fallback. */
+  membershipRole: string | null;
   assignedRoleKeys: string[];
   localRoleKeys: string[];
   rules: CapabilityOverrideRow[];
@@ -52,6 +53,22 @@ const KNOWN: ReadonlySet<string> = new Set([
   'operator_authority_inconsistent',
 ]);
 
+/** SQLSTATE found on a driver error or its cause chain (drizzle wraps postgres errors). */
+export function sqlStateOf(e: unknown): string | null {
+  for (
+    let c = e, i = 0;
+    c && typeof c === 'object' && i < 5;
+    c = (c as { cause?: unknown }).cause, i += 1
+  ) {
+    const code = (c as { code?: unknown }).code;
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return code;
+  }
+  return null;
+}
+
+/** Transient rollbacks the caller's retry wrapper must still see (never flattened to unavailable). */
+const RETRYABLE_SQLSTATES: ReadonlySet<string> = new Set(['40001', '40P01', '55P03']);
+
 function isStringArray(value: unknown, max: number): value is string[] {
   return Array.isArray(value) && value.length <= max && value.every((v) => typeof v === 'string');
 }
@@ -86,7 +103,7 @@ export function validateOperatorAuthorityRows(
     v.profileId !== profileId ||
     v.organizationStatus !== 'active' ||
     v.deletionPending !== false ||
-    typeof v.membershipRole !== 'string' ||
+    !(v.membershipRole === null || typeof v.membershipRole === 'string') ||
     !(v.roleModel === null || typeof v.roleModel === 'string') ||
     !(v.defaultRoleKey === null || typeof v.defaultRoleKey === 'string') ||
     !isStringArray(v.assignedRoleKeys, 128) ||
@@ -141,6 +158,8 @@ async function callBridge(
     return validateOperatorAuthorityRows(row?.authority, orgId, profileId);
   } catch (error) {
     if (error instanceof OperatorAuthorityError) throw error;
+    const state = sqlStateOf(error);
+    if (state && RETRYABLE_SQLSTATES.has(state)) throw error;
     // drizzle wraps driver errors; the SQL exception text lives on the cause chain.
     let message = '';
     for (let e: unknown = error, i = 0; e instanceof Error && i < 4; e = e.cause, i += 1) {
@@ -166,7 +185,7 @@ export function readOperatorAuthorityForWriteInTx(tx: CoreTx, orgId: string, pro
 export interface ActiveOperatorPrincipalState {
   orgId: string;
   profileId: string;
-  membershipRole: string;
+  membershipRole: string | null;
   roleModel: string | null;
   defaultRoleKey: string | null;
   /** SHA-256 of canonical JSON of exactly the selected fields above plus authorityRows. */

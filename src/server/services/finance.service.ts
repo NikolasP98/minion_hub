@@ -1,6 +1,7 @@
 // src/server/services/finance.service.ts
 import { and, eq, desc, sql, inArray } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
+import { lockStockWrite } from './stock.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   finInvoices,
@@ -639,13 +640,15 @@ export async function updateFinSettings(
       set.fxManualRate = String(r);
     }
   }
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  // Gate pair first: timezone / first-row creation feeds receipt_period_v1 admission (spec 124).
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    return tx
       .insert(finSettings)
       .values({ orgId: ctx.tenantId, ...(set as Record<string, never>) })
       .onConflictDoUpdate({ target: finSettings.orgId, set })
-      .returning(),
-  );
+      .returning();
+  });
   return mapFinSettings(row);
 }
 
@@ -677,8 +680,10 @@ export async function refreshExchangeRate(ctx: CoreCtx): Promise<FinSettings> {
   } finally {
     clearTimeout(timer);
   }
-  const [row] = await withOrgCore(ctx, (tx) =>
-    tx
+  // The remote fetch is done; only the local write takes the gate pair (first-row creation can change policy_unverified).
+  const [row] = await withOrgCore(ctx, async (tx) => {
+    await lockStockWrite(tx, ctx);
+    return tx
       .insert(finSettings)
       .values({
         orgId: ctx.tenantId,
@@ -696,8 +701,8 @@ export async function refreshExchangeRate(ctx: CoreCtx): Promise<FinSettings> {
           updatedAt: new Date(),
         },
       })
-      .returning(),
-  );
+      .returning();
+  });
   return mapFinSettings(row);
 }
 

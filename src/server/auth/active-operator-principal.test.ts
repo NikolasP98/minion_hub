@@ -119,6 +119,31 @@ describe('operator authority bridge adapters', () => {
     );
   });
 
+  it('rethrows retryable SQLSTATEs untouched so the write retry wrapper still sees them', async () => {
+    for (const code of ['55P03', '40P01', '40001']) {
+      const err = Object.assign(new Error('lock'), { code });
+      await expect(
+        readOperatorAuthorityForWriteInTx(
+          fakeTx({ bridge: new Error('wrap', { cause: err }) }).tx,
+          ORG,
+          PROFILE,
+        ),
+      ).rejects.toMatchObject({ cause: { code } });
+    }
+    for (const code of ['57014', '42883', '08006']) {
+      const err = Object.assign(new Error('x'), { code });
+      await expect(
+        readOperatorAuthorityForWriteInTx(fakeTx({ bridge: err }).tx, ORG, PROFILE),
+      ).rejects.toMatchObject({ code: 'operator_authority_unavailable' });
+    }
+  });
+
+  it('accepts a null membership role (nullable column; legacy adapter falls back to viewer)', () => {
+    expect(
+      validateOperatorAuthorityRows(good({ membershipRole: null }), ORG, PROFILE).membershipRole,
+    ).toBeNull();
+  });
+
   it('hashes the selected state stably and changes when an authority row changes', async () => {
     const a = await assertActiveOperatorPrincipalReadOnlyInTx(fakeTx({}).tx, ORG, PROFILE);
     const b = await assertActiveOperatorPrincipalReadOnlyInTx(fakeTx({}).tx, ORG, PROFILE);

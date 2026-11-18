@@ -808,3 +808,25 @@ describe('Capabilities.explicitView — override rows only, no parent fallback',
     ).toBeUndefined();
   });
 });
+
+describe('stock corrections admission (spec 124)', () => {
+  test('exempts only the exact preview and apply POST paths from the stock prefix gate', () => {
+    expect(apiWriteCapability('/api/stock/corrections/preview', 'POST')).toBeNull();
+    expect(apiWriteCapability('/api/stock/corrections', 'POST')).toBeNull();
+    // Near-prefix paths and other methods keep their gates.
+    expect(apiWriteCapability('/api/stock/corrections/preview/x', 'POST')).toMatchObject({
+      module: 'stock',
+    });
+    expect(apiWriteCapability('/api/stock/corrections/abc', 'POST')).toMatchObject({
+      module: 'stock',
+    });
+    expect(apiWriteCapability('/api/stock/corrections', 'DELETE')).toMatchObject({
+      module: 'stock',
+    });
+    expect(apiWriteCapability('/api/stock/entries', 'POST')).toMatchObject({ module: 'stock' });
+    // Status GET: no central stock:view (service-level pos OR stock view); siblings keep the gate.
+    expect(apiReadCapability('/api/stock/corrections')).toBeNull();
+    expect(apiReadCapability('/api/stock/corrections/preview')).toMatchObject({ module: 'stock' });
+    expect(apiReadCapability('/api/stock/entries')).toMatchObject({ module: 'stock' });
+  });
+});

@@ -1173,6 +1173,26 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'faces receivables audit against PostgreSQL produces stable proposal hashes and UUIDs across fresh runs',
       ],
     },
+    {
+      file: 'src/server/services/stock-corrections.sql.integration.test.ts',
+      minimumAssertions: 13,
+      exactAssertions: true,
+      requiredBehaviors: [
+        'stock corrections against PostgreSQL preserves POS only no stock swap and rejects unauthorized stock effects',
+        'stock corrections against PostgreSQL rolls back every intermediate write and records one immutable outcome',
+        'stock corrections against PostgreSQL reconciles lost response and rejects changed intent operation reuse',
+        'stock corrections against PostgreSQL serializes absent bins normal posting correction and rebuild under the first org gate',
+        'stock corrections against PostgreSQL enforces tenant scoped five kind schema immutable grants and private source ownership',
+        'stock corrections against PostgreSQL repeated concurrent booking completion reuses frozen draft and submitted source once',
+        'stock corrections against PostgreSQL absent enabled module can be disabled only before or after the guarded correction',
+        'stock corrections against PostgreSQL serializes period fiscal and void guards before correction',
+        'stock corrections against PostgreSQL freezes approved stock only lines and preserves financial facts',
+        'stock corrections against PostgreSQL drains old mapping posters and refuses persisted old mapping pending sources',
+        'stock corrections against PostgreSQL absent permission deny insertion serializes with correction in both authority lock orders',
+        'stock corrections against PostgreSQL serializes warehouse timezone and bundle eligibility writers in both arrival orders',
+        'stock corrections against PostgreSQL rejects deleting principals and inactive organizations before correction admission',
+      ],
+    },
   ],
 } as const satisfies Record<NativePostgresLane, readonly NativePostgresAdmission[]>;
 
