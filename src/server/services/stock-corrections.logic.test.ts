@@ -48,9 +48,11 @@ describe('parsePreviewRequest', () => {
     expect(code(() => parsePreviewRequest({ ...variant, sourceType: 'stock_receipt' }))).toBe(
       'invalid_request',
     );
-    expect(code(() => parsePreviewRequest({ ...variant, sourceId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA' }))).toBe(
-      'invalid_request',
-    );
+    expect(
+      code(() =>
+        parsePreviewRequest({ ...variant, sourceId: 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA' }),
+      ),
+    ).toBe('invalid_request');
     expect(code(() => parsePreviewRequest({ mode: 'stock_only' }))).toBe('owner_evidence_required');
     expect(code(() => parsePreviewRequest({ mode: 'booking' }))).toBe('invalid_request');
   });

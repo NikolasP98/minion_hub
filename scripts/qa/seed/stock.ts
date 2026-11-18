@@ -265,7 +265,10 @@ export async function seed(ctx: SeedContext): Promise<void> {
       ${sql.json({ fixture: true })}, ${sql.json({ fixture: true })}, ${sql.json({ fixture: true })}, ${now.toISOString()})
     on conflict (id) do nothing
   `;
-  register('stock.correction.receipt-replace', { table: 'stk_corrections', where: { id: correctionId } });
+  register('stock.correction.receipt-replace', {
+    table: 'stk_corrections',
+    where: { id: correctionId },
+  });
 
   // ── Accruals — soft refs to bookings scheduling.ts creates (no FK, order-independent).
   const bookingOpen = matrixUuid('sched.booking.accepted');
