@@ -9,7 +9,7 @@
    *  already-open row A). */
   type CompositionCacheEntry = {
     serviceRows: { childProductId: string; qty: number }[];
-    consumptionRows: { itemId: string; qtyPerUnit: number; note: string | null }[];
+    consumptionRows: ConsumptionEdit[];
     validity: string;
   };
   // TODO(handoff): module-scoped for the page's lifetime, invalidated only by
@@ -17,6 +17,13 @@
   // while this one never reloads the page would show stale cached rows until
   // a full reload — see proposals/2026-10-12-hub-catalog-composition-cache-staleness.md.
   const compositionCache = new Map<string, CompositionCacheEntry>();
+  /** One recipe row; `choicePath` places it among substitutes (meta spec 131). */
+  type ConsumptionEdit = {
+    itemId: string;
+    qtyPerUnit: number;
+    note: string | null;
+    choicePath: string | null;
+  };
 </script>
 
 <script lang="ts">
@@ -34,7 +41,7 @@
    *                   AND a product parent (meta spec 024: one stock path)
    * A product child is a stock item: what a sale or procedure consumes.
    */
-  import { Trash2, ListFilter } from 'lucide-svelte';
+  import { Trash2, ListFilter, Plus, Split, Star } from 'lucide-svelte';
   import {
     Badge,
     Button,
@@ -54,6 +61,12 @@
     type Candidate,
     type Kind,
   } from './composition';
+  import {
+    addAlternative,
+    makeDefault,
+    recipeTree,
+    type RecipeNode,
+  } from '$lib/stock/recipe-choice';
 
   interface Sellable {
     productId: string;
@@ -99,9 +112,7 @@
   // svelte-ignore state_referenced_locally -- one-time seed from the module cache below
   const cacheHit = compositionCache.get(sellable.productId);
   let serviceRows = $state<{ childProductId: string; qty: number }[]>(cacheHit?.serviceRows ?? []);
-  let consumptionRows = $state<{ itemId: string; qtyPerUnit: number; note: string | null }[]>(
-    cacheHit?.consumptionRows ?? [],
-  );
+  let consumptionRows = $state<ConsumptionEdit[]>(cacheHit?.consumptionRows ?? []);
   let validity = $state(cacheHit?.validity ?? '');
   let loading = $state(!cacheHit);
   // Writes queue instead of blocking: every edit lands, in order, and only the
@@ -109,6 +120,15 @@
   let saving = $state<string[]>([]);
   let queue: Promise<void> = Promise.resolve();
   let pickerOpen = $state(false);
+  /** Where the picker's items land: the recipe itself, as a substitute of one
+   *  row ("Or…"), or into one substitute option ("Add to this option"). */
+  let pickTarget = $state<
+    { kind: 'top' } | { kind: 'or'; itemId: string } | { kind: 'and'; path: string }
+  >({ kind: 'top' });
+  function openPicker(target: typeof pickTarget) {
+    pickTarget = target;
+    pickerOpen = true;
+  }
 
   const productById = $derived(new Map(sellables.map((s) => [s.productId, s])));
   const itemById = $derived(new Map(stockItems.map((i) => [i.id, i])));
@@ -126,19 +146,21 @@
         ref: r.childProductId,
       });
     }
-    for (const r of consumptionRows) {
-      const i = itemById.get(r.itemId);
-      out.push({
-        id: `i:${r.itemId}`,
-        kind: 'product',
-        name: i?.name ?? r.itemId,
-        detail: i?.uom ?? '',
-        qty: r.qtyPerUnit,
-        ref: r.itemId,
-      });
-    }
+    for (const r of consumptionRows) out.push(consumptionRow(r));
     return out;
   });
+  function consumptionRow(r: ConsumptionEdit): Row {
+    const i = itemById.get(r.itemId);
+    return {
+      id: `i:${r.itemId}`,
+      kind: 'product',
+      name: i?.name ?? r.itemId,
+      detail: i?.uom ?? '',
+      qty: r.qtyPerUnit,
+      ref: r.itemId,
+    };
+  }
+  const recipe = $derived(recipeTree(consumptionRows));
   const picked = $derived(new Set(rows.map((r) => r.id)));
   const hasServiceChild = $derived(serviceRows.length > 0);
 
@@ -146,7 +168,7 @@
     candidatesFor({ productId: sellable.productId, kind: parentKind }, sellables, stockItems, {
       stockEnabled,
       formatMoney,
-    }),
+    }).filter((c) => pickTarget.kind === 'top' || c.kind === 'product'),
   );
 
   const kindLabel = (k: Kind) =>
@@ -211,10 +233,16 @@
         );
         validity = pkg?.packageValidityDays == null ? '' : String(pkg.packageValidityDays);
         consumptionRows = (Array.isArray(cons) ? cons : []).map(
-          (c: { itemId: string; qtyPerUnit: number | string; note?: string | null }) => ({
+          (c: {
+            itemId: string;
+            qtyPerUnit: number | string;
+            note?: string | null;
+            choicePath?: string | null;
+          }) => ({
             itemId: c.itemId,
             qtyPerUnit: Number(c.qtyPerUnit),
             note: c.note ?? null,
+            choicePath: c.choicePath ?? null,
           }),
         );
       } catch {
@@ -308,17 +336,31 @@
 
   function add(c: Candidate) {
     if (picked.has(c.id)) return;
+    // Captured now: the queued write may run after the picker reopened elsewhere.
+    const t = pickTarget;
     void run(c.id, async () => {
       switch (writePathFor(c.kind)) {
         case 'package':
           return writeServices([...serviceRows, { childProductId: c.ref, qty: 1 }]);
-        case 'consumption':
-          return writeConsumption([
-            ...consumptionRows,
-            { itemId: c.ref, qtyPerUnit: 1, note: null },
-          ]);
+        case 'consumption': {
+          const row: ConsumptionEdit = {
+            itemId: c.ref,
+            qtyPerUnit: 1,
+            note: null,
+            choicePath: null,
+          };
+          return writeConsumption(
+            t.kind === 'or'
+              ? addAlternative(consumptionRows, t.itemId, row)
+              : [...consumptionRows, { ...row, choicePath: t.kind === 'and' ? t.path : null }],
+          );
+        }
       }
     });
+  }
+
+  function setDefault(group: number, option: number) {
+    void run(`g${group}`, () => writeConsumption(makeDefault(consumptionRows, group, option)));
   }
 
   function setQty(row: Row, input: HTMLInputElement) {
@@ -360,6 +402,97 @@
   }
 </script>
 
+{#snippet rowItem(r: Row)}
+  <li class="row">
+    <Badge variant="semantic" value={kindTone(r.kind)} size="sm">{kindLabel(r.kind)}</Badge>
+    <Input
+      size="sm"
+      class="w-20"
+      type="number"
+      min="0"
+      step="any"
+      aria-label={m.pos_catalog_qty_per_unit()}
+      value={String(r.qty)}
+      disabled={!canEdit}
+      onchange={(e: Event) => setQty(r, e.currentTarget as HTMLInputElement)}
+    />
+    <span class="t-caption unit">{r.kind === 'service' ? m.pos_pkg_sessions_per() : r.detail}</span>
+    <span class="name">{r.name}</span>
+    {#if r.kind === 'service' && r.detail}<span class="t-caption dim">{r.detail}</span>{/if}
+    {#if canEdit}
+      <span class="acts">
+        {#if r.kind === 'product'}
+          <Button
+            variant="ghost"
+            size="sm"
+            title={m.pos_comp_or_hint()}
+            aria-label={m.pos_comp_or()}
+            onclick={() => openPicker({ kind: 'or', itemId: r.ref })}
+          >
+            <Split size={iconSizes.xs} aria-hidden="true" />
+          </Button>
+        {/if}
+        <Button
+          variant="ghost"
+          size="sm"
+          title={m.common_remove()}
+          aria-label={m.common_remove()}
+          loading={saving.includes(r.id)}
+          onclick={() => remove(r)}
+        >
+          <Trash2 size={iconSizes.xs} aria-hidden="true" />
+        </Button>
+      </span>
+    {/if}
+  </li>
+{/snippet}
+
+{#snippet recipeNodes(list: RecipeNode<ConsumptionEdit>[])}
+  {#each list as n (n.kind === 'item' ? n.row.itemId : `g${n.group}`)}
+    {#if n.kind === 'item'}
+      {@render rowItem(consumptionRow(n.row))}
+    {:else}
+      <li class="choice">
+        <span class="t-caption dim">{m.pos_comp_alternatives()}</span>
+        {#each n.options as o, i (o.option)}
+          <ul class="rows option">
+            <li class="option-head">
+              <span class="t-caption dim">{m.pos_comp_option({ n: i + 1 })}</span>
+              {#if i === 0}
+                <Badge size="sm">{m.pos_comp_default()}</Badge>
+              {:else if canEdit}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={saving.includes(`g${n.group}`)}
+                  onclick={() => setDefault(n.group, o.option)}
+                >
+                  <Star size={iconSizes.xs} aria-hidden="true" />
+                  <span>{m.pos_comp_make_default()}</span>
+                </Button>
+              {/if}
+              {#if canEdit}
+                <span class="acts">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={m.pos_comp_and()}
+                    onclick={() => openPicker({ kind: 'and', path: o.path })}
+                  >
+                    <Plus size={iconSizes.xs} aria-hidden="true" />
+                    <span>{m.pos_comp_add_here()}</span>
+                  </Button>
+                </span>
+              {/if}
+            </li>
+            {@render recipeNodes(o.nodes)}
+          </ul>
+        {/each}
+      </li>
+    {/if}
+  {/each}
+{/snippet}
+
 <div class="comp">
   <p class="t-caption head">
     {m.pos_comp_title()}
@@ -377,44 +510,16 @@
       </p>
     {:else}
       <ul class="rows">
-        {#each rows as r (r.id)}
-          <li class="row">
-            <Badge variant="semantic" value={kindTone(r.kind)} size="sm">{kindLabel(r.kind)}</Badge>
-            <Input
-              size="sm"
-              class="w-20"
-              type="number"
-              min="0"
-              step="any"
-              aria-label={m.pos_catalog_qty_per_unit()}
-              value={String(r.qty)}
-              disabled={!canEdit}
-              onchange={(e: Event) => setQty(r, e.currentTarget as HTMLInputElement)}
-            />
-            <span class="t-caption unit"
-              >{r.kind === 'service' ? m.pos_pkg_sessions_per() : r.detail}</span
-            >
-            <span class="name">{r.name}</span>
-            {#if r.kind === 'service' && r.detail}<span class="t-caption dim">{r.detail}</span>{/if}
-            {#if canEdit}
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label={m.common_remove()}
-                loading={saving.includes(r.id)}
-                onclick={() => remove(r)}
-              >
-                <Trash2 size={iconSizes.xs} />
-              </Button>
-            {/if}
-          </li>
+        {#each rows.filter((r) => r.kind === 'service') as r (r.id)}
+          {@render rowItem(r)}
         {/each}
+        {@render recipeNodes(recipe)}
       </ul>
     {/if}
 
     {#if canEdit}
       <div class="add">
-        <Button variant="outline" size="sm" onclick={() => (pickerOpen = true)}>
+        <Button variant="outline" size="sm" onclick={() => openPicker({ kind: 'top' })}>
           <ListFilter size={iconSizes.sm} aria-hidden="true" />
           <span>{m.pos_comp_add()}</span>
         </Button>
@@ -481,11 +586,37 @@
     align-items: center;
     gap: var(--space-2);
   }
+  .choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .option + .option {
+    border-top: 1px solid var(--color-border);
+    padding-top: var(--space-1);
+  }
+  .option-head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-height-sm);
+  }
+  /* Actions share one right-aligned column, so every row's icons line up. */
+  .acts {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
   .unit {
     color: var(--color-text-secondary);
     white-space: nowrap;
   }
   .name {
+    flex: 1;
     min-width: 0;
     overflow-wrap: anywhere;
   }

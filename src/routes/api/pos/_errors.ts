@@ -35,6 +35,7 @@ const STATUS_BY_CODE: Record<string, number> = {
   package_cancelled: 409,
   // the pack already includes a service that consumes this insumo
   package_service_consumption: 409,
+  invalid_choice_path: 400,
   redemption_already_billed: 409,
   plan_settled: 409,
   plan_cancelled: 409,

@@ -230,6 +230,9 @@ export const stkConsumption = pgTable(
       .notNull()
       .references(() => stkItems.id, { onDelete: 'cascade' }),
     qtyPerUnit: numeric('qty_per_unit').notNull(),
+    /** Substitutes (meta spec 131): null = always consumed; `1.0/2.1` = option 0
+     *  of choice 1, then option 1 of choice 2. See `$lib/stock/recipe-choice`. */
+    choicePath: text('choice_path'),
     note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

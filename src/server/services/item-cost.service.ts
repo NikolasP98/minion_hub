@@ -17,6 +17,7 @@ import { stkBins, stkConsumption, stkItems } from '$server/db/pg-schema/stock';
 import { consumptionToStockQty, edgesByParent, rollupItemCost, round4 } from './stock.logic';
 import { resolveDefaultWarehouse } from './stock-accruals.service';
 import { listAllComponentEdges } from './stock.service';
+import { defaultBranch } from '$lib/stock/recipe-choice';
 
 export interface CostLine {
   itemId: string;
@@ -110,6 +111,7 @@ async function loadProductRoots(
       finProductId: stkConsumption.finProductId,
       itemId: stkConsumption.itemId,
       qtyPerUnit: stkConsumption.qtyPerUnit,
+      choicePath: stkConsumption.choicePath,
       unitsPerStockUom: stkItems.unitsPerStockUom,
     })
     .from(stkConsumption)
@@ -117,7 +119,8 @@ async function loadProductRoots(
     .where(
       and(eq(stkConsumption.orgId, orgId), inArray(stkConsumption.finProductId, finProductIds)),
     );
-  for (const r of maps) {
+  // A recipe with substitutes is costed at its defaults (spec 131).
+  for (const r of defaultBranch(maps)) {
     const list = byProduct.get(r.finProductId) ?? [];
     list.push({
       itemId: r.itemId,

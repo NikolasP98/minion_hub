@@ -11,6 +11,8 @@ const consumptionSchema = z.object({
   itemId: z.string().min(1),
   qtyPerUnit: z.number().finite().nonnegative(),
   note: z.string().max(2000).nullable().optional(),
+  // Spec 131 substitutes; coherence across the set is checked in updateSellable.
+  choicePath: z.string().max(200).nullable().optional(),
 });
 
 const patchSchema = z.object({
