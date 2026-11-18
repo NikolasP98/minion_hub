@@ -19,6 +19,7 @@ const row = (over: Partial<ConsumptionRow>): ConsumptionRow => ({
   diagramEnabled: true,
   expected: 10,
   actual: 10,
+  choicePath: null,
   ...over,
 });
 
@@ -106,7 +107,15 @@ describe('completionLinesFor zero handling', () => {
 });
 
 describe('mergeConsumptionRows', () => {
-  const r = (itemId: string, actual: number) => ({ itemId, actual });
+  const r = (itemId: string, actual: number, choicePath: string | null = null) => ({
+    itemId,
+    actual,
+    choicePath,
+  });
+
+  it('takes the substitute position from the recipe, the qty from the accrual', () => {
+    expect(mergeConsumptionRows([r('x', 30)], [r('x', 75, '1.0')])).toEqual([r('x', 30, '1.0')]);
+  });
 
   it('lets the accrual win over the default for the same item', () => {
     expect(mergeConsumptionRows([r('x', 30)], [r('x', 0)])).toEqual([r('x', 30)]);
@@ -122,5 +131,23 @@ describe('mergeConsumptionRows', () => {
   it('handles defaults-only and accruals-only', () => {
     expect(mergeConsumptionRows([], [r('y', 0)])).toEqual([r('y', 0)]);
     expect(mergeConsumptionRows([r('x', 3)], [])).toEqual([r('x', 3)]);
+  });
+});
+
+describe('completionLinesFor with substitutes (spec 131)', () => {
+  // Botox: Dysport 75 | INIBO 42 — one or the other, never both.
+  const rows = [
+    row({ itemId: 'dysport', unitsPerStockUom: null, actual: 75, choicePath: '1.0' }),
+    row({ itemId: 'inibo', unitsPerStockUom: null, actual: 42, choicePath: '1.1' }),
+    row({ itemId: 'needle', unitsPerStockUom: null, actual: 1 }),
+  ];
+  it('posts the default when nothing is picked', () => {
+    expect(completionLinesFor(rows, 'b1')?.map((l) => l.itemId)).toEqual(['dysport', 'needle']);
+  });
+  it('posts only the picked substitute', () => {
+    expect(completionLinesFor(rows, 'b1', new Map([[1, 1]]))).toEqual([
+      { itemId: 'inibo', qty: 42, qtyConsumption: 42 },
+      { itemId: 'needle', qty: 1, qtyConsumption: 1 },
+    ]);
   });
 });

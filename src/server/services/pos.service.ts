@@ -159,6 +159,7 @@ export { isUniqueViolation } from './pos/db-errors';
 import { assertTicketMutable, effectiveMethod, planTenderChange } from './pos/tender-correction';
 import { recordAuditInTx } from './activity.service';
 import { isTicketPeriodLocked, normalizePeriod, periodLockExists } from './pos/period-locks';
+import { choicePathError, defaultBranch } from '$lib/stock/recipe-choice';
 
 const round2 = moneyNumber;
 
@@ -778,12 +779,14 @@ async function loadIssueResolutionTx(
         finProductId: stkConsumption.finProductId,
         itemId: stkConsumption.itemId,
         qtyPerUnit: stkConsumption.qtyPerUnit,
+        choicePath: stkConsumption.choicePath,
       })
       .from(stkConsumption)
       .where(
         and(eq(stkConsumption.orgId, ctx.tenantId), inArray(stkConsumption.finProductId, finIds)),
       );
-    for (const r of consumptionRows) {
+    // Substitutes (spec 131): a sale has nobody to pick, so it issues the defaults.
+    for (const r of defaultBranch(consumptionRows)) {
       const list = consumptionByFinProductId.get(r.finProductId) ?? [];
       list.push({ itemId: r.itemId, qtyPerUnit: Number(r.qtyPerUnit) });
       consumptionByFinProductId.set(r.finProductId, list);
@@ -3418,7 +3421,13 @@ export interface SellableInput {
    * this wins.
    */
   itemId?: string;
-  consumption?: Array<{ itemId: string; qtyPerUnit: number; note?: string | null }>;
+  consumption?: Array<{
+    itemId: string;
+    qtyPerUnit: number;
+    note?: string | null;
+    /** Spec 131 substitutes; omitted = keep the stored path. */
+    choicePath?: string | null;
+  }>;
   active?: boolean;
 }
 
@@ -3582,6 +3591,15 @@ export async function updateSellable(
           'package_service_consumption',
         );
     }
+    // The set as it will be stored: an omitted path keeps the stored one.
+    const storedPath = new Map(existingConsumption.map((r) => [r.itemId, r.choicePath]));
+    const pathError = choicePathError(
+      patch.consumption.map((c) => ({
+        itemId: c.itemId,
+        choicePath: c.choicePath !== undefined ? c.choicePath : (storedPath.get(c.itemId) ?? null),
+      })),
+    );
+    if (pathError) throw new PosError(pathError, 'invalid_choice_path');
   }
 
   /*
@@ -3694,6 +3712,7 @@ export async function updateSellable(
           itemId: c.itemId,
           qtyPerUnit: c.qtyPerUnit,
           note: c.note ?? null,
+          choicePath: c.choicePath,
         },
         actor,
       );

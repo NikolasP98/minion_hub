@@ -7630,5 +7630,12 @@
   "stock_corr_receipt_replacement_link": "Ver el reemplazo",
   "stock_corr_receipt_owner_only": "Cambiar una tarifa cambia el valor del stock, así que solo un propietario puede confirmarlo.",
   "stock_corr_receipt_replaces": "Esta entrada reemplaza a una que fue corregida.",
-  "stock_corr_receipt_original_link": "Ver la original"
+  "stock_corr_receipt_original_link": "Ver la original",
+  "sched_complete_choose": "¿Cuál se usó?",
+  "pos_comp_or": "O…",
+  "pos_comp_or_hint": "Agregar un sustituto: se consume uno u otro, nunca ambos",
+  "pos_comp_and": "Agregar a esta opción",
+  "pos_comp_default": "Predeterminado",
+  "pos_comp_make_default": "Usar como predeterminado",
+  "pos_comp_alternatives": "Uno de"
 }

@@ -40,6 +40,7 @@ import {
   type CreateIssueFromInvoiceLine,
   type InvoicePreviewLine,
 } from './stock.service';
+import { defaultBranch } from '$lib/stock/recipe-choice';
 
 export interface AccrualLineInput {
   itemId: string;
@@ -106,13 +107,18 @@ export async function accrueConsumption(ctx: CoreCtx, input: AccrueInput): Promi
       if (!input.finProductId) return 0;
       const quantity = input.quantity && input.quantity > 0 ? input.quantity : 1;
       const mapping = await tx
-        .select({ itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+        .select({
+          itemId: stkConsumption.itemId,
+          qtyPerUnit: stkConsumption.qtyPerUnit,
+          choicePath: stkConsumption.choicePath,
+        })
         .from(stkConsumption)
         .where(
           and(eq(stkConsumption.orgId, orgId), eq(stkConsumption.finProductId, input.finProductId)),
         );
       const byItem = new Map<string, number>();
-      for (const m of mapping)
+      // Substitutes (spec 131): reserve each choice's default; staff pick at completion.
+      for (const m of defaultBranch(mapping))
         byItem.set(m.itemId, (byItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
       lines = [...byItem]
         .filter(([, q]) => q > 0) // a 0-qty mapping accrues nothing

@@ -51,6 +51,7 @@ import {
   type ComponentEdge,
   type LedgerReplayRow,
 } from './stock.logic';
+import { defaultBranch } from '$lib/stock/recipe-choice';
 
 export class StockError extends Error {
   constructor(
@@ -1388,6 +1389,7 @@ export interface ConsumptionRow {
   subunitsPerStockUom: number | null;
   diagramEnabled: boolean;
   qtyPerUnit: number;
+  choicePath: string | null;
   note: string | null;
 }
 
@@ -1414,6 +1416,7 @@ export function listConsumption(
         subunitsPerStockUom: stkItems.subunitsPerStockUom,
         diagramEnabled: stkItems.diagramEnabled,
         qtyPerUnit: stkConsumption.qtyPerUnit,
+        choicePath: stkConsumption.choicePath,
         note: stkConsumption.note,
       })
       .from(stkConsumption)
@@ -1447,6 +1450,8 @@ export interface SetConsumptionInput {
   itemId: string;
   qtyPerUnit: number;
   note?: string | null;
+  /** Substitutes (spec 131). Omitted = keep the stored path; null = always consumed. */
+  choicePath?: string | null;
 }
 
 /** Upsert on the (org, fin_product, item) unique key. Validates the item is a
@@ -1496,12 +1501,14 @@ export async function setConsumption(
         finProductId: input.finProductId,
         itemId: input.itemId,
         qtyPerUnit: String(input.qtyPerUnit),
+        choicePath: input.choicePath ?? null,
         note: input.note ?? null,
       })
       .onConflictDoUpdate({
         target: [stkConsumption.orgId, stkConsumption.finProductId, stkConsumption.itemId],
         set: {
           qtyPerUnit: String(input.qtyPerUnit),
+          ...(input.choicePath !== undefined ? { choicePath: input.choicePath } : {}),
           note: input.note ?? null,
           updatedAt: new Date(),
         },
@@ -1616,6 +1623,7 @@ export async function buildInvoiceIssuePreview(
         finProductId: stkConsumption.finProductId,
         itemId: stkConsumption.itemId,
         qtyPerUnit: stkConsumption.qtyPerUnit,
+        choicePath: stkConsumption.choicePath,
       })
       .from(stkConsumption)
       .where(
@@ -1625,7 +1633,7 @@ export async function buildInvoiceIssuePreview(
         ),
       );
     const mappingsByProduct = new Map<string, { itemId: string; qtyPerUnit: number }[]>();
-    for (const m of mappingRows) {
+    for (const m of defaultBranch(mappingRows)) {
       const list = mappingsByProduct.get(m.finProductId) ?? [];
       list.push({ itemId: m.itemId, qtyPerUnit: Number(m.qtyPerUnit) });
       mappingsByProduct.set(m.finProductId, list);
@@ -1836,7 +1844,11 @@ export async function buildServiceIssuePreview(
     if (!product) throw new StockError('product not found', 'product_not_found');
 
     const mappingRows = await tx
-      .select({ itemId: stkConsumption.itemId, qtyPerUnit: stkConsumption.qtyPerUnit })
+      .select({
+        itemId: stkConsumption.itemId,
+        qtyPerUnit: stkConsumption.qtyPerUnit,
+        choicePath: stkConsumption.choicePath,
+      })
       .from(stkConsumption)
       .where(
         and(
@@ -1846,7 +1858,7 @@ export async function buildServiceIssuePreview(
       );
 
     const qtyByItem = new Map<string, number>();
-    for (const m of mappingRows)
+    for (const m of defaultBranch(mappingRows))
       qtyByItem.set(m.itemId, (qtyByItem.get(m.itemId) ?? 0) + quantity * Number(m.qtyPerUnit));
 
     const lines = await previewLinesForItemQtys(tx, ctx.tenantId, qtyByItem, input.warehouseId);

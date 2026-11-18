@@ -109,7 +109,15 @@ export const BUSINESS_FIELD_ALLOWLISTS: Readonly<Record<string, readonly string[
     'updated_at',
   ],
   stk_bins: ['item_id', 'warehouse_id', 'qty', 'valuation_rate', 'updated_at'],
-  stk_consumption: ['id', 'fin_product_id', 'item_id', 'qty_per_unit', 'note', 'updated_at'],
+  stk_consumption: [
+    'id',
+    'fin_product_id',
+    'item_id',
+    'qty_per_unit',
+    'choice_path',
+    'note',
+    'updated_at',
+  ],
   stk_accruals: [
     'id',
     'source',

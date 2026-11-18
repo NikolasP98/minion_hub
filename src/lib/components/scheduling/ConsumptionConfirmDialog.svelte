@@ -21,10 +21,14 @@
    * ANY member (stock module off, no mapping) → empty state + a plain
    * Complete. Confirm POSTs `…/[memberId]/complete` for every member in turn
    * (`completionLinesFor` splits the merged row list back out per member).
+   *
+   * Substitutes (meta spec 131): recipe rows that are alternatives ("Dysport
+   * OR INIBO") render as one "which one was used?" segmented choice, default
+   * first; only the picked option's rows are shown and posted.
    */
   import { RotateCcw } from 'lucide-svelte';
   import { untrack } from 'svelte';
-  import { Button, Spinner, iconSizes } from '$lib/components/ui';
+  import { Button, SegmentedControl, Spinner, iconSizes } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import ConsumptionGauge from '$lib/components/stock/ConsumptionGauge.svelte';
   import { gaugeMax } from '$lib/components/stock/stock-ui';
@@ -36,6 +40,7 @@
     type CompleteResult,
     type ConsumptionRow,
   } from './consumption-lines';
+  import { recipeTree, type RecipeNode, type RecipeOption } from '$lib/stock/recipe-choice';
 
   export type ConfirmMember = { bookingId: string; productId: string | null; title: string };
 
@@ -74,6 +79,19 @@
   let err = $state<string | null>(null);
   /** The rows could not be read: confirming now would post an empty list. */
   let loadError = $state(false);
+  /** Picked substitute per `${bookingId}|${group}`; absent = the default option. */
+  let picks = $state<Record<string, number>>({});
+  const pickOf = (bid: string, n: { group: number; options: { option: number }[] }) =>
+    picks[`${bid}|${n.group}`] ?? n.options[0].option;
+  const picksFor = (bid: string) =>
+    new Map(
+      Object.entries(picks)
+        .filter(([k]) => k.startsWith(`${bid}|`))
+        .map(([k, v]) => [Number(k.slice(bid.length + 1)), v]),
+    );
+  /** An option reads as its own items; a nested choice shows as "…". */
+  const optionLabel = (o: RecipeOption<ConsumptionRow>) =>
+    o.nodes.map((n) => (n.kind === 'item' ? n.row.itemName : '…')).join(' + ');
 
   /** Both reads 404 when the stock module is off (403 without stock access) —
    *  an absent map is not an error. Any other failure throws. */
@@ -118,6 +136,7 @@
         diagramEnabled: Boolean(a.diagramEnabled),
         expected: num(a.qtyConsumption),
         actual: num(a.qtyConsumption),
+        choicePath: null,
       })),
       defaults.map((d) => ({
         itemId: d.itemId as string,
@@ -129,6 +148,7 @@
         diagramEnabled: Boolean(d.diagramEnabled),
         expected: num(d.qtyPerUnit),
         actual: num(d.qtyPerUnit),
+        choicePath: (d.choicePath as string | null) ?? null,
       })),
     );
   }
@@ -139,6 +159,7 @@
     loading = true;
     loadError = false;
     err = null;
+    picks = {};
     void (async () => {
       try {
         const loaded = (
@@ -197,7 +218,9 @@
         const res = await fetch(`${apiBase}/${mb.bookingId}/complete`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ lines: completionLinesFor(rows, mb.bookingId) }),
+          body: JSON.stringify({
+            lines: completionLinesFor(rows, mb.bookingId, picksFor(mb.bookingId)),
+          }),
         });
         if (!res.ok) throw new Error(String(res.status));
         merged = mergeCompleteResults(merged, (await res.json()) as CompleteResult);
@@ -214,6 +237,67 @@
     }
   }
 </script>
+
+{#snippet line(r: ConsumptionRow)}
+  {@const gMax = maxOf(r)}
+  <div class="line">
+    <div class="line-text">
+      <span class="line-name">{r.itemName}</span>
+      <span class="t-caption"
+        >{m.sched_complete_expected({ qty: r.expected, unit: unitOf(r) })}</span
+      >
+    </div>
+    {#if gMax > 0}
+      <ConsumptionGauge
+        max={gMax}
+        unit={unitOf(r)}
+        bind:value={() => r.actual, (v) => (r.actual = v)}
+      />
+    {:else}
+      <input
+        class="qty"
+        type="number"
+        min="0"
+        step="any"
+        aria-label={r.itemName}
+        value={r.actual}
+        oninput={(e) => (r.actual = Number(e.currentTarget.value) || 0)}
+      />
+      <span class="t-caption">{unitOf(r)}</span>
+    {/if}
+    <Button
+      size="sm"
+      variant="ghost"
+      class="reset-btn"
+      title={m.sched_complete_reset()}
+      aria-label={m.sched_complete_reset()}
+      disabled={r.actual === r.expected}
+      onclick={() => (r.actual = r.expected)}
+    >
+      <RotateCcw size={iconSizes.sm} />
+    </Button>
+  </div>
+{/snippet}
+
+{#snippet nodes(list: RecipeNode<ConsumptionRow>[], bid: string)}
+  {#each list as n (n.kind === 'item' ? n.row.itemId : `g${n.group}`)}
+    {#if n.kind === 'item'}
+      {@render line(n.row)}
+    {:else}
+      {@const chosen = pickOf(bid, n)}
+      <div class="choice">
+        <p class="t-caption">{m.sched_complete_choose()}</p>
+        <SegmentedControl
+          aria-label={m.sched_complete_choose()}
+          items={n.options.map((o) => ({ value: String(o.option), label: optionLabel(o) }))}
+          value={String(chosen)}
+          onValueChange={(v) => (picks[`${bid}|${n.group}`] = Number(v))}
+        />
+        {@render nodes(n.options.find((o) => o.option === chosen)?.nodes ?? [], bid)}
+      </div>
+    {/if}
+  {/each}
+{/snippet}
 
 <!-- `md`, like the modal this replaced: a gauge row needs the width. -->
 <Dialog open={bookingId !== null} title={m.sched_complete_title()} {onclose}>
@@ -237,46 +321,7 @@
           {#if members.length > 1 && mb.title}
             <p class="t-label member-heading">{mb.title}</p>
           {/if}
-          {#each memberRows as r (r.itemId)}
-            {@const gMax = maxOf(r)}
-            <div class="line">
-              <div class="line-text">
-                <span class="line-name">{r.itemName}</span>
-                <span class="t-caption"
-                  >{m.sched_complete_expected({ qty: r.expected, unit: unitOf(r) })}</span
-                >
-              </div>
-              {#if gMax > 0}
-                <ConsumptionGauge
-                  max={gMax}
-                  unit={unitOf(r)}
-                  bind:value={() => r.actual, (v) => (r.actual = v)}
-                />
-              {:else}
-                <input
-                  class="qty"
-                  type="number"
-                  min="0"
-                  step="any"
-                  aria-label={r.itemName}
-                  value={r.actual}
-                  oninput={(e) => (r.actual = Number(e.currentTarget.value) || 0)}
-                />
-                <span class="t-caption">{unitOf(r)}</span>
-              {/if}
-              <Button
-                size="sm"
-                variant="ghost"
-                class="reset-btn"
-                title={m.sched_complete_reset()}
-                aria-label={m.sched_complete_reset()}
-                disabled={r.actual === r.expected}
-                onclick={() => (r.actual = r.expected)}
-              >
-                <RotateCcw size={iconSizes.sm} />
-              </Button>
-            </div>
-          {/each}
+          {@render nodes(recipeTree(memberRows), mb.bookingId)}
         {/if}
       {/each}
     {/if}
@@ -302,6 +347,13 @@
     display: flex;
     justify-content: center;
     padding: var(--space-4);
+  }
+  .choice {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-left: var(--space-3);
+    border-left: 2px solid var(--color-border);
   }
   .member-heading {
     color: var(--color-text-secondary);

@@ -8,6 +8,7 @@
  * really used. Expected stays on the accrual row server-side, actual becomes
  * the stock entry, so variance analysis has both numbers.
  */
+import { selectedRows, type Picks } from '$lib/stock/recipe-choice';
 
 export type ConsumptionRow = {
   /** Which visit member this row belongs to — a merged visit's dialog loads
@@ -26,6 +27,8 @@ export type ConsumptionRow = {
   expected: number;
   /** What the user confirms was consumed, in the consumption UOM. */
   actual: number;
+  /** Substitute position in the recipe (spec 131); null = always consumed. */
+  choicePath: string | null;
 };
 
 export type CompletionLine = { itemId: string; qty: number; qtyConsumption: number };
@@ -64,12 +67,16 @@ export function completionLines(rows: ConsumptionRow[]): CompletionLine[] | null
  * keyed by item, accrual winning — so a 0-default item is still asked for when
  * a sibling item accrued. Order: defaults first, then accrual-only extras.
  */
-export function mergeConsumptionRows<T extends { itemId: string }>(
+export function mergeConsumptionRows<T extends { itemId: string; choicePath: string | null }>(
   accrualRows: T[],
   defaultRows: T[],
 ): T[] {
   const accrued = new Map(accrualRows.map((r) => [r.itemId, r]));
-  const merged = defaultRows.map((d) => accrued.get(d.itemId) ?? d);
+  // The recipe owns the substitute position; the accrual only carries the qty.
+  const merged = defaultRows.map((d) => {
+    const a = accrued.get(d.itemId);
+    return a ? { ...a, choicePath: d.choicePath } : d;
+  });
   const seen = new Set(defaultRows.map((d) => d.itemId));
   return [...merged, ...accrualRows.filter((a) => !seen.has(a.itemId))];
 }
@@ -83,8 +90,11 @@ export function mergeConsumptionRows<T extends { itemId: string }>(
 export function completionLinesFor(
   rows: ConsumptionRow[],
   bookingId: string,
+  picks: Picks = new Map(),
 ): CompletionLine[] | null {
-  return completionLines(rows.filter((r) => r.bookingId === bookingId));
+  const member = rows.filter((r) => r.bookingId === bookingId);
+  // No rows stays `null` (realize as-is); substitutes not picked are dropped.
+  return member.length ? completionLines(selectedRows(member, picks)) : null;
 }
 
 /**
