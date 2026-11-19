@@ -5,7 +5,7 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
-  import { PageHeader, Badge, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Badge, Tooltip, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { applyFilters } from '$lib/components/data-table/apply-filters';
@@ -142,13 +142,47 @@
       : formatNumber(v, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const int = (v: number) => formatNumber(Math.round(v));
 
+  // Each tile carries the calculation behind it, with the real values, for its tooltip.
   const tiles = $derived([
-    { id: 'cac', label: m.pos_funnel_metric_cac(), value: money(metrics.cac) },
-    { id: 'ltv', label: m.pos_funnel_metric_ltv(), value: money(metrics.ltv) },
-    { id: 'ltv-cac', label: m.pos_funnel_metric_ltv_cac(), value: times(metrics.ltvCac) },
-    { id: 'roas', label: m.pos_funnel_metric_roas(), value: times(metrics.roas) },
-    { id: 'ticket', label: m.pos_funnel_metric_ticket(), value: money(metrics.avgTicket) },
-    { id: 'repeat', label: m.pos_funnel_metric_repeat(), value: pct(metrics.repeatRate) },
+    {
+      id: 'cac',
+      label: m.pos_funnel_metric_cac(),
+      value: money(metrics.cac),
+      calc: m.pos_funnel_calc_cac({ spend: formatMoney(f.spend), n: int(f.firstTime) }),
+    },
+    {
+      id: 'ltv',
+      label: m.pos_funnel_metric_ltv(),
+      value: money(metrics.ltv),
+      calc: m.pos_funnel_calc_ltv({ total: formatMoney(f.lifetimeTotal), n: int(f.customers) }),
+    },
+    {
+      id: 'ltv-cac',
+      label: m.pos_funnel_metric_ltv_cac(),
+      value: times(metrics.ltvCac),
+      calc: m.pos_funnel_calc_ltv_cac({ ltv: money(metrics.ltv), cac: money(metrics.cac) }),
+    },
+    {
+      id: 'roas',
+      label: m.pos_funnel_metric_roas(),
+      value: times(metrics.roas),
+      calc: m.pos_funnel_calc_roas({
+        revenue: formatMoney(f.revenue),
+        spend: formatMoney(f.spend),
+      }),
+    },
+    {
+      id: 'ticket',
+      label: m.pos_funnel_metric_ticket(),
+      value: money(metrics.avgTicket),
+      calc: m.pos_funnel_calc_ticket({ revenue: formatMoney(f.revenue), n: int(f.sales) }),
+    },
+    {
+      id: 'repeat',
+      label: m.pos_funnel_metric_repeat(),
+      value: pct(metrics.repeatRate),
+      calc: m.pos_funnel_calc_repeat({ repeat: int(f.repeatCustomers), n: int(f.customers) }),
+    },
   ]);
 
   // Spend is money, not a count: it starts the funnel but has no rate to impressions.
@@ -217,10 +251,15 @@
         <h2 id="funnel-metrics" class="t-title">{m.pos_funnel_metrics_title()}</h2>
         <div class="tiles">
           {#each tiles as tile (tile.id)}
-            <div class="tile">
-              <span class="t-display">{tile.value}</span>
-              <span class="t-caption">{tile.label}</span>
-            </div>
+            <Tooltip label={tile.calc} asChild>
+              {#snippet children(tip)}
+                <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+                <div class="tile" tabindex="0" {...tip}>
+                  <span class="t-display">{tile.value}</span>
+                  <span class="t-caption">{tile.label}</span>
+                </div>
+              {/snippet}
+            </Tooltip>
           {/each}
         </div>
       </section>
@@ -240,7 +279,15 @@
               </span>
               <span class="t-body">{int(s.n)}</span>
               {#if i > 0 && rates[i] !== undefined}
-                <span class="t-caption">{pct(rates[i] ?? null)}</span>
+                <Tooltip
+                  label={m.pos_funnel_calc_rate({
+                    n: int(s.n),
+                    prev: int(countStages[i - 1].n),
+                    prevLabel: countStages[i - 1].label,
+                  })}
+                >
+                  <span class="t-caption">{pct(rates[i] ?? null)}</span>
+                </Tooltip>
               {/if}
             </li>
           {/each}
