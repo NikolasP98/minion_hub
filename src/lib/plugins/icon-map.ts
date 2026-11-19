@@ -1,6 +1,7 @@
 import {
   Phone,
   Megaphone,
+  Funnel,
   BellRing,
   Puzzle,
   Palette,
@@ -63,6 +64,7 @@ export const BRAND_ICON_SET = new Set([
 export const PLUGIN_ICON_MAP: Record<string, LucideIcon> = {
   Phone,
   Megaphone,
+  Funnel,
   MegaphoneSimple: Megaphone,
   BellRing,
   Palette,

@@ -5,11 +5,11 @@
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
   import { PageHeader, Badge, iconSizes } from '$lib/components/ui';
-  import { PageShell } from '$lib/components/ui/foundations';
+  import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
-  import { appLocale, formatMoney } from '$lib/utils/format';
+  import { appLocale, formatDate, formatMoney } from '$lib/utils/format';
   import {
     filterCustomers,
     funnelMetrics,
@@ -64,10 +64,11 @@
       money: true,
       label: m.pos_funnel_col_spend(),
       align: 'right',
+      custom: true,
       accessor: (r) => r.spend,
     },
     { key: 'count', label: m.pos_funnel_col_purchases(), align: 'right', accessor: (r) => r.count },
-    { key: 'lastAt', label: m.pos_funnel_col_last(), accessor: (r) => r.lastAt },
+    { key: 'lastAt', label: m.pos_funnel_col_last(), custom: true, accessor: (r) => r.lastAt },
     { key: 'tier', label: m.pos_funnel_col_tier(), accessor: (r) => tierLabel(r.tier) },
     {
       key: 'reach',
@@ -116,9 +117,22 @@
     { id: 'first', label: m.pos_funnel_stage_first(), n: f.firstTime },
     { id: 'repeat', label: m.pos_funnel_stage_repeat(), n: f.repeatInRange },
   ]);
-  const rates = $derived(stageRates(countStages.map((s) => s.n)));
+  // Repeat customers are not a subset of first-time ones, so that pair has no rate.
+  const rates = $derived(
+    stageRates(countStages.map((s) => s.n)).map((r, i) =>
+      countStages[i].id === 'repeat' ? undefined : r,
+    ),
+  );
   const adEndsEarly = $derived(f.adLastDate !== null && f.adLastDate < data.range.to);
 </script>
+
+{#snippet spendCell(r: CustomerRow)}
+  <span class="tabular-nums">{formatMoney(r.spend)}</span>
+{/snippet}
+{#snippet lastAtCell(r: CustomerRow)}
+  <!-- lastAt is an org-local day; noon keeps it on that day in any browser zone -->
+  {formatDate(`${r.lastAt}T12:00:00`, { dateStyle: 'medium' })}
+{/snippet}
 
 <PageShell archetype="collection" scroll="page" labelledBy="pos-funnel-title">
   <PageHeader
@@ -129,108 +143,111 @@
     {#snippet leading()}<Funnel size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 
-  <div class="stack">
-    <DateRangeControls
-      from={fromDate}
-      to={toDate}
-      periods={[]}
-      dataMax={f.adLastDate ?? ''}
-      timeZone={data.timeZone}
-      storageKey="pos-funnel"
-      onChange={onRangeChange}
-    />
-    {#if adEndsEarly}
-      <p class="t-caption">{m.pos_funnel_ad_ends({ date: f.adLastDate ?? '' })}</p>
-    {/if}
-
-    <section class="stack" aria-labelledby="funnel-metrics">
-      <h2 id="funnel-metrics" class="t-title">{m.pos_funnel_metrics_title()}</h2>
-      <div class="tiles">
-        {#each tiles as tile (tile.id)}
-          <div class="tile">
-            <span class="t-display">{tile.value}</span>
-            <span class="t-caption">{tile.label}</span>
-          </div>
-        {/each}
-      </div>
-    </section>
-
-    <section class="stack" aria-labelledby="funnel-stages">
-      <h2 id="funnel-stages" class="t-title">{m.pos_funnel_stages_title()}</h2>
-      <ol class="stages">
-        <li class="stage">
-          <span class="t-label">{m.pos_funnel_stage_spend()}</span>
-          <span class="t-body">{formatMoney(f.spend)}</span>
-        </li>
-        {#each countStages as s, i (s.id)}
-          <li class="stage">
-            <span class="t-label">
-              {s.label}
-              {#if s.id === 'leads'}<Badge>{m.pos_funnel_estimate()}</Badge>{/if}
-            </span>
-            <span class="t-body">{int(s.n)}</span>
-            {#if i > 0}
-              <span class="t-caption">{rates[i] === null ? none : pct(rates[i])}</span>
-            {/if}
-          </li>
-        {/each}
-      </ol>
-      <p class="t-caption">{m.pos_funnel_stages_note()}</p>
-    </section>
-
-    <section class="stack" aria-labelledby="funnel-customers">
-      <h2 id="funnel-customers" class="t-title">{m.pos_funnel_customers_title()}</h2>
-      <div class="filters">
-        <span class="t-label">{m.pos_funnel_filter_reach()}</span>
-        <SegmentedControl
-          aria-label={m.pos_funnel_filter_reach()}
-          bind:value={reach}
-          items={[
-            { value: 'any', label: m.pos_funnel_reach_any() },
-            { value: 'phone', label: m.pos_funnel_reach_phone() },
-            { value: 'email', label: m.pos_funnel_reach_email() },
-            { value: 'whatsapp', label: m.pos_funnel_reach_whatsapp() },
-            { value: 'instagram', label: m.pos_funnel_reach_instagram() },
-            { value: 'none', label: m.pos_funnel_reach_none() },
-          ]}
-        />
-        <span class="t-label">{m.pos_funnel_filter_tier()}</span>
-        <SegmentedControl
-          aria-label={m.pos_funnel_filter_tier()}
-          bind:value={tier}
-          items={[
-            { value: 'all', label: m.pos_funnel_tier_all() },
-            { value: '1', label: m.pos_funnel_tier_top() },
-            { value: '2', label: m.pos_funnel_tier_mid() },
-            { value: '3', label: m.pos_funnel_tier_bottom() },
-          ]}
-        />
-      </div>
-      <p class="t-caption">
-        {m.pos_funnel_customers_summary({
-          customers: int(totals.customers),
-          reachable: int(totals.reachable),
-          notReachable: int(totals.notReachable),
-        })}
-        · {m.pos_funnel_reach_phone()}
-        {int(totals.phone)} · {m.pos_funnel_reach_email()}
-        {int(totals.email)} · {m.pos_funnel_reach_whatsapp()}
-        {int(totals.whatsapp)} · {m.pos_funnel_reach_instagram()}
-        {int(totals.instagram)}
-      </p>
-      <DataTable
-        variant="plain"
-        {columns}
-        data={rows}
-        getRowId={(r) => r.partyId}
-        searchPlaceholder={m.data_table_search()}
-        searchFields={(r) => r.name}
-        storageKey="pos-funnel-customers"
-        canEdit={false}
-        emptyMessage={m.pos_funnel_customers_empty()}
+  <PageBody padding="compact">
+    <div class="stack">
+      <DateRangeControls
+        from={fromDate}
+        to={toDate}
+        periods={[]}
+        dataMax={f.adLastDate ?? ''}
+        timeZone={data.timeZone}
+        storageKey="pos-funnel"
+        onChange={onRangeChange}
       />
-    </section>
-  </div>
+      {#if adEndsEarly}
+        <p class="t-caption">{m.pos_funnel_ad_ends({ date: f.adLastDate ?? '' })}</p>
+      {/if}
+
+      <section class="stack" aria-labelledby="funnel-metrics">
+        <h2 id="funnel-metrics" class="t-title">{m.pos_funnel_metrics_title()}</h2>
+        <div class="tiles">
+          {#each tiles as tile (tile.id)}
+            <div class="tile">
+              <span class="t-display">{tile.value}</span>
+              <span class="t-caption">{tile.label}</span>
+            </div>
+          {/each}
+        </div>
+      </section>
+
+      <section class="stack" aria-labelledby="funnel-stages">
+        <h2 id="funnel-stages" class="t-title">{m.pos_funnel_stages_title()}</h2>
+        <ol class="stages">
+          <li class="stage">
+            <span class="t-label">{m.pos_funnel_stage_spend()}</span>
+            <span class="t-body">{formatMoney(f.spend)}</span>
+          </li>
+          {#each countStages as s, i (s.id)}
+            <li class="stage">
+              <span class="t-label">
+                {s.label}
+                {#if s.id === 'leads'}<Badge>{m.pos_funnel_estimate()}</Badge>{/if}
+              </span>
+              <span class="t-body">{int(s.n)}</span>
+              {#if i > 0 && rates[i] !== undefined}
+                <span class="t-caption">{pct(rates[i] ?? null)}</span>
+              {/if}
+            </li>
+          {/each}
+        </ol>
+        <p class="t-caption">{m.pos_funnel_stages_note()}</p>
+      </section>
+
+      <section class="stack" aria-labelledby="funnel-customers">
+        <h2 id="funnel-customers" class="t-title">{m.pos_funnel_customers_title()}</h2>
+        <div class="filters">
+          <span class="t-label">{m.pos_funnel_filter_reach()}</span>
+          <SegmentedControl
+            aria-label={m.pos_funnel_filter_reach()}
+            bind:value={reach}
+            items={[
+              { value: 'any', label: m.pos_funnel_reach_any() },
+              { value: 'phone', label: m.pos_funnel_reach_phone() },
+              { value: 'email', label: m.pos_funnel_reach_email() },
+              { value: 'whatsapp', label: m.pos_funnel_reach_whatsapp() },
+              { value: 'instagram', label: m.pos_funnel_reach_instagram() },
+              { value: 'none', label: m.pos_funnel_reach_none() },
+            ]}
+          />
+          <span class="t-label">{m.pos_funnel_filter_tier()}</span>
+          <SegmentedControl
+            aria-label={m.pos_funnel_filter_tier()}
+            bind:value={tier}
+            items={[
+              { value: 'all', label: m.pos_funnel_tier_all() },
+              { value: '1', label: m.pos_funnel_tier_top() },
+              { value: '2', label: m.pos_funnel_tier_mid() },
+              { value: '3', label: m.pos_funnel_tier_bottom() },
+            ]}
+          />
+        </div>
+        <p class="t-caption">
+          {m.pos_funnel_customers_summary({
+            customers: int(totals.customers),
+            reachable: int(totals.reachable),
+            notReachable: int(totals.notReachable),
+          })}
+          · {m.pos_funnel_reach_phone()}
+          {int(totals.phone)} · {m.pos_funnel_reach_email()}
+          {int(totals.email)} · {m.pos_funnel_reach_whatsapp()}
+          {int(totals.whatsapp)} · {m.pos_funnel_reach_instagram()}
+          {int(totals.instagram)}
+        </p>
+        <DataTable
+          variant="plain"
+          {columns}
+          cells={{ spend: spendCell, lastAt: lastAtCell }}
+          data={rows}
+          getRowId={(r) => r.partyId}
+          searchPlaceholder={m.data_table_search()}
+          searchFields={(r) => r.name}
+          storageKey="pos-funnel-customers"
+          canEdit={false}
+          emptyMessage={m.pos_funnel_customers_empty()}
+        />
+      </section>
+    </div>
+  </PageBody>
 </PageShell>
 
 <style>
