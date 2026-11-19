@@ -5,7 +5,7 @@
   import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
-  import { PageHeader, Badge, Tooltip, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Badge, MathFormula, Tooltip, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { applyFilters } from '$lib/components/data-table/apply-filters';
@@ -142,48 +142,65 @@
       : formatNumber(v, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const int = (v: number) => formatNumber(Math.round(v));
 
-  // Each tile carries the calculation behind it, with the real values, for its tooltip.
-  const tiles = $derived([
-    {
-      id: 'cac',
-      label: m.pos_funnel_metric_cac(),
-      value: money(metrics.cac),
-      calc: m.pos_funnel_calc_cac({ spend: formatMoney(f.spend), n: int(f.firstTime) }),
-    },
-    {
-      id: 'ltv',
-      label: m.pos_funnel_metric_ltv(),
-      value: money(metrics.ltv),
-      calc: m.pos_funnel_calc_ltv({ total: formatMoney(f.lifetimeTotal), n: int(f.customers) }),
-    },
-    {
-      id: 'ltv-cac',
-      label: m.pos_funnel_metric_ltv_cac(),
-      value: times(metrics.ltvCac),
-      calc: m.pos_funnel_calc_ltv_cac({ ltv: money(metrics.ltv), cac: money(metrics.cac) }),
-    },
-    {
-      id: 'roas',
-      label: m.pos_funnel_metric_roas(),
-      value: times(metrics.roas),
-      calc: m.pos_funnel_calc_roas({
-        revenue: formatMoney(f.revenue),
-        spend: formatMoney(f.spend),
-      }),
-    },
-    {
-      id: 'ticket',
-      label: m.pos_funnel_metric_ticket(),
-      value: money(metrics.avgTicket),
-      calc: m.pos_funnel_calc_ticket({ revenue: formatMoney(f.revenue), n: int(f.sales) }),
-    },
-    {
-      id: 'repeat',
-      label: m.pos_funnel_metric_repeat(),
-      value: pct(metrics.repeatRate),
-      calc: m.pos_funnel_calc_repeat({ repeat: int(f.repeatCustomers), n: int(f.customers) }),
-    },
-  ]);
+  // Each tile carries its formula twice for the tooltip, like the CRM score:
+  // once with the terms named, once with the real values substituted.
+  const txt = (v: string) => `\\text{${v.replace(/([%$#&_{}])/g, '\\$1')}}`;
+  const frac = (n: string, d: string) => `\\dfrac{${txt(n)}}{${txt(d)}}`;
+  // The card already names the metric, so the first line is only the named fraction:
+  // with the name in front, long Spanish labels shrank the formula to fit.
+  const calc = (terms: [string, string], values: [string, string], out: string) => ({
+    sym: frac(...terms),
+    val: `${frac(...values)} = ${txt(out)}`,
+  });
+  const tiles = $derived(
+    [
+      {
+        id: 'cac',
+        label: m.pos_funnel_metric_cac(),
+        value: money(metrics.cac),
+        terms: [m.pos_funnel_stage_spend(), m.pos_funnel_stage_first()],
+        values: [formatMoney(f.spend), int(f.firstTime)],
+      },
+      {
+        id: 'ltv',
+        label: m.pos_funnel_metric_ltv(),
+        value: money(metrics.ltv),
+        terms: [m.pos_funnel_term_lifetime_sales(), m.pos_funnel_term_customers()],
+        values: [formatMoney(f.lifetimeTotal), int(f.customers)],
+      },
+      {
+        id: 'ltv-cac',
+        label: m.pos_funnel_metric_ltv_cac(),
+        value: times(metrics.ltvCac),
+        terms: [m.pos_funnel_metric_ltv(), m.pos_funnel_metric_cac()],
+        values: [money(metrics.ltv), money(metrics.cac)],
+      },
+      {
+        id: 'roas',
+        label: m.pos_funnel_metric_roas(),
+        value: times(metrics.roas),
+        terms: [m.pos_funnel_term_range_sales(), m.pos_funnel_stage_spend()],
+        values: [formatMoney(f.revenue), formatMoney(f.spend)],
+      },
+      {
+        id: 'ticket',
+        label: m.pos_funnel_metric_ticket(),
+        value: money(metrics.avgTicket),
+        terms: [m.pos_funnel_term_range_sales(), m.pos_funnel_term_sales_count()],
+        values: [formatMoney(f.revenue), int(f.sales)],
+      },
+      {
+        id: 'repeat',
+        label: m.pos_funnel_metric_repeat(),
+        value: pct(metrics.repeatRate),
+        terms: [m.pos_funnel_term_repeat_customers(), m.pos_funnel_term_customers()],
+        values: [int(f.repeatCustomers), int(f.customers)],
+      },
+    ].map((t) => ({
+      ...t,
+      ...calc(t.terms as [string, string], t.values as [string, string], t.value),
+    })),
+  );
 
   // Spend is money, not a count: it starts the funnel but has no rate to impressions.
   const countStages = $derived([
@@ -213,6 +230,12 @@
     {#each reachability(r) as k (k)}
       <span title={reachLabel(k)} aria-label={reachLabel(k)}>{@render channelIcon(k)}</span>
     {:else}—{/each}
+  </span>
+{/snippet}
+{#snippet formula(sym: string, val: string)}
+  <span class="calc">
+    <MathFormula tex={sym} />
+    <MathFormula tex={val} class="calc-values" />
   </span>
 {/snippet}
 {#snippet spendCell(r: CustomerRow)}
@@ -251,7 +274,8 @@
         <h2 id="funnel-metrics" class="t-title">{m.pos_funnel_metrics_title()}</h2>
         <div class="tiles">
           {#each tiles as tile (tile.id)}
-            <Tooltip label={tile.calc} asChild>
+            <Tooltip asChild>
+              {#snippet content()}{@render formula(tile.sym, tile.val)}{/snippet}
               {#snippet children(tip)}
                 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                 <div class="tile" tabindex="0" {...tip}>
@@ -279,13 +303,13 @@
               </span>
               <span class="t-body">{int(s.n)}</span>
               {#if i > 0 && rates[i] !== undefined}
-                <Tooltip
-                  label={m.pos_funnel_calc_rate({
-                    n: int(s.n),
-                    prev: int(countStages[i - 1].n),
-                    prevLabel: countStages[i - 1].label,
-                  })}
-                >
+                <Tooltip>
+                  {#snippet content()}
+                    {@render formula(
+                      frac(s.label, countStages[i - 1].label),
+                      `${frac(int(s.n), int(countStages[i - 1].n))} = ${txt(pct(rates[i] ?? null))}`,
+                    )}
+                  {/snippet}
                   <span class="t-caption">{pct(rates[i] ?? null)}</span>
                 </Tooltip>
               {/if}
@@ -336,6 +360,16 @@
 </PageShell>
 
 <style>
+  .calc {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: 15rem;
+    padding: var(--space-1) 0;
+  }
+  .calc :global(.calc-values) {
+    color: var(--color-text-secondary);
+  }
   .channels {
     display: inline-flex;
     align-items: center;
