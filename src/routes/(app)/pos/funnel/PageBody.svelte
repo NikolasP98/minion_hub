@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { PageData as LoadedPageData } from './$types';
   import type { Granted } from '$lib/permissions';
-  import { Check, Funnel } from 'lucide-svelte';
+  import { Funnel, Mail, Phone } from 'lucide-svelte';
+  import ChannelBrandIcon from '$lib/components/channels/ChannelBrandIcon.svelte';
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
   import { PageHeader, Badge, iconSizes } from '$lib/components/ui';
@@ -92,25 +93,18 @@
       },
     },
     {
-      key: 'reachable',
-      label: m.pos_funnel_col_reachable(),
-      align: 'center',
-      type: 'boolean',
-      width: 104,
+      key: 'reach',
+      label: m.pos_funnel_col_reach(),
       custom: true,
-      accessor: (r) => reachability(r).length > 0,
-      filter: { match: (r) => reachability(r).length > 0 },
+      sortable: false,
+      accessor: (r) => reachability(r).map(reachLabel).join(', '),
+      // One multi-value property: "is Instagram", "is not WhatsApp", "is empty" = not reachable.
+      filter: {
+        icon: true,
+        options: () => REACH_KINDS.map((k) => ({ value: k, label: reachLabel(k) })),
+        match: (r) => reachability(r),
+      },
     },
-    ...REACH_KINDS.map((k): DataColumn<CustomerRow> => ({
-      key: k,
-      label: reachLabel(k),
-      align: 'center',
-      type: 'boolean',
-      width: 104,
-      custom: true,
-      accessor: (r) => r[k],
-      filter: { match: (r) => r[k] },
-    })),
   ]);
 
   function matchOf(key: string): ((row: unknown) => unknown) | null {
@@ -169,20 +163,18 @@
   const adEndsEarly = $derived(f.adLastDate !== null && f.adLastDate < data.range.to);
 </script>
 
-{#snippet flag(on: boolean)}
-  <span class="flag">
-    {#if on}<Check
-        size={iconSizes.sm}
-        class="text-accent"
-        aria-label={m.pos_funnel_yes()}
-      />{:else}—{/if}
+{#snippet channelIcon(k: string)}
+  {#if k === 'phone'}<Phone size={iconSizes.sm} />
+  {:else if k === 'email'}<Mail size={iconSizes.sm} />
+  {:else}<ChannelBrandIcon channel={k} size={iconSizes.sm} />{/if}
+{/snippet}
+{#snippet reachCell(r: CustomerRow)}
+  <span class="channels">
+    {#each reachability(r) as k (k)}
+      <span title={reachLabel(k)} aria-label={reachLabel(k)}>{@render channelIcon(k)}</span>
+    {:else}—{/each}
   </span>
 {/snippet}
-{#snippet reachableCell(r: CustomerRow)}{@render flag(reachability(r).length > 0)}{/snippet}
-{#snippet phoneCell(r: CustomerRow)}{@render flag(r.phone)}{/snippet}
-{#snippet emailCell(r: CustomerRow)}{@render flag(r.email)}{/snippet}
-{#snippet whatsappCell(r: CustomerRow)}{@render flag(r.whatsapp)}{/snippet}
-{#snippet instagramCell(r: CustomerRow)}{@render flag(r.instagram)}{/snippet}
 {#snippet spendCell(r: CustomerRow)}
   <span class="tabular-nums">{formatMoney(r.spend)}</span>
 {/snippet}
@@ -270,17 +262,14 @@
           cells={{
             spend: spendCell,
             lastAt: lastAtCell,
-            reachable: reachableCell,
-            phone: phoneCell,
-            email: emailCell,
-            whatsapp: whatsappCell,
-            instagram: instagramCell,
+            reach: reachCell,
           }}
           data={data.customers}
           filterBar
           filterChips
           bind:filters={tableFilters}
           bind:advanced={tableAdvanced}
+          filterOptionIcon={channelIcon}
           getRowId={(r) => r.partyId}
           searchPlaceholder={m.data_table_search()}
           searchFields={(r) => r.name}
@@ -294,9 +283,10 @@
 </PageShell>
 
 <style>
-  .flag {
-    display: flex;
-    justify-content: center;
+  .channels {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
   }
   .stack {
     display: flex;

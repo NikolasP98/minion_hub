@@ -7631,8 +7631,6 @@
   "stock_corr_receipt_owner_only": "Cambiar una tarifa cambia el valor del stock, así que solo un propietario puede confirmarlo.",
   "stock_corr_receipt_replaces": "Esta entrada reemplaza a una que fue corregida.",
   "stock_corr_receipt_original_link": "Ver la original",
-  "pos_funnel_col_reachable": "Alcanzable",
-  "pos_funnel_yes": "Sí",
   "pos_funnel_title": "Embudo de marketing",
   "pos_funnel_subtitle": "De la inversión en anuncios a los clientes recurrentes, y a qué clientes que pagan puede llegar Meta. Solo lectura.",
   "pos_funnel_no_data": "Datos insuficientes",
