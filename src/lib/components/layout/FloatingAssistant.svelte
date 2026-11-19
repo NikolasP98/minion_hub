@@ -37,7 +37,7 @@
   } from '$lib/assistant/interrupted-effects';
   import { canonicalPath } from '$lib/canonical-path';
   import { appLocale } from '$lib/utils/format';
-  import { Button, iconSizes } from '$lib/components/ui';
+  import { Button, StatusDot, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
   import {
     Minus,
@@ -100,7 +100,8 @@
   } from '$lib/chat/blocks';
   import { page } from '$app/state';
   import { onMount, tick } from 'svelte';
-  import { createHotkey, formatForDisplay } from '$lib/hotkeys';
+  import { createHotkey } from '$lib/hotkeys';
+  import { pillStatus } from '$lib/assistant/pill-status';
   import FactoryIntakeCard from '$lib/components/workforce/FactoryIntakeCard.svelte';
   import {
     factoryIntakeIsSettled,
@@ -126,13 +127,8 @@
   let inputEl: HTMLTextAreaElement | null = $state(null);
   let conversation: AiConversation | undefined = $state();
 
-  // Launcher kbd hint — ⌘J on macOS, Ctrl+J elsewhere. Seeded to the mac glyph
-  // (matches SSR) and corrected to the real platform after mount.
-  let kbdToggle = $state('⌘J');
-
   onMount(() => {
     loadPersonalAgent();
-    kbdToggle = formatForDisplay('Mod+J');
   });
 
   // ⌘J / Ctrl+J — ⌘K is owned by the command palette (CommandPalette.svelte).
@@ -582,6 +578,35 @@
   const replyRunning = $derived(
     composerMode === 'chat' && (sending || stream !== null || routing || !!$acceptedActivity),
   );
+  // Hover bubble on the collapsed pill: an invitation on an empty chat, else
+  // the task + what the agent is doing right now (or how the last turn ended).
+  const pill = $derived(
+    pillStatus(messages, {
+      running: replyRunning,
+      streamText,
+      error: !!chat?.lastError,
+      clean: (t) => stripUiBlocks(stripTtsTags(cleanInboundForDisplay(t))),
+    }),
+  );
+  const pillLine = $derived.by(() => {
+    if (!pill) return m.floatingAssistant_askAnything();
+    switch (pill.phase) {
+      case 'thinking':
+        return m.floatingAssistant_thinking();
+      case 'tool':
+        return m.floatingAssistant_usingTool({ tool: pill.tool ?? '' });
+      case 'reviewing':
+        return m.ai_reviewing();
+      case 'writing':
+        return m.floatingAssistant_writing();
+      case 'error':
+        return m.floatingAssistant_failed();
+      default:
+        return pill.reply || m.floatingAssistant_askAnything();
+    }
+  });
+  const pillLive = $derived(!!pill && pill.phase !== 'done' && pill.phase !== 'error');
+
   function stopReply() {
     const preparing = routing;
     // Capture the displayed run synchronously; later session changes cannot retarget abort.
@@ -713,21 +738,6 @@
       vw - (pos.left + launcherSize.w) <= HOME_ZONE &&
       vh - (pos.top + launcherSize.h) <= HOME_ZONE,
   );
-
-  // Docked = resting at the default corner — `pos` is only ever non-null once
-  // a real drag has moved the pill (see onLauncherPointerMove), so this stays
-  // true through a plain click and through the whole pre-threshold hold of a
-  // pointerdown, and only flips once the pill actually leaves the corner.
-  // Collapses to an icon-only circle; anywhere else it's the full label+kbd pill.
-  const docked = $derived(!pos);
-
-  // The docked circle and the full pill are different footprints (not just a
-  // hover-only size change like the label reveal) — re-measure whenever the
-  // shape flips so edge-snap/clamp math uses the real box, not a stale one.
-  $effect(() => {
-    void docked;
-    measureLauncher();
-  });
 
   // Slide to the default corner with the normal snap transition, then drop the
   // custom position entirely (same state as a hard refresh).
@@ -907,6 +917,9 @@
 
   // Anchor by the half it sits in so hover-expand grows inward (never off-screen).
   const anchorRight = $derived(!!pos && pos.left + launcherW() / 2 > vw / 2);
+  // The hover bubble opens toward the screen's centre from wherever the pill sits.
+  const bubbleEnd = $derived(!pos || anchorRight);
+  const bubbleBelow = $derived(!!pos && pos.top + launcherH() / 2 < vh / 2);
   const launcherStyle = $derived.by(() => {
     if (!pos) return '';
     if (dragging) return `left:${pos.left}px; right:auto; top:${pos.top}px;`;
@@ -1004,40 +1017,36 @@
       onclick={onLauncherClick}
       class="!fixed z-[var(--layer-popover,40)] rounded-full shadow-[var(--shadow-elevation-3,var(--shadow-md))] transition-[background-color,border-color,box-shadow] group select-none touch-none {dragging
         ? 'cursor-grabbing shadow-[var(--shadow-elevation-4,var(--shadow-lg))]'
-        : 'cursor-grab'} {pos ? '' : 'bottom-5 right-5'} {docked
-        ? '!h-[var(--control-height-touch)] !w-11 !p-0 flex items-center justify-center bg-accent/10 border border-accent/20 hover:bg-accent/16 hover:border-accent/40'
-        : '!h-auto flex items-center gap-1.5 p-1.5 bg-bg2 border border-border hover:border-accent/50 hover:bg-bg3'}"
+        : 'cursor-grab'} {pos
+        ? ''
+        : 'bottom-5 right-5'} fa-launcher !h-[var(--control-height-touch)] !w-11 !p-0 flex items-center justify-center bg-accent/10 border border-accent/20 hover:bg-accent/16 hover:border-accent/40"
       style={launcherStyle}
-      aria-label={`${m.floatingAssistant_openLabel()} (${kbdToggle})`}
-      title={`${m.floatingAssistant_openTitle()} (${kbdToggle})`}
+      aria-label={m.floatingAssistant_openLabel()}
+      aria-describedby="fa-pill-bubble"
+      aria-keyshortcuts="Control+J Meta+J"
     >
-      {#if docked}
-        <!-- Docked in the corner: icon-only, subtly-filled circle — the kbd hint
-             moves into aria-label/title since there's no room for the chip. -->
-        <AiOrbFace diameter={32} status={faceState} />
-      {:else}
-        <!-- Icon chip — pairs with the kbd as a balanced two-token collapsed pill. -->
-        <AiOrbFace diameter={28} status={faceState} />
-        <!-- Label reveals on hover. Grid 0fr→1fr animates to the text's exact width
-             (no hardcoded max-width, no clipping). Flex items-center handles vertical
-             centring; leading-tight + py-0.5 give descenders (g, y) room inside the clip. -->
-        <span
-          class="grid grid-cols-[0fr] transition-[grid-template-columns] duration-[var(--duration-normal)] ease-out {dragging
-            ? ''
-            : 'group-hover:grid-cols-[1fr]'}"
-        >
-          <span class="overflow-hidden min-w-0">
-            <span
-              class="block px-1 py-0.5 whitespace-nowrap text-[length:var(--font-size-body)] font-medium leading-tight text-foreground"
-              >{m.floatingAssistant_askAnything()}</span
-            >
-          </span>
+      <AiOrbFace diameter={32} status={faceState} />
+      <!-- Hover bubble (replaces the old label + hotkey chip): "Ask anything" on
+           an empty chat, otherwise the task and what the agent is doing now. -->
+      <span
+        id="fa-pill-bubble"
+        class="fa-bubble {bubbleBelow ? 'below' : 'above'} {bubbleEnd ? 'end' : 'start'}"
+        class:hidden-drag={dragging}
+      >
+        {#if pill?.task}
+          <span class="fa-bubble-task t-caption">{pill.task}</span>
+        {/if}
+        <span class="fa-bubble-line t-body">
+          {#if pillLive || pill?.phase === 'error'}
+            <StatusDot size="sm" status={pillLive ? 'thinking' : 'aborted'} />
+          {/if}
+          <span class="fa-bubble-text" class:quiet={pill?.phase === 'done'}>{pillLine}</span>
         </span>
-        <kbd
-          class="shrink-0 flex items-center h-5 px-1.5 rounded-md bg-bg3 text-[length:var(--font-size-telemetry)] font-medium font-mono leading-none text-muted-foreground border border-border"
-          >{kbdToggle}</kbd
-        >
-      {/if}
+        <!-- shortcut: the shared ai_toolUses copy has no singular, so 1 call stays unsaid -->
+        {#if pill && pill.toolUses > 1}
+          <span class="t-caption fa-bubble-meta">{m.ai_toolUses({ count: pill.toolUses })}</span>
+        {/if}
+      </span>
     </Button>
   {:else}
     <!-- Expanded panel — grows out of the launcher's corner, draggable by header -->
@@ -1469,5 +1478,95 @@
     color: var(--color-muted-foreground);
     font-size: var(--font-size-telemetry);
     line-height: 1.5;
+  }
+  /* Collapsed pill's hover bubble — a speech bubble whose tail corner (the
+     small radius) points back at the pill. */
+  .fa-bubble {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    width: max-content;
+    max-width: min(18rem, calc(100vw - 2 * var(--space-6)));
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    background: var(--color-overlay);
+    box-shadow: var(--shadow-overlay);
+    color: var(--color-text-primary);
+    white-space: normal;
+    text-align: start;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(var(--fa-bubble-shift));
+    transition:
+      opacity var(--duration-fast) var(--ease-standard),
+      transform var(--duration-fast) var(--ease-standard);
+  }
+  .fa-bubble.above {
+    bottom: calc(100% + var(--space-2));
+    --fa-bubble-shift: var(--space-1);
+  }
+  .fa-bubble.below {
+    top: calc(100% + var(--space-2));
+    --fa-bubble-shift: calc(-1 * var(--space-1));
+  }
+  .fa-bubble.end {
+    right: 0;
+  }
+  .fa-bubble.start {
+    left: 0;
+  }
+  .fa-bubble.above.end {
+    border-bottom-right-radius: var(--radius-xs);
+  }
+  .fa-bubble.above.start {
+    border-bottom-left-radius: var(--radius-xs);
+  }
+  .fa-bubble.below.end {
+    border-top-right-radius: var(--radius-xs);
+  }
+  .fa-bubble.below.start {
+    border-top-left-radius: var(--radius-xs);
+  }
+  :global(.fa-launcher:hover) .fa-bubble,
+  :global(.fa-launcher:focus-visible) .fa-bubble {
+    opacity: 1;
+    transform: none;
+  }
+  .fa-bubble.hidden-drag {
+    opacity: 0;
+  }
+  .fa-bubble-task {
+    color: var(--color-text-secondary);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  .fa-bubble-line {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-weight: var(--font-weight-medium);
+  }
+  .fa-bubble-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+  .fa-bubble-text.quiet {
+    font-weight: var(--font-weight-regular);
+  }
+  .fa-bubble-meta {
+    color: var(--color-text-tertiary);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fa-bubble {
+      transform: none;
+    }
   }
 </style>
