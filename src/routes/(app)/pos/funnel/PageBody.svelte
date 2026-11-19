@@ -19,7 +19,7 @@
     type CustomerFilter,
     type CustomerRow,
     type ReachKind,
-  } from '$server/services/pos/pos-funnel.logic';
+  } from '$lib/pos/funnel-logic';
 
   type PageData = Granted<LoadedPageData['pos']>;
   let { data }: { data: PageData } = $props();

@@ -8,7 +8,7 @@ import {
   filterCustomers,
   reachTotals,
   type CustomerRow,
-} from './pos-funnel.logic';
+} from './funnel-logic';
 
 const row = (o: Partial<CustomerRow> & { partyId: string }): CustomerRow => ({
   name: o.partyId,

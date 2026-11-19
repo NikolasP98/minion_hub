@@ -6,7 +6,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { CONVO_ACTION, type DateRange } from '$server/services/meta/meta-insights.service';
-import { assignTiers, type CustomerRow } from './pos-funnel.logic';
+import { assignTiers, type CustomerRow } from '$lib/pos/funnel-logic';
 
 /** `sales(party_id, amount, d)`; `d` is the org-local day. party_id may be null. */
 function salesCte(orgId: string, tz: string): SQL {
