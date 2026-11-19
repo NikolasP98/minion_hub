@@ -26,6 +26,7 @@ import {
   CalendarDays,
   FileText,
   FolderKanban,
+  Funnel,
   Image,
   Inbox,
   Layers,
@@ -167,6 +168,15 @@ function areaItems(area: AreaId, data: ModuleNavData): ModuleNavItem[] {
           matcher: own('/pos/catalog'),
           group: m.pos_nav_group_setup(),
           hint: m.pos_nav_catalog_hint(),
+        },
+        {
+          id: 'funnel',
+          href: '/pos/funnel',
+          label: m.pos_nav_funnel(),
+          icon: Funnel,
+          matcher: own('/pos/funnel'),
+          group: m.pos_nav_group_setup(),
+          hint: m.pos_nav_funnel_hint(),
         },
         {
           id: 'settings',
