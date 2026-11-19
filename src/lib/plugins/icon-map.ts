@@ -15,13 +15,11 @@ import {
   Send,
   LayoutDashboard,
   Sparkles,
-} from "lucide-svelte";
-import type { ComponentType, SvelteComponent } from "svelte";
+} from 'lucide-svelte';
+import type { ComponentType, SvelteComponent } from 'svelte';
 
 // lucide-svelte still ships legacy SvelteComponentTyped types; widen for Svelte 5 mixed code.
-export type LucideIcon = ComponentType<
-  SvelteComponent<{ size?: number | string; class?: string }>
->;
+export type LucideIcon = ComponentType<SvelteComponent<{ size?: number | string; class?: string }>>;
 
 /**
  * Brand identifiers that map to SVG icons (ChannelBrandIcon) rather than
@@ -29,31 +27,31 @@ export type LucideIcon = ComponentType<
  * render the branded SVG where appropriate.
  */
 export const BRAND_ICON_SET = new Set([
-  "gmail",
-  "discord",
-  "telegram",
-  "whatsapp",
-  "slack",
-  "signal",
-  "web",
-  "imessage",
-  "matrix",
-  "msteams",
-  "feishu",
-  "googlechat",
-  "irc",
-  "line",
-  "linq",
-  "mattermost",
-  "nextcloud-talk",
-  "nostr",
-  "tlon",
-  "twitch",
-  "wati",
-  "weixin",
-  "zalo",
-  "zalouser",
-  "bluebubbles",
+  'gmail',
+  'discord',
+  'telegram',
+  'whatsapp',
+  'slack',
+  'signal',
+  'web',
+  'imessage',
+  'matrix',
+  'msteams',
+  'feishu',
+  'googlechat',
+  'irc',
+  'line',
+  'linq',
+  'mattermost',
+  'nextcloud-talk',
+  'nostr',
+  'tlon',
+  'twitch',
+  'wati',
+  'weixin',
+  'zalo',
+  'zalouser',
+  'bluebubbles',
 ]);
 
 /**
