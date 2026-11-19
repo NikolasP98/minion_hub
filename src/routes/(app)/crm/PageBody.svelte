@@ -408,7 +408,7 @@
         </div>
       </div>
       {#if s.revenue.reserved > 0}
-        <a class="rev-cta" href="/crm/customers?reserved=1"
+        <a class="rev-cta" href="/crm/customers?f.reserved=1"
           >{m.crm_dash_reserved_cta({ count: s.revenue.reserved })}</a
         >
       {/if}
@@ -430,7 +430,7 @@
         </div>
       </div>
       {#if s.response.awaitingByTemp.hot > 0}
-        <a class="rev-cta" href="/crm/customers?awaiting=1"
+        <a class="rev-cta" href="/crm/customers?f.awaiting=1"
           >{m.crm_resp_hot_awaiting({ count: s.response.awaitingByTemp.hot })}</a
         >
       {/if}

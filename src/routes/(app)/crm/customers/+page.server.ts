@@ -1,3 +1,4 @@
+import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { datasetCtx, isDenied, viewableModules } from '$server/auth/dataset-ctx';
 import { ownerFilter, shouldMaskSensitive } from '$server/services/rbac.service';
@@ -23,9 +24,10 @@ const PAGE_SIZE = 100;
  *
  * The table axes use the shared `data-table/kit` wire format (spec 2026-09-28
  * §T3): `q`, `sort=<column>:<dir>`, and one `f.<column>` per active column
- * filter. The page's own scope filters (`tag`, `reserved`, `awaiting`,
- * `scoreMin`/`scoreMax`, `temp`) keep their historical names — /crm deep-links
- * to them.
+ * filter. Tag / reserved / awaiting are column filters (`f.tags`, `f.reserved`,
+ * `f.awaiting`); their historical `tag` / `reserved` / `awaiting` params are
+ * redirected to that form (`_legacyFilterRedirect`). `scoreMin`/`scoreMax`/`temp`
+ * stay page params.
  */
 /** Column key (what the URL carries) → the service's sort name. */
 const COLUMN_SORT: Record<string, RankFilters['sort']> = {
@@ -59,9 +61,9 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
     origin: csv('origin'),
     verified: csv('verified'),
     sex: csv('sex'),
-    tagId: q.get('tag') || undefined,
-    reservedOnly: q.get('reserved') === '1' || undefined,
-    awaitingReply: q.get('awaiting') === '1' || undefined,
+    tagId: csv('tags'),
+    reservedOnly: csv('reserved') === '1' || undefined,
+    awaitingReply: csv('awaiting') === '1' || undefined,
     minScore,
     maxScore,
     sort: COLUMN_SORT[sortColumn],
@@ -72,7 +74,28 @@ function filtersFromUrl(q: URLSearchParams): RankFilters {
   };
 }
 
+/** Old bookmarks: `?tag=<id>` / `?reserved=1` / `?awaiting=1` were toolbar
+ *  toggles; they are column filters now. `null` when nothing to rewrite. */
+export function _legacyFilterRedirect(url: URL): string | null {
+  const legacy: Record<string, string> = {
+    tag: 'tags',
+    reserved: 'reserved',
+    awaiting: 'awaiting',
+  };
+  if (!Object.keys(legacy).some((k) => url.searchParams.has(k))) return null;
+  const p = new URLSearchParams(url.search);
+  for (const [from, column] of Object.entries(legacy)) {
+    const v = p.get(from);
+    p.delete(from);
+    if (v && (from === 'tag' || v === '1') && !p.has(`f.${column}`)) p.set(`f.${column}`, v);
+  }
+  const search = p.toString();
+  return search ? `${url.pathname}?${search}` : url.pathname;
+}
+
 export const load: PageServerLoad = async ({ locals, depends, parent, url, setHeaders }) => {
+  const legacyTarget = _legacyFilterRedirect(url);
+  if (legacyTarget) redirect(308, legacyTarget);
   const timing = new ServerTiming();
   const ctx = await datasetCtx(locals, 'crm');
   if (isDenied(ctx)) return { crm: ctx }; // rendered by DataSource (spec 039)

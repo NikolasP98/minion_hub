@@ -19,7 +19,7 @@
     Megaphone,
     Sprout,
   } from 'lucide-svelte';
-  import { PageHeader, Button, Chip, Modal, Select, iconSizes } from '$lib/components/ui';
+  import { PageHeader, Button, Chip, Modal, iconSizes } from '$lib/components/ui';
   import { PageShell } from '$lib/components/ui/foundations';
   import ScoreCell from '$lib/components/crm/ScoreCell.svelte';
   import StagePill from '$lib/components/crm/StagePill.svelte';
@@ -151,6 +151,8 @@
     { value: '1', label: m.crm_verified_filter_yes() },
     { value: '0', label: m.crm_verified_filter_no() },
   ];
+  /** Reserved / awaiting reply are yes-only flags: the API filters on `=1` only. */
+  const yesOption = [{ value: '1', label: m.common_yes() }];
   const sexOptions = [
     { value: 'M', label: m.crm_sex_m() },
     { value: 'F', label: m.crm_sex_f() },
@@ -186,9 +188,10 @@
 
   // ── URL-mirrored table state (data-table kit) ──────────────────────────────
   // The kit owns the generic axes — `q`, `sort=<col>:<dir>` and one `f.<column>`
-  // per active column filter. The page-scoped scope filters below keep their
-  // historical param names (`/crm` deep-links to `?reserved=1` / `?awaiting=1`)
-  // and are folded into the SAME write, in the single `$effect` further down.
+  // per active column filter (tag / reserved / awaiting included — the server
+  // load redirects their old `?tag=`/`?reserved=1`/`?awaiting=1` links). The
+  // page-scoped score/temp params are folded into the SAME write, in the single
+  // `$effect` further down.
   const url = createTableUrlState({ keys: ['search', 'sort', 'filters'] });
   // The service's default order is score desc — make it explicit so the header
   // arrow, the URL and the query agree from the first paint.
@@ -206,11 +209,8 @@
     Object.fromEntries(Object.entries(url.filters).map(([k, v]) => [k, enumFilter(v)])),
   );
 
-  // ── Page-owned scope filters (tag / reserved / awaiting / score / temp) ────
+  // ── Page-owned scope filters (score / temp) ─────────────────────────────────
   const qp = page.url.searchParams;
-  let tagId = $state(qp.get('tag') ?? '');
-  let reservedFilter = $state(qp.get('reserved') === '1');
-  let awaitingFilter = $state(qp.get('awaiting') === '1');
   let scoreMin = $state<number | null>(qp.has('scoreMin') ? Number(qp.get('scoreMin')) : null);
   let scoreMax = $state<number | null>(qp.has('scoreMax') ? Number(qp.get('scoreMax')) : null);
   let tempFilter = $state<string>(qp.get('temp') ?? '');
@@ -260,9 +260,6 @@
    *  own scope filters. `page` feeds the API OFFSET only (see `toApiParams`). */
   function buildParams(q: ServerQuery): URLSearchParams {
     const p = serverQueryToParams({ ...q, pageSize: 0 }, { sort: SORT_MAP });
-    if (tagId) p.set('tag', tagId);
-    if (reservedFilter) p.set('reserved', '1');
-    if (awaitingFilter) p.set('awaiting', '1');
     if (scoreMin != null) p.set('scoreMin', String(scoreMin));
     if (scoreMax != null) p.set('scoreMax', String(scoreMax));
     if (tempFilter) p.set('temp', tempFilter);
@@ -275,7 +272,7 @@
     const rename: Record<string, string> = {
       q: 'search',
       funnel: 'funnelStage',
-      tag: 'tagId',
+      tags: 'tagId',
       dir: 'sortDir',
     };
     for (const [from, to] of Object.entries(rename)) {
@@ -330,9 +327,6 @@
   const filtered = $derived(
     lastQuery.search !== '' ||
       Object.keys(lastQuery.filters).length > 0 ||
-      !!tagId ||
-      reservedFilter ||
-      awaitingFilter ||
       scoreMin != null ||
       scoreMax != null ||
       !!tempFilter,
@@ -397,9 +391,6 @@
   function writePageParams() {
     const p = new URLSearchParams(page.url.search);
     const set = (k: string, v: string) => (v ? p.set(k, v) : p.delete(k));
-    set('tag', tagId);
-    set('reserved', reservedFilter ? '1' : '');
-    set('awaiting', awaitingFilter ? '1' : '');
     set('scoreMin', scoreMin != null ? String(scoreMin) : '');
     set('scoreMax', scoreMax != null ? String(scoreMax) : '');
     set('temp', tempFilter);
@@ -502,6 +493,33 @@
         filter: { options: () => verifiedOptions, match: (c) => (c.dni_verified ? '1' : '0') },
         width: 96,
       },
+      {
+        key: 'awaiting',
+        label: m.crm_awaiting_filter(),
+        defaultHidden: true,
+        sortable: false,
+        accessor: (c) => (c.awaiting_reply ? m.common_yes() : ''),
+        exportValue: (c) => (c.awaiting_reply ? 'yes' : 'no'),
+        filter: { options: () => yesOption, match: (c) => (c.awaiting_reply ? '1' : '') },
+        width: 110,
+      },
+      ...(data.financeEnabled
+        ? [
+            {
+              key: 'reserved',
+              label: m.crm_reserved_badge(),
+              defaultHidden: true,
+              sortable: false,
+              accessor: (c: Row) => (reservedOnly(c) ? m.common_yes() : ''),
+              exportValue: (c: Row) => (reservedOnly(c) ? 'yes' : 'no'),
+              filter: {
+                options: () => yesOption,
+                match: (c: Row) => (reservedOnly(c) ? '1' : ''),
+              },
+              width: 110,
+            } satisfies DataColumn<Row>,
+          ]
+        : []),
       {
         key: 'sex',
         label: m.crm_col_sex(),
@@ -902,11 +920,8 @@
 
   rememberView(
     'crm',
-    () => ({ tagId, reservedFilter, awaitingFilter, scoreMin, scoreMax, tempFilter }),
+    () => ({ scoreMin, scoreMax, tempFilter }),
     (saved) => {
-      tagId = saved.tagId;
-      reservedFilter = saved.reservedFilter;
-      awaitingFilter = saved.awaitingFilter;
       scoreMin = saved.scoreMin;
       scoreMax = saved.scoreMax;
       tempFilter = saved.tempFilter;
@@ -1027,41 +1042,6 @@
       addDisabled={contactCreation.busy || !canAct('crm', 'edit')}
       emptyMessage={m.crm_empty_title()}
     >
-      {#snippet toolbar()}
-        <Select bind:value={tagId} onchange={refetch} size="sm">
-          <option value="">{m.crm_all_tags()}</option>
-          {#each tags as tg (tg.id)}<option value={tg.id}>{tg.name}</option>{/each}
-        </Select>
-        {#if data.financeEnabled}
-          <Button
-            variant="ghost"
-            size="sm"
-            class={`res-toggle ${reservedFilter ? 'active' : ''}`}
-            aria-pressed={reservedFilter}
-            onclick={() => {
-              reservedFilter = !reservedFilter;
-              refetch();
-            }}
-            title={m.crm_reserved_only()}
-          >
-            {m.crm_reserved_badge()}
-          </Button>
-        {/if}
-        <Button
-          variant="ghost"
-          size="sm"
-          class={`await-toggle ${awaitingFilter ? 'active' : ''}`}
-          aria-pressed={awaitingFilter}
-          onclick={() => {
-            awaitingFilter = !awaitingFilter;
-            refetch();
-          }}
-          title={m.crm_awaiting_hint()}
-        >
-          {m.crm_awaiting_filter()}
-        </Button>
-      {/snippet}
-
       {#snippet actions()}
         <Button
           variant="outline"
@@ -1248,29 +1228,6 @@
   :global(.crm-customers-surface .verify-icon-off) {
     color: var(--color-text-tertiary);
   }
-  :global(.crm-customers-surface .res-toggle) {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control-height-sm);
-    padding: 0 var(--space-3);
-    font-size: var(--font-size-caption, 12px);
-    font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--hairline);
-    color: var(--color-text-secondary);
-    background: var(--color-surface-2);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background-color var(--duration-fast) var(--ease-standard);
-  }
-  :global(.crm-customers-surface .res-toggle:hover) {
-    background: var(--color-surface-3);
-  }
-  :global(.crm-customers-surface .res-toggle.active) {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-  }
   .res-pill {
     display: inline-flex;
     align-items: center;
@@ -1297,29 +1254,6 @@
   }
   .origin-organic {
     color: var(--color-text-tertiary);
-  }
-  :global(.crm-customers-surface .await-toggle) {
-    display: inline-flex;
-    align-items: center;
-    height: var(--control-height-sm);
-    padding: 0 var(--space-3);
-    font-size: var(--font-size-caption, 12px);
-    font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--hairline);
-    color: var(--color-text-secondary);
-    background: var(--color-surface-2);
-    cursor: pointer;
-    white-space: nowrap;
-    transition: background-color var(--duration-fast) var(--ease-standard);
-  }
-  :global(.crm-customers-surface .await-toggle:hover) {
-    background: var(--color-surface-3);
-  }
-  :global(.crm-customers-surface .await-toggle.active) {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
   }
   .await-dot {
     width: 0.45rem;
