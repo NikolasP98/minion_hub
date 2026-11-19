@@ -7664,7 +7664,7 @@
   "pos_funnel_stage_impressions": "Impresiones",
   "pos_funnel_stage_clicks": "Clics",
   "pos_funnel_stage_conversations": "Conversaciones iniciadas",
-  "pos_funnel_stage_leads": "Leads",
+  "pos_funnel_stage_leads": "Prospectos",
   "pos_funnel_stage_first": "Clientes nuevos",
   "pos_funnel_stage_repeat": "Clientes recurrentes",
   "pos_funnel_stages_note": "Conteos por etapa en el rango, no una cohorte seguida: los leads aún no están vinculados a clientes."

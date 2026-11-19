@@ -11,7 +11,7 @@
   import { applyFilters } from '$lib/components/data-table/apply-filters';
   import type { FilterGroup, FilterValue } from '$lib/components/data-table/filters';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
-  import { appLocale, formatDate, formatMoney } from '$lib/utils/format';
+  import { formatDate, formatMoney, formatNumber } from '$lib/utils/format';
   import {
     REACH_KINDS,
     funnelMetrics,
@@ -132,9 +132,15 @@
   );
   const none = $derived(m.pos_funnel_no_data());
   const money = (v: number | null) => (v === null ? none : formatMoney(v));
-  const times = (v: number | null) => (v === null ? none : `${v.toFixed(1)}×`);
-  const pct = (v: number | null) => (v === null ? none : `${(v * 100).toFixed(1)}%`);
-  const int = (v: number) => Math.round(v).toLocaleString(appLocale());
+  const times = (v: number | null) =>
+    v === null
+      ? none
+      : `${formatNumber(v, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×`;
+  const pct = (v: number | null) =>
+    v === null
+      ? none
+      : formatNumber(v, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const int = (v: number) => formatNumber(Math.round(v));
 
   const tiles = $derived([
     { id: 'cac', label: m.pos_funnel_metric_cac(), value: money(metrics.cac) },

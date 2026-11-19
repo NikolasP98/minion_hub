@@ -108,6 +108,11 @@ export function formatMoney(
   }
 }
 
+/** A plain number in the app locale (counts, ratios, percents via `style: 'percent'`). */
+export function formatNumber(value: number, opts: Intl.NumberFormatOptions = {}): string {
+  return new Intl.NumberFormat(appLocale(), opts).format(value);
+}
+
 /** Compact money for dense chart axes / KPIs: "S/ 1.2M". */
 export function formatMoneyShort(
   value: number | string | null | undefined,
