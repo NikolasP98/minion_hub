@@ -13,6 +13,7 @@ import {
   listConnectedOrgIds,
   runJob,
 } from '$server/services/meta/meta-sync.service';
+import { SYNC_STALE_ALERT_MS, tickStatus } from '$server/services/meta/meta-sync-cursor';
 
 const SYNC_KINDS = ['posts', 'ads', 'messages', 'messages_tail'] as const;
 const STALE_ENQUEUE_MS = 6 * 60 * 60_000; // spec §6: re-enqueue a kind once its last success is >6h old
@@ -54,6 +55,7 @@ const handle: RequestHandler = async ({ request }) => {
   const since = defaultSinceDate();
   const orgIds = await listConnectedOrgIds();
   let enqueued = 0;
+  const staleBefore: Array<{ orgId: string; kind: string }> = [];
   for (const orgId of orgIds) {
     const ctx = { db: getCoreDb(), tenantId: orgId };
     for (const kind of SYNC_KINDS) {
@@ -63,6 +65,9 @@ const handle: RequestHandler = async ({ request }) => {
           ? Date.now() - new Date(latest.finishedAt).getTime()
           : Number.POSITIVE_INFINITY;
         const staleAfter = kind === 'messages_tail' ? MESSAGE_TAIL_STALE_MS : STALE_ENQUEUE_MS;
+        // Never-succeeded (Infinity) is a fresh connection, not a stall.
+        if (Number.isFinite(ageMs) && ageMs > SYNC_STALE_ALERT_MS)
+          staleBefore.push({ orgId, kind });
         if (ageMs > staleAfter) {
           await enqueueJob(ctx, kind, { since });
           enqueued++;
@@ -101,7 +106,21 @@ const handle: RequestHandler = async ({ request }) => {
   } catch (e) {
     console.error('[meta-sync] tail job retention failed', e);
   }
-  return json({ enqueued, claimed: results.length, pruned, results });
+  // Re-check after the slices ran: a kind that just succeeded is no longer stale.
+  const stale: string[] = [];
+  for (const { orgId, kind } of staleBefore) {
+    try {
+      const latest = await getLatestSucceededJob({ db: getCoreDb(), tenantId: orgId }, kind);
+      const at = latest?.finishedAt ? new Date(latest.finishedAt).getTime() : 0;
+      if (Date.now() - at > SYNC_STALE_ALERT_MS) stale.push(`${orgId}:${kind}`);
+    } catch {
+      stale.push(`${orgId}:${kind}`);
+    }
+  }
+  return json(
+    { enqueued, claimed: results.length, pruned, results, stale },
+    { status: tickStatus(results, stale) },
+  );
 };
 
 export const GET = handle;

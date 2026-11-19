@@ -44,3 +44,15 @@ export function cursorAfterPage(options: {
   if (options.i + 1 < options.targetCount) return serializeResume({ i: options.i + 1 });
   return null;
 }
+
+/** Tick HTTP status. The cron wrapper only sees the status code, so a tick that
+ * cannot do its work must not answer 2xx: 500 when every claimed job threw,
+ * 503 when a sync kind has had no success for over a day. */
+export const SYNC_STALE_ALERT_MS = 24 * 60 * 60_000;
+export function tickStatus(
+  results: ReadonlyArray<{ ok: boolean }>,
+  stale: readonly string[],
+): 200 | 500 | 503 {
+  if (results.length > 0 && results.every((r) => !r.ok)) return 500;
+  return stale.length > 0 ? 503 : 200;
+}
