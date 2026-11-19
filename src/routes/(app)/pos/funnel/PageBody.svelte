@@ -1,22 +1,22 @@
 <script lang="ts">
   import type { PageData as LoadedPageData } from './$types';
   import type { Granted } from '$lib/permissions';
-  import { Funnel } from 'lucide-svelte';
+  import { Check, Funnel } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { goto } from '$lib/navigation';
   import { PageHeader, Badge, iconSizes } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
-  import SegmentedControl from '$lib/components/ui/SegmentedControl.svelte';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
+  import { applyFilters } from '$lib/components/data-table/apply-filters';
+  import type { FilterGroup, FilterValue } from '$lib/components/data-table/filters';
   import DateRangeControls from '$lib/components/dashboard/DateRangeControls.svelte';
   import { appLocale, formatDate, formatMoney } from '$lib/utils/format';
   import {
-    filterCustomers,
+    REACH_KINDS,
     funnelMetrics,
     reachTotals,
     reachability,
     stageRates,
-    type CustomerFilter,
     type CustomerRow,
     type ReachKind,
   } from '$lib/pos/funnel-logic';
@@ -37,15 +37,10 @@
     goto(`/pos/funnel?${p}`, { keepFocus: true, noScroll: true });
   }
 
-  // Customer list: loaded once, filtered client-side.
-  let reach = $state<CustomerFilter['reach']>('any');
-  let tier = $state<string>('all');
-  const filter = $derived<CustomerFilter>({
-    reach,
-    tier: tier === 'all' ? 'all' : (Number(tier) as 1 | 2 | 3),
-  });
-  const rows = $derived(filterCustomers(data.customers, filter));
-  const totals = $derived(reachTotals(rows));
+  // Customer list: loaded once; the table's own filter builder (property + And/Or
+  // groups) does the filtering. The totals line follows the same filters.
+  let tableFilters = $state<Record<string, FilterValue>>({});
+  let tableAdvanced = $state<FilterGroup | null>(null);
 
   const reachLabel = (k: ReachKind) =>
     ({
@@ -58,7 +53,12 @@
     ({ 1: m.pos_funnel_tier_top(), 2: m.pos_funnel_tier_mid(), 3: m.pos_funnel_tier_bottom() })[t];
 
   const columns = $derived<DataColumn<CustomerRow>[]>([
-    { key: 'name', label: m.pos_funnel_col_customer(), accessor: (r) => r.name },
+    {
+      key: 'name',
+      label: m.pos_funnel_col_customer(),
+      accessor: (r) => r.name,
+      filter: { kind: 'text' },
+    },
     {
       key: 'spend',
       money: true,
@@ -66,19 +66,62 @@
       align: 'right',
       custom: true,
       accessor: (r) => r.spend,
+      filter: { kind: 'number' },
     },
-    { key: 'count', label: m.pos_funnel_col_purchases(), align: 'right', accessor: (r) => r.count },
-    { key: 'lastAt', label: m.pos_funnel_col_last(), custom: true, accessor: (r) => r.lastAt },
-    { key: 'tier', label: m.pos_funnel_col_tier(), accessor: (r) => tierLabel(r.tier) },
     {
-      key: 'reach',
-      label: m.pos_funnel_col_reach(),
-      accessor: (r) => {
-        const kinds = reachability(r);
-        return kinds.length ? kinds.map(reachLabel).join(', ') : m.pos_funnel_reach_none();
+      key: 'count',
+      label: m.pos_funnel_col_purchases(),
+      align: 'right',
+      accessor: (r) => r.count,
+      filter: { kind: 'number' },
+    },
+    {
+      key: 'lastAt',
+      label: m.pos_funnel_col_last(),
+      custom: true,
+      accessor: (r) => r.lastAt,
+      filter: { kind: 'date' },
+    },
+    {
+      key: 'tier',
+      label: m.pos_funnel_col_tier(),
+      accessor: (r) => tierLabel(r.tier),
+      filter: {
+        options: () => ([1, 2, 3] as const).map((t) => ({ value: String(t), label: tierLabel(t) })),
+        match: (r) => String(r.tier),
       },
     },
+    {
+      key: 'reachable',
+      label: m.pos_funnel_col_reachable(),
+      align: 'center',
+      type: 'boolean',
+      width: 104,
+      custom: true,
+      accessor: (r) => reachability(r).length > 0,
+      filter: { match: (r) => reachability(r).length > 0 },
+    },
+    ...REACH_KINDS.map((k): DataColumn<CustomerRow> => ({
+      key: k,
+      label: reachLabel(k),
+      align: 'center',
+      type: 'boolean',
+      width: 104,
+      custom: true,
+      accessor: (r) => r[k],
+      filter: { match: (r) => r[k] },
+    })),
   ]);
+
+  function matchOf(key: string): ((row: unknown) => unknown) | null {
+    const col = columns.find((c) => c.key === key);
+    if (!col?.filter) return null;
+    const fn = col.filter.match ?? col.accessor;
+    return fn ? (row: unknown) => fn(row as CustomerRow) : null;
+  }
+  const totals = $derived(
+    reachTotals(applyFilters(data.customers, tableFilters, tableAdvanced, matchOf)),
+  );
 
   // Metrics + stages.
   const f = $derived(data.funnel);
@@ -126,6 +169,20 @@
   const adEndsEarly = $derived(f.adLastDate !== null && f.adLastDate < data.range.to);
 </script>
 
+{#snippet flag(on: boolean)}
+  <span class="flag">
+    {#if on}<Check
+        size={iconSizes.sm}
+        class="text-accent"
+        aria-label={m.pos_funnel_yes()}
+      />{:else}—{/if}
+  </span>
+{/snippet}
+{#snippet reachableCell(r: CustomerRow)}{@render flag(reachability(r).length > 0)}{/snippet}
+{#snippet phoneCell(r: CustomerRow)}{@render flag(r.phone)}{/snippet}
+{#snippet emailCell(r: CustomerRow)}{@render flag(r.email)}{/snippet}
+{#snippet whatsappCell(r: CustomerRow)}{@render flag(r.whatsapp)}{/snippet}
+{#snippet instagramCell(r: CustomerRow)}{@render flag(r.instagram)}{/snippet}
 {#snippet spendCell(r: CustomerRow)}
   <span class="tabular-nums">{formatMoney(r.spend)}</span>
 {/snippet}
@@ -195,32 +252,6 @@
 
       <section class="stack" aria-labelledby="funnel-customers">
         <h2 id="funnel-customers" class="t-title">{m.pos_funnel_customers_title()}</h2>
-        <div class="filters">
-          <span class="t-label">{m.pos_funnel_filter_reach()}</span>
-          <SegmentedControl
-            aria-label={m.pos_funnel_filter_reach()}
-            bind:value={reach}
-            items={[
-              { value: 'any', label: m.pos_funnel_reach_any() },
-              { value: 'phone', label: m.pos_funnel_reach_phone() },
-              { value: 'email', label: m.pos_funnel_reach_email() },
-              { value: 'whatsapp', label: m.pos_funnel_reach_whatsapp() },
-              { value: 'instagram', label: m.pos_funnel_reach_instagram() },
-              { value: 'none', label: m.pos_funnel_reach_none() },
-            ]}
-          />
-          <span class="t-label">{m.pos_funnel_filter_tier()}</span>
-          <SegmentedControl
-            aria-label={m.pos_funnel_filter_tier()}
-            bind:value={tier}
-            items={[
-              { value: 'all', label: m.pos_funnel_tier_all() },
-              { value: '1', label: m.pos_funnel_tier_top() },
-              { value: '2', label: m.pos_funnel_tier_mid() },
-              { value: '3', label: m.pos_funnel_tier_bottom() },
-            ]}
-          />
-        </div>
         <p class="t-caption">
           {m.pos_funnel_customers_summary({
             customers: int(totals.customers),
@@ -236,8 +267,20 @@
         <DataTable
           variant="plain"
           {columns}
-          cells={{ spend: spendCell, lastAt: lastAtCell }}
-          data={rows}
+          cells={{
+            spend: spendCell,
+            lastAt: lastAtCell,
+            reachable: reachableCell,
+            phone: phoneCell,
+            email: emailCell,
+            whatsapp: whatsappCell,
+            instagram: instagramCell,
+          }}
+          data={data.customers}
+          filterBar
+          filterChips
+          bind:filters={tableFilters}
+          bind:advanced={tableAdvanced}
           getRowId={(r) => r.partyId}
           searchPlaceholder={m.data_table_search()}
           searchFields={(r) => r.name}
@@ -251,6 +294,10 @@
 </PageShell>
 
 <style>
+  .flag {
+    display: flex;
+    justify-content: center;
+  }
   .stack {
     display: flex;
     flex-direction: column;
@@ -284,11 +331,5 @@
     padding: var(--space-card-compact);
     border-radius: var(--radius-md);
     background: var(--color-surface-1);
-  }
-  .filters {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-2);
   }
 </style>

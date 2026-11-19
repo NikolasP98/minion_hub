@@ -1857,6 +1857,12 @@
   function pickFilter(key: string) {
     if (!openChips.includes(key)) openChips = [...openChips, key];
     chipOpenState = { ...chipOpenState, [key]: true };
+    // A yes/no filter has no operand to enter: its chip already reads "Checked",
+    // so picking it must apply it, or the chip shows a filter that is not active.
+    const c = byKey.get(key);
+    if (c && !filters[key] && filterKindOf(c) === 'boolean') {
+      setFilterValue(key, emptyFilter('boolean'));
+    }
   }
   /** Header context menu's Filter▸ submenu: seed the column's filter value
    *  with a specific operator preselected (instead of the kind's default) and

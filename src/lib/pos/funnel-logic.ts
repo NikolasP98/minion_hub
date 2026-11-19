@@ -66,20 +66,6 @@ export function assignTiers(rows: CustomerRow[]): CustomerRow[] {
   return sorted.map((r, i) => ({ ...r, tier: (i < t1 ? 1 : i < t2 ? 2 : 3) as Tier }));
 }
 
-export interface CustomerFilter {
-  reach: 'any' | ReachKind | 'none';
-  tier: 'all' | Tier;
-}
-
-export function filterCustomers(rows: CustomerRow[], f: CustomerFilter): CustomerRow[] {
-  return rows.filter((r) => {
-    if (f.tier !== 'all' && r.tier !== f.tier) return false;
-    if (f.reach === 'any') return true;
-    if (f.reach === 'none') return reachability(r).length === 0;
-    return r[f.reach];
-  });
-}
-
 export function reachTotals(rows: CustomerRow[]) {
   const reachable = rows.filter((r) => reachability(r).length > 0).length;
   const per = (k: ReachKind) => rows.filter((r) => r[k]).length;

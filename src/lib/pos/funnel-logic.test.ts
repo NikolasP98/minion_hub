@@ -5,7 +5,6 @@ import {
   funnelMetrics,
   reachability,
   assignTiers,
-  filterCustomers,
   reachTotals,
   type CustomerRow,
 } from './funnel-logic';
@@ -100,25 +99,12 @@ describe('assignTiers', () => {
   });
 });
 
-describe('filterCustomers and reachTotals', () => {
+describe('reachTotals', () => {
   const rows = assignTiers([
     row({ partyId: 'a', spend: 300, count: 2, phone: true }),
     row({ partyId: 'b', spend: 200, instagram: true, phone: true }),
     row({ partyId: 'c', spend: 100 }),
   ]);
-  it('filters by reach kind (US1-2) and none (US1-3)', () => {
-    expect(
-      filterCustomers(rows, { reach: 'instagram', tier: 'all' }).map((r) => r.partyId),
-    ).toEqual(['b']);
-    expect(filterCustomers(rows, { reach: 'none', tier: 'all' }).map((r) => r.partyId)).toEqual([
-      'c',
-    ]);
-    expect(filterCustomers(rows, { reach: 'any', tier: 'all' })).toHaveLength(3);
-  });
-  it('filters by top tier (US1-4) and combines with reach', () => {
-    expect(filterCustomers(rows, { reach: 'any', tier: 1 }).map((r) => r.partyId)).toEqual(['a']);
-    expect(filterCustomers(rows, { reach: 'instagram', tier: 1 })).toEqual([]);
-  });
   it('totals', () => {
     expect(reachTotals(rows)).toEqual({
       customers: 3,
@@ -129,8 +115,5 @@ describe('filterCustomers and reachTotals', () => {
       whatsapp: 0,
       instagram: 1,
     });
-    expect(reachTotals(filterCustomers(rows, { reach: 'instagram', tier: 'all' })).customers).toBe(
-      1,
-    );
   });
 });
