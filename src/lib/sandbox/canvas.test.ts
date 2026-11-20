@@ -17,6 +17,24 @@ const el = (
 });
 
 describe('describeElement', () => {
+  test('a block is described from its spec, not from JS inference (spec 049)', () => {
+    const spec = {
+      v: 1 as const,
+      type: 'chart' as const,
+      preset: 'area' as const,
+      format: 'money' as const,
+      source: {
+        dataset: 'pos.tickets',
+        time: { col: 'submitted_at', bucket: 'week' as const },
+        measures: [{ fn: 'sum' as const, col: 'total' }],
+      },
+    };
+    const d = describeElement({ ...el('b', 0, "dataset: 'finance.invoices'"), spec });
+    expect(d.datasets).toEqual(['pos.tickets']);
+    expect(d.chart).toBe('chart:area');
+    expect(canvasSummary([{ ...el('b', 0), spec }])).toContain('pos.tickets · chart:area');
+  });
+
   test('finds the datasets and the chart type in the element JS', () => {
     const d = describeElement(
       el(

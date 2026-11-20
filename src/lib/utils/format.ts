@@ -121,6 +121,23 @@ export function formatMoneyShort(
   return formatMoney(value, currency, { compact: true });
 }
 
+/**
+ * A RATIO as a percent: 0.1234 → "12.3%". `signed` prints the sign on
+ * non-zero values (+20% / -20%), the shape every delta chip uses.
+ */
+export function formatPercent(
+  ratio: number | string | null | undefined,
+  opts: { decimals?: number; signed?: boolean } = {},
+): string {
+  const n = typeof ratio === 'string' ? Number(ratio) : (ratio ?? NaN);
+  if (!Number.isFinite(n)) return '—';
+  return new Intl.NumberFormat(appLocale(), {
+    style: 'percent',
+    maximumFractionDigits: opts.decimals ?? 1,
+    signDisplay: opts.signed ? 'exceptZero' : 'auto',
+  }).format(n as number);
+}
+
 export function truncKey(key: string | null | undefined, max = 28): string {
   if (!key) return '';
   return key.length > max ? key.slice(0, max) + '\u2026' : key;
