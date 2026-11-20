@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { errorBody } from '$server/http/error-body';
 import { PurchasesError } from '$server/services/purchases.service';
 
 // Mirrors src/routes/api/pos/_errors.ts — the purchases wire contract is the
@@ -14,7 +15,7 @@ const STATUS_BY_CODE: Record<string, number> = {
 /** Maps a PurchasesError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */
 export function handlePurchasesError(e: unknown): Response {
   if (e instanceof PurchasesError) {
-    return json({ error: e.message, code: e.code }, { status: STATUS_BY_CODE[e.code] ?? 400 });
+    return json(errorBody(e.message, e.code), { status: STATUS_BY_CODE[e.code] ?? 400 });
   }
   throw e;
 }

@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { errorBody } from '$server/http/error-body';
 import type { z } from 'zod';
 import { SandboxQueryError } from '$server/sandbox/query-compiler';
 
@@ -34,7 +35,9 @@ export async function parseSandboxBody<T extends z.ZodType>(
  *  SvelteKit 401/403/404 HttpErrors thrown by the auth helpers). */
 export function sandboxErrorResponse(failure: unknown): Response {
   if (failure instanceof SandboxQueryError) {
-    return json({ error: failure.message, field: failure.field }, { status: failure.status });
+    return json(errorBody(failure.message, 'sandbox_invalid', { field: failure.field }), {
+      status: failure.status,
+    });
   }
   throw failure;
 }

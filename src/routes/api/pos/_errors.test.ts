@@ -9,6 +9,7 @@ describe('handlePosError', () => {
     );
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({
+      message: 'Stored monetary data is invalid.',
       error: 'Stored monetary data is invalid.',
       code: 'invalid_stored_amount',
     });
@@ -18,13 +19,17 @@ describe('handlePosError', () => {
     const res = handlePosError(new PosError('x', 'payment_mismatch'));
     expect(res).toBeInstanceOf(Response);
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'x', code: 'payment_mismatch' });
+    expect(await res.json()).toEqual({ message: 'x', error: 'x', code: 'payment_mismatch' });
   });
 
   it('returns 409 for conflict codes', async () => {
     const res = handlePosError(new PosError('open first', 'no_open_shift'));
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'open first', code: 'no_open_shift' });
+    expect(await res.json()).toEqual({
+      message: 'open first',
+      error: 'open first',
+      code: 'no_open_shift',
+    });
   });
 
   it('returns 409 for series_conflict (seedShadowSeries 23505 fallback)', () => {
@@ -34,6 +39,13 @@ describe('handlePosError', () => {
 
   it('returns 404 for not_found', () => {
     expect(handlePosError(new PosError('nope', 'not_found')).status).toBe(404);
+  });
+
+  it('keeps the items extra next to message, error and code', async () => {
+    const err = new PosError('short', 'insufficient_stock', [{ productId: 'p1' }] as never);
+    const body = await handlePosError(err).json();
+    expect(body).toMatchObject({ message: 'short', error: 'short', code: 'insufficient_stock' });
+    expect(body.items).toEqual([{ productId: 'p1' }]);
   });
 
   it('re-throws non-PosError untouched', () => {

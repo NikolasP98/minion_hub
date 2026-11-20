@@ -88,6 +88,7 @@ import { isCronAuthPath } from '$lib/server/cron-auth-path';
 import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifecycle';
 import { bootstrapNotificationWorker } from '$server/services/notifications/worker-bootstrap';
 import { runWithSqlTrace } from '$server/db/sql-trace';
+import { errorBody } from '$server/http/error-body';
 import { shouldActivateRequestMemo, withRequestMemo } from '$server/db/request-memo';
 
 if (!building && env.DESKTOP === '1') {
@@ -548,11 +549,11 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // Authentication alone does not establish an active organization.
     const authenticated = Boolean(event.locals.user);
     return new Response(
-      JSON.stringify({
-        error: authenticated
-          ? 'No active organization for this request'
-          : 'Authentication required',
-      }),
+      JSON.stringify(
+        authenticated
+          ? errorBody('No active organization for this request', 'no_organization')
+          : errorBody('Authentication required', 'unauthenticated'),
+      ),
       {
         status: authenticated ? 403 : 401,
         headers: { 'content-type': 'application/json' },
@@ -618,7 +619,9 @@ const finishApp: Handle = async ({ event, resolve }) => {
       : apiWriteCapability(path, event.request.method);
     if (need && !(await hasAnyCapability(event.locals, [need, ...(need.anyOf ?? [])]))) {
       return new Response(
-        JSON.stringify({ error: 'You do not have permission to perform this action.' }),
+        JSON.stringify(
+          errorBody('You do not have permission to perform this action.', 'forbidden'),
+        ),
         { status: 403, headers: { 'content-type': 'application/json' } },
       );
     }

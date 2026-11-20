@@ -16,6 +16,7 @@ export class ApiError extends Error {
     readonly kind: ApiErrorKind,
     readonly status: number,
     readonly details?: unknown,
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -38,6 +39,12 @@ function safeMessage(body: unknown, fallback: string): string {
   if (typeof candidate !== 'string') return fallback;
   const trimmed = candidate.trim();
   return trimmed && trimmed.length <= 300 ? trimmed : fallback;
+}
+
+function codeOf(body: unknown): string | undefined {
+  const code =
+    body && typeof body === 'object' ? (body as Record<string, unknown>).code : undefined;
+  return typeof code === 'string' ? code : undefined;
 }
 
 async function parseBody(response: Response): Promise<unknown> {
@@ -67,6 +74,7 @@ export async function fetchJson<T>(input: RequestInfo | URL, init?: RequestInit)
       kindForStatus(response.status),
       response.status,
       body,
+      codeOf(body),
     );
   }
   return body as T;
