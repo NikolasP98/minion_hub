@@ -9,6 +9,8 @@ export const ORG_KIND_POLICY = {
   business: { hiddenModules: new Set<string>(['pulse']), label: 'Business' },
   personal: {
     hiddenModules: new Set<string>([
+      // Pulse is switched off for every org until work on it resumes (owner decision 2026-11-20).
+      'pulse',
       'pos',
       'stock',
       'workforce',
@@ -23,7 +25,10 @@ export const ORG_KIND_POLICY = {
 } as const;
 
 /** Unknown/undefined kind degrades to 'business' — matches the DB default. */
-export function isModuleVisibleForKind(moduleId: string, kind: OrgKind | undefined | null): boolean {
+export function isModuleVisibleForKind(
+  moduleId: string,
+  kind: OrgKind | undefined | null,
+): boolean {
   const resolved: OrgKind = kind === 'personal' ? 'personal' : 'business';
   return !ORG_KIND_POLICY[resolved].hiddenModules.has(moduleId);
 }
