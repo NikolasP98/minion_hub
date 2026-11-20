@@ -6,7 +6,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { orgApiKeys } from '$server/db/pg-org-integrations-schema';
 import { isUniqueViolation } from './pos/db-errors';
-import type { ApiKeyRow } from '$lib/types/api-keys';
+import { API_KEY_SCOPES, type ApiKeyRow, type ApiKeyScope } from '$lib/types/api-keys';
 
 export type { ApiKeyRow };
 
@@ -24,7 +24,7 @@ export const KEY_RE = /^mk_([0-9a-f]{8})_[A-Za-z0-9_-]{43}$/;
 export const KEY_NAME_MAX = 60;
 export const ACTIVE_KEY_LIMIT = 10;
 
-export type ApiKeyErrorCode = 'invalid_name' | 'limit_reached' | 'not_found';
+export type ApiKeyErrorCode = 'invalid_name' | 'invalid_scope' | 'limit_reached' | 'not_found';
 
 export class ApiKeyError extends Error {
   constructor(public readonly code: ApiKeyErrorCode) {
@@ -49,9 +49,12 @@ export const hashKey = (key: string) => createHash('sha256').update(key).digest(
 export async function createKey(
   ctx: CoreCtx,
   rawName: string,
+  scopes: readonly string[] = [],
 ): Promise<ApiKeyRow & { key: string }> {
   const name = rawName.trim();
   if (!name || name.length > KEY_NAME_MAX) throw new ApiKeyError('invalid_name');
+  if (!scopes.every((s) => (API_KEY_SCOPES as readonly string[]).includes(s)))
+    throw new ApiKeyError('invalid_scope');
   // A prefix collision (1 in 4 billion) aborts its transaction, so each draw is its own.
   for (let attempt = 1; ; attempt++) {
     const { key, prefix } = generateKey();
@@ -71,6 +74,7 @@ export async function createKey(
             prefix,
             keyHash: hashKey(key),
             createdBy: ctx.profileId ?? null,
+            scopes: [...new Set(scopes)],
           })
           .returning();
         return inserted!;
@@ -120,7 +124,7 @@ export async function revokeKey(ctx: CoreCtx, id: string): Promise<void> {
  */
 export async function verifyKey(
   text: string,
-): Promise<{ id: string; orgId: string; lastUsedAt: Date | null } | null> {
+): Promise<{ id: string; orgId: string; lastUsedAt: Date | null; scopes: string[] } | null> {
   const match = KEY_RE.exec(text);
   if (!match) return null;
   const [hit] = await getCoreDb()
@@ -130,6 +134,7 @@ export async function verifyKey(
       keyHash: orgApiKeys.keyHash,
       lastUsedAt: orgApiKeys.lastUsedAt,
       revokedAt: orgApiKeys.revokedAt,
+      scopes: orgApiKeys.scopes,
     })
     .from(orgApiKeys)
     .where(eq(orgApiKeys.prefix, match[1]!))
@@ -138,7 +143,7 @@ export async function verifyKey(
   const a = Buffer.from(hashKey(text), 'hex');
   const b = Buffer.from(hit.keyHash, 'hex');
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { id: hit.id, orgId: hit.orgId, lastUsedAt: hit.lastUsedAt };
+  return { id: hit.id, orgId: hit.orgId, lastUsedAt: hit.lastUsedAt, scopes: hit.scopes };
 }
 
 /** Record a use; the condition keeps it to at most one write per key and minute. */
@@ -183,5 +188,6 @@ async function withNames(
     lastUsedAt: r.lastUsedAt?.toISOString() ?? null,
     revokedAt: r.revokedAt?.toISOString() ?? null,
     revokedByName: name(r.revokedBy),
+    scopes: r.scopes as ApiKeyScope[],
   }));
 }

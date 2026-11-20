@@ -6411,6 +6411,8 @@
   "settings_developers_empty_desc": "Create one key for each server that sends forms to your doors.",
   "settings_developers_example_title": "Send a submission with a key",
   "settings_developers_example_hint": "Add the authorization header to every submit and upload call. Calls without a key keep working with the shared limit.",
+  "settings_developers_scope_sandbox": "Sandbox pages",
+  "settings_developers_scope_sandbox_hint": "Lets an outside agent create, change and remove this organization's sandbox page elements through the MCP endpoint. It cannot read customer, sale or booking rows. Cannot be changed after the key is created.",
   "settings_tables_title": "Tables",
   "settings_tables_subtitle": "Every table in the hub, its ID prefix and its fields. Edit a cell to change it for the whole organization; drag the corner to fill several rows.",
   "settings_tables_col_module": "Module",

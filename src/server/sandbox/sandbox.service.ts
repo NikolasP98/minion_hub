@@ -46,6 +46,9 @@ export async function listDatasets(locals: App.Locals) {
   return allowed;
 }
 
+/** Every dataset's schema (ids, columns, types; never rows) for callers without a user (spec 136 MCP). */
+export const datasetCatalog = () => DATASETS.map(datasetCatalogEntry);
+
 async function requireDatasetView(locals: App.Locals, spec: QuerySpec): Promise<Dataset> {
   const dataset = findDataset(spec?.dataset);
   if (!dataset) throw new SandboxQueryError('unknown dataset', 'dataset');
@@ -147,6 +150,8 @@ export interface SandboxElementInput {
   h?: number;
   position?: number;
   published?: boolean;
+  /** The org API key that wrote it (spec 136); null for a person. */
+  writtenByKey?: string;
 }
 
 /** Library rows belong to their creator: nobody else updates or deletes them (spec 014 FR-003). */
@@ -260,6 +265,7 @@ export async function upsertElement(
             -- only the creator shares/unshares (spec 014 FR-003)
             published = case when created_by::text = ${ctx.profileId ?? ''}
               then coalesce(${input.published ?? null}, published) else published end,
+            ${input.writtenByKey ? sql`written_by_key = ${input.writtenByKey}::uuid,` : sql``}
             updated_at = now()
           where org_id = ${ctx.tenantId} and id = ${id}::uuid
             and ${libraryWritable(ctx)}
@@ -270,7 +276,7 @@ export async function upsertElement(
     if (!input.title) throw new SandboxQueryError('title is required', 'title');
     return rows(
       await tx.execute(sql`
-        insert into sandbox_elements (org_id, page, title, html, css, js, spec, w, h, position, created_by)
+        insert into sandbox_elements (org_id, page, title, html, css, js, spec, w, h, position, created_by, written_by_key)
         values (
           ${ctx.tenantId}, ${page}, ${input.title},
           ${input.html ?? ''}, ${input.css ?? ''}, ${input.js ?? ''}, ${specJson}::jsonb,
@@ -280,7 +286,7 @@ export async function upsertElement(
             (select coalesce(max(position), -1) + 1 from sandbox_elements
               where org_id = ${ctx.tenantId} and page = ${page})
           ),
-          ${ctx.profileId ?? null}
+          ${ctx.profileId ?? null}, ${input.writtenByKey ?? null}
         )
         returning ${elementColumns(ctx)}
       `),
@@ -289,6 +295,19 @@ export async function upsertElement(
   const row = result[0];
   if (!row) throw new SandboxQueryError('element not found', 'id', 400);
   return rowToElement(row);
+}
+
+/** Non-library pages of the org with their element counts. */
+export function listPages(ctx: CoreCtx): Promise<Array<{ page: string; elements: number }>> {
+  return withOrgCore(ctx, async (tx: CoreTx) =>
+    rows(
+      await tx.execute(sql`
+        select page, count(*)::int as elements from sandbox_elements
+        where org_id = ${ctx.tenantId} and page <> ${LIBRARY_PAGE}
+        group by page order by page
+      `),
+    ).map((r) => ({ page: String(r.page), elements: Number(r.elements) })),
+  );
 }
 
 export async function removeElement(ctx: CoreCtx, id: string): Promise<boolean> {

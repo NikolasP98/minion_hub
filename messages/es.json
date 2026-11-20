@@ -6411,6 +6411,8 @@
   "settings_developers_empty_desc": "Crea una clave por cada servidor que envía formularios a tus puertas.",
   "settings_developers_example_title": "Envía una respuesta con una clave",
   "settings_developers_example_hint": "Agrega la cabecera authorization a cada llamada de envío y de subida. Las llamadas sin clave siguen funcionando con el límite compartido.",
+  "settings_developers_scope_sandbox": "Páginas sandbox",
+  "settings_developers_scope_sandbox_hint": "Permite que un agente externo cree, cambie y quite los elementos de las páginas sandbox de esta organización por el endpoint MCP. No puede leer filas de clientes, ventas ni reservas. No se puede cambiar después de crear la clave.",
   "settings_tables_title": "Tablas",
   "settings_tables_subtitle": "Todas las tablas del hub, su prefijo de ID y sus campos. Edita una celda para cambiarla en toda la organización; arrastra la esquina para rellenar varias filas.",
   "settings_tables_col_module": "Módulo",

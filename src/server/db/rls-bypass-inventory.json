@@ -678,5 +678,10 @@
     "file": "src/server/services/workspaces.service.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
+  },
+  {
+    "file": "src/routes/api/mcp/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "org-scoped"
   }
 ]

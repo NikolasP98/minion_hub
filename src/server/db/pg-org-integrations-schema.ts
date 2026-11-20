@@ -23,6 +23,11 @@ export const orgApiKeys = pgTable(
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     revokedBy: uuid('revoked_by'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    /** Abilities beyond doors (spec 136); fixed at creation. */
+    scopes: text('scopes')
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
   },
   (t) => ({
     activeIdx: index('org_api_keys_active_idx')

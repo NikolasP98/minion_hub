@@ -62,6 +62,7 @@ const row = (over: Record<string, unknown> = {}) => ({
   lastUsedAt: null,
   revokedBy: null,
   revokedAt: null,
+  scopes: [],
   ...over,
 });
 
@@ -98,6 +99,19 @@ describe('createKey', () => {
     expect(JSON.stringify(inserted)).not.toContain(created.key);
     expect(created).toMatchObject({ id: 'k1', name: 'Site', createdByName: 'Ada' });
     expect(created).not.toHaveProperty('keyHash');
+  });
+
+  it('stores the requested scopes (deduplicated), none by default, and refuses unknown ones', async () => {
+    db.queue.push([{ n: 0 }], [row({ scopes: ['sandbox'] })], []);
+    const created = await createKey(ctx, 'Agent', ['sandbox', 'sandbox']);
+    expect(arg(db.calls[1]!, 'values')).toMatchObject({ scopes: ['sandbox'] });
+    expect(created.scopes).toEqual(['sandbox']);
+    db.queue.push([{ n: 0 }], [row()], []);
+    await createKey(ctx, 'Site');
+    expect(arg(db.calls.at(-2)!, 'values')).toMatchObject({ scopes: [] });
+    await expect(createKey(ctx, 'Bad', ['admin'])).rejects.toMatchObject({
+      code: 'invalid_scope',
+    });
   });
 
   it('refuses an empty or over-60 name before any query', async () => {
@@ -154,6 +168,7 @@ describe('listKeys', () => {
         lastUsedAt: null,
         revokedAt: '2026-11-16T12:00:00.000Z',
         revokedByName: null,
+        scopes: [],
       },
       expect.objectContaining({
         id: 'k2',
@@ -209,9 +224,21 @@ describe('verifyKey', () => {
   it('finds the key by prefix and compares the hash', async () => {
     const used = new Date('2026-11-16T09:00:00Z');
     db.queue.push([
-      { id: 'k1', orgId: 'org-1', keyHash: hashKey(key), lastUsedAt: used, revokedAt: null },
+      {
+        id: 'k1',
+        orgId: 'org-1',
+        keyHash: hashKey(key),
+        lastUsedAt: used,
+        revokedAt: null,
+        scopes: ['sandbox'],
+      },
     ]);
-    expect(await verifyKey(key)).toEqual({ id: 'k1', orgId: 'org-1', lastUsedAt: used });
+    expect(await verifyKey(key)).toEqual({
+      id: 'k1',
+      orgId: 'org-1',
+      lastUsedAt: used,
+      scopes: ['sandbox'],
+    });
     const where = arg(db.calls[0]!, 'where') as SQL;
     expect(dialect.sqlToQuery(where).params).toEqual([prefix]);
   });

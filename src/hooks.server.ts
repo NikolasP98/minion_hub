@@ -513,6 +513,9 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // The handler resolves the org from the slug and enforces its own rate
     // limit, honeypot and validation; no capability prefix maps here.
     '/api/doors/public',
+    // MCP endpoint (spec 136): authenticates itself with an org API key carrying the
+    // `sandbox` scope, acts for that key's org only, and rate-limits per key.
+    '/api/mcp',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
     // Organization switching remains reachable after revocation; only this
