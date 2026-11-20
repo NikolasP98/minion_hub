@@ -45,6 +45,10 @@ There is **no longer a tolerated baseline of pre-existing errors/warnings**. Any
 - `let foo = $state(prop.field ?? default)` (seeding editable form state once from a prop) is correct — suppress `state_referenced_locally` with `// svelte-ignore`, do NOT convert to `$derived` (that wipes user edits). Convert to `$derived` only for pure read-through props.
 - Cache-key `d` descriptors for `keys.hub()` must be `Record<string, string|number>` — use `scopeData()` from `src/server/services/base.ts` to drop optional/undefined filters.
 
+## House rules
+
+Rules with a gate live in [`scripts/house-rules/rules.mjs`](scripts/house-rules/rules.mjs) (native `confirm()`, the deprecated `Modal`, raw write `fetch`, tick routes listed in the automations manifest). Counts in `scripts/house-rules/baseline.json` may only fall. After lowering one, refresh with `HOUSE_RULES_UPDATE=1 bunx vitest run scripts/house-rules/house-rules.test.ts`; a raised or new count still fails.
+
 ## Local Setup
 
 Install with `bun install --frozen-lockfile`. Use the guarded loopback QA workflow in `docs/qa-stack.md`: it supplies Supabase Auth, PostgreSQL schema/fixtures and the legacy SQLite compatibility database. A SQLite file alone cannot run the current Hub. Inspect `bun run qa:status` before starting or resetting a stack another checkout may share.
