@@ -148,6 +148,8 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     cadence: 'semimonthly',
     wiring: 'unscheduled',
   },
+  // Pulse worker (dispatch + digest). Operator-configured, so it stays unscheduled until enabled.
+  { path: '/api/pulse/tick', key: 'pulse', cadence: 'hourly', wiring: 'unscheduled' },
   { path: '/api/memberships/tick', key: 'memberships', cadence: 'hourly', wiring: 'unscheduled' },
   { path: '/api/crm/dni-validation/tick', key: 'dni', cadence: 'hourly', wiring: 'unscheduled' },
   {
