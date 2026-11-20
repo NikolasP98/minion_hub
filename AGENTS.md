@@ -47,7 +47,7 @@ There is **no longer a tolerated baseline of pre-existing errors/warnings**. Any
 
 ## House rules
 
-Rules with a gate live in [`scripts/house-rules/rules.mjs`](scripts/house-rules/rules.mjs) (native `confirm()`, the deprecated `Modal`, raw write `fetch`, tick routes listed in the automations manifest). Counts in `scripts/house-rules/baseline.json` may only fall. After lowering one, refresh with `HOUSE_RULES_UPDATE=1 bunx vitest run scripts/house-rules/house-rules.test.ts`; a raised or new count still fails.
+Rules with a gate live in [`scripts/house-rules/rules.mjs`](scripts/house-rules/rules.mjs) (native `confirm()`, the deprecated `Modal`, raw write `fetch`, tick routes listed in the automations manifest). Counts in `scripts/house-rules/baseline.json` may only fall. After lowering one, refresh with `HOUSE_RULES_UPDATE=1 bunx vitest run scripts/house-rules/house-rules.test.ts`; a raised or new count still fails. Every write endpoint method is permission-gated or its file is listed with a class in `scripts/house-rules/write-inventory.json`; after fixing or adding a listed file, refresh with `HOUSE_RULES_UPDATE=1 bunx vitest run scripts/house-rules/write-inventory.test.ts` (new files enter as `todo`; the todo ceiling may only fall).
 
 ## Local Setup
 

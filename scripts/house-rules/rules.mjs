@@ -3,7 +3,13 @@
  * belong here. Counts live in baseline.json and may only fall. Refresh after lowering a count:
  *   HOUSE_RULES_UPDATE=1 bunx vitest run scripts/house-rules/house-rules.test.ts
  */
-import { countConfirm, importsDeprecatedModal, sendsRawWrite } from './scan.mjs';
+import {
+  countConfirm,
+  countHand401,
+  importsDeprecatedModal,
+  rawRequestJson,
+  sendsRawWrite,
+} from './scan.mjs';
 
 export const RULES = [
   {
@@ -37,6 +43,25 @@ export const RULES = [
     exts: ['.svelte'],
     exceptions: [],
     match: (_file, text) => sendsRawWrite(text),
+  },
+  {
+    id: 'raw-request-json',
+    sentence:
+      'Write endpoints read their body through parseBody with a zod schema, not request.json().',
+    entryPoint: 'parseBody from $server/api/validate',
+    kind: 'count',
+    exts: ['.ts'],
+    exceptions: [],
+    match: rawRequestJson,
+  },
+  {
+    id: 'hand-401',
+    sentence: 'Resolve the signed-in context through the shared helper, not a hand-written 401.',
+    entryPoint: 'requireCoreCtx from $server/auth/core-ctx',
+    kind: 'count',
+    exts: ['.ts'],
+    exceptions: [],
+    match: (_file, text) => countHand401(text),
   },
   {
     id: 'tick-routes-listed',

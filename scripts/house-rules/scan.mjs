@@ -52,6 +52,21 @@ export const importsDeprecatedModal = (file, text) => {
 export const sendsRawWrite = (text) =>
   /fetch\([\s\S]{0,300}?method:\s*['"](POST|PUT|PATCH|DELETE)['"]/.test(strip(text)) ? 1 : 0;
 
+const API_SERVER = /^src\/routes\/api\/.*\/\+server\.ts$/;
+const WRITE_EXPORT =
+  /export\s+(?:const|async\s+function|function)\s+(POST|PUT|PATCH|DELETE)\b|export\s*\{[^}]*\b(POST|PUT|PATCH|DELETE)\b[^}]*\}/;
+
+/** 1 for an API route that exports a write method, reads request.json() and never calls parseBody(. */
+export const rawRequestJson = (file, text) => {
+  if (!API_SERVER.test(file)) return 0;
+  const s = strip(text);
+  return WRITE_EXPORT.test(s) && s.includes('request.json()') && !s.includes('parseBody(') ? 1 : 0;
+};
+
+/** Counts hand-written 401 guards: `if (!ctx) throw error(401`. */
+export const countHand401 = (text) =>
+  (strip(text).match(/if \(!\w+\) throw error\(401/g) ?? []).length;
+
 /** { ruleId: { file: n } } for the counted rules; files with 0 are omitted. */
 export function scan(rules, root) {
   const out = {};
