@@ -36,6 +36,7 @@ const KEY = {
   lastUsedAt: null,
   revokedAt: null,
   revokedByName: null,
+  scopes: [],
 };
 const post = (body: string) =>
   POST({
@@ -64,7 +65,13 @@ describe('/api/settings/api-keys', () => {
     const res = await post(JSON.stringify({ name: 'Site' }));
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual({ ...KEY, key: 'mk_1a2b3c4d_x' });
-    expect(mocks.createKey).toHaveBeenCalledWith(ctx, 'Site');
+    expect(mocks.createKey).toHaveBeenCalledWith(ctx, 'Site', []);
+  });
+
+  it('POST passes the requested scopes to the service', async () => {
+    mocks.createKey.mockResolvedValue({ ...KEY, scopes: ['sandbox'], key: 'mk_1a2b3c4d_x' });
+    await post(JSON.stringify({ name: 'Agent', scopes: ['sandbox'] }));
+    expect(mocks.createKey).toHaveBeenCalledWith(ctx, 'Agent', ['sandbox']);
   });
 
   it('POST maps refusals: bad name or body → 400 invalid_name, the eleventh key → 409', async () => {

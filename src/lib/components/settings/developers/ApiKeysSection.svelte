@@ -3,7 +3,16 @@
   import { page } from '$app/state';
   import { invalidate } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { iconSizes, Badge, Button, Card, EmptyState, Input, Tooltip } from '$lib/components/ui';
+  import {
+    iconSizes,
+    Badge,
+    Button,
+    Card,
+    EmptyState,
+    Input,
+    Toggle,
+    Tooltip,
+  } from '$lib/components/ui';
   import { ConfirmDialog, Dialog, FormField } from '$lib/components/ui/foundations';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
   import { jsonMutation } from '$lib/api/json-mutation';
@@ -25,6 +34,7 @@
     if (!(e instanceof ApiError)) return fallback;
     if (e.status === 403) return m.settings_developers_forbidden();
     if (e.message === 'invalid_name') return m.settings_developers_invalid_name();
+    if (e.message === 'invalid_scope') return m.settings_developers_create_failed();
     if (e.message === 'limit_reached') return m.settings_developers_limit_reached();
     return fallback;
   }
@@ -32,6 +42,7 @@
   // ── Create, then reveal once ─────────────────────────────────────────────
   let createOpen = $state(false);
   let name = $state('');
+  let sandboxScope = $state(false);
   let creating = $state(false);
   let createError = $state<string | null>(null);
   /** The key text, held only while the reveal dialog is open. */
@@ -39,6 +50,7 @@
 
   function openCreate() {
     name = '';
+    sandboxScope = false;
     createError = null;
     revealed = null;
     createOpen = true;
@@ -59,7 +71,7 @@
         init: {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: name.trim() }),
+          body: JSON.stringify({ name: name.trim(), scopes: sandboxScope ? ['sandbox'] : [] }),
         },
         onSuccess: () => invalidate('settings:developers'),
       });
@@ -116,7 +128,7 @@
       custom: true,
       accessor: (r) => r.prefix,
       sortable: false,
-      width: 170,
+      width: 260,
     },
     {
       key: 'createdAt',
@@ -159,6 +171,9 @@
 
 {#snippet keyCell(r: ApiKeyRow)}
   <span class="mono">mk_{r.prefix}_…</span>
+  {#if r.scopes.includes('sandbox')}
+    <Badge size="sm">{m.settings_developers_scope_sandbox()}</Badge>
+  {/if}
 {/snippet}
 {#snippet createdCell(r: ApiKeyRow)}{when(r.createdAt)}{/snippet}
 {#snippet lastUsedCell(r: ApiKeyRow)}{when(r.lastUsedAt)}{/snippet}
@@ -250,6 +265,12 @@
       >
         {#snippet children(p)}<Input {...p} bind:value={name} maxlength={NAME_MAX} />{/snippet}
       </FormField>
+      <Toggle
+        bind:checked={sandboxScope}
+        label={m.settings_developers_scope_sandbox()}
+        description={m.settings_developers_scope_sandbox_hint()}
+        disabled={creating}
+      />
       {#if createError}<p class="error" role="alert">{createError}</p>{/if}
     </div>
   {/if}
@@ -300,6 +321,9 @@
   .code {
     font-family: var(--font-mono);
     font-size: var(--font-size-caption);
+  }
+  .mono {
+    margin-inline-end: var(--space-2);
   }
   .status {
     display: inline-flex;

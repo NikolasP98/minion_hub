@@ -6,7 +6,12 @@ import { ApiKeyError, createKey, listKeys } from '$server/services/org-api-keys.
 
 // Organization API keys (spec 121). A 403 comes from `requireOrgCapability` / the central
 // write guard. The key text leaves the server only in the POST answer.
-const STATUS = { invalid_name: 400, limit_reached: 409, not_found: 404 } as const;
+const STATUS = {
+  invalid_name: 400,
+  invalid_scope: 400,
+  limit_reached: 409,
+  not_found: 404,
+} as const;
 
 /** GET /api/settings/api-keys — every key of the active organization (never a hash). */
 export const GET: RequestHandler = async ({ locals }) => {
@@ -14,14 +19,19 @@ export const GET: RequestHandler = async ({ locals }) => {
   return json({ keys: await listKeys(await requireCoreCtx(locals)) });
 };
 
-/** POST /api/settings/api-keys `{ name }` → 201 with the key text, shown once. */
+/** POST /api/settings/api-keys `{ name, scopes? }` → 201 with the key text, shown once. */
 export const POST: RequestHandler = async ({ locals, request }) => {
   await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
-  const body = (await request.json().catch(() => null)) as { name?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    name?: unknown;
+    scopes?: unknown;
+  } | null;
   const name = typeof body?.name === 'string' ? body.name : '';
   try {
-    return json(await createKey(ctx, name), { status: 201 });
+    return json(await createKey(ctx, name, Array.isArray(body?.scopes) ? body.scopes : []), {
+      status: 201,
+    });
   } catch (e) {
     if (e instanceof ApiKeyError) return json({ error: e.code }, { status: STATUS[e.code] });
     throw e;
