@@ -141,6 +141,15 @@ export const stkEntries = pgTable(
     ).where(sql`type='issue' AND status IN ('draft', 'submitted')
         AND jsonb_typeof(metadata->'invoiceId') = 'string'
         AND btrim(metadata->>'invoiceId') <> ''`),
+    // One live entry per (source, sourceId): backstop for writers that skip the stock gate.
+    // Companion migration 20261120120000_stk_entries_one_live_per_source.sql.
+    uniqueIndex('stk_entries_org_live_source_uniq').on(
+      t.orgId,
+      sql`(metadata->>'source')`,
+      sql`(metadata->>'sourceId')`,
+    ).where(sql`status in ('draft', 'submitted')
+        and coalesce(metadata->>'source', '') <> ''
+        and coalesce(metadata->>'sourceId', '') <> ''`),
     index('stk_entries_org_status_idx').on(t.orgId, t.status),
     index('stk_entries_org_created_idx').on(t.orgId, t.createdAt),
   ],
