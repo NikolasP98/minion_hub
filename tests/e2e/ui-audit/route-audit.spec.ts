@@ -12,6 +12,7 @@ import {
   SCREEN_DESIGN_MANIFEST,
 } from '../../../src/lib/routes/route-design-manifest';
 import { runRouteCertification, requiresSingleVisibleTitle } from './certification';
+import { collectA11y } from './a11y';
 import { blockedConformance, collectConformance, finalizeHealth } from './conformance';
 import { captureFixtures, resolveFixtureProvision } from './fixtures';
 import {
@@ -386,6 +387,11 @@ test('manifest capture matrix produces a stateful machine-readable certification
                 );
               }
               throw error;
+            }
+            // Spec 137: axe runs only on a settled page; a failed pass leaves the row unmeasured
+            // (the a11y ledger reports that as blocked) instead of failing the capture.
+            if (conformanceEnabled) {
+              result.a11y = await collectA11y(page).catch(() => undefined);
             }
             if (certificationEnabled) {
               result.certification = await runRouteCertification(

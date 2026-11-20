@@ -11,9 +11,10 @@
     "raw-type-size": 1,
     "bare-button": 0,
     "native-select": 0,
-    "raw-icon-size": 92,
-    "raw-loading": 38,
-    "raw-control-height": 190
+    "raw-icon-size": 90,
+    "raw-loading": 31,
+    "a11y-ignore": 84,
+    "raw-control-height": 187
   },
   "generatedFor": "decrease-only global ceiling (governed = raw minus reason-coded)"
 }

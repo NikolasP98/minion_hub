@@ -163,6 +163,31 @@ CSS variables for the full colour palette. Theme presets in `src/lib/themes/pres
 - **Never hand-edit generated `tokens.css`** — extend `contract.json` in the meta-repo
   package and regenerate.
 
+### Accessibility gates: a REQUIRED build step (like design lint)
+
+**After any UI change run `bun run a11y`. Baselines only decrease.** Full reference: `docs/a11y.md`.
+
+```bash
+bun run a11y                                     # suppressions, patterns, specs, stories (~6 min, no backend)
+bun run a11y --all                               # + pages (page sweep; needs `bun run qa:up`)
+bun run a11y --only stories --stories Dropdown   # one story file while iterating
+bun run a11y --update-baseline                   # after a FIX lowered a count: ratchet down, commit
+```
+
+- stdout is ONE JSON document (stderr has the logs): `ok`, each gate's `status`, and `rows` of
+  page/story × rule with `count`, `baseline`, `status` (`regression` | `improvement` | `same` |
+  `ungated`) and offending selectors. Every row is in `test-results/a11y/report.json`.
+- CI runs the same command (job `a11y`; the page gate in `qa-stack`). A `regression` row or a failed
+  gate blocks the PR.
+- A regression means **fix the markup**. Never raise `tests/ui-audit/a11y-ledger.json` or the
+  `a11y-ignore` ceiling in `scripts/.design-lint-baseline.json` by hand, and never add a
+  `svelte-ignore a11y_*` comment.
+- New pages and stories start at zero violations (a row absent from the ledger is a baseline of 0).
+- Building or fixing a listbox, menu, tabs, dialog, alertdialog, combobox or grid: prove its keyboard
+  and ARIA contract with one call in a `*.mounted.test.ts`:
+  `await assertPattern(container, 'listbox')` (`$lib/a11y/assert-pattern`; one example per pattern
+  in `docs/a11y.md`).
+
 ### Components (`src/lib/components/`)
 
 All components are organized into domain subdirectories — no loose `.svelte` files at root:

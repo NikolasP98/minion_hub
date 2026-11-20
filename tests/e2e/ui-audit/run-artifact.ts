@@ -6,6 +6,7 @@ import type {
   CaptureState,
   CaptureViewport,
 } from '../../../src/lib/routes/route-design-manifest';
+import type { A11yEvidence } from './a11y';
 import type { ConformanceEvidence } from './conformance';
 import type { RuntimeUiDiagnostics } from './runtime-diagnostics';
 import type { ScenarioPreparation } from './scenario-hooks';
@@ -63,6 +64,8 @@ export interface CaptureRunResult {
   certification?: CertificationEvidence;
   /** Spec 014 rule verdicts; present when `E2E_UI_AUDIT_CONFORMANCE=1` and the page rendered. */
   conformance?: ConformanceEvidence;
+  /** Spec 137 axe violations per rule; present when the sweep measured a settled page. */
+  a11y?: A11yEvidence;
   failures?: string[];
 }
 
