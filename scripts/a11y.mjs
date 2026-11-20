@@ -326,7 +326,11 @@ function playwrightFailures(report) {
   const failures = [];
   const walk = (suite, trail) => {
     for (const spec of suite.specs ?? [])
-      if (!spec.ok) failures.push([...trail, spec.title].filter(Boolean).join(' › '));
+      if (!spec.ok) {
+        const error = spec.tests?.flatMap((test) => test.results ?? []).find((r) => r.error)?.error;
+        const title = [...trail, spec.title].filter(Boolean).join(' › ');
+        failures.push(error ? `${title}: ${firstLine(error.message)}` : title);
+      }
     for (const child of suite.suites ?? []) walk(child, [...trail, child.title]);
   };
   for (const suite of report.suites ?? []) walk(suite, [suite.title]);

@@ -57,16 +57,21 @@ test.afterEach(() => {
 
 test.beforeAll(async () => {
   fixtureDir = await mkdtemp('/tmp/minion-chart-accessibility-');
-  execFileSync('node', [path.join(HUB_ROOT, 'tests/fixtures/chart-accessibility/build.mjs')], {
-    cwd: HUB_ROOT,
-    env: {
-      PATH: '/usr/bin:/bin',
-      HOME: fixtureDir,
-      LANG: 'C.UTF-8',
-      MINION_CHART_FIXTURE_OUT: fixtureDir,
+  // process.execPath: the build env pins PATH to /usr/bin:/bin, where CI runners have no `node`.
+  execFileSync(
+    process.execPath,
+    [path.join(HUB_ROOT, 'tests/fixtures/chart-accessibility/build.mjs')],
+    {
+      cwd: HUB_ROOT,
+      env: {
+        PATH: '/usr/bin:/bin',
+        HOME: fixtureDir,
+        LANG: 'C.UTF-8',
+        MINION_CHART_FIXTURE_OUT: fixtureDir,
+      },
+      stdio: 'inherit',
     },
-    stdio: 'inherit',
-  });
+  );
 
   server = createServer((req, res) => {
     const reqUrl = req.url === '/' ? '/index.html' : (req.url ?? '/index.html');

@@ -375,6 +375,12 @@ test('manifest capture matrix produces a stateful machine-readable certification
             // carries its rule verdicts for the ledger (spec 014).
             if (conformanceEnabled) {
               result.conformance = await collectConformance(page, route, viewport, pointer, events);
+              // Spec 137: like the conformance verdicts, the axe pass is recorded BEFORE the strict
+              // gate (which most pages fail today), but only for a page whose content is ready.
+              // An unready page or a failed pass leaves the row unmeasured instead of failing the capture.
+              result.a11y = await assertCaptureContentReady(page, route)
+                .then(() => collectA11y(page))
+                .catch(() => undefined);
             }
             assertCriticalRuntimeDiagnostics(result.diagnostics, route.id, diagnosticOptions);
             try {
@@ -387,11 +393,6 @@ test('manifest capture matrix produces a stateful machine-readable certification
                 );
               }
               throw error;
-            }
-            // Spec 137: axe runs only on a settled page; a failed pass leaves the row unmeasured
-            // (the a11y ledger reports that as blocked) instead of failing the capture.
-            if (conformanceEnabled) {
-              result.a11y = await collectA11y(page).catch(() => undefined);
             }
             if (certificationEnabled) {
               result.certification = await runRouteCertification(
