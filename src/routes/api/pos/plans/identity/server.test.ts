@@ -72,6 +72,7 @@ describe('plan wallet-identity preflight', () => {
     const response = await GET(event());
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
+      message: 'Wallet identity changed.',
       error: 'Wallet identity changed.',
       code: 'wallet_identity_changed',
     });

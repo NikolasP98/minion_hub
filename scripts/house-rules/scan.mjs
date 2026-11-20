@@ -98,3 +98,24 @@ export function diff(current, baseline) {
   }
   return v;
 }
+
+/** 1 for a route file that builds an error body by hand (`json({ error`) and does not import errorBody. */
+export const handbuiltErrorBody = (file, text) => {
+  if (!file.startsWith('src/routes/')) return 0;
+  const s = strip(text);
+  return /json\(\s*\{\s*error\b/.test(s) && !/\bimport\b[^;]*\berrorBody\b/.test(s) ? 1 : 0;
+};
+
+/** 1 for a service file with an import declaration from @sveltejs/kit. */
+export const kitInService = (file, text) => {
+  if (!file.startsWith('src/server/services/')) return 0;
+  const sf = ts.createSourceFile('x.ts', text, ts.ScriptTarget.ES2022);
+  return sf.statements.some(
+    (st) =>
+      ts.isImportDeclaration(st) &&
+      ts.isStringLiteral(st.moduleSpecifier) &&
+      st.moduleSpecifier.text === '@sveltejs/kit',
+  )
+    ? 1
+    : 0;
+};

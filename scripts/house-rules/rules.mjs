@@ -6,7 +6,9 @@
 import {
   countConfirm,
   countHand401,
+  handbuiltErrorBody,
   importsDeprecatedModal,
+  kitInService,
   rawRequestJson,
   sendsRawWrite,
 } from './scan.mjs';
@@ -62,6 +64,24 @@ export const RULES = [
     exts: ['.ts'],
     exceptions: [],
     match: (_file, text) => countHand401(text),
+  },
+  {
+    id: 'handbuilt-error-body',
+    sentence: 'Build error bodies with errorBody, not a hand-written json({ error ... }).',
+    entryPoint: 'errorBody from $server/http/error-body',
+    kind: 'count',
+    exts: ['.ts'],
+    exceptions: [],
+    match: handbuiltErrorBody,
+  },
+  {
+    id: 'kit-in-services',
+    sentence: 'Services stay free of @sveltejs/kit; throw domain errors and map them in the route.',
+    entryPoint: 'the route-level _errors.ts mappers',
+    kind: 'count',
+    exts: ['.ts'],
+    exceptions: [],
+    match: kitInService,
   },
   {
     id: 'tick-routes-listed',

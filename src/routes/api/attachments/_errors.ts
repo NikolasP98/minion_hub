@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { errorBody } from '$server/http/error-body';
 import { AttachmentError } from '$server/services/attachments.service';
 
 // Leading underscore = not a SvelteKit route module, just a shared helper for
@@ -18,7 +19,7 @@ const STATUS_BY_CODE: Record<string, number> = {
 /** Maps an AttachmentError to an `{error, code}` json Response (caller must RETURN it); re-throws anything else untouched. */
 export function handleAttachmentError(e: unknown): Response {
   if (e instanceof AttachmentError) {
-    return json({ error: e.message, code: e.code }, { status: STATUS_BY_CODE[e.code] ?? 400 });
+    return json(errorBody(e.message, e.code), { status: STATUS_BY_CODE[e.code] ?? 400 });
   }
   throw e;
 }

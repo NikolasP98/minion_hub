@@ -7,7 +7,7 @@ describe('handleAttachmentError', () => {
     const res = handleAttachmentError(new AttachmentError('still_linked', 'nope'));
     expect(res).toBeInstanceOf(Response);
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'nope', code: 'still_linked' });
+    expect(await res.json()).toEqual({ message: 'nope', error: 'nope', code: 'still_linked' });
   });
 
   it('returns 415 for mime_not_allowed', () => {
