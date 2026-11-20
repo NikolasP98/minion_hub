@@ -35,14 +35,65 @@ const stored = {
 beforeEach(() => vi.clearAllMocks());
 
 describe('sandbox tools', () => {
-  it('exposes exactly the five named tools', () => {
+  it('exposes exactly the ten named tools', () => {
     expect(sandboxTools.map((t) => t.name)).toEqual([
       'sandbox_datasets',
       'sandbox_pages',
       'sandbox_elements',
       'sandbox_element_write',
       'sandbox_element_remove',
+      'sandbox_blocks',
+      'sandbox_block_kpi',
+      'sandbox_block_chart',
+      'sandbox_block_table',
+      'sandbox_block_list',
     ]);
+  });
+
+  it('the catalogue lists kinds, presets and one example per kind', async () => {
+    const r = (await call('sandbox_blocks')) as {
+      kinds: string[];
+      examples: Record<string, unknown>;
+    };
+    expect(r.kinds).toEqual(['kpi', 'chart', 'table', 'list']);
+    expect(Object.keys(r.examples)).toEqual(r.kinds);
+  });
+
+  const kpi = {
+    title: 'Sales this month',
+    source: { dataset: 'pos.tickets', metric: { fn: 'sum', col: 'total' } },
+    format: 'money',
+  };
+
+  it('a block is stored as a validated spec on the chosen page, with the key id', async () => {
+    svc.upsertElement.mockResolvedValue(stored);
+    await call('sandbox_block_kpi', { ...kpi, page: 'ventas' });
+    const input = svc.upsertElement.mock.lastCall![1];
+    expect(input).toMatchObject({ page: 'ventas', title: kpi.title, writtenByKey: 'key-1' });
+    expect(input.spec).toMatchObject({ v: 1, type: 'kpi', source: kpi.source });
+    expect(input).not.toHaveProperty('html');
+  });
+
+  it('a block change by id carries no page', async () => {
+    svc.upsertElement.mockResolvedValue(stored);
+    await call('sandbox_block_kpi', { ...kpi, id: 'e1', page: 'ventas' });
+    const input = svc.upsertElement.mock.lastCall![1];
+    expect(input.id).toBe('e1');
+    expect(input).not.toHaveProperty('page');
+  });
+
+  it('refuses a bad shape, an unknown column and the library page; nothing is written', async () => {
+    await expect(call('sandbox_block_kpi', { title: 'x' })).rejects.toBeInstanceOf(ToolFailure);
+    await expect(
+      call('sandbox_block_kpi', {
+        ...kpi,
+        source: { dataset: 'pos.tickets', metric: { fn: 'sum', col: 'nope' } },
+      }),
+    ).rejects.toBeInstanceOf(SandboxQueryError);
+    await expect(call('sandbox_block_kpi', { ...kpi, page: 'library' })).rejects.toBeInstanceOf(
+      ToolFailure,
+    );
+    expect(svc.upsertElement).not.toHaveBeenCalled();
   });
 
   it('datasets and pages return schema and counts', async () => {

@@ -13,6 +13,17 @@ import {
   type SandboxElementInput,
 } from '$server/sandbox/sandbox.service';
 import { SandboxQueryError } from '$server/sandbox/query-compiler';
+import { validateBlockSpec } from '$server/sandbox/blocks';
+import { BLOCK_DESCRIPTIONS, BLOCK_EXAMPLES } from '$lib/sandbox/blocks/catalog';
+import {
+  BLOCK_KINDS,
+  BUCKETS,
+  CHART_PRESETS,
+  FORMATS,
+  RANGES,
+  TONES,
+  blockToolSchemas,
+} from '$lib/sandbox/blocks/schema';
 import { ToolFailure, type McpTool } from './protocol';
 
 export interface SandboxToolContext {
@@ -47,6 +58,7 @@ const element = (e: Awaited<ReturnType<typeof listElements>>[number]) => ({
   html: e.html,
   css: e.css,
   js: e.js,
+  spec: e.spec,
   w: e.w,
   h: e.h,
   position: e.position,
@@ -130,6 +142,65 @@ export const sandboxTools: McpTool<SandboxToolContext>[] = [
     },
   },
 ];
+
+const PAGE_PROP = { type: 'string', description: 'Page for a new block; default "default".' };
+
+/**
+ * One writer per block kind, from the same zod grammar the in-page assistant uses. A block is
+ * data rendered by the hub's own components: no markup or script from the caller is stored.
+ */
+const blockTools: McpTool<SandboxToolContext>[] = blockToolSchemas().map((tool) => {
+  const schema = tool.inputSchema as { properties?: Record<string, unknown> };
+  return {
+    name: `sandbox_block_${tool.kind}`,
+    description: `${BLOCK_DESCRIPTIONS[tool.kind]} Pass \`page\` to choose the page of a new block.`,
+    inputSchema: { ...schema, properties: { ...schema.properties, page: PAGE_PROP } },
+    call: async (args, { ctx, keyId }) => {
+      const { page: _page, ...rest } = args;
+      let parsed: ReturnType<typeof tool.parse>;
+      try {
+        parsed = tool.parse(rest);
+      } catch (err) {
+        const issue = (err as { issues?: Array<{ path: unknown[]; message: string }> }).issues?.[0];
+        throw new ToolFailure(
+          issue ? `invalid ${issue.path.join('.') || 'input'}: ${issue.message}` : 'invalid input',
+        );
+      }
+      const { id, title, w, h, spec } = parsed;
+      const input: SandboxElementInput = {
+        title,
+        w,
+        h,
+        spec: validateBlockSpec(spec), // columns and types against the dataset registry
+        writtenByKey: keyId,
+      };
+      if (id) input.id = id;
+      else input.page = pageArg(args);
+      return { element: element(await upsertElement(ctx, input)) };
+    },
+  };
+});
+
+sandboxTools.push(
+  {
+    name: 'sandbox_blocks',
+    description:
+      'The block kit catalogue: the block kinds, every preset value and one complete example input per kind. Blocks are built from the hub’s own components; use a sandbox_block_* tool for anything a kind covers and sandbox_element_write only for a visual none of them can express.',
+    inputSchema: obj({}),
+    call: async () => ({
+      kinds: BLOCK_KINDS,
+      presets: {
+        chart: CHART_PRESETS,
+        format: FORMATS,
+        tone: TONES,
+        period: RANGES,
+        bucket: BUCKETS,
+      },
+      examples: BLOCK_EXAMPLES,
+    }),
+  },
+  ...blockTools,
+);
 
 /** Service refusals the model can act on (size limit, bad id, unknown element). */
 export function sandboxFailure(e: unknown): string | null {
