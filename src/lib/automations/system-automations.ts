@@ -148,8 +148,9 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     cadence: 'semimonthly',
     wiring: 'unscheduled',
   },
-  // Pulse worker (dispatch + digest). Operator-configured, so it stays unscheduled until enabled.
-  { path: '/api/pulse/tick', key: 'pulse', cadence: 'hourly', wiring: 'unscheduled' },
+  // Pulse worker (dispatch + digest). Pulse is switched off (owner decision 2026-11-20), so this
+  // stays unscheduled. Cadence is the one in deploy/pulse-tick.cron.example.
+  { path: '/api/pulse/tick', key: 'pulse', cadence: 'minute', wiring: 'unscheduled' },
   { path: '/api/memberships/tick', key: 'memberships', cadence: 'hourly', wiring: 'unscheduled' },
   { path: '/api/crm/dni-validation/tick', key: 'dni', cadence: 'hourly', wiring: 'unscheduled' },
   {
