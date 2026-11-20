@@ -61,6 +61,10 @@ const input = {
   submit: true,
   actor,
 };
+const h4Migration = readFileSync(
+  new URL('../../../supabase/migrations/20261120140000_stk_ledger_created_at.sql', import.meta.url),
+  'utf8',
+);
 const migration = readFileSync(
   new URL(
     '../../../supabase/migrations/20260909090200_stock_invoice_issue_identity.sql',
@@ -121,6 +125,7 @@ beforeAll(async () => {
       WITH CHECK (org_id = current_setting('app.current_org_id',true));`);
   }
   await client.exec(migration);
+  await client.exec(h4Migration);
 }, 30_000);
 afterAll(async () => {
   await client.close();
@@ -429,6 +434,54 @@ describe('additive identity migration and preflight', () => {
       await client.exec(migration);
     },
   );
+  it('H4 fills created_at with the later of posted_at and the entry creation, then defaults new rows', async () => {
+    // The fixture above already ran H4; rewind to the pre-H4 shape and seed before re-running it.
+    await client.exec('ALTER TABLE stk_ledger DROP COLUMN created_at');
+    const E1 = '50000000-0000-4000-8000-000000000001';
+    const E2 = '50000000-0000-4000-8000-000000000002';
+    const ORPHAN = '50000000-0000-4000-8000-000000000003';
+    for (const [id, created] of [
+      [E1, '2026-03-10T00:00:00Z'],
+      [E2, '2026-03-01T00:00:00Z'],
+    ])
+      await client.query(
+        "INSERT INTO stk_entries (id,org_id,type,status,created_at) VALUES ($1,$2,'issue','submitted',$3)",
+        [id, ORG, created],
+      );
+    for (const [entry, posted] of [
+      [E1, '2026-03-02T00:00:00Z'], // entry created later than posted_at -> entry.created_at
+      [E2, '2026-03-05T00:00:00Z'], // posted later than entry creation -> posted_at
+      [ORPHAN, '2026-03-07T00:00:00Z'], // no matching entry -> posted_at
+    ])
+      await client.query(
+        `INSERT INTO stk_ledger (org_id,item_id,warehouse_id,entry_id,qty_delta,qty_after,valuation_rate,value_delta,posted_at)
+         VALUES ($1,$2,$3,$4,1,1,1,1,$5)`,
+        [ORG, ITEM, WH, entry, posted],
+      );
+    await client.exec(h4Migration);
+    const fill = (
+      await client.query<{ entry_id: string; created_at: string }>(
+        'SELECT entry_id, created_at::text FROM stk_ledger ORDER BY entry_id',
+      )
+    ).rows.map((r) => [r.entry_id, new Date(r.created_at).toISOString()]);
+    expect(fill).toEqual([
+      [E1, '2026-03-10T00:00:00.000Z'],
+      [E2, '2026-03-05T00:00:00.000Z'],
+      [ORPHAN, '2026-03-07T00:00:00.000Z'],
+    ]);
+    // A row written afterwards gets created_at from the default and never null.
+    await client.query(
+      `INSERT INTO stk_ledger (org_id,item_id,warehouse_id,entry_id,qty_delta,qty_after,valuation_rate,value_delta,posted_at)
+       VALUES ($1,$2,$3,$4,1,1,1,1,'2020-01-01T00:00:00Z')`,
+      [ORG, ITEM, WH, E1],
+    );
+    const fresh = (
+      await client.query<{ backdated: boolean }>(
+        "SELECT created_at > now() - interval '1 minute' AS backdated FROM stk_ledger WHERE posted_at = '2020-01-01T00:00:00Z'",
+      )
+    ).rows[0];
+    expect(fresh.backdated).toBe(true);
+  });
   it('rejects unsafe or missing CLI mode without any database access', () => {
     expect(() => validatePreflightArgs(['--read-only'])).not.toThrow();
     for (const args of [[], ['--apply'], ['--read-only', '--apply']])
