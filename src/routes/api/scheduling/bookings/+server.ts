@@ -4,7 +4,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { parseInclusiveEnd } from '$lib/components/dashboard/date-range/url';
 import { createBookingResponse } from './_handlers';
@@ -32,6 +32,6 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   return createBookingResponse(ctx, locals, request);
 };

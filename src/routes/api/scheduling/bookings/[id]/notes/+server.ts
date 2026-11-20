@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { updateBookingNotes } from '$server/services/scheduling-bookings.service';
 import { StaleWriteError } from '$server/services/errors';
 
@@ -23,7 +23,7 @@ export const PUT: RequestHandler = async ({ locals, request, params }) => {
   requireAuth(locals); // capability gate is central: /api/scheduling → scheduling:edit
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const { expectedUpdatedAt, ...b } = await parseBody(request, putSchema);
   try {
     const booking = await updateBookingNotes(ctx, params.id!, b, expectedUpdatedAt);

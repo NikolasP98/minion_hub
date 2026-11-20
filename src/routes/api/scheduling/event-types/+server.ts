@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import {
   listEventTypes,
   upsertEventType,
@@ -77,7 +77,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   await requireOrgCapability(locals, 'scheduling', 'manage');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const b = await parseBody(request, eventTypeSchema);
   const id = await upsertEventType(ctx, toEventTypeInput(b));
   return json({ id });

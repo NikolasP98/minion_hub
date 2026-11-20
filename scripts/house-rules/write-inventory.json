@@ -1,0 +1,1286 @@
+{
+  "todoCeiling": 137,
+  "entries": [
+    {
+      "file": "src/routes/api/active-org/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/activity/comments/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/admin/personal-agent-migration/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/agent-memories/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/agent-memories/delete/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "session tenantCtx check only, no capability"
+    },
+    {
+      "file": "src/routes/api/agent-memories/ingest/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/agent-memories/recall/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/artifacts/[id]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/artifacts/[id]/regenerate/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/artifacts/[id]/revert/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/artifacts/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/artifacts/generate/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/assignment/rules/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/assignment/rules/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/assistant/decision-events/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/assistant/route/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/attachments/[fileId]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/attachments/[fileId]/links/+server.ts",
+      "methods": ["DELETE", "POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/attachments/finalize/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/attachments/intent/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/auth/forgot-password/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "sign-in and password-reset flow, no session by design"
+    },
+    {
+      "file": "src/routes/api/auth/password-login/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "sign-in and password-reset flow, no session by design"
+    },
+    {
+      "file": "src/routes/api/auth/reset-password/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "sign-in and password-reset flow, no session by design"
+    },
+    {
+      "file": "src/routes/api/backup-config/+server.ts",
+      "methods": ["PUT"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/backup-config/test/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/bugs/[id]/+server.ts",
+      "methods": ["PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "session tenantCtx check only, no capability"
+    },
+    {
+      "file": "src/routes/api/bugs/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "session tenantCtx check only, no capability"
+    },
+    {
+      "file": "src/routes/api/bugs/report/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/builder/ai/analyze-run/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/builder/ai/dry-run/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/builder/ai/suggest-chapter/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/builder/ai/suggest-prompts/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/builder/ai/suggest-skill/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/dashboard-layouts/[id]/+server.ts",
+      "methods": ["PUT"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/dev/qa-login/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "disabled",
+      "reason": "dev-only QA login; requireDevBackend and loopback check, answers 404 otherwise"
+    },
+    {
+      "file": "src/routes/api/dev/switch-user/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/doors/public/[slug]/click/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "public doors form endpoint for external sites"
+    },
+    {
+      "file": "src/routes/api/doors/public/[slug]/submit/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "public doors form endpoint for external sites"
+    },
+    {
+      "file": "src/routes/api/doors/public/[slug]/upload/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "public doors form endpoint for external sites"
+    },
+    {
+      "file": "src/routes/api/email-opens/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "self",
+      "reason": "requires locals.user and marks opens keyed by locals.user.id"
+    },
+    {
+      "file": "src/routes/api/files/[id]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/files/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flow-groups/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flow-groups/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flows/[flowId]/exports/+server.ts",
+      "methods": ["PATCH"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flows/[id]/+server.ts",
+      "methods": ["DELETE", "PUT"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flows/[id]/copilot/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flows/[id]/runs/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flows/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/flows/reconcile/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/booking-cancel/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/booking-complete/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/booking-create/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/booking-reschedule/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/contact-tag/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/contact-update/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/note-create/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/notify-user/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/order-update-status/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/pos-sale/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/stock-entry-create/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/stock-issue-from-invoice/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/stock-issue-from-service/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/task-create/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/task-update/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/ticket-comment/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/ticket-create/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/ticket-update/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/actions/tool-save/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/brain-remember/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/brain-search/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/crm-conversation-themes/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/email-ledger/+server.ts",
+      "methods": ["POST"],
+      "guard": "server-token",
+      "class": "gateway-token",
+      "reason": "requires locals.serverId (gateway machine identity) and resolves the gateway"
+    },
+    {
+      "file": "src/routes/api/gateway/fleet-update/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/gateway/lease/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/gateway/pulse/proposals/+server.ts",
+      "methods": ["POST"],
+      "guard": "server-token",
+      "class": "gateway-token",
+      "reason": "requires locals.serverId (gateway machine identity) and resolves the gateway"
+    },
+    {
+      "file": "src/routes/api/gateway/query/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "disabled",
+      "reason": "always answers 503 (ASSISTANT_SQL_DISABLED)"
+    },
+    {
+      "file": "src/routes/api/gateway/search-crm-conversations/+server.ts",
+      "methods": ["POST"],
+      "guard": "assistant-principal",
+      "class": "assistant-principal",
+      "reason": "calls requireAssistantCapability / resolveAssistantPrincipal"
+    },
+    {
+      "file": "src/routes/api/gateway/update/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/gateway/whatsapp/member/+server.ts",
+      "methods": ["POST"],
+      "guard": "server-token",
+      "class": "gateway-token",
+      "reason": "requires locals.serverId (gateway machine identity) and resolves the gateway"
+    },
+    {
+      "file": "src/routes/api/gateways/[id]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/gateways/[id]/links/+server.ts",
+      "methods": ["DELETE", "POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/gateways/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/inbox/[id]/dismiss/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/inbox/[id]/read/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/inbox/daily/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/inbox/read-all/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/internal/channels/backfill/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "gateway-token",
+      "reason": "requires locals.serverId (gateway machine identity) and resolves the gateway"
+    },
+    {
+      "file": "src/routes/api/internal/channels/pairing/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "gateway-token",
+      "reason": "requires locals.serverId (gateway machine identity) and resolves the gateway"
+    },
+    {
+      "file": "src/routes/api/internal/channels/pairing/approve/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "gateway-token",
+      "reason": "requires locals.serverId (gateway machine identity) and resolves the gateway"
+    },
+    {
+      "file": "src/routes/api/internal/events/handle/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "gateway-token",
+      "reason": "compares Authorization bearer with HUB_API_TOKEN"
+    },
+    {
+      "file": "src/routes/api/join-requests/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireOrgCapability",
+      "class": "self",
+      "reason": "POST creates the signed-in user's own join request (requireAuth); only GET uses requireOrgCapability"
+    },
+    {
+      "file": "src/routes/api/marketplace/generate-agent/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/marketplace/install/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/marketplace/sync/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/me/+server.ts",
+      "methods": ["PATCH"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/me/password/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/me/preferences/[section]/+server.ts",
+      "methods": ["PUT"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/me/role-simulation/+server.ts",
+      "methods": ["DELETE", "POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/messages/ingest/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "tenantCtx check; serverId read is optional so it is not token-only (could be gateway-token if made mandatory)"
+    },
+    {
+      "file": "src/routes/api/metrics/credential-health/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/metrics/skill-stats/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/[id]/+server.ts",
+      "methods": ["DELETE", "PUT"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/autocomplete/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/fetch-image/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/polish/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/refine/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/spelling/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notes/transcribe/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/notifications/rules/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "none",
+      "class": "todo",
+      "reason": "gated by requireNotificationRuleManager (requireNotificationAdmission 'manage'); the scan does not see the helper"
+    },
+    {
+      "file": "src/routes/api/notifications/rules/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "todo",
+      "reason": "gated by requireNotificationRuleManager (requireNotificationAdmission 'manage'); the scan does not see the helper"
+    },
+    {
+      "file": "src/routes/api/org-areas/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/org-areas/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/organizations/provision/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/personal-agent/+server.ts",
+      "methods": ["PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/personal-agent/create/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/personal-agent/provision/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/personal-agent/settings/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/releases/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "cron-secret",
+      "reason": "compares Authorization with RELEASES_SECRET or CRON_SECRET"
+    },
+    {
+      "file": "src/routes/api/sandbox/query/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/scheduling/public/[slug]/book/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "public",
+      "reason": "anonymous public booking"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/+server.ts",
+      "methods": ["DELETE", "PUT"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/activity-bins/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/agent-groups/[groupId]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/agent-groups/[groupId]/members/+server.ts",
+      "methods": ["DELETE", "POST", "PUT"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/agent-groups/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/agents/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/backups/[snapshotId]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/backups/restore/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/backups/run/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/channels/[channelId]/qr/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/channels/sync/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/missions/[missionId]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/missions/[missionId]/tasks/[taskId]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/missions/[missionId]/tasks/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/missions/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/provision/config/+server.ts",
+      "methods": ["DELETE", "PUT"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/provision/run/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/sessions/[sessionKey]/messages/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/sessions/[sessionKey]/tasks/[taskId]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/sessions/[sessionKey]/tasks/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/sessions/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/settings/[section]/+server.ts",
+      "methods": ["PUT"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/skills/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/[id]/token/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/servers/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/shared-identities/[identityId]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/shared-identities/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/shared-identities/manage/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/stock/corrections/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/stock/corrections/preview/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/structured-stream/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/tables/properties/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/tables/properties/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/tables/properties/formula/preview/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/tables/properties/values/+server.ts",
+      "methods": ["PUT"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/tables/properties/values/query/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/tags/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "requireOrgCapability",
+      "class": "todo",
+      "reason": "gated through local gateTag() that calls requireOrgCapability; the scan does not see through local wrappers"
+    },
+    {
+      "file": "src/routes/api/tags/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireOrgCapability",
+      "class": "todo",
+      "reason": "gated through local gate() that calls requireOrgCapability; the scan does not see through local wrappers"
+    },
+    {
+      "file": "src/routes/api/tenants/me/+server.ts",
+      "methods": ["PATCH"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "session tenantCtx check only, no capability; PATCH updates the tenant"
+    },
+    {
+      "file": "src/routes/api/users/[id]/+server.ts",
+      "methods": ["DELETE", "PATCH"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/users/[id]/agents/+server.ts",
+      "methods": ["PUT"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/users/[id]/identities/[identityId]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/users/[id]/identities/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/users/[id]/identities/sync-google/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/users/[id]/identities/telegram/start/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "self",
+      "reason": "requires params.id === locals.user.id (own identity only)"
+    },
+    {
+      "file": "src/routes/api/users/[id]/identities/verify-confirm/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "self",
+      "reason": "requires params.id === locals.user.id (own identity only)"
+    },
+    {
+      "file": "src/routes/api/users/[id]/identities/verify-request/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "self",
+      "reason": "requires params.id === locals.user.id (own identity only)"
+    },
+    {
+      "file": "src/routes/api/users/[id]/servers/+server.ts",
+      "methods": ["PUT"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/users/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/voice/tts/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workflow/apply/+server.ts",
+      "methods": ["POST"],
+      "guard": "ctx-only",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workflow/defs/[id]/+server.ts",
+      "methods": ["DELETE"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workflow/defs/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAdmin",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/compare/+server.ts",
+      "methods": ["POST"],
+      "guard": "server-token",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/compare/rank/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/groupchat/[id]/advance/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/groupchat/[id]/cancel/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireFeature",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/groupchat/+server.ts",
+      "methods": ["POST"],
+      "guard": "server-token",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/saves/[id]/+server.ts",
+      "methods": ["DELETE", "PUT"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workshop/saves/+server.ts",
+      "methods": ["POST"],
+      "guard": "requireAuth",
+      "class": "todo",
+      "reason": "not yet classified"
+    },
+    {
+      "file": "src/routes/api/workspaces/select/+server.ts",
+      "methods": ["POST"],
+      "guard": "none",
+      "class": "self",
+      "reason": "requires locals.user and checks the caller's own workspace_membership before setting a cookie"
+    }
+  ]
+}

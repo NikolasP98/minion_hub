@@ -1,7 +1,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { undoImport, requirePersonalOrg } from '$server/services/finance-statements.service';
 
 /** POST /api/finances/statement-imports/:id/undo — delete every transaction
@@ -9,7 +9,7 @@ import { undoImport, requirePersonalOrg } from '$server/services/finance-stateme
 export const POST: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'finances'))) throw error(403, 'finances module disabled');
+  await requireModuleEnabled(ctx, 'finances');
   await requirePersonalOrg(ctx);
 
   const row = await undoImport(ctx, params.id!);

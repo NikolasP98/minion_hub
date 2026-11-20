@@ -85,7 +85,11 @@ describe('/api/crm/doors', () => {
       request: req({ kind: 'form', slug: 'abc', title: 'x' }),
     } as never);
     expect(taken.status).toBe(409);
-    expect(await taken.json()).toEqual({ error: 'slug_taken' });
+    expect(await taken.json()).toEqual({
+      message: 'slug_taken',
+      error: 'slug_taken',
+      code: 'slug_taken',
+    });
     mocks.createDoor.mockRejectedValueOnce(new DoorError('unknown_kind', 400));
     expect(
       await status(
@@ -144,7 +148,12 @@ describe('/api/crm/doors/[id]', () => {
       request: req({ config: {} }),
     } as never);
     expect(res.status).toBe(400);
-    expect(await res.json()).toEqual({ error: 'invalid_config', issues: [{ path: ['fields'] }] });
+    expect(await res.json()).toEqual({
+      message: 'invalid_config',
+      error: 'invalid_config',
+      code: 'invalid_config',
+      issues: [{ path: ['fields'] }],
+    });
   });
 
   it('PATCH toggles a door', async () => {

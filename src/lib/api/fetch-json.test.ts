@@ -25,6 +25,24 @@ describe('fetchJson', () => {
     expect(error).toMatchObject({ status, kind, message: 'Safe explanation' });
   });
 
+  test('exposes a string body code on ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          Response.json({ message: 'Full', error: 'Full', code: 'full' }, { status: 409 }),
+        ),
+    );
+    await expect(fetchJson('/api/example')).rejects.toMatchObject({
+      message: 'Full',
+      code: 'full',
+    });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ code: 7 }, { status: 400 })));
+    const error = (await fetchJson('/api/example').catch((value) => value)) as { code?: unknown };
+    expect(error.code).toBeUndefined();
+  });
+
   test('classifies transport and cancellation failures', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new TypeError('offline')));
     await expect(fetchJson('/api/example')).rejects.toMatchObject({ kind: 'network', status: 0 });

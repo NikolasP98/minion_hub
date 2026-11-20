@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import {
   createBookingSeries,
   MAX_SERIES_SLOTS,
@@ -41,7 +41,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   requireAuth(locals); // capability gate is central: /api/scheduling → scheduling:edit
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const b = await parseBody(request, postSchema);
   try {
     const bookings = await createBookingSeries(ctx, {

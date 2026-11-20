@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { HrRuleError } from '$server/services/hr.service';
 import { StaleWriteError } from '$server/services/errors';
 
@@ -8,7 +8,7 @@ import { StaleWriteError } from '$server/services/errors';
 export async function hrCtx(locals: App.Locals) {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   return ctx;
 }
 
