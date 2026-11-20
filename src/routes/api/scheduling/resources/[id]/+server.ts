@@ -3,7 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { updateResource, deleteResource } from '$server/services/scheduling.service';
 
 const patchSchema = z.object({
@@ -20,7 +20,7 @@ const patchSchema = z.object({
 export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const b = await parseBody(request, patchSchema);
   if (b.deleted) {
     await deleteResource(ctx, params.id!);
@@ -39,7 +39,7 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   await deleteResource(ctx, params.id!);
   return json({ ok: true });
 };

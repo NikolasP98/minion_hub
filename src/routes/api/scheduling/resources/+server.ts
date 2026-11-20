@@ -4,7 +4,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { listResources, createResource } from '$server/services/scheduling.service';
 
 // '' / null / undefined -> null (matches the old `b.x ? String(b.x) : null` guards).
@@ -28,7 +28,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const b = await parseBody(request, postSchema);
   const resource = await createResource(ctx, {
     name: b.name.trim(),

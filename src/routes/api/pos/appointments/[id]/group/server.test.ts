@@ -69,13 +69,13 @@ describe('POST /api/pos/appointments/[id]/group', () => {
     expect(state.groupBookingResponse).not.toHaveBeenCalled();
   });
 
-  it('hides the endpoint (403) when scheduling or pos is disabled, before checking the capability', async () => {
+  it('hides the endpoint (404) when scheduling or pos is disabled, before checking the capability', async () => {
     state.enabled = false;
     const { POST } = await import('./+server');
 
     await expect(
       POST({ locals: { user: state.user }, request: request(), params: { id: 'b1' } } as never),
-    ).rejects.toMatchObject({ status: 403 });
+    ).rejects.toMatchObject({ status: 404, body: { code: 'module_disabled' } });
     expect(state.required).not.toHaveBeenCalled();
     expect(state.groupBookingResponse).not.toHaveBeenCalled();
   });

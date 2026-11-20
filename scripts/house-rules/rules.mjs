@@ -8,6 +8,7 @@ import {
   countHand401,
   handbuiltErrorBody,
   importsDeprecatedModal,
+  inlineModule403,
   kitInService,
   rawRequestJson,
   sendsRawWrite,
@@ -82,6 +83,16 @@ export const RULES = [
     exts: ['.ts'],
     exceptions: [],
     match: kitInService,
+  },
+  {
+    id: 'inline-module-403',
+    sentence:
+      'A switched-off module answers 404 through requireModuleEnabled, never an inline 403.',
+    entryPoint: 'requireModuleEnabled from $server/http/require-module',
+    kind: 'count',
+    exts: ['.ts'],
+    exceptions: [],
+    match: inlineModule403,
   },
   {
     id: 'tick-routes-listed',

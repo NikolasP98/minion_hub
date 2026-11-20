@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { enqueueJob } from '$server/services/finance-sync-jobs.service';
 import { advanceJob } from '$server/services/finance-sync.service';
 
@@ -13,13 +13,14 @@ const postSchema = z.object({ provider: z.string().max(200).optional() });
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'finances'))) throw error(403, 'finances module disabled');
+  await requireModuleEnabled(ctx, 'finances');
   const body = await parseBody(request, postSchema);
   const provider = typeof body.provider === 'string' ? body.provider : 'susii';
   const job = await enqueueJob(ctx, provider);
   // Detached: runs to completion on a persistent runtime (localhost / adapter-node);
   // on Vercel serverless it may be frozen after the response — the cron tick resumes it.
-  void advanceJob(ctx, job.id, { budgetMs: Number.POSITIVE_INFINITY })
-    .catch((e) => console.error('[finance-sync] advanceJob failed', e));
+  void advanceJob(ctx, job.id, { budgetMs: Number.POSITIVE_INFINITY }).catch((e) =>
+    console.error('[finance-sync] advanceJob failed', e),
+  );
   return json({ jobId: job.id, status: job.status });
 };

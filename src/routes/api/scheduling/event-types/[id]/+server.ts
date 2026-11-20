@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import {
   getEventType,
   upsertEventType,
@@ -84,7 +84,7 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   await requireOrgCapability(locals, 'scheduling', 'manage');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const b = await parseBody(request, eventTypeSchema);
   try {
     let updatedAt: Date | undefined;
@@ -104,7 +104,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   await requireOrgCapability(locals, 'scheduling', 'manage');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   await deleteEventType(ctx, params.id!);
   return json({ ok: true });
 };

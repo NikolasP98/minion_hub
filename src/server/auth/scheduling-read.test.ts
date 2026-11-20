@@ -337,7 +337,8 @@ describe('POS-only slot compatibility', () => {
       allow('pos', ['view', 'create']);
       boundary.enabled.mockImplementation((_ctx, name) => name !== module);
       await expect((await load())(event('/api/pos/appointments/slots'))).rejects.toMatchObject({
-        status: 403,
+        status: 404,
+        body: { code: 'module_disabled' },
       });
       expect(boundary.slots).not.toHaveBeenCalled();
     });

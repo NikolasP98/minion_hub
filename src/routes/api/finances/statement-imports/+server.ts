@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { createImport, requirePersonalOrg } from '$server/services/finance-statements.service';
 
 // R5: dedicated upload endpoint — NOT raw /api/files (no finance capability/
@@ -24,7 +24,7 @@ const textSchema = z.object({ text: z.string().min(1).max(MAX_TEXT_CHARS) });
 export const POST: RequestHandler = async ({ locals, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'finances'))) throw error(403, 'finances module disabled');
+  await requireModuleEnabled(ctx, 'finances');
   await requirePersonalOrg(ctx);
 
   const contentType = request.headers.get('content-type') ?? '';

@@ -3,7 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { requireOrgCapability } from '$server/services/rbac.service';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import {
   bookingDetailResponse,
   patchBookingResponse,
@@ -19,8 +19,8 @@ async function gate(locals: App.Locals) {
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
-  if (!(await isModuleEnabled(ctx, 'pos'))) throw error(403, 'pos module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
+  await requireModuleEnabled(ctx, 'pos');
   return ctx;
 }
 

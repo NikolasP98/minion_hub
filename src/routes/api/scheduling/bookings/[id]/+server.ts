@@ -3,7 +3,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import {
   deleteBooking,
   BookingReferencedError,
@@ -20,7 +20,7 @@ export const PATCH: RequestHandler = async ({ locals, request, params }) => {
   requireAuth(locals); // capability gate is central: /api/scheduling → scheduling:edit
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   return patchBookingResponse(ctx, locals, request, params.id!);
 };
 
@@ -28,7 +28,7 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   requireAuth(locals); // capability gate is central: /api/scheduling → scheduling:edit
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   try {
     await deleteBooking(ctx, params.id!);
   } catch (e) {

@@ -119,3 +119,7 @@ export const kitInService = (file, text) => {
     ? 1
     : 0;
 };
+
+/** Count of inline `error(403, '… module disabled')` calls; a disabled module answers 404 via requireModuleEnabled. */
+export const inlineModule403 = (_file, text) =>
+  (strip(text).match(/error\(403,\s*['"][^'"]*module disabled/g) ?? []).length;
