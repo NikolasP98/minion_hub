@@ -69,6 +69,14 @@ const migration = readFileSync(
   'utf8',
 );
 
+const liveSourceMigration = readFileSync(
+  new URL(
+    '../../../supabase/migrations/20261120120000_stk_entries_one_live_per_source.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
+
 async function counts() {
   return (
     await client.query<{ entries: number; ledger: number; qty: string }>(`SELECT
@@ -121,6 +129,7 @@ beforeAll(async () => {
       WITH CHECK (org_id = current_setting('app.current_org_id',true));`);
   }
   await client.exec(migration);
+  await client.exec(liveSourceMigration);
 }, 30_000);
 afterAll(async () => {
   await client.close();
@@ -388,6 +397,38 @@ describe('additive identity migration and preflight', () => {
       );
       await client.exec(migration);
     }
+  });
+
+  it('declares the live-source index in Drizzle with the same shape as the migration', () => {
+    const config = getTableConfig(stkEntries).indexes.find(
+      (index) => index.config.name === 'stk_entries_org_live_source_uniq',
+    )?.config;
+    if (!config?.where) throw new Error('Missing live-source index');
+    expect(config.unique).toBe(true);
+    const dialect = new PgDialect();
+    const cols = config.columns.slice(1).map((c) => dialect.sqlToQuery(c as SQL).sql);
+    expect(cols).toEqual([`(metadata->>'source')`, `(metadata->>'sourceId')`]);
+    const predicate = dialect.sqlToQuery(config.where);
+    expect(predicate.params).toEqual([]);
+    expect(predicate.sql.replace(/\s+/g, ' ')).toBe(
+      `status in ('draft', 'submitted') and coalesce(metadata->>'source', '') <> '' and coalesce(metadata->>'sourceId', '') <> ''`,
+    );
+  });
+
+  it('D6: the database refuses a second live entry for one source (gate bypassed)', async () => {
+    const key = { source: 'pos', sourceId: 'ticket-1' };
+    await addEntry(ORG, 'submitted', key);
+    await expect(addEntry(ORG, 'draft', key)).rejects.toThrow(/stk_entries_org_live_source_uniq/);
+    // cancelled history, another org, another source and a missing/empty sourceId are all allowed
+    await addEntry(ORG, 'cancelled', key);
+    await addEntry(OTHER, 'submitted', key);
+    await addEntry(ORG, 'draft', { source: 'pos', sourceId: 'ticket-2' });
+    await addEntry(ORG, 'draft', { source: 'pos' });
+    await addEntry(ORG, 'draft', { source: 'pos' });
+    await addEntry(ORG, 'draft', { source: 'pos', sourceId: '' });
+    await addEntry(ORG, 'draft', { source: 'pos', sourceId: '' });
+    await addEntry(ORG, 'draft', {});
+    await addEntry(ORG, 'draft', {});
   });
 
   it('rejects active duplicates, including case/space variants, but accepts cross-org and cancelled histories', async () => {
