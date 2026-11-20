@@ -39,7 +39,7 @@ describe('fetchJson', () => {
       code: 'full',
     });
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ code: 7 }, { status: 400 })));
-    const error = await fetchJson('/api/example').catch((value) => value);
+    const error = (await fetchJson('/api/example').catch((value) => value)) as { code?: unknown };
     expect(error.code).toBeUndefined();
   });
 

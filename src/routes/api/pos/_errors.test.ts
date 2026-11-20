@@ -42,8 +42,7 @@ describe('handlePosError', () => {
   });
 
   it('keeps the items extra next to message, error and code', async () => {
-    const err = new PosError('short', 'insufficient_stock');
-    err.items = [{ productId: 'p1' }] as never;
+    const err = new PosError('short', 'insufficient_stock', [{ productId: 'p1' }] as never);
     const body = await handlePosError(err).json();
     expect(body).toMatchObject({ message: 'short', error: 'short', code: 'insufficient_stock' });
     expect(body.items).toEqual([{ productId: 'p1' }]);
