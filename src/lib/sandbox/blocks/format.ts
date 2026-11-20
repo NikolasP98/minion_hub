@@ -31,12 +31,12 @@ export function formatValue(
     case 'money':
       return formatMoney(n, currency);
     case 'compact':
-      return formatNumber(n, { compact: true });
+      return formatNumber(n, { notation: 'compact', maximumFractionDigits: 1 });
     case 'percent':
       return formatPercent(n);
     case 'number':
     default:
-      return formatNumber(n);
+      return formatNumber(n, { maximumFractionDigits: 2 });
   }
 }
 
@@ -46,7 +46,7 @@ export function formatAxis(value: unknown, format: Format = 'number', currency =
   if (n === null) return '';
   if (format === 'money') return formatMoneyShort(n, currency);
   if (format === 'percent') return formatPercent(n);
-  return formatNumber(n, { compact: true });
+  return formatNumber(n, { notation: 'compact', maximumFractionDigits: 1 });
 }
 
 /** Relative change as a signed percent string; `null` when the base is 0 or unknown. */

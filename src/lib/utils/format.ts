@@ -122,23 +122,6 @@ export function formatMoneyShort(
 }
 
 /**
- * Plain or compact NUMBER in the app locale — counts and quantities, never
- * money (money goes through `formatMoney` so it carries its symbol).
- * `"1234.5"` → "1,234.5"; compact: 1_250_000 → "1.3M".
- */
-export function formatNumber(
-  value: number | string | null | undefined,
-  opts: { compact?: boolean; decimals?: number } = {},
-): string {
-  const n = typeof value === 'string' ? Number(value) : (value ?? NaN);
-  if (!Number.isFinite(n)) return '—';
-  return new Intl.NumberFormat(appLocale(), {
-    notation: opts.compact ? 'compact' : 'standard',
-    maximumFractionDigits: opts.decimals ?? (opts.compact ? 1 : 2),
-  }).format(n as number);
-}
-
-/**
  * A RATIO as a percent: 0.1234 → "12.3%". `signed` prints the sign on
  * non-zero values (+20% / -20%), the shape every delta chip uses.
  */
