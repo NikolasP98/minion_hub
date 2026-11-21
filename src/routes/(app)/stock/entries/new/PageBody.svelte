@@ -395,6 +395,7 @@
   // enough. An upload failure never loses the entry — it is reported and the
   // detail page still offers the attach button.
   let files = $state<File[]>([]);
+  const uploadedFiles = new WeakSet<File>();
   function stageFiles(picked: File[]) {
     files = [...files, ...picked];
   }
@@ -412,12 +413,14 @@
       return null;
     }
     const entry = (await res.json()) as { id: string };
-    const uploaded = draftId === entry.id;
     draftId = isExchange ? entry.id : null;
-    if (uploaded) return entry;
+    // A canje retry re-saves the same draft: upload only files not yet sent, so a
+    // file staged after a refusal is not dropped and none is sent twice.
     for (const file of files) {
+      if (uploadedFiles.has(file)) continue;
       try {
         await uploadAttachment(file, [{ objectType: 'stk_entry', objectId: entry.id }]);
+        uploadedFiles.add(file);
       } catch (e) {
         toastError(
           m.attachments_upload_failed({ file: file.name }),

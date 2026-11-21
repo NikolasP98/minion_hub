@@ -30,7 +30,13 @@ vi.mock('@minion-stack/cache', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@minion-stack/cache')>()),
   cached: (_key: unknown, _opts: unknown, fn: () => unknown) => fn(),
 }));
-import { createEntry, submitEntry, cancelEntry, getStockDailyFlow } from './stock.service';
+import {
+  createEntry,
+  submitEntry,
+  cancelEntry,
+  getStockDailyFlow,
+  itemSupplyInfo,
+} from './stock.service';
 import { financeSummary } from './finance.service';
 
 const client = new PGlite();
@@ -86,6 +92,7 @@ beforeAll(async () => {
       total numeric, subtotal numeric, discount numeric, tax numeric, status text, client_id uuid,
       client_doc_number text, currency text, issued_at timestamptz, shadowed boolean NOT NULL DEFAULT false);
     CREATE TABLE fin_invoice_items (invoice_id uuid, total numeric);
+    CREATE TABLE parties (id uuid PRIMARY KEY, org_id text NOT NULL, name text);
     GRANT USAGE ON SCHEMA public TO app_ledger;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_ledger;
     REVOKE UPDATE, DELETE ON stk_ledger FROM app_ledger;
@@ -222,5 +229,27 @@ describe('canje in finance (FR-006)', () => {
     expect((await financeSummary(ctx, { from: null, to: null, bucket: 'month' })).totalCogs).toBe(
       500,
     );
+  });
+});
+
+describe('last purchase cost reads registered receipts only', () => {
+  const receipt = (itemId: string, qty: number, rate: number) =>
+    createEntry(ctx, { type: 'receipt', lines: [{ itemId, qty, rate, toWarehouseId: WH }] }, actor);
+
+  it('a canje after a purchase does not replace the purchase cost', async () => {
+    const bought = await receipt(VOLUME, 10, 280);
+    await submitEntry(ctx, bought.id, actor);
+    const swap = await exchange([out(FILLER, 20), inn(VOLUME, 20)]);
+    await submitEntry(ctx, swap.id, actor);
+    expect((await itemSupplyInfo(ctx)).get(VOLUME)?.lastRestockCost).toBe(280);
+  });
+
+  it('a cancelled purchase and its reversal are not a purchase', async () => {
+    const first = await receipt(OTHER, 4, 90);
+    await submitEntry(ctx, first.id, actor);
+    const wrong = await receipt(OTHER, 4, 900);
+    await submitEntry(ctx, wrong.id, actor);
+    await cancelEntry(ctx, wrong.id, actor);
+    expect((await itemSupplyInfo(ctx)).get(OTHER)?.lastRestockCost).toBe(90);
   });
 });

@@ -327,10 +327,14 @@ export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo
              l.posted_at,
              p.name as supplier_name
       from (
-        select distinct on (item_id) item_id, value_delta, qty_delta, posted_at, entry_id
-        from stk_ledger
-        where org_id = ${ctx.tenantId} and qty_delta > 0
-        order by item_id, posted_at desc, id desc
+        -- Only registered purchases count: a canje's incoming value, a found-stock adjustment,
+        -- a transfer leg or a cancel reversal is not what a delivery cost.
+        select distinct on (sl.item_id) sl.item_id, sl.value_delta, sl.qty_delta, sl.posted_at, sl.entry_id
+        from stk_ledger sl
+        join stk_entries se on se.id = sl.entry_id and se.org_id = ${ctx.tenantId}
+          and se.type = 'receipt' and se.status = 'submitted'
+        where sl.org_id = ${ctx.tenantId} and sl.qty_delta > 0
+        order by sl.item_id, sl.posted_at desc, sl.id desc
       ) l
       left join stk_entries e on e.id = l.entry_id and e.org_id = ${ctx.tenantId}
       left join parties p on p.id = e.party_id and p.org_id = ${ctx.tenantId}
@@ -1047,7 +1051,13 @@ export async function submitEntryInTx(
     throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
 
   const lines =
-    checkedLines ?? (await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id)));
+    checkedLines ??
+    // line_no order: a canje's rounding remainder lands on the same incoming line every time.
+    (await tx
+      .select()
+      .from(stkEntryLines)
+      .where(eq(stkEntryLines.entryId, id))
+      .orderBy(asc(stkEntryLines.lineNo)));
   if (!lines.length) throw new StockError('entry has no lines', 'no_lines');
   if (!isEntryType(entry.type)) throw new StockError('invalid entry type', 'invalid_type');
   const type = entry.type;
