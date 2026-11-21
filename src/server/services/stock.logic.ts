@@ -9,16 +9,19 @@
 import {
   ENTRY_TYPES,
   expandLine,
+  splitExchangeValue,
+  validateExchange,
   type EntryLineLike,
   type EntryType,
+  type ExchangeErrorCode,
   type LegPlan,
 } from '$lib/stock/entry-legs';
 
 // Leg expansion is shared with the `/stock/entries/new` preview — it lives in
 // `$lib/stock/entry-legs.ts` and is re-exported here so every server caller
 // keeps importing it from stock.logic.
-export { ENTRY_TYPES, expandLine };
-export type { EntryLineLike, EntryType, LegPlan };
+export { ENTRY_TYPES, expandLine, splitExchangeValue, validateExchange };
+export type { EntryLineLike, EntryType, ExchangeErrorCode, LegPlan };
 
 export const ENTRY_STATUSES = ['draft', 'submitted', 'cancelled'] as const;
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
@@ -105,6 +108,10 @@ export function validateEntryLine(type: EntryType, line: EntryLineLike): string[
     if (has !== 1) errs.push('adjustment requires exactly one of from_warehouse / to_warehouse');
     if (line.toWarehouseId && (line.rate == null || line.rate <= 0))
       errs.push('a positive (found-stock) adjustment requires a rate');
+  } else if (type === 'exchange') {
+    // The incoming rate is computed at submit from the outgoing value — never typed.
+    const has = [line.fromWarehouseId, line.toWarehouseId].filter(Boolean).length;
+    if (has !== 1) errs.push('exchange line requires exactly one of from_warehouse / to_warehouse');
   }
   return errs;
 }

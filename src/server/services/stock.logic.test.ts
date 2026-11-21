@@ -5,6 +5,8 @@ import {
   computeLegValue,
   wouldGoNegative,
   validateEntryLine,
+  validateExchange,
+  splitExchangeValue,
   expandLine,
   wouldCreateCycle,
   wouldCreateComponentCycle,
@@ -194,6 +196,73 @@ describe('expandLine', () => {
     expect(
       expandLine('adjustment', { qty: 2, rate: null, fromWarehouseId: 'w1', toWarehouseId: null }),
     ).toEqual([{ warehouseId: 'w1', qtyDelta: -2, rate: null }]);
+  });
+});
+
+describe('exchange (canje, spec 142)', () => {
+  it('expands a two-sided exchange into an out-leg and an in-leg', () => {
+    const out = { qty: 20, rate: null, fromWarehouseId: 'w1', toWarehouseId: null };
+    const inn = { qty: 20, rate: 250, fromWarehouseId: null, toWarehouseId: 'w1' };
+    expect([...expandLine('exchange', out), ...expandLine('exchange', inn)]).toEqual([
+      { warehouseId: 'w1', qtyDelta: -20, rate: null },
+      { warehouseId: 'w1', qtyDelta: 20, rate: 250 },
+    ]);
+  });
+
+  it('validateEntryLine: exactly one side, no rate required', () => {
+    const line = { qty: 1, rate: null, fromWarehouseId: null, toWarehouseId: null };
+    expect(validateEntryLine('exchange', { ...line, toWarehouseId: 'w1' })).toEqual([]);
+    expect(validateEntryLine('exchange', { ...line, fromWarehouseId: 'w1' })).toEqual([]);
+    expect(validateEntryLine('exchange', line)).toEqual([
+      'exchange line requires exactly one of from_warehouse / to_warehouse',
+    ]);
+    expect(
+      validateEntryLine('exchange', { ...line, fromWarehouseId: 'w1', toWarehouseId: 'w1' }),
+    ).toHaveLength(1);
+  });
+
+  it('validateExchange: supplier, both sides, no item on both sides', () => {
+    const out = (itemId: string) => ({ itemId, fromWarehouseId: 'w1', toWarehouseId: null });
+    const inn = (itemId: string) => ({ itemId, fromWarehouseId: null, toWarehouseId: 'w1' });
+    expect(validateExchange([out('a'), inn('b')], 'p1')).toBeNull();
+    expect(validateExchange([out('a'), inn('b')], null)).toBe('exchange_party_required');
+    expect(validateExchange([out('a')], 'p1')).toBe('exchange_needs_both_sides');
+    expect(validateExchange([inn('b')], 'p1')).toBe('exchange_needs_both_sides');
+    expect(validateExchange([out('a'), inn('a')], 'p1')).toBe('exchange_item_both_sides');
+  });
+
+  const sum = (rates: number[], qtys: number[]) =>
+    round4(rates.reduce((s, r, i) => s + r * qtys[i], 0));
+
+  it('splitExchangeValue: 20 out @ 250 → 20 in @ 250', () => {
+    expect(splitExchangeValue(5000, [{ qty: 20 }])).toEqual([250]);
+  });
+
+  it('splitExchangeValue: 1000 over 3 + 1 → 750 / 250', () => {
+    const rates = splitExchangeValue(1000, [{ qty: 3 }, { qty: 1 }]);
+    expect(rates.map((r, i) => round4(r * [3, 1][i]))).toEqual([750, 250]);
+  });
+
+  it('splitExchangeValue: an uneven split sums exactly, remainder on the last line', () => {
+    const qtys = [1, 1, 1];
+    const rates = splitExchangeValue(
+      100,
+      qtys.map((qty) => ({ qty })),
+    );
+    expect(sum(rates, qtys)).toBe(100);
+    expect(round4(rates[0])).toBe(33.3333);
+    // A huge first line must never push the remainder negative.
+    const big = [1500, 1];
+    const r2 = splitExchangeValue(
+      1,
+      big.map((qty) => ({ qty })),
+    );
+    expect(sum(r2, big)).toBe(1);
+    expect(r2.every((r) => r >= 0)).toBe(true);
+  });
+
+  it('splitExchangeValue: outValue 0 → every rate 0', () => {
+    expect(splitExchangeValue(0, [{ qty: 3 }, { qty: 2 }])).toEqual([0, 0]);
   });
 });
 
