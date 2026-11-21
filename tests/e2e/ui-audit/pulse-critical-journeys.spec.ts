@@ -183,7 +183,9 @@ for (const locale of ['en', 'es']) {
       expect(writes(await snapshot(page))).toHaveLength(1);
     });
   }
-  for (const surface of ['page', 'popup']) {
+  // 'popup' is left out while Pulse is switched off: the notifications popup hides Pulse for every
+  // organization, so there is nothing to drive. Restore it together with pulse-critical-contract.ts.
+  for (const surface of ['page']) {
     test(`PULSE3 ${locale} ${surface} uses real approval controls and reads scheduled receipt on reconnect`, async ({
       page,
     }, info) => {
