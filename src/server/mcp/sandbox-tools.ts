@@ -1,18 +1,24 @@
 /**
- * The five sandbox tools of the hub MCP endpoint (spec 136 S5). Every handler acts for the
- * key's org through the existing sandbox service; none returns business data rows.
+ * The sandbox tools of the hub MCP endpoint (spec 136 S5, 143). Every handler acts for the
+ * caller's org through the existing sandbox service. A key caller gets no business data rows; a
+ * signed-in caller must hold `settings:manage` and `sandbox_query` applies the dataset's own
+ * `view` and record-scope checks.
  */
 import type { CoreCtx } from '$server/auth/core-ctx';
 import {
   datasetCatalog,
   LIBRARY_PAGE,
+  listDatasets,
   listElements,
   listPages,
   removeElement,
+  runQuery,
   upsertElement,
   type SandboxElementInput,
 } from '$server/sandbox/sandbox.service';
-import { SandboxQueryError } from '$server/sandbox/query-compiler';
+import { SandboxQueryError, type QuerySpec } from '$server/sandbox/query-compiler';
+import { loadCanonicalMemberships } from '$server/services/canonical-directory.service';
+import { hasOrgCapability, resolveCapabilities } from '$server/services/rbac.service';
 import { validateBlockSpec } from '$server/sandbox/blocks';
 import { BLOCK_DESCRIPTIONS, BLOCK_EXAMPLES } from '$lib/sandbox/blocks/catalog';
 import {
@@ -26,9 +32,20 @@ import {
 } from '$lib/sandbox/blocks/schema';
 import { ToolFailure, type McpTool } from './protocol';
 
+/** A key caller carries `keyId`; a signed-in caller carries the `locals` the permission service reads. */
 export interface SandboxToolContext {
   ctx: CoreCtx;
-  keyId: string;
+  keyId?: string;
+  locals?: App.Locals;
+  /** The hub's availability rule for `/sandbox` says this organization cannot reach it (spec 143 P10). */
+  sandboxBlocked?: boolean;
+}
+
+/** Signed-in callers need the Sandbox page's own permission for every sandbox tool. */
+async function gate({ locals, sandboxBlocked }: SandboxToolContext): Promise<void> {
+  if (sandboxBlocked) throw new ToolFailure('The Sandbox is not available for this organization.');
+  if (locals && !(await hasOrgCapability(locals, 'settings', 'manage')))
+    throw new ToolFailure('Your role does not permit managing the Sandbox.');
 }
 
 const PAGE_RE = /^[a-z][a-z0-9-]{0,31}$/;
@@ -72,13 +89,15 @@ const obj = (properties: Record<string, unknown>, required: string[] = []) => ({
   additionalProperties: false,
 });
 
-export const sandboxTools: McpTool<SandboxToolContext>[] = [
+const tools: McpTool<SandboxToolContext>[] = [
   {
     name: 'sandbox_datasets',
     description:
       "List the datasets a sandbox element can query in the viewer's browser, with column names and types. Returns schema only, never rows.",
     inputSchema: obj({}),
-    call: async () => ({ datasets: datasetCatalog() }),
+    call: async (_args, { locals }) => ({
+      datasets: locals ? await listDatasets(locals) : datasetCatalog(),
+    }),
   },
   {
     name: 'sandbox_pages',
@@ -181,7 +200,7 @@ const blockTools: McpTool<SandboxToolContext>[] = blockToolSchemas().map((tool) 
   };
 });
 
-sandboxTools.push(
+tools.push(
   {
     name: 'sandbox_blocks',
     description:
@@ -201,6 +220,117 @@ sandboxTools.push(
   },
   ...blockTools,
 );
+
+const gated = (tool: McpTool<SandboxToolContext>): McpTool<SandboxToolContext> => ({
+  ...tool,
+  call: async (args, context) => {
+    await gate(context);
+    return tool.call(args, context);
+  },
+});
+
+/** The ten key-callable tools; for a signed-in caller each also checks `settings:manage`. */
+export const sandboxTools = tools.map(gated);
+
+const LIST_CAPS = { whereMax: 20, orderMax: 5, groupMax: 5, aggregateMax: 10, selectMax: 50 };
+
+/** Shape only; the compiler checks dataset, columns and operators against the registry. */
+function querySpecArg(args: Record<string, unknown>): QuerySpec {
+  const lists = [
+    ['select', LIST_CAPS.selectMax],
+    ['where', LIST_CAPS.whereMax],
+    ['orderBy', LIST_CAPS.orderMax],
+    ['groupBy', LIST_CAPS.groupMax],
+    ['aggregate', LIST_CAPS.aggregateMax],
+  ] as const;
+  if (typeof args.dataset !== 'string' || !args.dataset)
+    throw new ToolFailure('dataset is required.');
+  for (const [name, max] of lists) {
+    const v = args[name];
+    if (v !== undefined && (!Array.isArray(v) || v.length > max))
+      throw new ToolFailure(`${name} must be a list of at most ${max}.`);
+  }
+  if (args.limit !== undefined && typeof args.limit !== 'number')
+    throw new ToolFailure('limit must be a number.');
+  if (args.bucket !== undefined && (typeof args.bucket !== 'object' || args.bucket === null))
+    throw new ToolFailure('bucket must be an object.');
+  return args as unknown as QuerySpec;
+}
+
+/** Tools only a signed-in caller sees: who they are, and rows their role may read. */
+const [whoami, sandboxQuery]: McpTool<SandboxToolContext>[] = [
+  {
+    name: 'whoami',
+    description:
+      'Who you are signed in as: the person, the organization, your roles there, whether you may manage the Sandbox and which datasets you may query.',
+    inputSchema: obj({}),
+    call: async (_args, { ctx, locals, sandboxBlocked }) => {
+      const user = locals!.user!;
+      const [caps, organizations, datasets] = await Promise.all([
+        resolveCapabilities(ctx.tenantId, user.supabaseId!),
+        loadCanonicalMemberships(user.supabaseId!),
+        listDatasets(locals!),
+      ]);
+      return {
+        user: { email: user.email, displayName: user.displayName },
+        organization: {
+          id: ctx.tenantId,
+          name: organizations.find((o) => o.id === ctx.tenantId)?.name ?? null,
+        },
+        roles: caps.roles,
+        canManageSandbox:
+          !sandboxBlocked && (await hasOrgCapability(locals!, 'settings', 'manage')),
+        datasets: datasets.map((d) => d.id),
+      };
+    },
+  },
+  gated({
+    name: 'sandbox_query',
+    description:
+      'Run one read query over a dataset you may view (see sandbox_datasets for ids and columns). Rows are limited by the query compiler; record scope and masked columns follow your role.',
+    inputSchema: obj(
+      {
+        dataset: { type: 'string' },
+        select: { type: 'array', items: { type: 'string' } },
+        where: {
+          type: 'array',
+          items: obj({ col: { type: 'string' }, op: { type: 'string' }, value: {} }, ['col', 'op']),
+        },
+        orderBy: {
+          type: 'array',
+          items: obj({ col: { type: 'string' }, dir: { enum: ['asc', 'desc'] } }, ['col']),
+        },
+        limit: { type: 'number' },
+        groupBy: { type: 'array', items: { type: 'string' } },
+        aggregate: {
+          type: 'array',
+          items: obj({ fn: { type: 'string' }, col: { type: 'string' }, as: { type: 'string' } }, [
+            'fn',
+            'col',
+            'as',
+          ]),
+        },
+        bucket: obj({ col: { type: 'string' }, unit: { type: 'string' } }, ['col', 'unit']),
+      },
+      ['dataset'],
+    ),
+    call: async (args, { locals }) => runQuery(locals!, querySpecArg(args)),
+  }),
+];
+
+/**
+ * The tools one kind of caller is offered; `tools/call` re-checks inside each handler. A signed-in
+ * caller who may not use the Sandbox (role, or module unavailable) is offered `whoami` only (P16).
+ */
+export const sandboxToolsFor = (
+  kind: 'key' | 'user',
+  mayUseSandbox = true,
+): McpTool<SandboxToolContext>[] =>
+  kind === 'key'
+    ? sandboxTools
+    : mayUseSandbox
+      ? [whoami!, ...sandboxTools, sandboxQuery!]
+      : [whoami!];
 
 /** Service refusals the model can act on (size limit, bad id, unknown element). */
 export function sandboxFailure(e: unknown): string | null {

@@ -695,6 +695,10 @@ export const ROUTE_DESIGN_MANIFEST: readonly RouteDesignMeta[] = [
     nav: 'hidden',
     states: ['default', 'submitting', 'success', 'expired', 'recoverable-error'],
   }),
+  screen('/oauth/authorize', 'Approve a connection', 'public-auth', 'public-auth', {
+    nav: 'hidden',
+    states: ['default', 'validation-error', 'submitting', 'recoverable-error'],
+  }),
   screen('/login', 'Sign in', 'public-auth', 'public-auth', {
     nav: 'hidden',
     states: ['default', 'validation-error', 'submitting', 'recoverable-error'],

@@ -89,6 +89,9 @@ import { installWorkerLifecycle, trackWorkerRequest } from '$server/worker-lifec
 import { bootstrapNotificationWorker } from '$server/services/notifications/worker-bootstrap';
 import { runWithSqlTrace } from '$server/db/sql-trace';
 import { shouldActivateRequestMemo, withRequestMemo } from '$server/db/request-memo';
+import { wellKnownDocument } from '$server/mcp/oauth-logic';
+import { publicBase } from '$server/mcp/base-url';
+import { csrfRefusal } from '$server/auth/csrf';
 
 if (!building && env.DESKTOP === '1') {
   const lifecycle = installWorkerLifecycle(process);
@@ -201,6 +204,13 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
       headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
     });
   }
+
+  // Sign-in for the MCP endpoint (spec 143): discovery documents, derived from the request origin.
+  const oauthDocument = wellKnownDocument(path, publicBase());
+  if (oauthDocument)
+    return new Response(JSON.stringify(oauthDocument), {
+      headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=300' },
+    });
 
   return resolve(event);
 };
@@ -513,9 +523,13 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // The handler resolves the org from the slug and enforces its own rate
     // limit, honeypot and validation; no capability prefix maps here.
     '/api/doors/public',
-    // MCP endpoint (spec 136): authenticates itself with an org API key carrying the
-    // `sandbox` scope, acts for that key's org only, and rate-limits per key.
+    // MCP endpoint (spec 136, 143): authenticates itself — an org API key with the
+    // `sandbox` scope, or a hub-issued connection credential — acts for that one org only,
+    // and rate-limits per address and per key/connection.
     '/api/mcp',
+    // OAuth registration and token endpoints for that sign-in (spec 143): called by a
+    // harness with no session; each handler rate-limits and validates its own input.
+    '/api/oauth',
   ];
   if (!event.locals.tenantCtx && path.startsWith('/api/')) {
     // Organization switching remains reachable after revocation; only this
@@ -898,7 +912,12 @@ const poolIdleHoldHandle: Handle = async ({ event, resolve }) => {
   return response;
 };
 
+/** The built-in form-origin check is off (svelte.config.js); this one replaces it (spec 143 P1). */
+const csrfHandle: Handle = ({ event, resolve }) =>
+  csrfRefusal(event.request, event.url) ?? resolve(event);
+
 export const handle = sequence(
+  csrfHandle,
   poolIdleHoldHandle,
   sqlTraceHandle,
   requestMemoHandle,

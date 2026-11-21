@@ -15,9 +15,31 @@ vi.mock('$server/services/org-api-keys.service', () => ({
   touchKey: (id: string) => mocks.touchKey(id),
 }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => ({}) }));
+// Connection-credential path (spec 143): never reached by these key assertions.
+vi.mock('$server/config/urls', () => ({ hubBaseUrl: () => 'http://hub.test' }));
+vi.mock('$server/services/modules.service', () => ({ listModuleStates: vi.fn() }));
+vi.mock('$server/services/entitlements.service', () => ({ resolveEntitlements: vi.fn() }));
+vi.mock('$lib/modules/route-guard', () => ({ isAppRouteBlocked: () => false }));
+vi.mock('$server/db/client', () => ({ getDb: () => ({}) }));
+vi.mock('$server/mcp/oauth.service', () => ({
+  findAccess: vi.fn(async () => null),
+  endConnection: vi.fn(),
+  touchConnection: vi.fn(),
+}));
+vi.mock('$server/auth/supabase-bridge.runtime', () => ({ resolveSupabaseTenant: vi.fn() }));
+vi.mock('$server/services/canonical-directory.service', () => ({
+  loadCanonicalProfile: vi.fn(),
+  loadCanonicalMemberships: vi.fn(),
+}));
+vi.mock('$server/services/rbac.service', () => ({
+  hasOrgCapability: vi.fn(),
+  resolveCapabilities: vi.fn(),
+}));
 vi.mock('$server/sandbox/sandbox.service', () => ({
   LIBRARY_PAGE: 'library',
   datasetCatalog: () => [],
+  listDatasets: vi.fn(),
+  runQuery: vi.fn(),
   listElements: vi.fn(),
   listPages: vi.fn(),
   removeElement: vi.fn(),
@@ -113,5 +135,40 @@ describe('POST /api/mcp', () => {
     expect(await bad.json()).toMatchObject({ error: { code: -32700 } });
     const note = await call({ jsonrpc: '2.0', method: 'notifications/initialized' });
     expect(note.status).toBe(202);
+  });
+});
+
+describe('POST /api/mcp — sign-in pointer and neutral refusals', () => {
+  it('answers a missing, foreign or unknown credential with 401 and the pointer, no body secrets', async () => {
+    for (const auth of [null, 'Basic abc', 'Bearer nope', 'Bearer mcp_at_unknown']) {
+      const res = await call(write, auth);
+      expect(res.status).toBe(401);
+      const header = res.headers.get('www-authenticate') ?? '';
+      expect(header).toContain(
+        'resource_metadata="http://hub.test/.well-known/oauth-protected-resource/api/mcp"',
+      );
+      expect(header.includes('error="invalid_token"')).toBe(auth !== null);
+      expect(((await res.json()) as { error: string }).error).toBe(
+        'Send a valid API key or sign in.',
+      );
+    }
+  });
+
+  it('429s a connection credential over the per-address limit before any lookup; keys skip that limit', async () => {
+    mocks.limit.mockResolvedValue(false);
+    const res = await call(write, `Bearer mcp_at_${'A'.repeat(43)}`);
+    expect(res.status).toBe(429);
+    expect(mocks.verifyKey).not.toHaveBeenCalled();
+    expect(mocks.limit).toHaveBeenCalledWith('mcp-ip:unknown', 300);
+  });
+
+  it('a key caller is not offered whoami or sandbox_query', async () => {
+    const res = await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    const names = (
+      (await res.json()) as { result: { tools: { name: string }[] } }
+    ).result.tools.map((t) => t.name);
+    expect(names).toContain('sandbox_datasets');
+    expect(names).not.toContain('whoami');
+    expect(names).not.toContain('sandbox_query');
   });
 });

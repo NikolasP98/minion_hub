@@ -265,7 +265,8 @@ export async function upsertElement(
             -- only the creator shares/unshares (spec 014 FR-003)
             published = case when created_by::text = ${ctx.profileId ?? ''}
               then coalesce(${input.published ?? null}, published) else published end,
-            ${input.writtenByKey ? sql`written_by_key = ${input.writtenByKey}::uuid,` : sql``}
+            -- a person's change clears the key that wrote the element before (spec 143 FR-010)
+            ${input.writtenByKey ? sql`written_by_key = ${input.writtenByKey}::uuid,` : sql`written_by_key = null,`}
             updated_at = now()
           where org_id = ${ctx.tenantId} and id = ${id}::uuid
             and ${libraryWritable(ctx)}

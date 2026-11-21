@@ -43,6 +43,10 @@ const config = {
     paths: {
       relative: false,
     },
+    // The built-in form-origin check cannot exempt one path, and a harness's token request is a
+    // form POST with no Origin (spec 143 P1). Turn it off here; `csrfHandle` in hooks.server.ts
+    // reproduces the same rule, first in the sequence, for every path except /api/oauth/token.
+    csrf: { trustedOrigins: ['*'] },
     // Version-skew detection: the hub is a long-lived SPA (ssr=false), so a
     // tab opened before a deploy keeps running the OLD bundle indefinitely —
     // users never receive fixes without a manual hard refresh. Polling

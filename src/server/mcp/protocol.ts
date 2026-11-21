@@ -40,6 +40,8 @@ export async function handleMcp<C>(
   tools: readonly McpTool<C>[],
   context: C,
   failureOf: (e: unknown) => string | null = () => null,
+  /** What `tools/list` shows, when narrower than what `tools/call` resolves (a refused call then says why). */
+  listed: readonly McpTool<C>[] = tools,
 ): Promise<McpReply> {
   let msg: unknown;
   try {
@@ -64,7 +66,7 @@ export async function handleMcp<C>(
   if (method === 'ping') return rpcResult(id, {});
   if (method === 'tools/list')
     return rpcResult(id, {
-      tools: tools.map(({ name, description, inputSchema }) => ({
+      tools: listed.map(({ name, description, inputSchema }) => ({
         name,
         description,
         inputSchema,

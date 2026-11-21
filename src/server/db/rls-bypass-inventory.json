@@ -680,8 +680,13 @@
     "class": "todo"
   },
   {
-    "file": "src/routes/api/mcp/+server.ts",
+    "file": "src/server/mcp/caller.ts",
+    "calls": ["getCoreDb", "getDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/mcp/oauth.service.ts",
     "calls": ["getCoreDb"],
-    "class": "org-scoped"
+    "class": "cross-org-by-design"
   }
 ]

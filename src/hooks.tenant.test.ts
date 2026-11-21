@@ -130,6 +130,8 @@ function event(path: string, method = 'POST'): RequestEvent {
     url,
     request: new Request(url, {
       method,
+      // A string body defaults to text/plain, a form type the cross-site check (spec 143 P1) refuses without an Origin.
+      headers: { 'content-type': 'application/json' },
       ...(method === 'POST'
         ? {
             body: JSON.stringify({

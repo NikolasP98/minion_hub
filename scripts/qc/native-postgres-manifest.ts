@@ -1193,6 +1193,21 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'stock corrections against PostgreSQL rejects deleting principals and inactive organizations before correction admission',
       ],
     },
+    {
+      file: 'src/server/mcp/oauth.sql.integration.test.ts',
+      minimumAssertions: 9,
+      requiredBehaviors: [
+        'code ten parallel exchanges of one code open exactly one connection',
+        'code a wrong verifier leaves the code spent (committed, not rolled back)',
+        'code presenting a spent code again ends the connection it opened',
+        'renewal ten parallel renewals of one credential spend it once; the rest are retries inside the grace',
+        'renewal a retry within 60 s gets a fresh pair and keeps the connection',
+        'renewal reuse after the grace ends the connection',
+        'renewal another app presenting it burns nothing and ends nothing',
+        'renewal an ended connection cannot renew',
+        'renewal a connection approved over 180 days ago cannot renew',
+      ],
+    },
   ],
 } as const satisfies Record<NativePostgresLane, readonly NativePostgresAdmission[]>;
 

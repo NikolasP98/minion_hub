@@ -1,7 +1,7 @@
 /**
  * Doors — collection points (spec 041 S0, pairs with migration
  * 20261025100000_crm_doors.sql and, for the shared rate limit, 20261025110000_public_rate_limits.sql;
- * the revoked organization API key pairs with 20261116100000_org_api_keys.sql, spec 121 S1; its scope pairs with 20261120100000_api_key_scopes_sandbox_writer.sql, spec 136).
+ * the revoked organization API key pairs with 20261116100000_org_api_keys.sql, spec 121 S1; its scope pairs with 20261120100000_api_key_scopes_sandbox_writer.sql, spec 136; the MCP sign-in tables of 20261121100000_mcp_oauth.sql, spec 143, start empty: no seed rows).
  * One active booking link (the scheduling seed
  * has only an expired one), one door per kind, a switched-off door, one form
  * submission, three days of anonymous counters and one contact whose

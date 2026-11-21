@@ -321,6 +321,8 @@ describe('element writes are admin-only', () => {
     const [update] = statements();
     expect(update.sql).toContain('update sandbox_elements set');
     expect(update.sql).toContain('where org_id = $11 and id = $12::uuid');
+    // a person's change clears the key that wrote the element before (spec 143 FR-010)
+    expect(update.sql).toContain('written_by_key = null');
     // null for every omitted field => coalesce keeps the stored value; the
     // viewer id appears for the creator-only `published` guard, the library
     // write guard and the `mine` column (spec 014).

@@ -155,6 +155,9 @@
     supabaseGoogleLoading = true;
     error = null;
     try {
+      // The provider round trip drops the query string: keep the return path for /auth/callback.
+      if (redirectTo)
+        document.cookie = `login_next=${encodeURIComponent(redirectTo)}; path=/auth/callback; max-age=600; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
       const supabase = supabaseBrowser();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
