@@ -137,3 +137,142 @@ describe('igvRate (S1 — required input, no module-level default)', () => {
     void invoice;
   });
 });
+
+/**
+ * Regression for the 2026-10-10 shadow-emission incident: SUNAT fault 3105
+ * ("El XML debe contener al menos un tributo por linea de afectacion por
+ * IGV") on two boletas whose lines included a catalog-price-zero item and a
+ * fully-discounted service. A zero-value line is an operación gratuita, not a
+ * gravada line worth nothing.
+ */
+describe('operaciones gratuitas (zero-value lines)', () => {
+  // POS-2026-00016, the ticket that was rejected.
+  const mixed: EmissionInvoice = {
+    ...base,
+    lines: [
+      // catalog price 0 — no better reference value exists
+      { description: 'Faja L', quantity: 1, unitPriceInclTax: 0, referenceUnitPriceInclTax: 0 },
+      // list price 50, 100% discount
+      {
+        description: 'Reserva de Consulta',
+        quantity: 1,
+        unitPriceInclTax: 0,
+        referenceUnitPriceInclTax: 50,
+      },
+      { description: 'Afinamiento de Rostro (completo)', quantity: 1, unitPriceInclTax: 1700 },
+    ],
+  };
+
+  it('classifies zero-total lines as gratuitas and keeps them out of every onerous total', () => {
+    const totals = computeTotals(mixed);
+    expect(totals.lines.map((l) => l.gratuita)).toEqual([true, true, false]);
+    // 1700 incl IGV -> 1440.68 + 259.32
+    expect(totals.lineExtensionAmount).toBe(1440.68);
+    expect(totals.igvAmount).toBe(259.32);
+    expect(totals.taxInclusiveAmount).toBe(1700);
+    expect(totals.payableAmount).toBe(1700);
+    // valor de venta of the gratuitas: 0 + round(50/1.18) = 42.37
+    expect(totals.gratuitaAmount).toBe(42.37);
+    expect(totals.allGratuita).toBe(false);
+  });
+
+  it('declares each gratuita line under tributo 9998 with afectación 31 and no taxable base', () => {
+    const xml = buildInvoiceXml(mixed);
+    const lines = xml.split('<cac:InvoiceLine>').slice(1);
+    expect(lines).toHaveLength(3);
+
+    // the 100%-discounted line carries its list price as valor referencial (catálogo 16 code 02)
+    expect(lines[1]).toContain('<cbc:LineExtensionAmount currencyID="PEN">0.00');
+    expect(lines[1]).toContain('<cbc:PriceAmount currencyID="PEN">42.370000</cbc:PriceAmount>');
+    expect(lines[1]).toContain('<cbc:PriceTypeCode>02</cbc:PriceTypeCode>');
+    expect(lines[1]).toContain('<cbc:TaxExemptionReasonCode>31</cbc:TaxExemptionReasonCode>');
+    expect(lines[1]).toContain('<cbc:ID>9998</cbc:ID>');
+    expect(lines[1]).toContain('<cbc:Name>INAFECTO</cbc:Name>');
+    expect(lines[1]).toContain('<cbc:TaxTypeCode>FRE</cbc:TaxTypeCode>');
+    // the gratuita declares NO IGV and no gravada base — that is the 3105 fix
+    expect(lines[1]).not.toContain('<cbc:TaxExemptionReasonCode>10<');
+    expect(lines[1]).not.toContain('<cbc:Name>IGV</cbc:Name>');
+    expect(
+      lines[1].match(/<cbc:TaxableAmount currencyID="PEN">0\.00<\/cbc:TaxableAmount>/g),
+    ).toHaveLength(1);
+
+    // the catalog-price-zero line falls back to a zero reference value
+    expect(lines[0]).toContain('<cbc:PriceAmount currencyID="PEN">0.000000</cbc:PriceAmount>');
+    expect(lines[0]).toContain('<cbc:PriceTypeCode>02</cbc:PriceTypeCode>');
+
+    // the paid line is untouched: afectación 10, tributo 1000
+    expect(lines[2]).toContain('<cbc:TaxExemptionReasonCode>10</cbc:TaxExemptionReasonCode>');
+    expect(lines[2]).toContain('<cbc:ID>1000</cbc:ID>');
+    expect(lines[2]).toContain('<cbc:LineExtensionAmount currencyID="PEN">1440.68');
+  });
+
+  it('adds the document gratuitas TaxSubtotal and excludes gratuitas from LegalMonetaryTotal', () => {
+    const xml = buildInvoiceXml(mixed);
+    const docTaxTotal = xml.slice(
+      xml.indexOf('<cac:PaymentTerms>'),
+      xml.indexOf('<cac:LegalMonetaryTotal>'),
+    );
+    expect(docTaxTotal).toContain('<cbc:TaxAmount currencyID="PEN">259.32</cbc:TaxAmount>');
+    expect(docTaxTotal).toContain('<cbc:TaxableAmount currencyID="PEN">42.37</cbc:TaxableAmount>');
+    expect(docTaxTotal).toContain('<cbc:ID>9998</cbc:ID>');
+    expect(docTaxTotal.match(/<cac:TaxSubtotal>/g)).toHaveLength(2);
+
+    expect(xml).toContain(
+      '<cbc:TaxInclusiveAmount currencyID="PEN">1700.00</cbc:TaxInclusiveAmount>',
+    );
+    expect(xml).toContain('<cbc:PayableAmount currencyID="PEN">1700.00</cbc:PayableAmount>');
+    expect(xml).toContain(
+      '<cbc:LineExtensionAmount currencyID="PEN">1440.68</cbc:LineExtensionAmount>',
+    );
+  });
+
+  it('omits the gratuitas TaxSubtotal and legend 1002 when every line is paid', () => {
+    const xml = buildInvoiceXml(base);
+    expect(xml).not.toContain('9998');
+    expect(xml).not.toContain('languageLocaleID="1002"');
+    expect(xml).not.toContain('<cbc:PriceTypeCode>02</cbc:PriceTypeCode>');
+  });
+
+  it('carries legend 1002 only when EVERY line is gratuita', () => {
+    // guía factura UBL 2.1: 1002 is "aplicable solo en el caso que TODAS las
+    // operaciones ... sean gratuitas" — a mixed invoice must not carry it.
+    expect(buildInvoiceXml(mixed)).not.toContain('languageLocaleID="1002"');
+
+    const allFree: EmissionInvoice = { ...base, lines: [mixed.lines[1]] };
+    const totals = computeTotals(allFree);
+    expect(totals.allGratuita).toBe(true);
+    expect(totals.payableAmount).toBe(0);
+    const xml = buildInvoiceXml(allFree);
+    expect(xml).toContain(
+      '<cbc:Note languageLocaleID="1002">TRANSFERENCIA GRATUITA DE UN BIEN Y/O SERVICIO PRESTADO GRATUITAMENTE</cbc:Note>',
+    );
+    expect(xml).toContain('<cbc:PayableAmount currencyID="PEN">0.00</cbc:PayableAmount>');
+    expect(xml).toContain('<cbc:Note languageLocaleID="1000">SON CERO CON 00/100 SOLES</cbc:Note>');
+  });
+
+  it('falls back to the effective unit price when no reference price is supplied', () => {
+    const totals = computeTotals({
+      ...base,
+      lines: [{ description: 'Watershield', quantity: 1, unitPriceInclTax: 0 }],
+    });
+    expect(totals.lines[0].gratuita).toBe(true);
+    expect(totals.gratuitaAmount).toBe(0);
+  });
+
+  it('onerous totals still equal the plain sum of the onerous lines', () => {
+    const totals = computeTotals(mixed);
+    const onerous = totals.lines.filter((l) => !l.gratuita);
+    expect(totals.lineExtensionAmount).toBeCloseTo(
+      onerous.reduce((s, l) => s + l.totalExclTax, 0),
+      10,
+    );
+    expect(totals.igvAmount).toBeCloseTo(
+      onerous.reduce((s, l) => s + l.igv, 0),
+      10,
+    );
+    expect(totals.taxInclusiveAmount).toBeCloseTo(
+      onerous.reduce((s, l) => s + l.totalInclTax, 0),
+      10,
+    );
+  });
+});
