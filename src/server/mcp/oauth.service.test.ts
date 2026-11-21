@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
+import type { SQL } from 'drizzle-orm';
 
 /** Recording fake for the Drizzle chains used here: each awaited chain pops the next result. */
 const db = vi.hoisted(() => {
@@ -30,6 +32,7 @@ import { hashSecret } from './oauth-logic';
 import {
   createCode,
   endConnection,
+  endConnectionsForMember,
   exchangeCode,
   findAccess,
   refresh,
@@ -148,18 +151,43 @@ describe('refresh', () => {
     expect(rows.every((r) => r.connectionId === 'conn-1')).toBe(true);
   });
 
-  it('a renewal credential used again within 60 s gets a fresh pair and keeps the connection (P2)', async () => {
-    db.queue.push([], [{ ...live, usedAt: new Date(), recent: true }], [{ id: 'conn-1' }], []);
+  it('a renewal credential used again within 30 s gets ONE fresh pair and keeps the connection (P2)', async () => {
+    db.queue.push(
+      [],
+      [{ connectionId: 'conn-1', usedAt: new Date() }],
+      [{ ...live }],
+      [{ id: 'conn-1' }],
+      [],
+    );
     const pair = await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' });
     expect(pair!.access_token).toMatch(/^mcp_at_/);
-    expect(db.calls.filter((t) => t[0]![0] === 'update')).toHaveLength(1);
+    const updates = db.calls.filter((t) => t[0]![0] === 'update');
+    expect(updates).toHaveLength(2); // spend attempt, then the conditional regrant claim
+    const claim = updates[1]!.find((s) => s[0] === 'set')![1][0] as Record<string, unknown>;
+    expect(Object.keys(claim)).toEqual(['regrantedAt']);
   });
 
-  it('a renewal credential reused after the grace ends the connection and answers nothing', async () => {
-    db.queue.push([], [{ ...live, usedAt: new Date(), recent: false }], []);
+  it('a second grace reuse (the claim finds nothing) ends the connection and issues nothing (P2)', async () => {
+    db.queue.push([], [{ connectionId: 'conn-1', usedAt: new Date() }], [], []);
     expect(await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' })).toBeNull();
-    const update = db.calls.filter((t) => t[0]![0] === 'update');
-    expect(update).toHaveLength(2); // spend attempt, then end the connection
+    expect(db.calls.filter((t) => t[0]![0] === 'update')).toHaveLength(3); // spend, claim, end
+    expect(inserts()).toHaveLength(0);
+  });
+
+  it('reuse outside the window is the same refusal: the claim finds nothing and the connection ends', async () => {
+    db.queue.push([], [{ connectionId: 'conn-1', usedAt: new Date(0) }], [], []);
+    expect(await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' })).toBeNull();
+    expect(inserts()).toHaveLength(0);
+  });
+
+  it('a connection older than 180 days cannot renew: the spend finds nothing, nothing is issued (P15)', async () => {
+    // The cap is part of the spend statement (connectionRenewable); the second lookup finds the
+    // credential unused, so there is neither a grace nor an end.
+    db.queue.push([], [{ connectionId: 'conn-1', usedAt: null }]);
+    expect(await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' })).toBeNull();
+    const spend = db.calls[0]!;
+    const where = new PgDialect().sqlToQuery(spend.find((s) => s[0] === 'where')![1][0] as SQL).sql;
+    expect(where).toContain('180 days');
     expect(inserts()).toHaveLength(0);
   });
 
@@ -181,6 +209,16 @@ describe('refresh', () => {
     expect(await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_b' })).toBeNull();
     expect(inserts()).toHaveLength(0);
     expect(db.calls.filter((t) => t[0]![0] === 'update')).toHaveLength(1);
+  });
+});
+
+describe('endConnectionsForMember', () => {
+  it('ends every live connection of the person in that organization and reports how many', async () => {
+    db.queue.push([{ id: 'a' }, { id: 'b' }]);
+    expect(await endConnectionsForMember('org-1', 'u1')).toBe(2);
+    const update = db.calls.find((t) => t[0]![0] === 'update')!;
+    const set = update.find((s) => s[0] === 'set')![1][0] as Record<string, unknown>;
+    expect(Object.keys(set)).toEqual(['revokedAt']);
   });
 });
 

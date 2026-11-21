@@ -42,7 +42,24 @@ describe('GET /auth/callback return path', () => {
   it('falls back to next, then /home; never leaves the origin', async () => {
     expect((await land('?code=c&next=/pos', undefined)).location).toBe('/pos');
     expect((await land('?code=c', undefined)).location).toBe('/home');
-    for (const evil of ['//evil.test', 'https://evil.test', '/\\evil.test'])
+    for (const evil of [
+      '//evil.test',
+      'https://evil.test',
+      '/\\evil.test',
+      '/\t/evil.test',
+      '/\n/evil.test',
+      '//evil.test/%2F',
+    ])
       expect((await land('?code=c', evil)).location).toBe('/home');
+    // The same values arriving as the `next` parameter (already percent-decoded by the URL parser).
+    for (const next of ['/%09/evil.test', '/%5Cevil.test', '//evil.test', '/%2F%2Fevil.test'])
+      expect((await land(`?code=c&next=${next}`, undefined)).location).toBe('/home');
+  });
+
+  it('keeps a normal approval path with its full query string', async () => {
+    const path =
+      '/oauth/authorize?client_id=mcpc_a&redirect_uri=http%3A%2F%2Flocalhost%3A1%2Fcb&state=a%2Fb';
+    expect((await land('?code=c', path)).location).toBe(path);
+    expect((await land(`?code=c&next=${encodeURIComponent(path)}`, undefined)).location).toBe(path);
   });
 });

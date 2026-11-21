@@ -102,16 +102,21 @@ describe('renewal', () => {
   const age = (seconds: number) =>
     app`update mcp_credentials set used_at = now() - make_interval(secs => ${seconds}) where kind = 'refresh'`;
 
-  it('ten parallel renewals of one credential spend it once; the rest are retries inside the grace', async () => {
+  it('ten parallel renewals of one credential spend it once and allow at most one grace reissue', async () => {
     const pair = await open();
     const results = await Promise.all(
       Array.from({ length: 10 }, () => refresh({ token: pair.refresh_token, clientId })),
     );
-    expect(results.every(Boolean)).toBe(true); // first spends, the others fall in the 60 s grace
-    expect((await connections())[0]!.revoked_at).toBeNull();
+    const issued = results.filter(Boolean).length;
+    expect(issued).toBeGreaterThanOrEqual(1);
+    expect(issued).toBeLessThanOrEqual(2); // the spend, plus the single grace claim
+    const [{ n }] = await app<
+      { n: number }[]
+    >`select count(*)::int as n from mcp_credentials where kind = 'refresh' and regranted_at is not null`;
+    expect(n).toBeLessThanOrEqual(1);
   });
 
-  it('a retry within 60 s gets a fresh pair and keeps the connection', async () => {
+  it('a retry within 30 s gets a fresh pair and keeps the connection', async () => {
     const pair = await open();
     const first = await refresh({ token: pair.refresh_token, clientId });
     const retry = await refresh({ token: pair.refresh_token, clientId });
@@ -121,10 +126,18 @@ describe('renewal', () => {
     expect((await connections())[0]!.revoked_at).toBeNull();
   });
 
+  it('a second grace reuse is refused and ends the connection', async () => {
+    const pair = await open();
+    await refresh({ token: pair.refresh_token, clientId });
+    expect(await refresh({ token: pair.refresh_token, clientId })).not.toBeNull();
+    expect(await refresh({ token: pair.refresh_token, clientId })).toBeNull();
+    expect((await connections())[0]!.revoked_at).not.toBeNull();
+  });
+
   it('reuse after the grace ends the connection', async () => {
     const pair = await open();
     await refresh({ token: pair.refresh_token, clientId });
-    await age(120);
+    await age(60);
     expect(await refresh({ token: pair.refresh_token, clientId })).toBeNull();
     expect((await connections())[0]!.revoked_at).not.toBeNull();
   });

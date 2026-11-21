@@ -5,12 +5,27 @@
   import { fmtTimeAgo } from '$lib/utils/format';
   import { iconSizes, Button, Select } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
-  import type { ActionData, PageData } from './$types';
+  import type { PageData } from './$types';
 
-  let { data, form }: { data: PageData; form: ActionData | null } = $props();
+  let { data }: { data: PageData } = $props();
 
   // The approval request lives in the URL; the forms post to it so the server re-validates it.
-  const query = $derived(page.url.search.slice(1));
+  const query = $derived(
+    (() => {
+      const q = new URLSearchParams(page.url.search);
+      q.delete('refused');
+      return q.toString();
+    })(),
+  );
+  const refusal = $derived(
+    data.refused === 'org'
+      ? m.oauth_authorize_org_invalid()
+      : data.refused === 'origin'
+        ? m.oauth_authorize_refused_origin()
+        : data.refused === 'invalid'
+          ? m.oauth_authorize_failed()
+          : null,
+  );
   let picked = $state('');
   const orgs = $derived(data.valid ? data.orgs : []);
   const orgId = $derived(orgs.length === 1 ? orgs[0]!.id : picked);
@@ -73,10 +88,8 @@
           ]}
         />
       {/if}
-      {#if form?.error}
-        <p class="error" role="alert">
-          {form.error === 'org' ? m.oauth_authorize_org_invalid() : m.oauth_authorize_failed()}
-        </p>
+      {#if refusal}
+        <p class="error" role="alert">{refusal}</p>
       {/if}
       <Button type="submit" variant="primary" size="touch" class="w-full" disabled={!orgId}>
         {m.oauth_authorize_approve()}
@@ -89,6 +102,7 @@
     </form>
   {:else}
     <p class="t-body">{m.oauth_authorize_invalid_hint()}</p>
+    {#if refusal}<p class="error" role="alert">{refusal}</p>{/if}
   {/if}
 </PublicTaskShell>
 

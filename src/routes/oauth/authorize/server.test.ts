@@ -73,7 +73,7 @@ beforeEach(() => {
 });
 
 describe('approval screen load', () => {
-  it("shows the app, its return address and only the person's organizations; refuses framing", async () => {
+  it("shows the app, its return address and only the person's organizations", async () => {
     const { value } = await run(urlOf());
     expect(value).toEqual({
       valid: true,
@@ -84,12 +84,7 @@ describe('approval screen load', () => {
         { id: 'org-1', name: 'FACES' },
         { id: 'org-2', name: 'Other' },
       ],
-    });
-    expect(setHeaders).toHaveBeenCalledWith({
-      'content-security-policy': "frame-ancestors 'none'",
-      'x-frame-options': 'DENY',
-      'referrer-policy': 'no-referrer',
-      'cache-control': 'no-store',
+      refused: null,
     });
   });
 
@@ -100,7 +95,7 @@ describe('approval screen load', () => {
 
   it('an unknown app or a return address it did not register renders the error page, never a redirect', async () => {
     m.getClient.mockResolvedValue(null);
-    expect((await run(urlOf())).value).toEqual({ valid: false });
+    expect((await run(urlOf())).value).toEqual({ valid: false, refused: null });
     m.getClient.mockResolvedValue({
       id: 'mcpc_a',
       name: 'X',
@@ -109,7 +104,7 @@ describe('approval screen load', () => {
     for (const redirect_uri of ['http://localhost:3118/other', 'https://evil.test/cb', undefined]) {
       const r = await run(urlOf({ redirect_uri }));
       expect(r.thrown).toBeUndefined();
-      expect(r.value).toEqual({ valid: false });
+      expect(r.value).toEqual({ valid: false, refused: null });
     }
   });
 
@@ -186,34 +181,55 @@ describe('approve', () => {
     expect(m.createCode.mock.calls[0]![0].redirectUri).toBe('http://localhost:3118/callback');
   });
 
-  it('refuses an organization the person is not in with 400 and creates nothing', async () => {
+  it('an organization the person is not in goes back to this screen with refused=org and creates nothing', async () => {
     for (const form of [{ org_id: 'org-9' }, {}] as Record<string, string>[]) {
       const r = await act('approve', urlOf(), form);
-      expect(r.value).toMatchObject({ status: 400, data: { error: 'org' } });
+      expect(r.thrown?.status).toBe(303);
+      const back = new URL(r.thrown!.location, 'https://hub.test');
+      expect(back.pathname).toBe('/oauth/authorize');
+      expect(back.searchParams.get('refused')).toBe('org');
+      expect(back.searchParams.get('client_id')).toBe('mcpc_a'); // the validated request is kept
     }
     expect(m.createCode).not.toHaveBeenCalled();
   });
 
-  it('an invalid app or return address is a 400, never a redirect', async () => {
+  it('an invalid app or return address goes back with refused=invalid, never to the app', async () => {
     m.getClient.mockResolvedValue(null);
     const r = await act('approve', urlOf(), { org_id: 'org-1' });
-    expect(r.thrown).toBeUndefined();
-    expect(r.value).toMatchObject({ status: 400, data: { error: 'invalid' } });
+    expect(r.thrown?.location).toMatch(/^\/oauth\/authorize\?/);
+    expect(new URL(r.thrown!.location, 'https://hub.test').searchParams.get('refused')).toBe(
+      'invalid',
+    );
     expect(m.createCode).not.toHaveBeenCalled();
+  });
+
+  it('shows the refusal code the screen was sent back with, and only known ones', async () => {
+    expect((await run(urlOf({ refused: 'org' }))).value).toMatchObject({ refused: 'org' });
+    expect((await run(urlOf({ refused: '<script>' }))).value).toMatchObject({ refused: null });
   });
 });
 
 describe('same-origin assertion (P1)', () => {
   it.each(['approve', 'deny'] as const)(
-    '%s with a foreign or missing Origin is refused',
+    '%s with a foreign or missing Origin goes back with refused=origin',
     async (name) => {
       for (const origin of ['https://evil.test', null]) {
         const r = await act(name, urlOf(), { org_id: 'org-1' }, origin);
-        expect(r.value).toMatchObject({ status: 403, data: { error: 'origin' } });
+        expect(r.thrown?.status).toBe(303);
+        expect(r.thrown?.location).toMatch(/^\/oauth\/authorize\?/);
+        expect(new URL(r.thrown!.location, 'https://hub.test').searchParams.get('refused')).toBe(
+          'origin',
+        );
       }
       expect(m.createCode).not.toHaveBeenCalled();
     },
   );
+
+  it('drops the form-action key from the URL it goes back to', async () => {
+    const url = new URL(`${urlOf().href}&%2Fapprove=`);
+    const r = await act('approve', url, {}, null);
+    expect(r.thrown!.location).not.toContain('approve');
+  });
 });
 
 describe('deny', () => {

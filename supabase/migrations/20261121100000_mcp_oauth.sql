@@ -37,6 +37,7 @@ create table if not exists public.mcp_credentials (
   code_challenge text,                           -- code only
   expires_at     timestamptz not null,
   used_at        timestamptz,
+  regranted_at   timestamptz,                   -- renewal only: the one grace reissue (spec 143 P2)
   created_at     timestamptz not null default now()
 );
 create index if not exists mcp_credentials_connection_idx

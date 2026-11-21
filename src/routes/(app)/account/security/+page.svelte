@@ -2,6 +2,7 @@
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
   import UsernameCard from '$lib/components/users/UsernameCard.svelte';
+  import McpConnectionsSection from '$lib/components/settings/developers/McpConnectionsSection.svelte';
   import PasswordCard from '$lib/components/users/PasswordCard.svelte';
   import { PageHeader } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
@@ -20,6 +21,7 @@
       <UsernameCard username={data.username} />
       <PasswordCard hasPassword={data.hasPassword} />
     </div>
+    <McpConnectionsSection connections={data.connections} showPerson={false} />
   </PageBody>
 </PageShell>
 

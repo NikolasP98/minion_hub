@@ -89,6 +89,7 @@ export const mcpCredentials = pgTable(
     codeChallenge: text('code_challenge'),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),
+    regrantedAt: timestamp('regranted_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({ connectionIdx: index('mcp_credentials_connection_idx').on(t.connectionId) }),

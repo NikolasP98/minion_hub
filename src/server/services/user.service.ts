@@ -251,6 +251,7 @@ export async function deleteUser(
     console.error('[user.service] deleteUser called with non-uuid id, skipping:', userId);
     return;
   }
+  let memberOrgIds: string[] = [];
   await getOrgTransactionDb(getCoreDb()).transaction(async (tx) => {
     await tx.execute(pulseSql`select pg_advisory_xact_lock(hashtextextended(${userId},114))`);
     const memberships = await tx.execute<{ organization_id: string }>(
@@ -269,7 +270,12 @@ export async function deleteUser(
     );
     for (const row of memberships)
       await cancelPulseForOwnerTx(tx, { tenantId: row.organization_id, profileId: userId });
+    memberOrgIds = memberships.map((r) => r.organization_id);
   });
+  // MCP sign-in (spec 143): the memberships are gone, so every app the person approved is too.
+  // This is the only place the hub removes a member (there is no "leave this organization" path).
+  const { endConnectionsForMember } = await import('$server/mcp/oauth.service');
+  for (const orgId of memberOrgIds) await endConnectionsForMember(orgId, userId);
   await admin.from('organization_members').delete().eq('profile_id', userId);
   const { error } = await admin.auth.admin.deleteUser(userId);
   if (error) {

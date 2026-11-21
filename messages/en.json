@@ -7716,5 +7716,6 @@
   "settings_mcp_empty_title": "No connected apps",
   "settings_mcp_empty_desc": "Apps you approve to use the MCP endpoint appear here.",
   "oauth_authorize_unverified": "Unverified app",
-  "oauth_authorize_registered": "registered {when}"
+  "oauth_authorize_registered": "registered {when}",
+  "oauth_authorize_refused_origin": "This request did not come from the Hub page. Reload the page and try again."
 }

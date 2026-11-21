@@ -1,22 +1,7 @@
 <script lang="ts" module>
-  export function normalizeLoginRedirect(requested: string | null, origin: string): string | null {
-    if (
-      !requested ||
-      !requested.startsWith('/') ||
-      requested.startsWith('//') ||
-      requested.includes('\\') ||
-      requested === '/'
-    )
-      return null;
-    try {
-      const normalized = new URL(requested, origin);
-      return normalized.origin === origin
-        ? `${normalized.pathname}${normalized.search}${normalized.hash}`
-        : null;
-    } catch {
-      return null;
-    }
-  }
+  import { normalizeLoginRedirect } from '$lib/utils/login-redirect';
+
+  export { normalizeLoginRedirect };
 </script>
 
 <script lang="ts">

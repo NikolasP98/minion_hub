@@ -178,13 +178,15 @@ export async function exchangeCode(input: {
   });
 }
 
-const RENEW_GRACE = sql`interval '60 seconds'`;
+/** A renewal credential may be presented again this long after its use (a retry), once (P2). */
+export const RENEW_GRACE_SECONDS = 30;
 
 /**
  * Trade a renewal credential for a new pair. The spend is its own statement and already
  * requires the presenting app and a live, in-lifetime connection (P3, P15), so a mismatched
- * request burns nothing. Presented again within 60 s of its use (a retry or a parallel session)
- * it gets a fresh pair (P2); later, the whole connection ends. Null = invalid_grant.
+ * request burns nothing. Presented again within 30 s of its use it gets ONE fresh pair (a retry
+ * or a parallel session), claimed by a conditional update on `regranted_at`; any other reuse
+ * ends the connection. Null = invalid_grant.
  */
 export async function refresh(input: {
   token: string;
@@ -209,14 +211,7 @@ export async function refresh(input: {
   if (row?.connectionId) return issue(db, { ...row, connectionId: row.connectionId });
 
   const [old] = await db
-    .select({
-      connectionId: mcpCredentials.connectionId,
-      clientId: mcpCredentials.clientId,
-      userId: mcpCredentials.userId,
-      orgId: mcpCredentials.orgId,
-      usedAt: mcpCredentials.usedAt,
-      recent: sql<boolean>`${mcpCredentials.usedAt} > now() - ${RENEW_GRACE}`,
-    })
+    .select({ connectionId: mcpCredentials.connectionId, usedAt: mcpCredentials.usedAt })
     .from(mcpCredentials)
     .where(
       and(
@@ -227,7 +222,18 @@ export async function refresh(input: {
     )
     .limit(1);
   if (!old?.usedAt || !old.connectionId) return null;
-  if (!old.recent) {
+  const [grace] = await db
+    .update(mcpCredentials)
+    .set({ regrantedAt: sql`now()` })
+    .where(
+      and(
+        eq(mcpCredentials.hash, hash),
+        isNull(mcpCredentials.regrantedAt),
+        sql`${mcpCredentials.usedAt} > now() - make_interval(secs => ${RENEW_GRACE_SECONDS})`,
+      ),
+    )
+    .returning();
+  if (!grace) {
     await endById(db, old.connectionId);
     return null;
   }
@@ -242,7 +248,7 @@ export async function refresh(input: {
       ),
     )
     .limit(1);
-  return live ? issue(db, { ...old, connectionId: old.connectionId }) : null;
+  return live ? issue(db, { ...grace, connectionId: old.connectionId }) : null;
 }
 
 /**
@@ -330,6 +336,25 @@ export async function endConnection(
     .where(and(...where))
     .returning({ id: mcpConnections.id });
   return ended.length > 0;
+}
+
+/**
+ * End every live connection of a person in one organization (member removal): a person who
+ * is later added back must approve each app again (spec 143 audit 3).
+ */
+export async function endConnectionsForMember(orgId: string, userId: string): Promise<number> {
+  const ended = await getCoreDb()
+    .update(mcpConnections)
+    .set({ revokedAt: sql`now()` })
+    .where(
+      and(
+        eq(mcpConnections.orgId, orgId),
+        eq(mcpConnections.userId, userId),
+        isNull(mcpConnections.revokedAt),
+      ),
+    )
+    .returning({ id: mcpConnections.id });
+  return ended.length;
 }
 
 /** Live connections of one organization: only the viewer's own, or every one with `all`. */

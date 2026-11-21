@@ -1195,13 +1195,14 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/mcp/oauth.sql.integration.test.ts',
-      minimumAssertions: 9,
+      minimumAssertions: 10,
       requiredBehaviors: [
         'code ten parallel exchanges of one code open exactly one connection',
         'code a wrong verifier leaves the code spent (committed, not rolled back)',
         'code presenting a spent code again ends the connection it opened',
-        'renewal ten parallel renewals of one credential spend it once; the rest are retries inside the grace',
-        'renewal a retry within 60 s gets a fresh pair and keeps the connection',
+        'renewal ten parallel renewals of one credential spend it once and allow at most one grace reissue',
+        'renewal a retry within 30 s gets a fresh pair and keeps the connection',
+        'renewal a second grace reuse is refused and ends the connection',
         'renewal reuse after the grace ends the connection',
         'renewal another app presenting it burns nothing and ends nothing',
         'renewal an ended connection cannot renew',

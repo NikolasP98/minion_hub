@@ -92,6 +92,7 @@ import { shouldActivateRequestMemo, withRequestMemo } from '$server/db/request-m
 import { wellKnownDocument } from '$server/mcp/oauth-logic';
 import { publicBase } from '$server/mcp/base-url';
 import { csrfRefusal } from '$server/auth/csrf';
+import { approvalHeadersHandle } from '$server/mcp/approval-headers';
 
 if (!building && env.DESKTOP === '1') {
   const lifecycle = installWorkerLifecycle(process);
@@ -205,7 +206,8 @@ const wellKnownHandle: Handle = async ({ event, resolve }) => {
     });
   }
 
-  // Sign-in for the MCP endpoint (spec 143): discovery documents, derived from the request origin.
+  // Sign-in for the MCP endpoint (spec 143): discovery documents, built from the configured
+  // public hub URL (`publicBase()`), never the request origin.
   const oauthDocument = wellKnownDocument(path, publicBase());
   if (oauthDocument)
     return new Response(JSON.stringify(oauthDocument), {
@@ -918,6 +920,7 @@ const csrfHandle: Handle = ({ event, resolve }) =>
 
 export const handle = sequence(
   csrfHandle,
+  approvalHeadersHandle,
   poolIdleHoldHandle,
   sqlTraceHandle,
   requestMemoHandle,

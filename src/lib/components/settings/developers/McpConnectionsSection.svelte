@@ -10,7 +10,11 @@
   import { toastSuccess } from '$lib/state/ui/toast.svelte';
   import type { McpConnectionRow } from '$lib/types/mcp-connections';
 
-  let { connections }: { connections: McpConnectionRow[] } = $props();
+  // `showPerson` is off on a person's own account page, where every row is theirs.
+  let {
+    connections,
+    showPerson = true,
+  }: { connections: McpConnectionRow[]; showPerson?: boolean } = $props();
 
   const when = (iso: string | null) =>
     iso
@@ -31,12 +35,14 @@
     await jsonMutation({
       input: `/api/settings/mcp-connections/${encodeURIComponent(ending.id)}`,
       init: { method: 'DELETE' },
-      onSuccess: () => invalidate('settings:developers'),
+      onSuccess: async () => {
+        await Promise.all([invalidate('settings:developers'), invalidate('app:security')]);
+      },
     });
     toastSuccess(m.settings_mcp_disconnected_toast());
   }
 
-  const columns: DataColumn<McpConnectionRow>[] = [
+  const allColumns: DataColumn<McpConnectionRow>[] = [
     { key: 'appName', label: m.settings_mcp_col_app(), accessor: (r) => r.appName, fill: true },
     {
       key: 'personName',
@@ -67,6 +73,9 @@
       width: 140,
     },
   ];
+  const columns = $derived(
+    showPerson ? allColumns : allColumns.filter((c) => c.key !== 'personName'),
+  );
 </script>
 
 {#snippet approvedCell(r: McpConnectionRow)}{when(r.approvedAt)}{/snippet}

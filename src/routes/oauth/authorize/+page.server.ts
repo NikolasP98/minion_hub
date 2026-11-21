@@ -1,4 +1,4 @@
-import { fail, redirect } from '@sveltejs/kit';
+import { redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { publicBase } from '$server/mcp/base-url';
 import { createCode, getClient } from '$server/mcp/oauth.service';
@@ -73,14 +73,17 @@ function answer(redirectUri: string, state: string | null): URL {
   return target;
 }
 
-/** Never framed, never cached, and the request URL is not leaked in a referrer (P5, D10). */
-const guardPage = (setHeaders: (h: Record<string, string>) => void) =>
-  setHeaders({
-    'content-security-policy': "frame-ancestors 'none'",
-    'x-frame-options': 'DENY',
-    'referrer-policy': 'no-referrer',
-    'cache-control': 'no-store',
-  });
+/** Failures that are not an OAuth error meant for the app go back to this screen (`?refused=<code>`). */
+const REFUSALS = ['origin', 'org', 'invalid'] as const;
+type Refusal = (typeof REFUSALS)[number];
+
+function refuse(url: URL, code: Refusal): never {
+  const back = new URL(url);
+  for (const key of [...back.searchParams.keys()])
+    if (key.startsWith('/')) back.searchParams.delete(key);
+  back.searchParams.set('refused', code);
+  throw redirect(303, `${back.pathname}${back.search}`);
+}
 
 function signedIn(locals: App.Locals, url: URL): string {
   const id = locals.user?.supabaseId;
@@ -92,12 +95,11 @@ function signedIn(locals: App.Locals, url: URL): string {
 /** The decision is a same-origin form post; assert it here as well as in the hook (P1). */
 const sameOrigin = (request: Request, url: URL) => request.headers.get('origin') === url.origin;
 
-export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
-  guardPage(setHeaders);
+export const load: PageServerLoad = async ({ url, locals }) => {
   const userId = signedIn(locals, url);
   const req = await parse(url);
   if (!req.ok) {
-    if (req.page) return { valid: false as const };
+    if (req.page) return { valid: false as const, refused: null };
     throw redirect(303, req.back);
   }
   const orgs = (await loadCanonicalMemberships(userId)).map((o) => ({ id: o.id, name: o.name }));
@@ -107,24 +109,23 @@ export const load: PageServerLoad = async ({ url, locals, setHeaders }) => {
     registeredAt: req.registeredAt,
     redirectUri: req.redirectUri,
     orgs,
+    refused: REFUSALS.find((r) => r === url.searchParams.get('refused')) ?? null,
   };
 };
 
 export const actions: Actions = {
-  approve: async ({ url, locals, request, setHeaders }) => {
-    guardPage(setHeaders);
-    if (!sameOrigin(request, url)) return fail(403, { error: 'origin' as const });
+  approve: async ({ url, locals, request }) => {
+    if (!sameOrigin(request, url)) refuse(url, 'origin');
     const userId = signedIn(locals, url);
     const req = await parse(url);
     if (!req.ok) {
-      if (req.page) return fail(400, { error: 'invalid' as const });
+      if (req.page) refuse(url, 'invalid');
       throw redirect(303, req.back);
     }
     const orgId = (await request.formData()).get('org_id');
     // Only an organization the person belongs to; the choice is fixed for the connection.
     const orgs = await loadCanonicalMemberships(userId);
-    if (typeof orgId !== 'string' || !orgs.some((o) => o.id === orgId))
-      return fail(400, { error: 'org' as const });
+    if (typeof orgId !== 'string' || !orgs.some((o) => o.id === orgId)) refuse(url, 'org');
     const code = await createCode({
       clientId: req.clientId,
       userId,
@@ -137,13 +138,12 @@ export const actions: Actions = {
     throw redirect(303, target);
   },
 
-  deny: async ({ url, locals, request, setHeaders }) => {
-    guardPage(setHeaders);
-    if (!sameOrigin(request, url)) return fail(403, { error: 'origin' as const });
+  deny: async ({ url, locals, request }) => {
+    if (!sameOrigin(request, url)) refuse(url, 'origin');
     signedIn(locals, url);
     const req = await parse(url);
     if (!req.ok) {
-      if (req.page) return fail(400, { error: 'invalid' as const });
+      if (req.page) refuse(url, 'invalid');
       throw redirect(303, req.back);
     }
     const target = answer(req.redirectUri, req.state);
