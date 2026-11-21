@@ -25,6 +25,19 @@ const AXE_SOURCE = readFileSync(
 );
 
 export async function collectA11y(page: Page): Promise<A11yEvidence> {
+  // Entry animations fade text in; a contrast measured mid-fade flips between runs. Wait for
+  // every finite animation to finish (2 s cap; endless ones such as spinners are ignored).
+  await page.evaluate(() =>
+    Promise.race([
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((animation) => Number.isFinite(animation.effect?.getComputedTiming().endTime))
+          .map((animation) => animation.finished.catch(() => undefined)),
+      ),
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]),
+  );
   // Evaluated over CDP (not a <script> tag), so the app's CSP cannot block it.
   await page.evaluate(AXE_SOURCE);
   const violations = await page.evaluate(async (tags) => {
