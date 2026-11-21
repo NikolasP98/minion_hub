@@ -3,7 +3,6 @@
   "tags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"],
   "unstable": {
     "/finances @ compact-390:coarse": "color-contrast flips 3/4 between CI sweeps of the same code (QA tools trigger badge); cause not confirmed",
-    "/join @ compact-390:coarse": "color-contrast flips 0/1 between CI sweeps of the same code (.wordmark-minion); same wordmark as the Sidebar story row, cause not confirmed",
     "components-chat-attachmenttile--with-actions-and-children": "button-name flips 0/1 between runs: the thumbnail button has no accessible name until its image loads (fix in the a11y program, then remove this entry)",
     "components-navigation-sidebar--expanded-admin-business-org": "color-contrast flips 0/2 between full runs (.brand-minion, .brand-hub wordmark); cause not found yet"
   },
@@ -1066,13 +1065,7 @@
       "color-contrast": 1,
       "document-title": 1
     },
-    "/join @ compact-390:coarse": {
-      "color-contrast": 1
-    },
     "/killswitches @ compact-390:coarse": "unmeasured",
-    "/link/[code] @ compact-390:coarse": {
-      "color-contrast": 1
-    },
     "/marketplace @ compact-390:coarse": {
       "color-contrast": 1,
       "document-title": 1
@@ -1121,7 +1114,6 @@
     },
     "/plugins/[id] @ compact-390:coarse": "unmeasured",
     "/pos/accounts @ compact-390:coarse": {
-      "aria-required-children": 1,
       "color-contrast": 2
     },
     "/pos/appointments @ compact-390:coarse": {
@@ -1138,12 +1130,10 @@
       "color-contrast": 2
     },
     "/pos/funnel @ compact-390:coarse": {
-      "aria-required-children": 1,
       "color-contrast": 1,
       "document-title": 1
     },
     "/pos/history @ compact-390:coarse": {
-      "aria-required-children": 1,
       "color-contrast": 1
     },
     "/pos/sell @ compact-390:coarse": {
@@ -1218,7 +1208,6 @@
       "document-title": 1
     },
     "/settings/developers @ compact-390:coarse": {
-      "aria-required-children": 1,
       "color-contrast": 1
     },
     "/settings/gateways @ compact-390:coarse": "unmeasured",
@@ -1280,7 +1269,6 @@
       "color-contrast": 1
     },
     "/stock/entries/[id] @ compact-390:coarse": {
-      "aria-required-children": 1,
       "color-contrast": 3
     },
     "/stock/entries/new @ compact-390:coarse": {
