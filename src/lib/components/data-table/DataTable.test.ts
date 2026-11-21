@@ -97,9 +97,13 @@ describe('Button DOM mount (shared @minion-stack/ui primitive)', () => {
       render: () => `<span>Click me</span>`,
       setup: () => {},
     }));
-    const { getByRole, unmount } = render(Button, { props: { children } });
-    expect(getByRole('button', { name: 'Click me' })).toBeTruthy();
+    const { getByRole, queryByRole, unmount } = render(Button, { props: { children } });
+    const button = getByRole('button', { name: 'Click me' });
+    expect(button).toBeTruthy();
     expect(() => unmount()).not.toThrow();
+    // Teardown must actually remove the Button from the DOM, not just not throw.
+    expect(document.body.contains(button)).toBe(false);
+    expect(queryByRole('button', { name: 'Click me' })).toBeNull();
     cleanup();
   });
 });
@@ -130,6 +134,8 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
     await waitFor(() => {
       const bodyRows = container.querySelectorAll('tbody tr[data-row-index]');
       expect(bodyRows.length).toBeGreaterThanOrEqual(1);
+      // A real row, not an empty <tr> shell: the first fixture row's name rendered.
+      expect(bodyRows[0].textContent).toContain('Alpha');
     });
     unmount();
     cleanup();
