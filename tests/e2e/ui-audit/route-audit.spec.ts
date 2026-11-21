@@ -12,6 +12,7 @@ import {
   SCREEN_DESIGN_MANIFEST,
 } from '../../../src/lib/routes/route-design-manifest';
 import { runRouteCertification, requiresSingleVisibleTitle } from './certification';
+import { collectA11y } from './a11y';
 import { blockedConformance, collectConformance, finalizeHealth } from './conformance';
 import { captureFixtures, resolveFixtureProvision } from './fixtures';
 import {
@@ -374,6 +375,12 @@ test('manifest capture matrix produces a stateful machine-readable certification
             // carries its rule verdicts for the ledger (spec 014).
             if (conformanceEnabled) {
               result.conformance = await collectConformance(page, route, viewport, pointer, events);
+              // Spec 137: like the conformance verdicts, the axe pass is recorded BEFORE the strict
+              // gate (which most pages fail today), but only for a page whose content is ready.
+              // An unready page or a failed pass leaves the row unmeasured instead of failing the capture.
+              result.a11y = await assertCaptureContentReady(page, route)
+                .then(() => collectA11y(page))
+                .catch(() => undefined);
             }
             assertCriticalRuntimeDiagnostics(result.diagnostics, route.id, diagnosticOptions);
             try {

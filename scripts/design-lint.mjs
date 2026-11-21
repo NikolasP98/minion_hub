@@ -16,6 +16,7 @@
  *   node scripts/design-lint.mjs --update-baseline   # decreases only
  *   node scripts/design-lint.mjs --ci --strict-global
  *   node scripts/design-lint.mjs --ci --strict-global --zero-global
+ *   node scripts/design-lint.mjs --ci --json=out.json   # totals, baseline, per-file regressions
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -97,6 +98,12 @@ const RULES = {
     desc: 'hand-rolled animate-spin/pulse outside ui/ — use Spinner/Skeleton or the .skeleton utility',
     test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),
     re: /\banimate-(?:spin|pulse)\b/g,
+  },
+  'a11y-ignore': {
+    desc: 'svelte-ignore a11y_* rule token — fix the markup instead of silencing the compiler (spec 137)',
+    test: (file) => /\.svelte$/.test(file),
+    // One hit per suppressed rule: `svelte-ignore a11y_a, a11y_b` counts two.
+    re: /(?<=svelte-ignore[^\n]*)\ba11y_[a-z_]+/g,
   },
   'raw-control-height': {
     desc: 'raw 20–48px height outside ui/ — use a --control-height-* token',
@@ -364,6 +371,15 @@ if (baseRef && refExists(baseRef)) {
 } else {
   console.error(
     `\n  per-file debt  FAILED: git base '${baseRef}' is unavailable; fetch the registered base or pass --base-ref`,
+  );
+}
+
+// Machine-readable result for callers that gate one rule (`bun run a11y` reads a11y-ignore).
+const jsonOut = args.find((arg) => arg.startsWith('--json='))?.slice('--json='.length);
+if (jsonOut) {
+  writeFileSync(
+    jsonOut,
+    `${JSON.stringify({ totals: current.governedTotals, baseline, baseRefAvailable: refExists(baseRef), fileRegressions }, null, 2)}\n`,
   );
 }
 

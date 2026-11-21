@@ -85,7 +85,9 @@ const storybookProject = () => ({
     browser: {
       enabled: true,
       headless: true,
-      provider: playwright({}),
+      // Reduced motion zeroes every transition (app.css), so the per-story axe pass
+      // (spec 137) never measures a half-faded element: counts must be repeatable.
+      provider: playwright({ contextOptions: { reducedMotion: 'reduce' } }),
       instances: [
         {
           browser: 'chromium',
