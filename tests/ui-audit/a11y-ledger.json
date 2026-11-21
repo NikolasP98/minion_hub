@@ -2,6 +2,8 @@
   "schemaVersion": 1,
   "tags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"],
   "unstable": {
+    "/finances @ compact-390:coarse": "color-contrast flips 3/4 between CI sweeps of the same code (QA tools trigger badge); cause not confirmed",
+    "/join @ compact-390:coarse": "color-contrast flips 0/1 between CI sweeps of the same code (.wordmark-minion); same wordmark as the Sidebar story row, cause not confirmed",
     "components-chat-attachmenttile--with-actions-and-children": "button-name flips 0/1 between runs: the thumbnail button has no accessible name until its image loads (fix in the a11y program, then remove this entry)",
     "components-navigation-sidebar--expanded-admin-business-org": "color-contrast flips 0/2 between full runs (.brand-minion, .brand-hub wordmark); cause not found yet"
   },
@@ -1084,6 +1086,9 @@
     "/home/settings @ compact-390:coarse": {
       "color-contrast": 1,
       "document-title": 1
+    },
+    "/join @ compact-390:coarse": {
+      "color-contrast": 1
     },
     "/killswitches @ compact-390:coarse": "unmeasured",
     "/link/[code] @ compact-390:coarse": {
