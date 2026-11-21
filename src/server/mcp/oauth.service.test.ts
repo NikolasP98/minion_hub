@@ -22,6 +22,7 @@ const db = vi.hoisted(() => {
     select: (...a: unknown[]) => chain([['select', a]]),
     insert: (...a: unknown[]) => chain([['insert', a]]),
     update: (...a: unknown[]) => chain([['update', a]]),
+    execute: (...a: unknown[]) => chain([['execute', a]]),
   };
   handle.transaction = (fn: (tx: unknown) => unknown) => fn(handle);
   return { queue, calls, handle };
@@ -32,15 +33,17 @@ import { hashSecret } from './oauth-logic';
 import {
   createCode,
   endConnection,
-  endConnectionsForMember,
   exchangeCode,
   findAccess,
+  membershipSince,
   refresh,
   registerClient,
 } from './oauth.service';
 
 const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+const T1 = new Date('2026-01-01T00:00:00.000Z');
+const T2 = new Date('2026-06-01T00:00:00.000Z');
 const codeRow = {
   clientId: 'mcpc_a',
   userId: 'u1',
@@ -89,19 +92,31 @@ describe('registerClient / createCode', () => {
 
 describe('exchangeCode', () => {
   it('spends the code, opens one connection and issues a hashed access + renewal pair', async () => {
-    db.queue.push([codeRow], [{ id: 'conn-1' }], [], []);
+    db.queue.push([codeRow], [{ since: T1 }], [{ id: 'conn-1' }], [], []);
     const pair = await exchange();
     expect(pair).toMatchObject({ token_type: 'Bearer', expires_in: 3600 });
     expect(pair!.access_token).toMatch(/^mcp_at_/);
     expect(pair!.refresh_token).toMatch(/^mcp_rt_/);
     const [conn, creds] = inserts();
-    expect(valuesOf(conn!)).toMatchObject({ userId: 'u1', clientId: 'mcpc_a', orgId: 'org-1' });
+    // Bound to the membership it was approved under (spec 143 audit 3).
+    expect(valuesOf(conn!)).toMatchObject({
+      userId: 'u1',
+      clientId: 'mcpc_a',
+      orgId: 'org-1',
+      memberSince: T1,
+    });
     const rows = valuesOf(creds!) as Array<{ hash: string; kind: string; connectionId: string }>;
     expect(rows.map((r) => r.kind)).toEqual(['access', 'refresh']);
     expect(rows[0]!.hash).toBe(hashSecret(pair!.access_token));
     expect(rows[1]!.hash).toBe(hashSecret(pair!.refresh_token));
     expect(rows.every((r) => r.connectionId === 'conn-1')).toBe(true);
     expect(JSON.stringify(rows)).not.toContain(pair!.access_token);
+  });
+
+  it('refuses the exchange when the person has no membership at that moment and creates nothing', async () => {
+    db.queue.push([codeRow], [{ since: null }]);
+    expect(await exchange()).toBeNull();
+    expect(inserts()).toHaveLength(0);
   });
 
   it('refuses a code already used, unknown or expired (the conditional update finds nothing)', async () => {
@@ -123,7 +138,7 @@ describe('exchangeCode', () => {
   });
 
   it('the connection id is written back onto the code at exchange (P11)', async () => {
-    db.queue.push([codeRow], [{ id: 'conn-1' }], [], []);
+    db.queue.push([codeRow], [{ since: T1 }], [{ id: 'conn-1' }], [], []);
     await exchange();
     const back = db.calls.filter((t) => t[0]![0] === 'update')[1]!;
     expect(back.find((s) => s[0] === 'set')![1][0]).toEqual({ connectionId: 'conn-1' });
@@ -144,7 +159,7 @@ describe('refresh', () => {
   const live = { connectionId: 'conn-1', clientId: 'mcpc_a', userId: 'u1', orgId: 'org-1' };
 
   it('rotates: spends the old credential and issues a new pair on the same connection', async () => {
-    db.queue.push([live], []);
+    db.queue.push([live], [{ memberSince: T1 }], [{ since: T1 }], []);
     const pair = await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' });
     expect(pair!.refresh_token).not.toBe('mcp_rt_old');
     const rows = valuesOf(inserts()[0]!) as Array<{ connectionId: string }>;
@@ -157,6 +172,8 @@ describe('refresh', () => {
       [{ connectionId: 'conn-1', usedAt: new Date() }],
       [{ ...live }],
       [{ id: 'conn-1' }],
+      [{ memberSince: T1 }],
+      [{ since: T1 }],
       [],
     );
     const pair = await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' });
@@ -165,6 +182,27 @@ describe('refresh', () => {
     expect(updates).toHaveLength(2); // spend attempt, then the conditional regrant claim
     const claim = updates[1]!.find((s) => s[0] === 'set')![1][0] as Record<string, unknown>;
     expect(Object.keys(claim)).toEqual(['regrantedAt']);
+  });
+
+  it('renewal is refused after the member was removed and re-added (new membership), and the connection ends', async () => {
+    db.queue.push([live], [{ memberSince: T1 }], [{ since: T2 }], []);
+    expect(await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' })).toBeNull();
+    expect(inserts()).toHaveLength(0);
+    expect(db.calls.filter((t) => t[0]![0] === 'update')).toHaveLength(2); // spend, end
+  });
+
+  it('renewal is refused when the membership is gone, in the grace path too', async () => {
+    db.queue.push(
+      [],
+      [{ connectionId: 'conn-1', usedAt: new Date() }],
+      [{ ...live }],
+      [{ id: 'conn-1' }],
+      [{ memberSince: T1 }],
+      [{ since: null }],
+      [],
+    );
+    expect(await refresh({ token: 'mcp_rt_old', clientId: 'mcpc_a' })).toBeNull();
+    expect(inserts()).toHaveLength(0);
   });
 
   it('a second grace reuse (the claim finds nothing) ends the connection and issues nothing (P2)', async () => {
@@ -212,13 +250,12 @@ describe('refresh', () => {
   });
 });
 
-describe('endConnectionsForMember', () => {
-  it('ends every live connection of the person in that organization and reports how many', async () => {
-    db.queue.push([{ id: 'a' }, { id: 'b' }]);
-    expect(await endConnectionsForMember('org-1', 'u1')).toBe(2);
-    const update = db.calls.find((t) => t[0]![0] === 'update')!;
-    const set = update.find((s) => s[0] === 'set')![1][0] as Record<string, unknown>;
-    expect(Object.keys(set)).toEqual(['revokedAt']);
+describe('membershipSince', () => {
+  it('returns the instant the current membership began, null without one', async () => {
+    db.queue.push([{ since: T1.toISOString() }], [{ since: null }], []);
+    expect(await membershipSince('org-1', 'u1')).toEqual(T1);
+    expect(await membershipSince('org-1', 'u1')).toBeNull();
+    expect(await membershipSince('org-1', 'u1')).toBeNull();
   });
 });
 

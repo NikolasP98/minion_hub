@@ -10,7 +10,7 @@ import { loadCanonicalProfile } from '$server/services/canonical-directory.servi
 import { listModuleStates } from '$server/services/modules.service';
 import { resolveEntitlements } from '$server/services/entitlements.service';
 import { touchKey, verifyKey } from '$server/services/org-api-keys.service';
-import { endConnection, findAccess, touchConnection } from './oauth.service';
+import { endConnection, findAccess, membershipSince, touchConnection } from './oauth.service';
 import { protectedResourceUrl } from './oauth-logic';
 import { publicBase } from './base-url';
 
@@ -95,7 +95,10 @@ export async function resolveMcpCaller(
     return unauthorized(sentence);
   }
   const tenant = await resolveSupabaseTenant(access.userId, access.orgId);
-  if (!tenant) {
+  // The connection is bound to the membership it was approved under: a member who was removed and
+  // added back has a new membership (later `created_at`), so the old connection ends here.
+  const since = tenant ? await membershipSince(access.orgId, access.userId) : null;
+  if (!tenant || !since || since.getTime() !== access.memberSince.getTime()) {
     await endConnection(access.connectionId, null);
     // 401, not 403: harnesses read 403 as "ask for more scope" (P8).
     return unauthorized(

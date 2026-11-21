@@ -57,6 +57,7 @@ export const mcpConnections = pgTable(
       .notNull()
       .references(() => mcpClients.id, { onDelete: 'cascade' }),
     orgId: text('org_id').notNull(),
+    memberSince: timestamp('member_since', { withTimezone: true }).notNull(),
     approvedAt: timestamp('approved_at', { withTimezone: true }).notNull().defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),

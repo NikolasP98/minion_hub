@@ -13,7 +13,13 @@ import { testDatabaseUrl } from '$server/test-utils/test-db-url';
 const boundary = vi.hoisted(() => ({ db: vi.fn() }));
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: boundary.db }));
 
-import { createCode, exchangeCode, refresh, registerClient } from './oauth.service';
+import {
+  createCode,
+  exchangeCode,
+  membershipSince,
+  refresh,
+  registerClient,
+} from './oauth.service';
 
 const databaseUrl = testDatabaseUrl();
 if (!databaseUrl)
@@ -33,6 +39,7 @@ const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
 const REDIRECT = 'http://localhost:3118/callback';
 const user = '20000000-0000-4000-8000-000000000001';
+const org = '10000000-0000-4000-8000-000000000001';
 let created = false;
 let clientId = '';
 
@@ -44,6 +51,10 @@ beforeAll(async () => {
     .split('alter table public.mcp_clients enable')[0]!
     .replaceAll('public.', `"${schema}".`);
   await owner.unsafe(ddl);
+  // The one table of the hub's own schema this feature reads: a membership and when it began.
+  await owner.unsafe(
+    `create table "${schema}".organization_members(organization_id uuid, profile_id uuid, role text, created_at timestamptz not null default now())`,
+  );
   boundary.db.mockReturnValue(drizzle(app));
 });
 
@@ -54,7 +65,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  await app`truncate mcp_credentials, mcp_connections, mcp_clients cascade`;
+  await app`truncate mcp_credentials, mcp_connections, mcp_clients, organization_members cascade`;
+  await app`insert into organization_members(organization_id, profile_id, role, created_at) values (${org}::uuid, ${user}::uuid, 'member', '2026-01-01T00:00:00.123Z')`;
   clientId = (await registerClient('Test app', [REDIRECT], null)).id;
 });
 
@@ -62,7 +74,7 @@ const code = () =>
   createCode({
     clientId,
     userId: user,
-    orgId: 'org-1',
+    orgId: org,
     redirectUri: REDIRECT,
     codeChallenge: CHALLENGE,
   });
@@ -70,6 +82,42 @@ const exchange = (c: string) =>
   exchangeCode({ code: c, clientId, redirectUri: REDIRECT, verifier: VERIFIER });
 const connections = () =>
   app<{ id: string; revoked_at: Date | null }[]>`select id, revoked_at from mcp_connections`;
+
+describe('membership binding', () => {
+  const open = async () => (await exchange(await code()))!;
+  const readd = (at: string) =>
+    app`update organization_members set created_at = ${at}::timestamptz where organization_id = ${org}::uuid`;
+
+  it('the connection stores the membership instant it was approved under', async () => {
+    await open();
+    const [conn] = await app<
+      { same: boolean }[]
+    >`select member_since = (select created_at from organization_members) as same from mcp_connections`;
+    expect(conn!.same).toBe(true);
+  });
+
+  it('an exchange without a membership is refused and creates nothing', async () => {
+    await app`delete from organization_members`;
+    expect(await exchange(await code())).toBeNull();
+    expect(await connections()).toHaveLength(0);
+  });
+
+  it('a member removed and re-added (new created_at) cannot renew the old connection, which ends', async () => {
+    const pair = await open();
+    await app`delete from organization_members`;
+    await app`insert into organization_members(organization_id, profile_id, role, created_at) values (${org}::uuid, ${user}::uuid, 'member', '2026-06-01T00:00:00.000Z')`;
+    expect(await refresh({ token: pair.refresh_token, clientId })).toBeNull();
+    expect((await connections())[0]!.revoked_at).not.toBeNull();
+  });
+
+  it('membershipSince reports the re-added membership instant, so the call path can compare it', async () => {
+    await open();
+    await readd('2026-06-01T00:00:00.000Z');
+    expect((await membershipSince(org, user))!.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    await app`delete from organization_members`;
+    expect(await membershipSince(org, user)).toBeNull();
+  });
+});
 
 describe('code', () => {
   it('ten parallel exchanges of one code open exactly one connection', async () => {

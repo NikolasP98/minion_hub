@@ -38,14 +38,12 @@ function makeAdmin() {
   return { from, auth: { admin: authAdmin } };
 }
 
-const mcp = vi.hoisted(() => ({ end: vi.fn(async () => 1), rows: [] as unknown[] }));
-vi.mock('$server/mcp/oauth.service', () => ({ endConnectionsForMember: mcp.end }));
 vi.mock('$server/db/pg-client', () => ({
   getCoreDb: () => ({}),
   getOrgTransactionDb: () => ({
     transaction: async (
       operation: (tx: { execute: () => Promise<unknown[]> }) => Promise<unknown>,
-    ) => operation({ execute: async () => mcp.rows }),
+    ) => operation({ execute: async () => [] }),
   }),
 }));
 vi.mock('$server/services/pulse-dispatch.store', () => ({ cancelPulseForOwnerTx: vi.fn() }));
@@ -143,24 +141,10 @@ describe('updateUserRole', () => {
   });
 });
 
-// The first call lazily imports the navigation-policy modules; a cold transform takes a while.
-describe('deleteUser', { timeout: 60_000 }, () => {
+describe('deleteUser', () => {
   it('revokes memberships and deletes the auth identity (the real revocation)', async () => {
     await deleteUser({ db: {} as never, tenantId: 't1' }, '12a127af-cf23-4a59-b52a-9476de161a3b');
     expect(authAdmin.deleteUser).toHaveBeenCalledWith('12a127af-cf23-4a59-b52a-9476de161a3b');
-  });
-
-  it('ends the MCP connections of the person in every organization they belonged to', async () => {
-    mcp.rows = [{ organization_id: 'org-a' }, { organization_id: 'org-b' }];
-    try {
-      await deleteUser({ db: {} as never, tenantId: 't1' }, '12a127af-cf23-4a59-b52a-9476de161a3b');
-    } finally {
-      mcp.rows = [];
-    }
-    expect(mcp.end.mock.calls).toEqual([
-      ['org-a', '12a127af-cf23-4a59-b52a-9476de161a3b'],
-      ['org-b', '12a127af-cf23-4a59-b52a-9476de161a3b'],
-    ]);
   });
 
   it('refuses a non-uuid id (stray legacy Turso id) without calling auth admin', async () => {

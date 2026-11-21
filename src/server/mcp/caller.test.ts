@@ -6,6 +6,7 @@ const m = vi.hoisted(() => ({
   touchKey: vi.fn(),
   findAccess: vi.fn(),
   endConnection: vi.fn(async () => true),
+  since: vi.fn(),
   touchConnection: vi.fn(),
   profile: vi.fn(),
   tenant: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock('$server/mcp/oauth.service', () => ({
   findAccess: m.findAccess,
   endConnection: m.endConnection,
   touchConnection: m.touchConnection,
+  membershipSince: m.since,
 }));
 vi.mock('$server/services/canonical-directory.service', () => ({
   loadCanonicalProfile: m.profile,
@@ -50,7 +52,14 @@ const ev = (authorization: string | null, extra: object = {}) =>
     getClientAddress: () => '9.9.9.9',
     ...extra,
   }) as never;
-const access = { connectionId: 'c1', userId: 'u1', orgId: 'org-1', lastUsedAt: null };
+const T1 = new Date('2026-01-01T00:00:00.000Z');
+const access = {
+  connectionId: 'c1',
+  userId: 'u1',
+  orgId: 'org-1',
+  lastUsedAt: null,
+  memberSince: T1,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -59,6 +68,7 @@ beforeEach(() => {
   m.profile.mockResolvedValue({ id: 'u1', email: 'a@b.test', display_name: 'Ada', role: 'user' });
   m.tenant.mockResolvedValue({ orgId: 'org-1', kind: 'business' });
   m.blocked.mockReturnValue(false);
+  m.since.mockResolvedValue(new Date(T1.getTime())); // the same instant, a different Date object
 });
 
 describe('resolveMcpCaller', () => {
@@ -131,6 +141,28 @@ describe('resolveMcpCaller', () => {
       /^Bearer resource_metadata="[^"]+", error="invalid_token", error_description="[^"]+"$/,
     );
     expect(m.endConnection).toHaveBeenCalledWith('c1', null);
+  });
+
+  it('the same membership is served; a membership recreated later ends the connection with a 401', async () => {
+    expect(((await resolveMcpCaller(ev(`Bearer ${TOKEN}`))) as { kind: string }).kind).toBe('user');
+    expect(m.endConnection).not.toHaveBeenCalled();
+    m.since.mockResolvedValue(new Date('2026-06-01T00:00:00.000Z'));
+    const res = (await resolveMcpCaller(ev(`Bearer ${TOKEN}`))) as Response;
+    expect(res.status).toBe(401);
+    expect(res.headers.get('www-authenticate')).toContain('error_description=');
+    expect(m.endConnection).toHaveBeenCalledWith('c1', null);
+  });
+
+  it('no membership row at all: 401 and the connection ends', async () => {
+    m.since.mockResolvedValue(null);
+    expect(((await resolveMcpCaller(ev(`Bearer ${TOKEN}`))) as Response).status).toBe(401);
+    expect(m.endConnection).toHaveBeenCalledWith('c1', null);
+  });
+
+  it('a database failure reading the membership is a 500, not a refusal (P7)', async () => {
+    m.since.mockRejectedValue(new Error('db down'));
+    await expect(resolveMcpCaller(ev(`Bearer ${TOKEN}`))).rejects.toThrow('db down');
+    expect(m.endConnection).not.toHaveBeenCalled();
   });
 
   it('a database failure is never read as a refusal and ends nothing: it throws (P7)', async () => {

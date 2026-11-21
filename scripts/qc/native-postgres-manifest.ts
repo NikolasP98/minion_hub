@@ -1195,8 +1195,12 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/mcp/oauth.sql.integration.test.ts',
-      minimumAssertions: 10,
+      minimumAssertions: 14,
       requiredBehaviors: [
+        'membership binding the connection stores the membership instant it was approved under',
+        'membership binding an exchange without a membership is refused and creates nothing',
+        'membership binding a member removed and re-added (new created_at) cannot renew the old connection, which ends',
+        'membership binding membershipSince reports the re-added membership instant, so the call path can compare it',
         'code ten parallel exchanges of one code open exactly one connection',
         'code a wrong verifier leaves the code spent (committed, not rolled back)',
         'code presenting a spent code again ends the connection it opened',

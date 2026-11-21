@@ -164,10 +164,13 @@ export async function exchangeCode(input: {
     !pkceOk(input.verifier, row.codeChallenge)
   )
     return null;
+  // The connection is bound to the membership it is approved under; no membership, no exchange.
+  const memberSince = await membershipSince(row.orgId, row.userId);
+  if (!memberSince) return null;
   return db.transaction(async (tx) => {
     const [conn] = await tx
       .insert(mcpConnections)
-      .values({ userId: row.userId, clientId: row.clientId, orgId: row.orgId })
+      .values({ userId: row.userId, clientId: row.clientId, orgId: row.orgId, memberSince })
       .returning({ id: mcpConnections.id });
     // The code remembers its connection, so a replay can end it (P11).
     await tx
@@ -208,7 +211,10 @@ export async function refresh(input: {
       ),
     )
     .returning();
-  if (row?.connectionId) return issue(db, { ...row, connectionId: row.connectionId });
+  if (row?.connectionId) {
+    const who = { ...row, connectionId: row.connectionId };
+    return (await stillMember(db, who)) ? issue(db, who) : null;
+  }
 
   const [old] = await db
     .select({ connectionId: mcpCredentials.connectionId, usedAt: mcpCredentials.usedAt })
@@ -248,7 +254,9 @@ export async function refresh(input: {
       ),
     )
     .limit(1);
-  return live ? issue(db, { ...grace, connectionId: old.connectionId }) : null;
+  if (!live) return null;
+  const who = { ...grace, connectionId: old.connectionId };
+  return (await stillMember(db, who)) ? issue(db, who) : null;
 }
 
 /**
@@ -277,6 +285,7 @@ export interface McpAccess {
   userId: string;
   orgId: string;
   lastUsedAt: Date | null;
+  memberSince: Date;
 }
 
 /** The live connection behind an unexpired access credential, or null. */
@@ -287,6 +296,7 @@ export async function findAccess(secret: string): Promise<McpAccess | null> {
       userId: mcpConnections.userId,
       orgId: mcpConnections.orgId,
       lastUsedAt: mcpConnections.lastUsedAt,
+      memberSince: mcpConnections.memberSince,
     })
     .from(mcpCredentials)
     .innerJoin(mcpConnections, eq(mcpConnections.id, mcpCredentials.connectionId))
@@ -339,22 +349,35 @@ export async function endConnection(
 }
 
 /**
- * End every live connection of a person in one organization (member removal): a person who
- * is later added back must approve each app again (spec 143 audit 3).
+ * When the person's current membership of the organization began (`organization_members.created_at`),
+ * or null if they are not a member. A connection is bound to the membership it was approved under
+ * (`member_since`): removing and re-adding a member makes a new membership, so the old connection
+ * stops working. Throws on a database failure (a 500, never a refusal).
  */
-export async function endConnectionsForMember(orgId: string, userId: string): Promise<number> {
-  const ended = await getCoreDb()
-    .update(mcpConnections)
-    .set({ revokedAt: sql`now()` })
-    .where(
-      and(
-        eq(mcpConnections.orgId, orgId),
-        eq(mcpConnections.userId, userId),
-        isNull(mcpConnections.revokedAt),
-      ),
-    )
-    .returning({ id: mcpConnections.id });
-  return ended.length;
+export async function membershipSince(orgId: string, userId: string): Promise<Date | null> {
+  const rows = (await getCoreDb().execute(sql`
+    select max(created_at) as since from organization_members
+    where organization_id = ${orgId}::uuid and profile_id = ${userId}::uuid`)) as unknown as Array<{
+    since: Date | string | null;
+  }>;
+  const since = rows[0]?.since;
+  return since ? new Date(since) : null;
+}
+
+/** The connection's membership is still the one it was approved under; otherwise it is ended. */
+async function stillMember(
+  db: Db | Tx,
+  who: { connectionId: string; orgId: string; userId: string },
+): Promise<boolean> {
+  const [conn] = await db
+    .select({ memberSince: mcpConnections.memberSince })
+    .from(mcpConnections)
+    .where(eq(mcpConnections.id, who.connectionId))
+    .limit(1);
+  const now = await membershipSince(who.orgId, who.userId);
+  if (conn && now && now.getTime() === conn.memberSince.getTime()) return true;
+  await endById(db, who.connectionId);
+  return false;
 }
 
 /** Live connections of one organization: only the viewer's own, or every one with `all`. */

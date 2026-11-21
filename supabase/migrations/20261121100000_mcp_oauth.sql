@@ -16,6 +16,7 @@ create table if not exists public.mcp_connections (
   user_id      uuid not null,                    -- profile id (== Supabase user id)
   client_id    text not null references public.mcp_clients (id) on delete cascade,
   org_id       text not null,
+  member_since timestamptz not null,             -- organization_members.created_at at approval: a re-added member is a new membership
   approved_at  timestamptz not null default now(),
   last_used_at timestamptz,
   revoked_at   timestamptz,
