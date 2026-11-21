@@ -2,16 +2,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const svc = vi.hoisted(() => ({
   datasetCatalog: vi.fn(),
+  listDatasets: vi.fn(),
+  runQuery: vi.fn(),
   listElements: vi.fn(),
   listPages: vi.fn(),
   removeElement: vi.fn(),
   upsertElement: vi.fn(),
 }));
 vi.mock('$server/sandbox/sandbox.service', () => ({ ...svc, LIBRARY_PAGE: 'library' }));
+const auth = vi.hoisted(() => ({ can: vi.fn(), caps: vi.fn(), orgs: vi.fn() }));
+vi.mock('$server/services/rbac.service', () => ({
+  hasOrgCapability: auth.can,
+  resolveCapabilities: auth.caps,
+}));
+vi.mock('$server/services/canonical-directory.service', () => ({
+  loadCanonicalMemberships: auth.orgs,
+}));
 
 import { SandboxQueryError } from '$server/sandbox/query-compiler';
 import { ToolFailure } from './protocol';
-import { sandboxFailure, sandboxTools } from './sandbox-tools';
+import { sandboxFailure, sandboxTools, sandboxToolsFor } from './sandbox-tools';
 
 const context = { ctx: { tenantId: 'org-1', db: {} }, keyId: 'key-1' } as never;
 const tool = (name: string) => sandboxTools.find((t) => t.name === name)!;
@@ -164,5 +174,133 @@ describe('sandbox tools', () => {
       sandboxFailure(new SandboxQueryError('element code is 9 bytes; the limit is 8', 'html')),
     ).toContain('the limit is');
     expect(sandboxFailure(new Error('db down'))).toBeNull();
+  });
+});
+
+describe('signed-in callers (spec 143)', () => {
+  const locals = {
+    user: { supabaseId: 'u1', email: 'a@b.test', displayName: 'Ada', role: 'user' },
+    tenantCtx: { tenantId: 'org-1' },
+  };
+  const person = { ctx: { tenantId: 'org-1', db: {}, profileId: 'u1' }, locals } as never;
+  const run = (name: string, args: Record<string, unknown> = {}) =>
+    sandboxToolsFor('user')
+      .find((t) => t.name === name)!
+      .call(args, person);
+
+  it('offers whoami and sandbox_query to a person and neither to a key', () => {
+    const user = sandboxToolsFor('user').map((t) => t.name);
+    expect(user[0]).toBe('whoami');
+    expect(user.at(-1)).toBe('sandbox_query');
+    expect(user).toHaveLength(12);
+    expect(sandboxToolsFor('key').map((t) => t.name)).not.toContain('whoami');
+    expect(sandboxToolsFor('key').map((t) => t.name)).not.toContain('sandbox_query');
+  });
+
+  it('lists only whoami for a person who may not use the Sandbox (P16)', () => {
+    expect(sandboxToolsFor('user', false).map((t) => t.name)).toEqual(['whoami']);
+  });
+
+  it('an organization whose Sandbox is unavailable is refused by every sandbox tool, whoami reports it (P10)', async () => {
+    auth.can.mockResolvedValue(true);
+    const blocked = { ...(person as object), sandboxBlocked: true } as never;
+    const tools = sandboxToolsFor('user');
+    for (const name of ['sandbox_pages', 'sandbox_element_write', 'sandbox_query'])
+      await expect(
+        tools.find((t) => t.name === name)!.call({ dataset: 's', title: 'T' }, blocked),
+      ).rejects.toThrow('The Sandbox is not available for this organization.');
+    auth.caps.mockResolvedValue({ roles: [] });
+    auth.orgs.mockResolvedValue([]);
+    svc.listDatasets.mockResolvedValue([]);
+    expect(await tools.find((t) => t.name === 'whoami')!.call({}, blocked)).toMatchObject({
+      canManageSandbox: false,
+    });
+    expect(svc.upsertElement).not.toHaveBeenCalled();
+  });
+
+  it('a member who may manage the Sandbox writes, recorded under their profile and no key', async () => {
+    auth.can.mockResolvedValue(true);
+    svc.upsertElement.mockResolvedValue(stored);
+    await run('sandbox_element_write', { page: 'ventas', title: 'T' });
+    expect(auth.can).toHaveBeenCalledWith(locals, 'settings', 'manage');
+    const [ctx, input] = svc.upsertElement.mock.calls[0]!;
+    expect(ctx.profileId).toBe('u1');
+    expect(input.writtenByKey).toBeUndefined();
+  });
+
+  it.each([
+    'sandbox_datasets',
+    'sandbox_pages',
+    'sandbox_elements',
+    'sandbox_element_write',
+    'sandbox_element_remove',
+    'sandbox_blocks',
+    'sandbox_block_kpi',
+    'sandbox_query',
+  ])('a member without the permission is refused by %s and nothing changes', async (name) => {
+    auth.can.mockResolvedValue(false);
+    await expect(run(name, { dataset: 'sales', title: 'T', id: 'x' })).rejects.toThrow(
+      new ToolFailure('Your role does not permit managing the Sandbox.'),
+    );
+    expect(svc.upsertElement).not.toHaveBeenCalled();
+    expect(svc.removeElement).not.toHaveBeenCalled();
+    expect(svc.runQuery).not.toHaveBeenCalled();
+    expect(svc.listDatasets).not.toHaveBeenCalled();
+  });
+
+  it('sandbox_query passes the spec to the role-checked service and surfaces its refusal', async () => {
+    auth.can.mockResolvedValue(true);
+    svc.runQuery.mockResolvedValueOnce({ dataset: 'sales', rows: [] });
+    expect(await run('sandbox_query', { dataset: 'sales', limit: 5 })).toEqual({
+      dataset: 'sales',
+      rows: [],
+    });
+    expect(svc.runQuery).toHaveBeenCalledWith(locals, { dataset: 'sales', limit: 5 });
+    const refusal = new SandboxQueryError(
+      "Your role does not permit 'view' on finances.",
+      'dataset',
+      403,
+    );
+    svc.runQuery.mockRejectedValueOnce(refusal);
+    await expect(run('sandbox_query', { dataset: 'invoices' })).rejects.toBe(refusal);
+    expect(sandboxFailure(refusal)).toBe("Your role does not permit 'view' on finances.");
+  });
+
+  it('sandbox_query rejects malformed shapes before the service', async () => {
+    auth.can.mockResolvedValue(true);
+    await expect(run('sandbox_query', {})).rejects.toBeInstanceOf(ToolFailure);
+    await expect(run('sandbox_query', { dataset: 's', where: 'x' })).rejects.toBeInstanceOf(
+      ToolFailure,
+    );
+    expect(svc.runQuery).not.toHaveBeenCalled();
+  });
+
+  it('sandbox_datasets lists only what the role may view', async () => {
+    auth.can.mockResolvedValue(true);
+    svc.listDatasets.mockResolvedValue([{ id: 'sales' }]);
+    expect(await run('sandbox_datasets')).toEqual({ datasets: [{ id: 'sales' }] });
+    expect(svc.datasetCatalog).not.toHaveBeenCalled();
+  });
+
+  it('whoami names the person, organization, roles, permission and datasets', async () => {
+    auth.can.mockResolvedValue(true);
+    auth.caps.mockResolvedValue({ roles: ['manager'] });
+    auth.orgs.mockResolvedValue([{ id: 'org-1', name: 'FACES' }]);
+    svc.listDatasets.mockResolvedValue([{ id: 'sales' }]);
+    expect(await run('whoami')).toEqual({
+      user: { email: 'a@b.test', displayName: 'Ada' },
+      organization: { id: 'org-1', name: 'FACES' },
+      roles: ['manager'],
+      canManageSandbox: true,
+      datasets: ['sales'],
+    });
+  });
+
+  it('whoami works without the Sandbox permission', async () => {
+    auth.can.mockResolvedValue(false);
+    auth.caps.mockResolvedValue({ roles: [] });
+    auth.orgs.mockResolvedValue([]);
+    svc.listDatasets.mockResolvedValue([]);
+    expect(await run('whoami')).toMatchObject({ canManageSandbox: false, datasets: [] });
   });
 });

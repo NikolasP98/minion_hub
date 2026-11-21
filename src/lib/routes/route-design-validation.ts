@@ -41,9 +41,10 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /account/home adds the personal section catalog under an already-reserved prefix.
   // /settings/developers added (spec 121 S1 — organization API keys) — 1 more screen+endpoint.
   // /pos/funnel added (spec 132 — PDV marketing funnel) — 1 more screen+endpoint.
-  endpoints: 167,
+  // /oauth/authorize added (spec 143 — approve an MCP sign-in) — 1 more screen+endpoint.
+  endpoints: 168,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 156,
+  screens: 157,
   redirects: 11,
   fixtures: 30,
   viewports: ['compact', 'medium', 'wide'] as const,

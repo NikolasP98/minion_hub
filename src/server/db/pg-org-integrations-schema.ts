@@ -35,3 +35,63 @@ export const orgApiKeys = pgTable(
       .where(sql`revoked_at is null`),
   }),
 );
+
+/**
+ * Sign-in to the MCP endpoint (spec 143). Mirror of `20261121100000_mcp_oauth.sql`; the
+ * migration is canonical. Reached only through the privileged core handle.
+ */
+export const mcpClients = pgTable('mcp_clients', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  redirectUris: text('redirect_uris').array().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdIp: text('created_ip'),
+});
+
+export const mcpConnections = pgTable(
+  'mcp_connections',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id').notNull(),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => mcpClients.id, { onDelete: 'cascade' }),
+    orgId: text('org_id').notNull(),
+    memberSince: timestamp('member_since', { withTimezone: true }).notNull(),
+    approvedAt: timestamp('approved_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedBy: uuid('revoked_by'),
+  },
+  (t) => ({
+    orgLiveIdx: index('mcp_connections_org_live_idx')
+      .on(t.orgId)
+      .where(sql`revoked_at is null`),
+    userLiveIdx: index('mcp_connections_user_live_idx')
+      .on(t.userId)
+      .where(sql`revoked_at is null`),
+  }),
+);
+
+export const mcpCredentials = pgTable(
+  'mcp_credentials',
+  {
+    hash: text('hash').primaryKey(),
+    kind: text('kind').notNull(),
+    connectionId: uuid('connection_id').references(() => mcpConnections.id, {
+      onDelete: 'cascade',
+    }),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => mcpClients.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').notNull(),
+    orgId: text('org_id').notNull(),
+    redirectUri: text('redirect_uri'),
+    codeChallenge: text('code_challenge'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    regrantedAt: timestamp('regranted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ connectionIdx: index('mcp_credentials_connection_idx').on(t.connectionId) }),
+);

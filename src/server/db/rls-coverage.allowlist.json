@@ -84,6 +84,18 @@
     "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
   },
   {
+    "table": "mcp_connections",
+    "reason": "platform",
+    "note": "spec 143 MCP sign-in: forced RLS with no policy and no grants to anon, authenticated or app roles; reached only through the privileged handle because a credential lookup happens before any organization is known (same posture as the API key lookup)",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
+    "table": "mcp_credentials",
+    "reason": "platform",
+    "note": "spec 143 MCP sign-in: forced RLS with no policy and no grants to anon, authenticated or app roles; reached only through the privileged handle because a credential lookup happens before any organization is known (same posture as the API key lookup)",
+    "ledger": "proposals/2026-10-28-hub-tenant-isolation-hardening-before-org-3.md"
+  },
+  {
     "table": "notes",
     "reason": "user-scoped",
     "note": "scoped by user_id (tenant_id is not the access boundary)",

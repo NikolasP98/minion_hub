@@ -1,22 +1,7 @@
 <script lang="ts" module>
-  export function normalizeLoginRedirect(requested: string | null, origin: string): string | null {
-    if (
-      !requested ||
-      !requested.startsWith('/') ||
-      requested.startsWith('//') ||
-      requested.includes('\\') ||
-      requested === '/'
-    )
-      return null;
-    try {
-      const normalized = new URL(requested, origin);
-      return normalized.origin === origin
-        ? `${normalized.pathname}${normalized.search}${normalized.hash}`
-        : null;
-    } catch {
-      return null;
-    }
-  }
+  import { normalizeLoginRedirect } from '$lib/utils/login-redirect';
+
+  export { normalizeLoginRedirect };
 </script>
 
 <script lang="ts">
@@ -155,6 +140,9 @@
     supabaseGoogleLoading = true;
     error = null;
     try {
+      // The provider round trip drops the query string: keep the return path for /auth/callback.
+      if (redirectTo)
+        document.cookie = `login_next=${encodeURIComponent(redirectTo)}; path=/auth/callback; max-age=600; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
       const supabase = supabaseBrowser();
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',

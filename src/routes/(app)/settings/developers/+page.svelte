@@ -5,6 +5,7 @@
   import { iconSizes, PageHeader } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import ApiKeysSection from '$lib/components/settings/developers/ApiKeysSection.svelte';
+  import McpConnectionsSection from '$lib/components/settings/developers/McpConnectionsSection.svelte';
 
   let { data }: { data: PageData } = $props();
 </script>
@@ -21,5 +22,6 @@
   </PageHeader>
   <PageBody width="content">
     <ApiKeysSection keys={data.keys} />
+    <McpConnectionsSection connections={data.connections} />
   </PageBody>
 </PageShell>
