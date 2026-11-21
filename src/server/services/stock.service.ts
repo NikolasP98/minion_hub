@@ -1149,19 +1149,26 @@ export async function submitEntryInTx(
 
   if (type === 'exchange') {
     // Canje (spec 142): the outgoing side posts first at the locked bins'
-    // averages; that value is carried into the incoming lines by quantity, the
-    // computed unit costs are written back to the lines, then they post.
-    const outs = lineLikes.filter((l) => l.fromWarehouseId);
+    // averages; that value is carried into the incoming lines by quantity.
+    // Both sides' unit costs are written back to the lines (an outgoing line's
+    // rate is informational — the ledger already consumed at the bin rate).
+    const setRate = (l: (typeof lineLikes)[number], rate: number) =>
+      tx
+        .update(stkEntryLines)
+        .set({ rate: String(rate) })
+        .where(and(eq(stkEntryLines.id, l.id), eq(stkEntryLines.orgId, orgId)));
+    let outValue = 0;
+    for (const l of lineLikes.filter((x) => x.fromWarehouseId)) {
+      const rate = binMap.get(binKey(l.itemId, l.fromWarehouseId!))!.rate;
+      outValue -= postLine(l);
+      await setRate(l, rate);
+    }
     const ins = lineLikes.filter((l) => l.toWarehouseId);
-    const outValue = -outs.reduce((sum, l) => sum + postLine(l), 0);
     const rates = splitExchangeValue(outValue, ins);
     for (const [i, l] of ins.entries()) {
       l.rate = rates[i];
-      await tx
-        .update(stkEntryLines)
-        .set({ rate: String(rates[i]) })
-        .where(and(eq(stkEntryLines.id, l.id), eq(stkEntryLines.orgId, orgId)));
       postLine(l);
+      await setRate(l, rates[i]);
     }
   } else for (const l of lineLikes) postLine(l);
 

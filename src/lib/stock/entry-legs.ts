@@ -62,18 +62,18 @@ export type ExchangeErrorCode =
 
 /**
  * Whole-entry rules of a canje, checked at submit (a draft may be incomplete):
- * a supplier, at least one outgoing and one incoming line, and no item on both
- * sides. Returns the first broken rule's code, or null.
+ * at least one outgoing and one incoming line, no item on both sides, and a
+ * supplier. Returns the first broken rule's code, or null.
  */
 export function validateExchange(
   lines: Array<Pick<EntryLineLike, 'fromWarehouseId' | 'toWarehouseId'> & { itemId: string }>,
   partyId: string | null,
 ): ExchangeErrorCode | null {
-  if (!partyId) return 'exchange_party_required';
   const out = new Set(lines.filter((l) => l.fromWarehouseId).map((l) => l.itemId));
   const inn = lines.filter((l) => l.toWarehouseId).map((l) => l.itemId);
   if (out.size === 0 || inn.length === 0) return 'exchange_needs_both_sides';
   if (inn.some((id) => out.has(id))) return 'exchange_item_both_sides';
+  if (!partyId) return 'exchange_party_required';
   return null;
 }
 

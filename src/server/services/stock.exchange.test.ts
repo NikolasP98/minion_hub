@@ -136,8 +136,9 @@ describe('canje submit (spec 142)', () => {
     const { rows: lines } = await client.query<{ item_id: string; rate: string | null }>(
       'SELECT item_id, rate::text FROM stk_entry_lines ORDER BY item_id',
     );
-    expect(lines.map((l) => [l.item_id, l.rate == null ? null : Number(l.rate)])).toEqual([
-      [FILLER, null],
+    // Both sides record their unit cost: the average consumed and the carried value.
+    expect(lines.map((l) => [l.item_id, Number(l.rate)])).toEqual([
+      [FILLER, 250],
       [VOLUME, 250],
     ]);
   });
