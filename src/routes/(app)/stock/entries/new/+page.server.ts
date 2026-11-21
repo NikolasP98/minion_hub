@@ -40,7 +40,13 @@ export const load: PageServerLoad = async ({ locals }) => {
       warehouses,
       fx,
       purchases,
-      bins: bins.map((b) => ({ itemId: b.itemId, warehouseId: b.warehouseId, qty: Number(b.qty) })),
+      // `rate` (bin average) feeds the canje value preview (spec 142).
+      bins: bins.map((b) => ({
+        itemId: b.itemId,
+        warehouseId: b.warehouseId,
+        qty: Number(b.qty),
+        rate: Number(b.valuationRate),
+      })),
     },
   };
 };

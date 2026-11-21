@@ -5,7 +5,15 @@
   import { page } from '$app/state';
   import { goto } from '$lib/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { ArrowLeftRight, Plus, Trash2 } from 'lucide-svelte';
+  import {
+    ArrowLeftRight,
+    ArrowRightLeft,
+    PackageMinus,
+    PackagePlus,
+    Pencil,
+    Plus,
+    Trash2,
+  } from 'lucide-svelte';
   import {
     iconSizes,
     PageHeader,
@@ -31,7 +39,18 @@
   import { registerForm } from '$lib/assistant/forms';
   import { fuzzyFind } from '$lib/assistant/fuzzy';
   import { STOCK_ENTRY_FORM } from '$lib/assistant/catalog';
-  import { ENTRY_TYPES, type EntryType } from '$lib/stock/entry-legs';
+  import {
+    ENTRY_TYPES,
+    splitExchangeValue,
+    validateExchange,
+    type EntryType,
+  } from '$lib/stock/entry-legs';
+  import {
+    exchangeErrorText,
+    stockRefusal,
+    type StockRefusal,
+  } from '$lib/components/stock/exchange';
+  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
   import {
     autofillPartyId,
     binKey,
@@ -119,6 +138,12 @@
 
   const needsFrom = $derived(type === 'issue' || type === 'transfer' || type === 'adjustment');
   const needsTo = $derived(type === 'receipt' || type === 'transfer' || type === 'adjustment');
+  // Canje (spec 142): lines live in two sections — "Entregas" (out, from a
+  // warehouse) and "Recibes" (in, to a warehouse). Costs are never typed.
+  const isExchange = $derived(type === 'exchange');
+  type Side = 'out' | 'in';
+  let pickSide = $state<Side>('out');
+  const sideOf = (l: EntryLine): Side => l.side ?? 'out';
   // A receipt always needs a rate. An adjustment only needs one on the
   // found-stock side (`toWarehouseId` set) — that's the positive delta the
   // server values at this rate (stock.logic.ts `validateEntryLine`); a
@@ -163,6 +188,40 @@
   const onHandByBin = $derived(
     new Map(data.bins.map((b) => [binKey(b.itemId, b.warehouseId), b.qty])),
   );
+  const rateByBin = $derived(
+    new Map(data.bins.map((b) => [binKey(b.itemId, b.warehouseId), b.rate])),
+  );
+  /** Today's estimate of the canje: outgoing lines at their bins' average, carried into the incoming lines. */
+  const exchangePreview = $derived.by(() => {
+    if (!isExchange) return null;
+    const outs = lines.filter((l) => sideOf(l) === 'out');
+    const ins = lines.filter((l) => sideOf(l) === 'in');
+    const outRate = new Map(
+      outs.map((l) => [l, rateByBin.get(binKey(l.itemId, l.fromWarehouseId)) ?? 0]),
+    );
+    const outValue = outs.reduce((sum, l) => sum + (Number(l.qty) || 0) * outRate.get(l)!, 0);
+    const inRates = splitExchangeValue(
+      outValue,
+      ins.map((l) => ({ qty: Number(l.qty) || 0 })),
+    );
+    const rate = new Map<EntryLine, number>([
+      ...outRate,
+      ...ins.map((l, i) => [l, inRates[i]] as const),
+    ]);
+    return { outValue, rate, hasOut: outs.length > 0 };
+  });
+  const exchangeCode = $derived(
+    isExchange
+      ? validateExchange(
+          lines.map((l) => ({
+            itemId: l.itemId,
+            fromWarehouseId: sideOf(l) === 'out' ? 'out' : null,
+            toWarehouseId: sideOf(l) === 'in' ? 'in' : null,
+          })),
+          partyId,
+        )
+      : null,
+  );
   const warehouseName = (id: string) => data.warehouses.find((w) => w.id === id)?.name ?? id;
   const fmtQty = (n: number) => n.toLocaleString(appLocale(), { maximumFractionDigits: 2 });
 
@@ -172,11 +231,33 @@
   }
 
   type Item = StockItemOption;
-  const pickedItemIds = $derived(new Set(lines.map((l) => l.itemId)));
+  const pickedItemIds = $derived(
+    new Set(lines.filter((l) => !isExchange || sideOf(l) === pickSide).map((l) => l.itemId)),
+  );
 
   async function addItem(item: Item, lease?: EffectLease): Promise<EntryLine | undefined> {
     if (!isEffectCurrent(lease)) return;
     if (!itemById.has(item.id)) createdItems = [item, ...createdItems];
+    if (isExchange) {
+      // A canje line belongs to one side; a pick only merges into its own side.
+      const side = pickSide;
+      const others = lines.filter((l) => sideOf(l) !== side);
+      const merged = mergePickedLine(
+        lines.filter((l) => sideOf(l) === side),
+        item.id,
+        () => ({
+          itemId: item.id,
+          qty: '1',
+          rate: '',
+          side,
+          fromWarehouseId: side === 'out' ? defaultWarehouseId : '',
+          toWarehouseId: side === 'in' ? defaultWarehouseId : '',
+        }),
+      );
+      lines = [...others, ...merged.lines];
+      flashIndex = merged.mergedIndex == null ? null : others.length + merged.mergedIndex;
+      return lines[flashIndex ?? lines.length - 1];
+    }
     const { lines: next, mergedIndex } = mergePickedLine(lines, item.id, () => ({
       itemId: item.id,
       qty: '1',
@@ -230,9 +311,14 @@
   function removeLine(i: number) {
     lines = lines.filter((_, idx) => idx !== i);
   }
-  // Picker's remove verb (trash on a picked row) drops every line of that item.
+  // Picker's remove verb (trash on a picked row) drops every line of that item
+  // (on a canje, only on the side being picked).
   function unpickItem(item: Item) {
-    lines = lines.filter((l) => l.itemId !== item.id);
+    lines = lines.filter((l) => l.itemId !== item.id || (isExchange && sideOf(l) !== pickSide));
+  }
+  function openPicker(side: Side) {
+    pickSide = side;
+    pickerOpen = true;
   }
 
   // ?item=<uuid> (from the item detail "New entry" action, spec Bundle C #2):
@@ -247,6 +333,12 @@
   });
 
   function lineValid(l: EntryLine): boolean {
+    if (isExchange)
+      return (
+        l.itemId !== '' &&
+        Number(l.qty) > 0 &&
+        (sideOf(l) === 'out' ? l.fromWarehouseId : l.toWarehouseId) !== ''
+      );
     return (
       l.itemId !== '' &&
       Number(l.qty) > 0 &&
@@ -266,7 +358,8 @@
       type,
       partyId,
       note: note || null,
-      currency,
+      // A canje types no costs, so there is nothing to convert.
+      currency: isExchange ? undefined : currency,
       lines: lines.map((l) => ({
         itemId: l.itemId,
         qty: Number(l.qty),
@@ -287,6 +380,15 @@
 
   let busy = $state(false);
   let err = $state<string | null>(null);
+  // Canje: a refused registration stays on the form (the draft it created is
+  // kept and updated on the next save, so a retry never duplicates it).
+  let draftId = $state<string | null>(null);
+  let refusal = $state<StockRefusal | null>(null);
+  function editRefused() {
+    const i = lines.findIndex((l) => l.itemId === refusal?.itemId);
+    refusal = null;
+    rowEls[i === -1 ? 0 : i]?.querySelector('input')?.focus();
+  }
 
   // Attachments (supplier invoice, delivery note…) are picked before the entry
   // exists and uploaded right after the draft row is created, so one Save is
@@ -300,8 +402,8 @@
     files = files.filter((_, idx) => idx !== i);
   }
   async function createEntry(): Promise<{ id: string } | null> {
-    const res = await fetch('/api/stock/entries', {
-      method: 'POST',
+    const res = await fetch(draftId ? `/api/stock/entries/${draftId}` : '/api/stock/entries', {
+      method: draftId ? 'PATCH' : 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload()),
     });
@@ -310,6 +412,9 @@
       return null;
     }
     const entry = (await res.json()) as { id: string };
+    const uploaded = draftId === entry.id;
+    draftId = isExchange ? entry.id : null;
+    if (uploaded) return entry;
     for (const file of files) {
       try {
         await uploadAttachment(file, [{ objectType: 'stk_entry', objectId: entry.id }]);
@@ -346,10 +451,15 @@
   async function saveAndSubmit() {
     busy = true;
     err = null;
+    refusal = null;
     try {
       const entry = await createEntry();
       if (!entry) return;
       const submitRes = await fetch(`/api/stock/entries/${entry.id}/submit`, { method: 'POST' });
+      if (!submitRes.ok && isExchange) {
+        refusal = stockRefusal(await submitRes.json().catch(() => null), 'exchange');
+        return;
+      }
       if (!submitRes.ok) {
         err = await errMessage(submitRes);
         // Draft was created even though submit failed — send them to it so the
@@ -556,15 +666,7 @@
     }),
   );
 
-  function typeLabel(t: EntryType): string {
-    return t === 'receipt'
-      ? m.stock_type_receipt()
-      : t === 'issue'
-        ? m.stock_type_issue()
-        : t === 'transfer'
-          ? m.stock_type_transfer()
-          : m.stock_type_adjustment();
-  }
+  const typeLabel = (t: EntryType) => entryTypeLabel(t) ?? t;
 </script>
 
 <svelte:head><title>{m.stock_new_entry_title()} — {m.nav_stock()}</title></svelte:head>
@@ -601,7 +703,7 @@
             <PartyPicker
               bind:this={partyPicker}
               bind:value={partyId}
-              label={m.stock_field_party()}
+              label={isExchange ? m.stock_exchange_party() : m.stock_field_party()}
               docLookup
               doc="ruc"
               onPicked={() => {
@@ -661,178 +763,110 @@
         </div>
 
         <div class="card flex flex-col gap-3">
-          <div class="lines-head">
-            <span class="card-h">{m.stock_step_lines()}</span>
-            {#if needsRate}
-              <div class="lines-switches">
-                <SegmentedControl
-                  items={CURRENCIES.map((value) => ({ value, label: value }))}
-                  value={currency}
-                  onValueChange={(v) => (currency = v === 'USD' ? 'USD' : 'PEN')}
-                  aria-label={m.stock_currency()}
-                />
-                <SegmentedControl
-                  items={[
-                    { value: 'unit', label: m.stock_rate_mode_unit() },
-                    { value: 'total', label: m.stock_rate_mode_total() },
-                  ]}
-                  value={rateMode}
-                  onValueChange={setRateMode}
-                  aria-label={m.stock_rate_mode()}
-                />
+          {#if isExchange}
+            {#each [{ side: 'out' as const, title: m.stock_exchange_out(), Icon: PackageMinus }, { side: 'in' as const, title: m.stock_exchange_in(), Icon: PackagePlus }] as sec (sec.side)}
+              <section class="xsec" aria-label={sec.title}>
+                <span class="card-h xsec-h">
+                  <sec.Icon size={iconSizes.md} aria-hidden="true" />
+                  {sec.title}
+                </span>
+                {#if lines.some((l) => sideOf(l) === sec.side)}
+                  {@render linesTable(sec.side)}
+                {/if}
+                <div>
+                  <Button variant="ghost" size="sm" onclick={() => openPicker(sec.side)}>
+                    <Plus size={iconSizes.sm} />
+                    {m.stock_exchange_add()}
+                  </Button>
+                </div>
+              </section>
+            {/each}
+            {#if exchangePreview?.hasOut}
+              <div class="callout info" role="status">
+                <ArrowRightLeft size={iconSizes.md} aria-hidden="true" />
+                <div class="callout-body">
+                  <span class="t-body tabular-nums">
+                    {m.stock_exchange_preview({
+                      out: formatMoney(exchangePreview.outValue),
+                      in: formatMoney(exchangePreview.outValue),
+                    })}
+                  </span>
+                  <span class="t-caption">
+                    {exchangePreview.outValue === 0
+                      ? m.stock_exchange_zero_hint()
+                      : m.stock_exchange_preview_hint()}
+                  </span>
+                </div>
               </div>
             {/if}
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={() => (pickerOpen = true)}
-              data-assist="stock_entry.item"
-            >
-              <Plus size={iconSizes.sm} />
-              {m.stock_add_items()}
-            </Button>
-          </div>
-          {#if needsRate && fxNeeded}
-            <p class="t-caption" class:err-msg={!fxAvailable}>
-              {fxAvailable
-                ? m.stock_fx_hint({
-                    base: data.fx.base,
-                    quote: data.fx.quote,
-                    rate: String(data.fx.rate),
-                  })
-                : m.stock_fx_missing({ base: currency, quote: data.fx.currency })}
-            </p>
-          {/if}
-
-          {#if lines.length === 0}
-            <p class="t-caption">{m.stock_lines_empty()}</p>
+            {#if lines.length > 0 && exchangeCode}
+              <p class="t-caption">{exchangeErrorText(exchangeCode)}</p>
+            {/if}
+            {#if refusal}
+              <div class="callout danger" role="alert">
+                <div class="callout-body">
+                  <span class="t-body">{refusal.title}</span>
+                  {#if refusal.detail}<span class="t-caption">{refusal.detail}</span>{/if}
+                  <div>
+                    <Button variant="outline" size="sm" onclick={editRefused}>
+                      <Pencil size={iconSizes.sm} />
+                      {m.common_edit()}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            {/if}
           {:else}
-            <table class="mini-table">
-              <thead>
-                <tr>
-                  <th>{m.stock_field_item()}</th>
-                  <th class="num">{m.stock_field_qty()}</th>
-                  {#if needsRate}
-                    <th class="num">
-                      {rateMode === 'total' ? m.stock_field_line_total() : m.stock_field_rate()}
-                      <span class="th-unit">{currency}</span>
-                    </th>
-                  {/if}
-                  {#if needsFrom}<th>{m.stock_field_from_warehouse()}</th>{/if}
-                  {#if needsTo}<th>{m.stock_field_to_warehouse()}</th>{/if}
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each lines as l, i (l.itemId + i)}
-                  {@const preview = previewStockChange(
-                    type,
-                    l,
-                    itemById.get(l.itemId),
-                    onHandByBin,
-                  )}
-                  <tr
-                    bind:this={rowEls[i]}
-                    class:invalid={!lineValid(l)}
-                    class:flash={flashIndex === i}
-                  >
-                    <td class="item-cell" title={itemLabel(l.itemId)}>
-                      <div class="item-stack">
-                        <span class="item-code">{itemById.get(l.itemId)?.code ?? l.itemId}</span>
-                        <span class="item-name">{itemById.get(l.itemId)?.name ?? ''}</span>
-                        {#if preview}
-                          <span class="item-preview t-caption">
-                            {#each preview.legs as leg (leg.warehouseId)}
-                              <span class="tabular-nums">
-                                {preview.legs.length > 1
-                                  ? m.stock_preview_change_wh({
-                                      warehouse: warehouseName(leg.warehouseId),
-                                      before: fmtQty(leg.before),
-                                      after: fmtQty(leg.after),
-                                      uom: preview.uom,
-                                    })
-                                  : m.stock_preview_change({
-                                      before: fmtQty(leg.before),
-                                      after: fmtQty(leg.after),
-                                      uom: preview.uom,
-                                    })}
-                              </span>
-                            {/each}
-                            {#if preview.equivalent}
-                              <span class="tabular-nums">
-                                {m.stock_preview_equiv({
-                                  qty: fmtQty(preview.equivalent.qty),
-                                  uom: preview.equivalent.uom,
-                                })}
-                              </span>
-                            {/if}
-                          </span>
-                        {/if}
-                      </div>
-                    </td>
-                    <td class="num">
-                      <input
-                        class="inp cell-in num"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        bind:value={l.qty}
-                        aria-label={m.stock_field_qty()}
-                        data-assist="stock_entry.qty"
-                      />
-                    </td>
-                    {#if needsRate}
-                      <td class="num">
-                        {#if rateRequired(l)}
-                          <input
-                            class="inp cell-in num"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            bind:value={l.rate}
-                            aria-label={m.stock_field_rate()}
-                            data-assist="stock_entry.rate"
-                          />
-                        {:else if type === 'adjustment'}
-                          <span class="t-caption">{m.stock_adjustment_rate_na()}</span>
-                        {/if}
-                      </td>
-                    {/if}
-                    {#if needsFrom}
-                      <td class="wh-cell">
-                        <Combobox
-                          id={`line-${i}-from`}
-                          items={data.warehouses}
-                          itemToValue={(w) => w.id}
-                          itemToString={(w) => w.name}
-                          placeholder={m.stock_field_from_warehouse()}
-                          bind:value={l.fromWarehouseId}
-                        />
-                      </td>
-                    {/if}
-                    {#if needsTo}
-                      <td class="wh-cell">
-                        <Combobox
-                          id={`line-${i}-to`}
-                          items={data.warehouses}
-                          itemToValue={(w) => w.id}
-                          itemToString={(w) => w.name}
-                          placeholder={m.stock_field_to_warehouse()}
-                          bind:value={l.toWarehouseId}
-                        />
-                      </td>
-                    {/if}
-                    <td class="actions-cell">
-                      <Button variant="ghost" class="rm-btn" onclick={() => removeLine(i)}>
-                        <Trash2 size={iconSizes.sm} />
-                      </Button>
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-            {#if type === 'adjustment'}
-              <p class="t-caption">{m.stock_adjustment_hint()}</p>
+            <div class="lines-head">
+              <span class="card-h">{m.stock_step_lines()}</span>
+              {#if needsRate}
+                <div class="lines-switches">
+                  <SegmentedControl
+                    items={CURRENCIES.map((value) => ({ value, label: value }))}
+                    value={currency}
+                    onValueChange={(v) => (currency = v === 'USD' ? 'USD' : 'PEN')}
+                    aria-label={m.stock_currency()}
+                  />
+                  <SegmentedControl
+                    items={[
+                      { value: 'unit', label: m.stock_rate_mode_unit() },
+                      { value: 'total', label: m.stock_rate_mode_total() },
+                    ]}
+                    value={rateMode}
+                    onValueChange={setRateMode}
+                    aria-label={m.stock_rate_mode()}
+                  />
+                </div>
+              {/if}
+              <Button
+                variant="outline"
+                size="sm"
+                onclick={() => (pickerOpen = true)}
+                data-assist="stock_entry.item"
+              >
+                <Plus size={iconSizes.sm} />
+                {m.stock_add_items()}
+              </Button>
+            </div>
+            {#if needsRate && fxNeeded}
+              <p class="t-caption" class:err-msg={!fxAvailable}>
+                {fxAvailable
+                  ? m.stock_fx_hint({
+                      base: data.fx.base,
+                      quote: data.fx.quote,
+                      rate: String(data.fx.rate),
+                    })
+                  : m.stock_fx_missing({ base: currency, quote: data.fx.currency })}
+              </p>
+            {/if}
+
+            {#if lines.length === 0}
+              <p class="t-caption">{m.stock_lines_empty()}</p>
+            {:else}
+              {@render linesTable(null)}
+              {#if type === 'adjustment'}
+                <p class="t-caption">{m.stock_adjustment_hint()}</p>
+              {/if}
             {/if}
           {/if}
 
@@ -851,11 +885,11 @@
               variant="primary"
               size="sm"
               onclick={saveAndSubmit}
-              disabled={!allValid}
+              disabled={!allValid || exchangeCode !== null}
               loading={busy}
               data-assist="stock_entry.submit"
             >
-              {m.stock_submit()}
+              {isExchange ? m.stock_exchange_submit() : m.stock_submit()}
             </Button>
           </div>
         </div>
@@ -863,6 +897,172 @@
     </div>
   </div>
 </div>
+
+{#snippet linesTable(side: Side | null)}
+  <table class="mini-table">
+    <thead>
+      <tr>
+        <th>{m.stock_field_item()}</th>
+        <th class="num">{m.stock_field_qty()}</th>
+        {#if isExchange}
+          <th class="cost-h">{m.stock_exchange_unit_cost()}</th>
+          <th class="num">{m.stock_col_value()}</th>
+          {#if data.warehouses.length > 1}
+            <th>
+              {side === 'out' ? m.stock_field_from_warehouse() : m.stock_field_to_warehouse()}
+            </th>
+          {/if}
+        {/if}
+        {#if needsRate}
+          <th class="num">
+            {rateMode === 'total' ? m.stock_field_line_total() : m.stock_field_rate()}
+            <span class="th-unit">{currency}</span>
+          </th>
+        {/if}
+        {#if needsFrom}<th>{m.stock_field_from_warehouse()}</th>{/if}
+        {#if needsTo}<th>{m.stock_field_to_warehouse()}</th>{/if}
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each lines as l, i (l.itemId + i)}
+        {#if side === null || sideOf(l) === side}
+          {@const preview = previewStockChange(type, l, itemById.get(l.itemId), onHandByBin)}
+          <tr bind:this={rowEls[i]} class:invalid={!lineValid(l)} class:flash={flashIndex === i}>
+            <td class="item-cell" title={itemLabel(l.itemId)}>
+              <div class="item-stack">
+                <span class="item-code">{itemById.get(l.itemId)?.code ?? l.itemId}</span>
+                <span class="item-name">{itemById.get(l.itemId)?.name ?? ''}</span>
+                {#if preview}
+                  <span class="item-preview t-caption">
+                    {#each preview.legs as leg (leg.warehouseId)}
+                      <span class="tabular-nums">
+                        {preview.legs.length > 1
+                          ? m.stock_preview_change_wh({
+                              warehouse: warehouseName(leg.warehouseId),
+                              before: fmtQty(leg.before),
+                              after: fmtQty(leg.after),
+                              uom: preview.uom,
+                            })
+                          : m.stock_preview_change({
+                              before: fmtQty(leg.before),
+                              after: fmtQty(leg.after),
+                              uom: preview.uom,
+                            })}
+                      </span>
+                    {/each}
+                    {#if preview.equivalent}
+                      <span class="tabular-nums">
+                        {m.stock_preview_equiv({
+                          qty: fmtQty(preview.equivalent.qty),
+                          uom: preview.equivalent.uom,
+                        })}
+                      </span>
+                    {/if}
+                  </span>
+                {/if}
+              </div>
+            </td>
+            <td class="num">
+              <input
+                class="inp cell-in num"
+                type="number"
+                min="0"
+                step="0.01"
+                bind:value={l.qty}
+                aria-label={m.stock_field_qty()}
+                data-assist="stock_entry.qty"
+              />
+            </td>
+            {#if isExchange}
+              {@const rate = exchangePreview?.rate.get(l) ?? 0}
+              <td class="t-caption cost-cell tabular-nums">
+                {side === 'out'
+                  ? m.stock_exchange_avg_cost({ cost: formatMoney(rate) })
+                  : m.stock_exchange_unit_calc({ cost: formatMoney(rate) })}
+              </td>
+              <td class="num">{formatMoney((Number(l.qty) || 0) * rate)}</td>
+              {#if data.warehouses.length > 1}
+                <td class="wh-cell">
+                  {#if side === 'out'}
+                    <Combobox
+                      id={`line-${i}-from`}
+                      items={data.warehouses}
+                      itemToValue={(w) => w.id}
+                      itemToString={(w) => w.name}
+                      placeholder={m.stock_field_from_warehouse()}
+                      bind:value={l.fromWarehouseId}
+                    />
+                  {:else}
+                    <Combobox
+                      id={`line-${i}-to`}
+                      items={data.warehouses}
+                      itemToValue={(w) => w.id}
+                      itemToString={(w) => w.name}
+                      placeholder={m.stock_field_to_warehouse()}
+                      bind:value={l.toWarehouseId}
+                    />
+                  {/if}
+                </td>
+              {/if}
+            {/if}
+            {#if needsRate}
+              <td class="num">
+                {#if rateRequired(l)}
+                  <input
+                    class="inp cell-in num"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    bind:value={l.rate}
+                    aria-label={m.stock_field_rate()}
+                    data-assist="stock_entry.rate"
+                  />
+                {:else if type === 'adjustment'}
+                  <span class="t-caption">{m.stock_adjustment_rate_na()}</span>
+                {/if}
+              </td>
+            {/if}
+            {#if needsFrom}
+              <td class="wh-cell">
+                <Combobox
+                  id={`line-${i}-from`}
+                  items={data.warehouses}
+                  itemToValue={(w) => w.id}
+                  itemToString={(w) => w.name}
+                  placeholder={m.stock_field_from_warehouse()}
+                  bind:value={l.fromWarehouseId}
+                />
+              </td>
+            {/if}
+            {#if needsTo}
+              <td class="wh-cell">
+                <Combobox
+                  id={`line-${i}-to`}
+                  items={data.warehouses}
+                  itemToValue={(w) => w.id}
+                  itemToString={(w) => w.name}
+                  placeholder={m.stock_field_to_warehouse()}
+                  bind:value={l.toWarehouseId}
+                />
+              </td>
+            {/if}
+            <td class="actions-cell">
+              <Button
+                variant="ghost"
+                class="rm-btn"
+                onclick={() => removeLine(i)}
+                aria-label={m.common_remove()}
+              >
+                <Trash2 size={iconSizes.sm} />
+              </Button>
+            </td>
+          </tr>
+        {/if}
+      {/each}
+    </tbody>
+  </table>
+{/snippet}
 
 <StockItemPicker
   bind:open={pickerOpen}
@@ -1101,5 +1301,45 @@
   .err-msg {
     font-size: var(--font-size-body);
     color: var(--color-destructive);
+  }
+  /* Canje (spec 142): "Entregas" / "Recibes" sections + value and refusal callouts. */
+  .xsec {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .xsec-h {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+  .cost-h {
+    width: 30%;
+  }
+  .cost-cell {
+    color: var(--color-text-tertiary);
+  }
+  .callout {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid;
+  }
+  .callout-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .callout.info {
+    background: var(--color-info-surface);
+    border-color: var(--color-info-border);
+    color: var(--color-info-fg);
+  }
+  .callout.danger {
+    background: var(--color-danger-surface);
+    border-color: var(--color-danger-border);
+    color: var(--color-danger-fg);
   }
 </style>
