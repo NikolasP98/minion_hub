@@ -135,6 +135,44 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
     cleanup();
   });
 
+  // ARIA required children (axe `aria-required-children`, spec 137 page gate): a grid must
+  // own rows. The empty, loading and error states render no table, so the wrapper must not
+  // claim the grid role there (it was an empty grid on /account/security and /settings/developers).
+  it('claims the grid role only when it renders rows', async () => {
+    const { checkPattern } = await import('$lib/a11y/assert-pattern');
+    const wrapper = (c: HTMLElement) => c.querySelector('.dt-scroll') as HTMLElement;
+    for (const props of [
+      { data: [] as Row[] },
+      { data: [] as Row[], loading: true },
+      { data: rows, error: new Error('boom') },
+    ]) {
+      const { container, unmount } = render(RowDataTable, {
+        props: { columns, getRowId: (r: Row) => r.id, ...props },
+      });
+      const el = wrapper(container);
+      expect(el.getAttribute('role')).toBeNull();
+      for (const name of ['aria-label', 'aria-rowcount', 'aria-colcount', 'aria-activedescendant'])
+        expect(el.hasAttribute(name), name).toBe(false);
+      // Still the keyboard entry point it was (no behavior change).
+      expect(el.getAttribute('tabindex')).toBe('0');
+      unmount();
+    }
+    const { container, unmount } = render(RowDataTable, {
+      props: { data: rows, columns, getRowId: (r: Row) => r.id },
+    });
+    await waitFor(() => expect(container.querySelector('tbody tr[data-row-index]')).not.toBeNull());
+    const el = wrapper(container);
+    expect(el.getAttribute('role')).toBe('grid');
+    expect(el.getAttribute('aria-label')).toBeTruthy();
+    expect(el.querySelectorAll('[role="row"] [role="gridcell"]').length).toBeGreaterThan(0);
+    const rules = (await checkPattern(container, 'grid')).map((problem) => problem.rule);
+    expect(rules).not.toContain('role');
+    expect(rules).not.toContain('items');
+    expect(rules).not.toContain('name');
+    unmount();
+    cleanup();
+  });
+
   it('getItemKey survives an index flatItems has already dropped', async () => {
     // The count-sync effect runs a pass LATER than the render, so on any shrink
     // of flatItems (group collapse / switching a groupBy axis on) virtual-core
