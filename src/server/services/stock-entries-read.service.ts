@@ -104,7 +104,7 @@ export class MovementError extends Error {
 }
 
 export type LabelState = 'available' | 'missing' | 'denied' | 'unavailable';
-export type MovementKind = 'receipt' | 'issue' | 'transfer' | 'adjustment';
+export type MovementKind = 'receipt' | 'issue' | 'transfer' | 'adjustment' | 'exchange';
 export type SourceKind = EntryDocumentKind;
 /** `label` is the raw admitted DB label (or null); the renderer applies the localized short-id fallback. */
 export interface SourceLabel {

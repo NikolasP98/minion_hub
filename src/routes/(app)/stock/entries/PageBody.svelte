@@ -23,6 +23,8 @@
   import PeekLink from '$lib/records/PeekLink.svelte';
   import DataTable from '$lib/components/data-table/DataTable.svelte';
   import type { ComponentProps } from 'svelte';
+  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
+  import { ENTRY_TYPES } from '$lib/stock/entry-legs';
   import type { DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   type PageData = Granted<LoadedPageData['stock']>;
@@ -156,15 +158,7 @@
           ? m.stock_status_submitted()
           : m.stock_status_cancelled();
   const typeLabel = (t: string | undefined) =>
-    t === undefined
-      ? unavailable()
-      : t === 'receipt'
-        ? m.stock_type_receipt()
-        : t === 'issue'
-          ? m.stock_type_issue()
-          : t === 'transfer'
-            ? m.stock_type_transfer()
-            : m.stock_type_adjustment();
+    t === undefined ? unavailable() : (entryTypeLabel(t) ?? t);
   const idLabel = (e: Row) => e.humanId ?? e.entryId.slice(0, 8);
   const documentKindLabel = (k: EntryDocumentKind) =>
     k === 'ticket'
@@ -205,7 +199,7 @@
       accessor: (e) => typeLabel(e.type),
       filter: {
         options: () =>
-          ['receipt', 'issue', 'transfer', 'adjustment'].map((v) => ({
+          ENTRY_TYPES.map((v) => ({
             value: v,
             label: typeLabel(v),
           })),
@@ -421,6 +415,7 @@
               ? [{ value: 'transfer', label: m.stock_type_transfer() }]
               : []),
             { value: 'adjustment', label: m.stock_type_adjustment() },
+            { value: 'exchange', label: m.stock_type_exchange() },
           ]
         : undefined}
       onAddSelect={(t) => goto(`/stock/entries/new?type=${t}`)}

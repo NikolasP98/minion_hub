@@ -39,6 +39,7 @@
   import { inPeek } from '$lib/records/peek.svelte';
   import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
   import { entryTypeBadgeSpec, type EntryType } from '$lib/components/stock/entry-type-badge';
+  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
 
   type PageData = Granted<LoadedPageData['stock']>;
   let { data }: { data: PageData } = $props();
@@ -65,16 +66,7 @@
     const qs = sp.toString();
     return `/stock/items/${item.id}${qs ? `?${qs}` : ''}`;
   };
-  const kindLabel = (l: LedgerRow) =>
-    l.movementKind === 'receipt'
-      ? m.stock_type_receipt()
-      : l.movementKind === 'issue'
-        ? m.stock_type_issue()
-        : l.movementKind === 'transfer'
-          ? m.stock_type_transfer()
-          : l.movementKind === 'adjustment'
-            ? m.stock_type_adjustment()
-            : m.stock_mv_kind_unknown();
+  const kindLabel = (l: LedgerRow) => entryTypeLabel(l.movementKind) ?? m.stock_mv_kind_unknown();
   const sourceKindLabel = (k: string) =>
     k === 'ticket'
       ? m.stock_document_ticket()
@@ -112,12 +104,6 @@
   const item = $derived(data.item as ItemUom);
 
   // ── Stock card: valuation strip + "New entry" dropdown (spec Bundle C #2).
-  const ENTRY_TYPE_LABEL: Record<EntryType, () => string> = {
-    receipt: m.stock_type_receipt,
-    issue: m.stock_type_issue,
-    transfer: m.stock_type_transfer,
-    adjustment: m.stock_type_adjustment,
-  };
   const newEntryItems = $derived<DropdownItem[]>(
     (
       [
@@ -126,7 +112,7 @@
         'adjustment',
         ...(data.warehouseCount > 1 ? ['transfer' as const] : []),
       ] as EntryType[]
-    ).map((t) => ({ value: t, label: ENTRY_TYPE_LABEL[t](), icon: entryTypeBadgeSpec(t)?.icon })),
+    ).map((t) => ({ value: t, label: entryTypeLabel(t) ?? t, icon: entryTypeBadgeSpec(t)?.icon })),
   );
   /** New entry for THIS item in THIS warehouse (owner 2026-09-29: the action lives
    *  per warehouse row, not on the card header). */
