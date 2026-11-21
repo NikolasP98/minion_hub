@@ -1,4 +1,5 @@
 import * as m from '$lib/paraglide/messages';
+import { historyOmissionNotice } from './history-notice';
 
 // Shared, framework-free helpers for rendering ChatMessage content blocks.
 //
@@ -174,7 +175,9 @@ export function foldToolTurns(
       out.push(mm);
       continue;
     }
-    if (mm.role === 'user') {
+    // A standalone transport notice must keep its original content boundary.
+    // Prepending tool blocks would make the strict display detector reject it.
+    if (mm.role === 'user' || historyOmissionNotice(mm) !== null) {
       flush();
       out.push(mm);
       continue;

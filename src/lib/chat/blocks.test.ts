@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { historyOmissionNotice } from './history-notice';
 import { activityVerb, foldToolTurns, normalizeBlocks, toolVerb } from './blocks';
 
 const call = (id: string, ts: number) => ({
@@ -37,6 +38,78 @@ describe('foldToolTurns', () => {
     const merged = out[3] as { timestamp: number; content: unknown };
     expect(merged.timestamp).toBe(3);
     expect(normalizeBlocks(merged.content).map((b) => b.kind)).toEqual(['tool', 'tool', 'text']);
+  });
+
+  it.each([true, false])(
+    'preserves an oversized notice boundary after tools (metadata=%s)',
+    (structured) => {
+      const omitted = {
+        ...reply('[chat.history omitted: message too large]', 2),
+        ...(structured ? { __openclaw: { truncated: true, reason: 'oversized' } } : {}),
+      };
+      const input = [call('a', 1), omitted, reply('The sourced answer.', 3)];
+      const original = JSON.stringify(input);
+      const out = foldToolTurns(input);
+      expect(out).toHaveLength(3);
+      expect(out[1]).toBe(omitted);
+      expect(historyOmissionNotice(out[1])).toBe(
+        'This earlier message is too large to display here.',
+      );
+      expect(normalizeBlocks(out[0].content).map((b) => b.kind)).toEqual(['tool']);
+      expect(out[2]).toBe(input[2]);
+      expect(JSON.stringify(input)).toBe(original);
+    },
+  );
+
+  it('keeps real mixed content and contradictory metadata eligible for normal folding', () => {
+    const marker = '[chat.history omitted: message too large]';
+    for (const message of [
+      { ...reply(marker, 2), __openclaw: { truncated: false, reason: 'other' } },
+      {
+        ...reply(marker, 2),
+        content: [
+          { type: 'text', text: marker },
+          { type: 'text', text: 'Real explanation.' },
+        ],
+      },
+      reply(`The log says ${marker}.`, 2),
+    ]) {
+      const original = JSON.stringify(message);
+      const out = foldToolTurns([call('a', 1), message]);
+      expect(out).toHaveLength(1);
+      expect(historyOmissionNotice(out[0])).toBeNull();
+      expect(JSON.stringify(message)).toBe(original);
+    }
+  });
+
+  it('preserves activity and result order on both sides of an omission', () => {
+    const omitted = reply('[chat.history omitted: message too large]', 3);
+    const thought = {
+      role: 'assistant',
+      timestamp: 1,
+      content: [{ type: 'thinking', thinking: 'Check prices.' }],
+    };
+    const done = reply('Sourced answer.', 5);
+    const out = foldToolTurns([
+      thought,
+      call('a', 2),
+      result('a'),
+      omitted,
+      call('b', 4),
+      result('b'),
+      done,
+    ]);
+    expect(out.map((m) => m.role)).toEqual([
+      'toolResult',
+      'assistant',
+      'assistant',
+      'toolResult',
+      'assistant',
+    ]);
+    expect(normalizeBlocks(out[1].content).map((b) => b.kind)).toEqual(['thinking', 'tool']);
+    expect(out[2]).toBe(omitted);
+    expect(normalizeBlocks(out[4].content).map((b) => b.kind)).toEqual(['tool', 'text']);
+    expect(out[4].timestamp).toBe(5);
   });
 
   it('flushes a trailing run as one synthetic turn stamped with the last call', () => {
