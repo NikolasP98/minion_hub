@@ -228,8 +228,10 @@ instead of appending a second recipe. Keep route-specific business logic in its 
 cd minion_hub   # or minion_site
 bun run lint:design    # debt ratchet: changed-file governed debt may only DECREASE (CI-enforced)
 bun run lint:tokens    # every var(--x) must exist in contract/theme/registry
+bun run a11y           # accessibility gates (hub only): one JSON report; baselines only DECREASE (CI-enforced)
 ```
 
+- **Accessibility (hub, spec 137)**: after ANY UI change run `bun run a11y` (suppressions, `assertPattern` tests, the two a11y specs, an axe pass per story; ~6 min, no backend). Add `--all` for the page sweep when the QA stack is up, `--only stories --stories <File>` while iterating. stdout is one JSON document: `ok`, each gate's `status`, and one row per page/story × rule with `count`, `baseline` and `status`. A `regression` row means fix the markup — never raise `tests/ui-audit/a11y-ledger.json` or the `a11y-ignore` ceiling by hand, never add a `svelte-ignore a11y_*`. After a fix lowers a count: `bun run a11y --update-baseline` and commit the ledger. Building or fixing a listbox, menu, tabs, dialog, alertdialog, combobox or grid: prove it in a `*.mounted.test.ts` with `await assertPattern(container, '<pattern>')` from `$lib/a11y/assert-pattern`. Full usage, one example per pattern: hub `docs/a11y.md`.
 - Need an exception (illustration, theme-preview, syntax, data-visualization, third-party-render-surface)? Add to `scripts/design-lint-exceptions.json` with exact file+rule+**numeric cap**+category+reason. Caps, never blankets.
 - Dynamic/runtime custom properties: register in `COMPONENT_INPUTS` or `THIRD_PARTY_RUNTIME_INPUTS` in `scripts/token-integrity.mjs` with a reason (fallback required).
 - `--update-baseline` is decrease-only and will refuse increases.

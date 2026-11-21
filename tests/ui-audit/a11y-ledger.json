@@ -1,0 +1,1415 @@
+{
+  "schemaVersion": 1,
+  "tags": ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22a", "wcag22aa"],
+  "unstable": {
+    "/finances @ compact-390:coarse": "color-contrast flips 3/4 between CI sweeps of the same code (QA tools trigger badge); cause not confirmed",
+    "/join @ compact-390:coarse": "color-contrast flips 0/1 between CI sweeps of the same code (.wordmark-minion); same wordmark as the Sidebar story row, cause not confirmed",
+    "components-chat-attachmenttile--with-actions-and-children": "button-name flips 0/1 between runs: the thumbnail button has no accessible name until its image loads (fix in the a11y program, then remove this entry)",
+    "components-navigation-sidebar--expanded-admin-business-org": "color-contrast flips 0/2 between full runs (.brand-minion, .brand-hub wordmark); cause not found yet"
+  },
+  "stories": {
+    "atoms-display-entitychip--all-kinds": {
+      "color-contrast": 1
+    },
+    "atoms-display-entitychip--inline-in-a-sentence": {
+      "color-contrast": 1
+    },
+    "atoms-display-entitychip--medium-size": {
+      "color-contrast": 1
+    },
+    "atoms-inputs-combobox--custom-item": {
+      "aria-required-children": 1,
+      "aria-required-parent": 8,
+      "list": 1
+    },
+    "atoms-inputs-combobox--empty-item-list": {
+      "aria-required-children": 1
+    },
+    "atoms-inputs-combobox--inside-modal-dialog": {
+      "aria-required-children": 1,
+      "aria-required-parent": 1,
+      "list": 1
+    },
+    "atoms-inputs-combobox--inside-overflow-hidden": {
+      "aria-required-children": 1,
+      "aria-required-parent": 1,
+      "list": 1
+    },
+    "atoms-inputs-combobox--no-matches": {
+      "aria-required-children": 1
+    },
+    "atoms-inputs-combobox--open": {
+      "aria-required-children": 1,
+      "aria-required-parent": 8,
+      "list": 1
+    },
+    "atoms-inputs-multiselectfilter--everything-selected-many-pills": {
+      "aria-allowed-attr": 1
+    },
+    "atoms-inputs-multiselectfilter--long-labels": {
+      "aria-allowed-attr": 1
+    },
+    "atoms-inputs-multiselectfilter--no-colours-or-counts": {
+      "aria-allowed-attr": 1
+    },
+    "atoms-inputs-multiselectfilter--nothing-selected": {
+      "aria-allowed-attr": 1
+    },
+    "atoms-inputs-multiselectfilter--open": {
+      "aria-allowed-attr": 1,
+      "aria-input-field-name": 1
+    },
+    "atoms-inputs-multiselectfilter--open·-phone": {
+      "aria-allowed-attr": 1,
+      "aria-input-field-name": 1
+    },
+    "atoms-inputs-multiselectfilter--selected-interactive": {
+      "aria-allowed-attr": 1
+    },
+    "atoms-inputs-picker--empty": {
+      "aria-required-children": 1
+    },
+    "atoms-inputs-picker--load-error": {
+      "aria-required-children": 1
+    },
+    "atoms-inputs-picker--loading-async-never-resolves": {
+      "aria-required-children": 1
+    },
+    "atoms-inputs-pickercombobox--empty-items": {
+      "aria-required-children": 1
+    },
+    "atoms-inputs-segmentedcontrol--default": {
+      "color-contrast": 1
+    },
+    "atoms-inputs-segmentedcontrol--medium": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--buttons-no-href-on-select": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--flat-items": {
+      "color-contrast": 2
+    },
+    "atoms-layout-sidenav--grouped": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--grouped·-phone": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--grouped·-tablet": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--header-footer": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--left-border-indicator": {
+      "color-contrast": 2
+    },
+    "atoms-layout-sidenav--many-items-scrolls": {
+      "color-contrast": 1
+    },
+    "atoms-layout-sidenav--nested-indent": {
+      "color-contrast": 1
+    },
+    "atoms-layout-tabs--default": {
+      "aria-valid-attr-value": 1
+    },
+    "atoms-layout-tabs--fitted": {
+      "aria-valid-attr-value": 1
+    },
+    "atoms-layout-tabs--small": {
+      "aria-valid-attr-value": 1
+    },
+    "atoms-overlays-modal--long-content": {
+      "scrollable-region-focusable": 1
+    },
+    "components-agents-agentavatarstack--large-chips": {
+      "color-contrast": 1
+    },
+    "components-agents-agentgroupheader--collapsed": {
+      "nested-interactive": 1
+    },
+    "components-agents-agentgroupheader--empty-group": {
+      "nested-interactive": 1
+    },
+    "components-agents-agentgroupheader--expanded": {
+      "nested-interactive": 1
+    },
+    "components-agents-agentgroupheader--long-name": {
+      "nested-interactive": 1
+    },
+    "components-agents-agentgroupheader--renaming": {
+      "label": 1,
+      "nested-interactive": 1
+    },
+    "components-agents-agentrow--compact-idle": {
+      "aria-required-parent": 1,
+      "button-name": 1
+    },
+    "components-agents-agentrow--compact-running-selected": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--emoji-avatar": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--idle": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--loading-history": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--long-name": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--running-working": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--selected": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentrow--thinking-two-active-sessions": {
+      "aria-required-parent": 1
+    },
+    "components-agents-agentsettingsnav--default": {
+      "color-contrast": 1
+    },
+    "components-agents-agentsettingsnav--no-overrides": {
+      "color-contrast": 1
+    },
+    "components-agents-agentsettingsnav--no-skills-or-bindings": {
+      "color-contrast": 1
+    },
+    "components-agents-agentsettingsnav--only-one-group": {
+      "color-contrast": 2
+    },
+    "components-agents-agentsettingsnav--search-query": {
+      "color-contrast": 1
+    },
+    "components-agents-agentsidebar--connected-with-agents": {
+      "aria-required-parent": 4
+    },
+    "components-agents-agentsidebar--mini": {
+      "aria-required-parent": 4,
+      "button-name": 3
+    },
+    "components-agents-agentskillspanel--all-enabled-nothing-missing": {
+      "label": 5
+    },
+    "components-agents-agentskillspanel--loaded-with-missing-deps-banner": {
+      "label": 5
+    },
+    "components-agents-agentskillspanel--saving": {
+      "label": 5
+    },
+    "components-agents-agenttoolspanel--all-enabled": {
+      "aria-required-children": 1
+    },
+    "components-agents-breakdowntree--populated-with-sizes-and-usage": {
+      "label": 7,
+      "nested-interactive": 7
+    },
+    "components-agents-breakdowntree--some-selected-and-one-layer-collapsed": {
+      "label": 6,
+      "nested-interactive": 6
+    },
+    "components-agents-breakdowntree--with-disabled-overrides": {
+      "label": 7,
+      "nested-interactive": 7
+    },
+    "components-agents-floatingassistant--closed-launcher-pill": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-floatingassistant--closed-launcher-pill·-phone": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-floatingassistant--minimized-after-open": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-floatingassistant--pill-bubble·-empty-chat": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-floatingassistant--pill-bubble·-last-reply": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-floatingassistant--pill-bubble·-using-a-tool": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-floatingassistant--pill-bubble·-writing": {
+      "label-content-name-mismatch": 1
+    },
+    "components-agents-piagentcontrols--context-nearly-full": {
+      "select-name": 1
+    },
+    "components-agents-piagentcontrols--healthy": {
+      "select-name": 1
+    },
+    "components-agents-piagentcontrols--no-active-session": {
+      "select-name": 1
+    },
+    "components-agents-piagentcontrols--unknown-window": {
+      "select-name": 1
+    },
+    "components-agents-subagentlist--tree-view": {
+      "nested-interactive": 3
+    },
+    "components-agents-subagenttree--grouped-by-orchestration": {
+      "nested-interactive": 3
+    },
+    "components-agents-subagenttree--nested-three-levels": {
+      "nested-interactive": 3
+    },
+    "components-agents-subagenttree--twenty-flat": {
+      "nested-interactive": 1
+    },
+    "components-agents-subagenttreenode--running-leaf": {
+      "nested-interactive": 1
+    },
+    "components-agents-subagenttreenode--selected-at-depth-two": {
+      "nested-interactive": 1
+    },
+    "components-agents-subagenttreenode--with-children": {
+      "nested-interactive": 3
+    },
+    "components-agents-subagenttreenode--with-pi-registry-tokens": {
+      "nested-interactive": 3
+    },
+    "components-ai-aiapproval--approved-resolved": {
+      "color-contrast": 1
+    },
+    "components-ai-aipromptinput--with-toolbar-children-mode-picker": {
+      "color-contrast": 1
+    },
+    "components-ai-aisteps--open-by-default": {
+      "label-content-name-mismatch": 5
+    },
+    "components-ai-aisteps--running-active-step-timer-ticks": {
+      "label-content-name-mismatch": 3
+    },
+    "components-ai-aisteps--twelve-steps-plus-n-overflow": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--error": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--idle-no-recorded-result": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--long-arguments": {
+      "label-content-name-mismatch": 1,
+      "scrollable-region-focusable": 2
+    },
+    "components-ai-aitoolcall--long-result": {
+      "label-content-name-mismatch": 1,
+      "scrollable-region-focusable": 1
+    },
+    "components-ai-aitoolcall--narrow-host-truncation": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--nested-group": {
+      "label-content-name-mismatch": 2
+    },
+    "components-ai-aitoolcall--pending": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--plain-label-group-not-mono": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--running": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--success-collapsed": {
+      "label-content-name-mismatch": 1
+    },
+    "components-ai-aitoolcall--success-expanded": {
+      "label-content-name-mismatch": 1,
+      "scrollable-region-focusable": 1
+    },
+    "components-ai-aitoolcall--with-meta-chips": {
+      "label-content-name-mismatch": 1
+    },
+    "components-calendar-bookingboard--by-staff": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingboard--by-status": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingboard--by-status·-phone": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingboard--empty": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingboard--many-cards": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingboard--read-only-no-drag": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--agenda-empty": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--agenda-view": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--closed-weekend-3-days-per-screen": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--coloured-by-kind-tags": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--day-view": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--day-view·-phone": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--dense-60-bookings": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--empty-week": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--failed-windows": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--invoiced-scheduled-split": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--loading-next-week": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--month-view": {
+      "color-contrast": 4
+    },
+    "components-calendar-bookingcalendar--off-hours-unshaded": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--read-only": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--subcolumns-by-status": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--tall-hours-120-px-h-0623": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--week-populated": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--week-populated·-phone": {
+      "color-contrast": 1
+    },
+    "components-calendar-bookingcalendar--week-populated·-tablet": {
+      "color-contrast": 1
+    },
+    "components-calendar-colorsourcepicker--many-values-capped-preview": {
+      "color-contrast": 2
+    },
+    "components-calendar-colorsourcepicker--none": {
+      "color-contrast": 2
+    },
+    "components-calendar-colorsourcepicker--single-option": {
+      "color-contrast": 2
+    },
+    "components-calendar-colorsourcepicker--staff-selected": {
+      "color-contrast": 2
+    },
+    "components-calendar-colorsourcepicker--status-selected": {
+      "color-contrast": 2
+    },
+    "components-calendar-daterangecontrols--all-time-open-bounds": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--custom-range-no-preset": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--data-bounds-clamped": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--last-30-days-preset-match": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--last-30-days-preset-match·-phone": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--only-two-visible-presets": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--single-day": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--with-time-of-day-ranges": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--with-time-of-day-ranges·-phone": {
+      "color-contrast": 1
+    },
+    "components-calendar-daterangecontrols--year-to-date-monthly": {
+      "color-contrast": 1
+    },
+    "components-calendar-eventtypeeditor--editing": {
+      "button-name": 1
+    },
+    "components-calendar-eventtypeeditor--editing·-phone": {
+      "button-name": 1
+    },
+    "components-calendar-eventtypeeditor--editing·-tablet": {
+      "button-name": 1
+    },
+    "components-calendar-membercalendarstrip--busy-day": {
+      "color-contrast": 2
+    },
+    "components-calendar-membercalendarstrip--busy-day·-phone": {
+      "color-contrast": 2
+    },
+    "components-calendar-membercalendarstrip--populated": {
+      "color-contrast": 2
+    },
+    "components-calendar-schedulingnav--bookings-active": {
+      "color-contrast": 1
+    },
+    "components-calendar-schedulingnav--calendar-active": {
+      "color-contrast": 1
+    },
+    "components-calendar-timeoffcalendar--agenda": {
+      "aria-required-children": 1,
+      "color-contrast": 1
+    },
+    "components-calendar-timeoffcalendar--empty": {
+      "aria-required-children": 1,
+      "aria-required-parent": 42,
+      "color-contrast": 1
+    },
+    "components-calendar-timeoffcalendar--month": {
+      "aria-required-children": 1,
+      "aria-required-parent": 42,
+      "color-contrast": 1
+    },
+    "components-calendar-timeoffcalendar--no-weekly-off": {
+      "aria-required-children": 1,
+      "aria-required-parent": 42,
+      "color-contrast": 1
+    },
+    "components-calendar-timeoffcalendar--week": {
+      "aria-required-children": 1,
+      "aria-required-parent": 7,
+      "color-contrast": 1
+    },
+    "components-cards-kanbancol--board-four-columns": {
+      "aria-required-children": 1
+    },
+    "components-cards-kanbancol--empty": {
+      "aria-required-children": 1
+    },
+    "components-cards-taskcard--all-statuses": {
+      "aria-required-parent": 4
+    },
+    "components-cards-taskcard--long-title": {
+      "aria-required-parent": 1
+    },
+    "components-cards-taskcard--no-description": {
+      "aria-required-parent": 1
+    },
+    "components-cards-taskcard--todo": {
+      "aria-required-parent": 1
+    },
+    "components-chat-attachmentpreviewswitch--driving-tiles-live-mode": {
+      "button-name": 3,
+      "color-contrast": 1
+    },
+    "components-chat-attachmentpreviewswitch--switch": {
+      "color-contrast": 1
+    },
+    "components-chat-attachmenttile--audio": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--failed-meta": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--image-off-icon-only": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--image-thumb-fails-falls-back-to-icon": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--long-file-name": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--many-list": {
+      "button-name": 7
+    },
+    "components-chat-attachmenttile--no-extension-no-meta": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--pdf": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--spreadsheet": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--trashed-muted": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--unknown-type-huge-size": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--uploading-pending-meta": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--video": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--with-actions-and-children": {
+      "button-name": 1
+    },
+    "components-chat-attachmenttile--word-document": {
+      "button-name": 1
+    },
+    "components-chat-chatturn--many-tools-grouped": {
+      "label-content-name-mismatch": 1
+    },
+    "components-chat-chatturn--streaming-tools-running-no-answer-yet": {
+      "label-content-name-mismatch": 1
+    },
+    "components-chat-markdownmessage--lists": {
+      "label": 2
+    },
+    "components-chat-markdownmessage--table·-phone": {
+      "scrollable-region-focusable": 1
+    },
+    "components-chat-transcribebutton--default-with-options-caret": {
+      "label-content-name-mismatch": 1
+    },
+    "components-chat-transcribebutton--detected-language-spanish": {
+      "label-content-name-mismatch": 1
+    },
+    "components-chat-transcribebutton--no-audio-source-picker": {
+      "label-content-name-mismatch": 1
+    },
+    "components-chat-transcribebutton--pending-transcript-polish-discard-in-menu": {
+      "label-content-name-mismatch": 1
+    },
+    "components-data-advancedfilterbuilder--flat-rules": {
+      "aria-input-field-name": 1
+    },
+    "components-data-advancedfilterbuilder--interactive": {
+      "aria-input-field-name": 1
+    },
+    "components-data-advancedfilterbuilder--nested-groups": {
+      "aria-input-field-name": 1
+    },
+    "components-data-datatable--empty": {
+      "aria-required-children": 1
+    },
+    "components-data-datatable--error": {
+      "aria-required-children": 1
+    },
+    "components-data-datatable--filters-and-footer": {
+      "aria-required-children": 1,
+      "aria-required-parent": 7
+    },
+    "components-data-datatable--grouped": {
+      "color-contrast": 1
+    },
+    "components-data-datatable--loading": {
+      "aria-required-children": 1
+    },
+    "components-data-exportdialog--many-columns": {
+      "color-contrast": 1
+    },
+    "components-data-exportdialog--open": {
+      "color-contrast": 1
+    },
+    "components-data-filteraddmenu--many-columns": {
+      "aria-input-field-name": 1
+    },
+    "components-data-filteraddmenu--no-advanced": {
+      "aria-input-field-name": 1
+    },
+    "components-data-filteraddmenu--open": {
+      "aria-input-field-name": 1
+    },
+    "components-data-filterchip--enum-open": {
+      "aria-input-field-name": 1
+    },
+    "components-data-filterruleeditor--enum": {
+      "aria-input-field-name": 1
+    },
+    "components-data-filterruleeditor--operand-only": {
+      "aria-input-field-name": 1
+    },
+    "components-data-groupbypicker--interactive": {
+      "color-contrast": 1
+    },
+    "components-data-groupbypicker--long-label": {
+      "color-contrast": 1
+    },
+    "components-data-groupbypicker--picked": {
+      "color-contrast": 1
+    },
+    "components-data-groupbypicker--with-none-label": {
+      "color-contrast": 1
+    },
+    "components-forms-exportdialog--large-count": {
+      "color-contrast": 1
+    },
+    "components-forms-exportdialog--no-defaults-selected": {
+      "color-contrast": 1
+    },
+    "components-forms-exportdialog--open": {
+      "color-contrast": 1
+    },
+    "components-forms-exportdialog--thirty-columns": {
+      "color-contrast": 1
+    },
+    "components-forms-exportdialog--zero-rows": {
+      "color-contrast": 1
+    },
+    "components-navigation-minionlogo--compact": {
+      "color-contrast": 1
+    },
+    "components-navigation-minionlogo--sizes": {
+      "color-contrast": 3
+    },
+    "components-navigation-minionlogo--with-text": {
+      "color-contrast": 1
+    },
+    "components-navigation-sidebar--expanded-admin-business-org": {
+      "color-contrast": 2
+    },
+    "components-overlays-bugreporter--minimized": {
+      "label-content-name-mismatch": 1
+    },
+    "components-overlays-commandpalette--no-results": {
+      "aria-required-children": 1
+    },
+    "components-overlays-commandpalette--trigger-mod-k": {
+      "aria-required-children": 1
+    },
+    "components-overlays-notificationspopup--open-empty-inbox": {
+      "button-name": 1
+    },
+    "components-overlays-notificationspopup--placement-right-sidebar": {
+      "button-name": 1
+    },
+    "components-overlays-notificationspopup--trigger-closed": {
+      "button-name": 1
+    },
+    "components-sessions-eventcard--all-day": {
+      "color-contrast": 1
+    },
+    "components-sessions-feedsection--collapsible-collapsed-with-summary": {
+      "color-contrast": 2
+    },
+    "components-sessions-feedsection--collapsible-expanded": {
+      "color-contrast": 2
+    },
+    "components-sessions-feedsection--scrollable-twelve-items": {
+      "color-contrast": 2,
+      "scrollable-region-focusable": 1
+    },
+    "components-sessions-feedsection--three-items": {
+      "color-contrast": 2
+    },
+    "components-sessions-feedsection--with-providers": {
+      "color-contrast": 2
+    },
+    "components-sessions-feedsection--zero-items": {
+      "color-contrast": 2
+    },
+    "components-sessions-sessiondropdown--open": {
+      "aria-required-children": 1,
+      "aria-required-parent": 6,
+      "list": 1
+    },
+    "components-sessions-sessionslist--fifty-sessions-three-agents": {
+      "select-name": 1
+    },
+    "components-shared-markdown--kitchen-sink": {
+      "label": 2
+    },
+    "components-shared-markdown--kitchen-sink·-phone": {
+      "label": 2,
+      "scrollable-region-focusable": 1
+    },
+    "components-tags-inlinetagscell--cannot-edit": {
+      "color-contrast": 3
+    },
+    "components-tags-inlinetagscell--default": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "components-tags-inlinetagscell--product-scope": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "components-tags-inlinetagscell--read-only-and-inherited-tags": {
+      "button-name": 1,
+      "color-contrast": 8
+    },
+    "components-tags-inlinetagscell--table-mode-closed": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "components-tags-inlinetagscell--table-mode-picker-open": {
+      "aria-required-children": 1,
+      "button-name": 1,
+      "color-contrast": 12
+    },
+    "components-tags-inlinetagscell--twenty-selected": {
+      "button-name": 1,
+      "color-contrast": 20
+    },
+    "components-tags-tagchip--all-colours-persisted-palette": {
+      "color-contrast": 11
+    },
+    "components-tags-tagchip--dashed-auto-derived": {
+      "color-contrast": 1
+    },
+    "components-tags-tagchip--default": {
+      "color-contrast": 1
+    },
+    "components-tags-tagchip--long-name-truncates-in-a-narrow-host": {
+      "color-contrast": 1
+    },
+    "components-tags-tagchip--origins": {
+      "color-contrast": 8
+    },
+    "components-tags-tagchip--removable": {
+      "color-contrast": 2
+    },
+    "components-tags-tagchip--small": {
+      "color-contrast": 10
+    },
+    "components-tags-tagchip--twenty-tags-overflow": {
+      "color-contrast": 20
+    },
+    "components-tags-tagchip--with-leading-icon": {
+      "color-contrast": 1
+    },
+    "components-tags-tagfilter--active-2-selected": {
+      "color-contrast": 1
+    },
+    "components-tags-tagfilter--twenty-tags": {
+      "color-contrast": 1
+    },
+    "components-tags-tagoptionlist--default": {
+      "aria-required-children": 1,
+      "color-contrast": 6
+    },
+    "components-tags-tagoptionlist--disabled": {
+      "aria-required-children": 1
+    },
+    "components-tags-tagoptionlist--empty-registry": {
+      "aria-required-children": 1
+    },
+    "components-tags-tagoptionlist--foreign-origin-tags-event-scope": {
+      "aria-required-children": 1,
+      "color-contrast": 5
+    },
+    "components-tags-tagoptionlist--long-names": {
+      "aria-required-children": 1,
+      "color-contrast": 2
+    },
+    "components-tags-tagoptionlist--no-create": {
+      "aria-required-children": 1,
+      "color-contrast": 6
+    },
+    "components-tags-tagoptionlist--no-edit-toggle-only": {
+      "aria-required-children": 1,
+      "color-contrast": 6
+    },
+    "components-tags-tagoptionlist--twenty-tags": {
+      "aria-required-children": 1,
+      "color-contrast": 20
+    },
+    "components-tags-tagoptionlist--with-header-row": {
+      "aria-required-children": 1,
+      "color-contrast": 6
+    },
+    "components-tags-tagoptionlist--with-selection": {
+      "aria-required-children": 1,
+      "color-contrast": 6
+    },
+    "components-tags-tagsfield--disabled": {
+      "color-contrast": 2
+    },
+    "components-tags-tagsfield--rejected-save-rolls-back": {
+      "button-name": 1,
+      "color-contrast": 1
+    },
+    "components-tags-tagsfield--selected": {
+      "button-name": 1,
+      "color-contrast": 3
+    },
+    "components-tags-tagsfield--selection-pending-persisting": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "components-tags-tagsfield--slow-save": {
+      "button-name": 1,
+      "color-contrast": 1
+    },
+    "components-tags-tagsfield--stale-id-ignored": {
+      "button-name": 1,
+      "color-contrast": 1
+    },
+    "components-tags-tagsfield--table-mode-closed": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "components-tags-tagsfield--table-mode-no-add-picker-open": {
+      "aria-required-children": 1,
+      "button-name": 1,
+      "color-contrast": 12
+    },
+    "components-tags-tagsfield--twenty-selected-wraps": {
+      "button-name": 1,
+      "color-contrast": 20
+    },
+    "components-tags-tagsfield--twenty-selected-wraps·-phone": {
+      "button-name": 1,
+      "color-contrast": 20
+    },
+    "layouts-crm-contact--default": {
+      "aria-tooltip-name": 1,
+      "button-name": 2,
+      "color-contrast": 1,
+      "select-name": 1
+    },
+    "layouts-crm-contact--default·-phone": {
+      "aria-tooltip-name": 1,
+      "button-name": 1,
+      "color-contrast": 1,
+      "select-name": 1
+    },
+    "layouts-crm-customers--default": {
+      "color-contrast": 1
+    },
+    "layouts-crm-customers--default·-phone": {
+      "color-contrast": 1
+    },
+    "layouts-pos-sell--default": {
+      "color-contrast": 1
+    },
+    "layouts-pos-sell--default·-phone": {
+      "color-contrast": 1
+    },
+    "layouts-settings-appearance--default": {
+      "aria-input-field-name": 2,
+      "color-contrast": 3,
+      "label-content-name-mismatch": 1
+    },
+    "layouts-settings-appearance--default·-phone": {
+      "aria-input-field-name": 2,
+      "color-contrast": 1,
+      "label-content-name-mismatch": 1
+    },
+    "layouts-stock-entries--default": {
+      "color-contrast": 1
+    },
+    "layouts-stock-entries--default·-phone": {
+      "color-contrast": 1
+    }
+  },
+  "pages": {
+    "/account @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1,
+      "label-content-name-mismatch": 1
+    },
+    "/account/connections @ compact-390:coarse": {
+      "color-contrast": 3,
+      "document-title": 1
+    },
+    "/account/home @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/account/security @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents @ compact-390:coarse": {
+      "aria-required-parent": 1,
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents/autonomous @ compact-390:coarse": "unmeasured",
+    "/agents/autonomous/[id] @ compact-390:coarse": {
+      "color-contrast": 5,
+      "document-title": 1
+    },
+    "/agents/builder @ compact-390:coarse": {
+      "color-contrast": 1,
+      "label-content-name-mismatch": 1
+    },
+    "/agents/builder/[id] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents/workshop @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents/workshop/[id] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents/workshop/compare @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents/workshop/groupchat @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/agents/workshop/leaderboard @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/brains @ compact-390:coarse": {
+      "aria-prohibited-attr": 1,
+      "color-contrast": 3,
+      "document-title": 1
+    },
+    "/brains/[id] @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/brains/agents @ compact-390:coarse": {
+      "color-contrast": 6
+    },
+    "/brains/settings @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/brains/template @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/capabilities @ compact-390:coarse": {
+      "color-contrast": 2,
+      "label-content-name-mismatch": 1
+    },
+    "/changelog @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/channels @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/channels/[id] @ compact-390:coarse": "unmeasured",
+    "/channels/gmail @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/cloud @ compact-390:coarse": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "/cloud/gui @ compact-390:coarse": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "/cloud/settings @ compact-390:coarse": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "/cloud/terminal @ compact-390:coarse": {
+      "button-name": 1,
+      "color-contrast": 2
+    },
+    "/config @ compact-390:coarse": "unmeasured",
+    "/crm @ compact-390:coarse": {
+      "color-contrast": 2,
+      "nested-interactive": 1
+    },
+    "/crm/[contactId] @ compact-390:coarse": {
+      "aria-tooltip-name": 1,
+      "button-name": 1,
+      "color-contrast": 2,
+      "select-name": 1
+    },
+    "/crm/customers @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/crm/doors @ compact-390:coarse": {
+      "color-contrast": 4
+    },
+    "/crm/doors/[id] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "target-size": 1
+    },
+    "/crm/insights @ compact-390:coarse": {
+      "color-contrast": 5
+    },
+    "/crm/settings @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/finances @ compact-390:coarse": {
+      "color-contrast": 4
+    },
+    "/finances/invoices @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/finances/invoices/[id] @ compact-390:coarse": {
+      "color-contrast": 5
+    },
+    "/finances/purchases @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/finances/purchases/[id] @ compact-390:coarse": "unmeasured",
+    "/finances/settings @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/flow-editor @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1,
+      "label-content-name-mismatch": 2
+    },
+    "/flow-editor/[id] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/flow-editor/master/[id] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/flow-editor/skills/[id] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1,
+      "label": 1
+    },
+    "/home @ compact-390:coarse": {
+      "color-contrast": 1,
+      "label-content-name-mismatch": 1
+    },
+    "/home/settings @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/join @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/killswitches @ compact-390:coarse": "unmeasured",
+    "/link/[code] @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/marketplace @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/marketplace/agents @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1,
+      "nested-interactive": 1
+    },
+    "/marketplace/agents/[slug] @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/marketplace/hooks @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/marketplace/mcp-servers @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/marketplace/plugins @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1,
+      "select-name": 2
+    },
+    "/marketplace/tools @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/memberships @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/notifications @ compact-390:coarse": "unmeasured",
+    "/notifications/daily @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/onboarding @ compact-390:coarse": "unmeasured",
+    "/orgs @ compact-390:coarse": "unmeasured",
+    "/orgs/plans @ compact-390:coarse": "unmeasured",
+    "/overview @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/plugins/[id] @ compact-390:coarse": "unmeasured",
+    "/pos/accounts @ compact-390:coarse": {
+      "aria-required-children": 1,
+      "color-contrast": 2
+    },
+    "/pos/appointments @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/pos/appointments/new @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/pos/catalog @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/pos/catalog/[productId]/edit @ compact-390:coarse": "unmeasured",
+    "/pos/catalog/new @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/pos/funnel @ compact-390:coarse": {
+      "aria-required-children": 1,
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/pos/history @ compact-390:coarse": {
+      "aria-required-children": 1,
+      "color-contrast": 1
+    },
+    "/pos/sell @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/pos/settings @ compact-390:coarse": {
+      "color-contrast": 1,
+      "select-name": 5
+    },
+    "/pos/tickets/[id] @ compact-390:coarse": "unmeasured",
+    "/prompt @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/pulse @ compact-390:coarse": "unmeasured",
+    "/reliability @ compact-390:coarse": {
+      "color-contrast": 4,
+      "document-title": 1
+    },
+    "/sales @ compact-390:coarse": {
+      "color-contrast": 2,
+      "select-name": 1
+    },
+    "/sales/[id] @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/sandbox @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/scheduling @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/scheduling/bookings @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/scheduling/bookings/[id]/edit @ compact-390:coarse": "unmeasured",
+    "/scheduling/bookings/new @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/scheduling/calendar @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/scheduling/event-types @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/scheduling/links @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/scheduling/reminders @ compact-390:coarse": {
+      "color-contrast": 1,
+      "label": 2
+    },
+    "/scheduling/settings @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/sessions @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/sessions/[sessionKey]/debug @ compact-390:coarse": "unmeasured",
+    "/settings @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/settings/appearance @ compact-390:coarse": {
+      "aria-input-field-name": 2,
+      "color-contrast": 4,
+      "document-title": 1
+    },
+    "/settings/backups @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/settings/developers @ compact-390:coarse": {
+      "aria-required-children": 1,
+      "color-contrast": 1
+    },
+    "/settings/gateways @ compact-390:coarse": "unmeasured",
+    "/settings/modules @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/settings/notifications @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/settings/organizations @ compact-390:coarse": "unmeasured",
+    "/settings/plugins @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/settings/provision @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/settings/pulse @ compact-390:coarse": "unmeasured",
+    "/settings/roles @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/settings/tables @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/settings/team @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/settings/workflows @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/socials @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/socials/campaigns @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/socials/campaigns/[campaignId] @ compact-390:coarse": "unmeasured",
+    "/socials/posts @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/socials/posts/[postId] @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/socials/settings @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/stock @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/stock/commitments @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/stock/entries @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/stock/entries/[id] @ compact-390:coarse": {
+      "aria-required-children": 1,
+      "color-contrast": 3
+    },
+    "/stock/entries/new @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/stock/items @ compact-390:coarse": {
+      "button-name": 1,
+      "color-contrast": 1
+    },
+    "/stock/items/[id] @ compact-390:coarse": {
+      "color-contrast": 6
+    },
+    "/stock/warehouses @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/support @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/support/[id] @ compact-390:coarse": {
+      "color-contrast": 3
+    },
+    "/team @ compact-390:coarse": {
+      "color-contrast": 2
+    },
+    "/tools/[id] @ compact-390:coarse": {
+      "aria-input-field-name": 1,
+      "color-contrast": 3,
+      "document-title": 1
+    },
+    "/users @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/users/join-requests @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    },
+    "/work @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1,
+      "select-name": 3
+    },
+    "/workforce @ compact-390:coarse": "unmeasured",
+    "/workforce/activity @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/agents/[id] @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/approvals @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/costs @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/goals @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/inbox @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/issues @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/issues/[id] @ compact-390:coarse": "unmeasured",
+    "/workforce/org @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/portfolios @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/portfolios/[id] @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/projects @ compact-390:coarse": {
+      "color-contrast": 1
+    },
+    "/workforce/projects/[id] @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/projects/[id]/pipelines @ compact-390:coarse": "unmeasured",
+    "/workforce/reliability @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/settings @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/settings/agents @ compact-390:coarse": {
+      "color-contrast": 2,
+      "document-title": 1
+    },
+    "/workforce/welcome @ compact-390:coarse": {
+      "color-contrast": 1,
+      "document-title": 1
+    }
+  },
+  "pageScenarios": ["compact-390:coarse"]
+}
