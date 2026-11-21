@@ -8,6 +8,7 @@ const unreadCount = vi.fn();
 const countPendingRequests = vi.fn();
 const countPending = vi.fn();
 const countPosPendingWork = vi.fn();
+const isModuleVisibleForKind = vi.fn();
 
 vi.mock('$server/auth/core-ctx', () => ({ requireCoreCtx }));
 vi.mock('$server/auth/tenant-ctx', () => ({ getTenantCtx }));
@@ -15,6 +16,7 @@ vi.mock('$server/services/rbac.service', () => ({ hasOrgCapability, requireOrgCa
 vi.mock('$server/services/inbox/inbox.service', () => ({ unreadCount }));
 vi.mock('$server/services/join/requests.service', () => ({ countPendingRequests }));
 vi.mock('$server/services/pulse.service', () => ({ countPending }));
+vi.mock('$lib/org-kind', () => ({ isModuleVisibleForKind }));
 vi.mock('$server/services/pos-accounts.service', () => ({ countPosPendingWork }));
 
 const { GET } = await import('./+server');
@@ -32,6 +34,16 @@ beforeEach(() => {
   countPendingRequests.mockResolvedValue(3);
   countPending.mockResolvedValue(2);
   countPosPendingWork.mockResolvedValue(196);
+  isModuleVisibleForKind.mockReturnValue(true);
+});
+
+describe('GET /api/shell/counts — Pulse switched off', () => {
+  it('skips the Pulse count query and reports null', async () => {
+    isModuleVisibleForKind.mockReturnValue(false);
+    const res = await GET!({ locals } as never);
+    expect(await res.json()).toMatchObject({ pulse: null });
+    expect(countPending).not.toHaveBeenCalled();
+  });
 });
 
 describe('GET /api/shell/counts', () => {

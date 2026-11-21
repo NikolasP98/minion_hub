@@ -2,9 +2,9 @@ import { describe, test, expect } from 'vitest';
 import { isModuleVisibleForKind } from './org-kind';
 
 describe('isModuleVisibleForKind', () => {
-  test('pulse hidden for business, visible for personal', () => {
+  test('pulse hidden for both kinds (switched off until work on it resumes)', () => {
     expect(isModuleVisibleForKind('pulse', 'business')).toBe(false);
-    expect(isModuleVisibleForKind('pulse', 'personal')).toBe(true);
+    expect(isModuleVisibleForKind('pulse', 'personal')).toBe(false);
   });
 
   test('pos/stock/workforce hidden for personal, visible for business', () => {
