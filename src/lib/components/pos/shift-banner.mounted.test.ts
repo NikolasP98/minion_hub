@@ -31,7 +31,7 @@ vi.mock('$lib/state/ui/toast.svelte', () => ({
   toastAsync: <T>(operation: Promise<T>) => operation,
 }));
 
-import ShiftBanner from './ShiftBanner.svelte';
+import ShiftBanner from './ShiftDialogs.fixture.svelte';
 
 function response(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

@@ -49,4 +49,18 @@ describe('CollapsibleFilters (collapse by purpose, spec 013)', () => {
     expect(sheet!.querySelectorAll(CONTROLS)).toHaveLength(3);
     expect(sheet!.getAttribute('data-action-scope')).toBe('collection');
   });
+
+  it('compact={true} forces the collapsed button even on a wide viewport', () => {
+    stubViewport(false);
+    const r = render(Fixture, { compact: true });
+    expect(r.getByRole('button', { name: new RegExp(m.filters_label()) })).not.toBeNull();
+    expect(r.container.querySelectorAll(`.inline-filters ${CONTROLS}`)).toHaveLength(0);
+  });
+
+  it('compact={false} forces inline even on a narrow viewport', () => {
+    stubViewport(true);
+    const r = render(Fixture, { compact: false });
+    expect(r.container.querySelectorAll(`.inline-filters ${CONTROLS}`)).toHaveLength(3);
+    expect(r.queryByRole('button', { name: new RegExp(m.filters_label()) })).toBeNull();
+  });
 });

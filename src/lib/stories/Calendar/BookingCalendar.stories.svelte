@@ -302,3 +302,16 @@
   args={{ view: 'day' }}
   globals={{ viewport: { value: 'phone', isRotated: false } }}
 />
+
+<!-- Spec 145: the phone toolbar (one row + week strip, sheets for view / date / more). -->
+<Story
+  name="Compact · Día · Phone"
+  args={{ view: 'day', compact: true, kebabBadge: 3, kebabAttention: true }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>
+
+<Story
+  name="Compact · 3 días · Phone"
+  args={{ view: 'week', compact: true, weekDays: 3, date: DAYS[2] }}
+  globals={{ viewport: { value: 'phone', isRotated: false } }}
+/>

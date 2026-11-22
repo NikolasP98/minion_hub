@@ -68,6 +68,13 @@ describe('collapse by purpose on the pilots', () => {
     );
   });
 
+  it('filter bar → Sheet: POS appointments wraps the calendar toolbar filters the same way', () => {
+    const page = routeSource('pos/appointments/PageBody.svelte');
+    expect((page.match(/<CollapsibleFilters /g) ?? []).length).toBe(1);
+    expect(page).toContain('activeCount={activeFilterCount}');
+    expect(page).toContain('{compact}');
+  });
+
   it('context panel → step: master-detail pilots show list OR detail below 768px', () => {
     const agents = routeSource('agents/+page.svelte');
     expect(agents).toMatch(

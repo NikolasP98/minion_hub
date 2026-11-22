@@ -31,7 +31,17 @@
     iconSizes,
     type ContextMenuItem,
   } from '$lib/components/ui';
-  import { PageShell } from '$lib/components/ui/foundations';
+  import { PageShell, Sheet } from '$lib/components/ui/foundations';
+  import { phone } from '$lib/state/ui/phone.svelte';
+  import CalendarAddButton from '$lib/components/scheduling/CalendarAddButton.svelte';
+  import CollapsibleFilters from '$lib/components/data-table/CollapsibleFilters.svelte';
+  import { isFilterActive } from '$lib/components/data-table/filters';
+  import { getShiftDialogs } from '$lib/components/pos/shift-dialogs-context';
+  import { shiftEntry } from '$lib/components/pos/shift-entry';
+  import { navConfig } from '$lib/nav/nav-config.svelte';
+  import { posPendingWork } from '$lib/nav/pos-pending';
+  import { getAreaItems } from '$lib/nav/modules';
+  import { canViewPath } from '$lib/access/can.svelte';
   import * as m from '$lib/paraglide/messages';
   import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
   import type { CompleteResult } from '$lib/components/scheduling/consumption-lines';
@@ -87,6 +97,9 @@
   import { resolveCalendarInstant } from '$lib/components/scheduling/calendar-time';
   import { dispatchSellChargeHandoff } from '$lib/components/pos/sell-charge-handoff';
   import VoidRefundChoice, { type RefundChoice } from '$lib/components/pos/VoidRefundChoice.svelte';
+
+  /** Bottom room so the last row clears the "+" (56) and the assistant launcher (48 + 3 gaps). */
+  const FAB_ROOM = '--cal-fab-room:calc(56px + 48px + 3 * 12px + env(safe-area-inset-bottom, 0px))';
 
   type PageData = Granted<LoadedPageData['pos']>;
   let { data }: { data: PageData } = $props();
@@ -261,7 +274,7 @@
    */
   const settled = createSettledDay({
     pageDay: () => data.day,
-    view: () => data.view,
+    view: () => view,
     replaceUrl: (params) => replaceState(`?${params}`, page.state),
   });
   const currentDay = $derived(settled.currentDay);
@@ -274,7 +287,7 @@
       options: cal.tagOptions,
       bookings: cal.bookings,
       range:
-        data.view === 'day'
+        view === 'day'
           ? { first: currentDay, last: currentDay }
           : visibleFirst && visibleLast
             ? { first: visibleFirst, last: visibleLast }
@@ -295,7 +308,7 @@
   function navigate(next: { view?: CalendarPageView; date?: string }) {
     if (next.date !== undefined) calAnchor = undefined;
     const params = new URLSearchParams({
-      view: next.view ?? data.pageView,
+      view: next.view ?? viewNow,
       date: next.date ?? currentDay,
     });
     return goto(`?${params}`, { keepFocus: true, noScroll: true });
@@ -347,6 +360,77 @@
     customValues,
   });
   const shownBookings = $derived(bookingFilter.shown);
+  /** Live filters shown on the collapsed "Filters" trigger below 768px (SCHED's count without staff/kind). */
+  const activeFilterCount = $derived(
+    Object.values(bookingFilter.filters).filter(isFilterActive).length +
+      (bookingFilter.advanced ? 1 : 0) +
+      (tagFilter.size ? 1 : 0),
+  );
+
+  // ── Phone layout (spec 145) ──
+  // Seeded from the server's cookie hint so SSR and first paint agree, then follows the media query.
+  // svelte-ignore state_referenced_locally
+  let compact = $state(data.phoneHint ?? false);
+  $effect(() => {
+    compact = phone.current;
+  });
+  const compactCalendar = $derived(compact && pageView === 'calendar');
+  /** A phone opens on the day view unless the address names one. */
+  const viewOverride = $derived((compact || viewWritten) && !data.viewInUrl && pageView === 'calendar');
+  const view = $derived<CalendarView>(viewOverride ? 'day' : data.view);
+  const viewNow = $derived<CalendarPageView>(viewOverride ? 'day' : data.pageView);
+  // Mirror the override in the address ONCE with a shallow replace (no load). The router may not
+  // be started on the first hydration tick, so a failed write is ignored: the URL then just
+  // carries no `view`, which is cosmetic.
+  let viewWritten = $state(false);
+  $effect(() => {
+    if (!viewOverride || viewWritten) return;
+    const id = setTimeout(() => {
+      try {
+        const params = new URLSearchParams(page.url.searchParams);
+        params.set('view', 'day');
+        replaceState(`?${params}`, page.state);
+        viewWritten = true;
+      } catch {
+        // TODO(handoff): if the router is not started yet the address keeps no `view=day`
+        // (the page still shows Día). Retry after `afterNavigate`. Ledger:
+        // proposals/2026-11-21-hub-calendar-phones-followups.md.
+      }
+    }, 0);
+    return () => clearTimeout(id);
+  });
+  const showAddButton = $derived(
+    compactCalendar && data.eventTypes.length > 0 && canSchedule,
+  );
+
+  // "…" menu rows. Register: same data and 16 h staleness as `ShiftBanner`.
+  const dialogs = getShiftDialogs();
+  let now = $state(Date.now());
+  $effect(() => {
+    if (!compactCalendar) return;
+    const id = setInterval(() => (now = Date.now()), 60_000);
+    return () => clearInterval(id);
+  });
+  const shift = $derived(
+    shiftEntry(
+      page.data.openShift as Parameters<typeof shiftEntry>[0],
+      now,
+    ),
+  );
+  const shiftLabel = $derived(
+    shift.open ? m.pos_shift_income({ amount: formatMoney(shift.income) }) : m.pos_no_open_shift(),
+  );
+  const canShift = $derived(!!dialogs && canAct('pos', 'edit'));
+  // Same list and link resolution as `PosNav` (module registry, access-filtered).
+  const gotoItems = $derived(
+    getAreaItems('pos', {
+      schedulingEnabled: page.data.schedulingEnabled,
+      navConfig: navConfig(),
+      posPendingWork: posPendingWork(),
+    }).filter((i) => canViewPath(i.href)),
+  );
+  const showUnscheduled = $derived(data.pending.length > 0 && canSchedule);
+  let unscheduledOpen = $state(false);
   /** The native "PERSONAL" dropdown was removed (owner: duplicate of this
    *  filter's own "Personal" column) — its job (narrowing the grid's resource
    *  columns/subcolumns + persisting per-viewer) now runs off this filter's
@@ -566,10 +650,15 @@
     const matches = matchEventTypes(p, data.eventTypes);
     pickTime(p, currentDay, undefined, null, matches.length === 1 ? matches[0].id : null);
   }
-  function onCardKeydown(e: KeyboardEvent, p: PendingLine) {
+  /** A tap in the phone sheet also closes it, so the create tray is not stacked under it. */
+  function activate(p: PendingLine, inSheet: boolean) {
+    if (inSheet) unscheduledOpen = false;
+    clickPick(p);
+  }
+  function onCardKeydown(e: KeyboardEvent, p: PendingLine, inSheet = false) {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      clickPick(p);
+      activate(p, inSheet);
     }
   }
 
@@ -965,12 +1054,143 @@
 
 <svelte:head><title>{m.pos_nav_appointments()} · {m.nav_pos()}</title></svelte:head>
 
+<!-- The unscheduled tray's cards, shared by the desktop tray and the phone sheet.
+     In the sheet nothing is draggable and there is no right-click menu: a tap picks. -->
+{#snippet trayItem(p: PendingLine, inSheet: boolean)}
+  <div
+    class="tray-item"
+    role="listitem"
+    draggable={inSheet ? undefined : 'true'}
+    ondragstart={inSheet ? undefined : (e) => startDrag(e, [p])}
+    oncontextmenu={inSheet ? undefined : (e) => openTrayMenu(p, e)}
+  >
+    <!-- The whole card is the click target (owner 2026-10-10: "2
+       interactions: click opens a date/time picker; dragging...").
+       `role=button` lives on this inner row, not the outer
+       `role=listitem` draggable wrapper, so the two semantics don't
+       collide. -->
+    <div
+      class="tray-item-hit"
+      role="button"
+      tabindex="0"
+      aria-haspopup="dialog"
+      onclick={() => activate(p, inSheet)}
+      onkeydown={(e) => onCardKeydown(e, p, inSheet)}
+    >
+      {#if !inSheet}<GripVertical size={iconSizes.sm} class="tray-grip" />{/if}
+      <span class="tray-text">
+        <span class="tray-title truncate">{p.description}</span>
+        <span class="t-caption truncate">
+          {p.customerName ?? '—'}
+          {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
+          · {formatDate(p.submittedAt, {
+            day: 'numeric',
+            month: 'short',
+            timeZone: data.orgTz,
+          })}
+        </span>
+      </span>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet trayGroups(inSheet: boolean)}
+  {#each pendingGroups as g (g.key)}
+    {#if g.lines.length === 1}
+      {@render trayItem(g.lines[0], inSheet)}
+    {:else}
+      <div class="tray-group" role="listitem">
+        <!-- The header drags too: ONE gesture books every pending
+             service of this customer back-to-back. The grip is the
+             drag affordance and sits OUTSIDE the toggle, so it can't
+             be mistaken for the expand control. -->
+        <div
+          class="tray-group-head"
+          role="group"
+          draggable={inSheet ? undefined : 'true'}
+          ondragstart={inSheet ? undefined : (e) => startDrag(e, g.lines)}
+        >
+          {#if !inSheet}<GripVertical size={iconSizes.sm} class="tray-grip" />{/if}
+          <Button
+            variant="ghost"
+            size="sm"
+            class="tray-group-toggle"
+            aria-expanded={expandedGroups.has(g.key)}
+            onclick={() => toggleGroup(g.key)}
+          >
+            {#if expandedGroups.has(g.key)}<ChevronDown
+                size={iconSizes.sm}
+              />{:else}<ChevronRight size={iconSizes.sm} />{/if}
+            <span class="tray-group-name truncate">{g.customerName ?? '—'}</span>
+            <Badge size="sm">{m.pos_appt_group_count({ count: String(g.lines.length) })}</Badge>
+          </Button>
+        </div>
+        {#if expandedGroups.has(g.key)}
+          {#each g.lines as p (p.lineId)}
+            {@render trayItem(p, inSheet)}
+          {/each}
+        {/if}
+      </div>
+    {/if}
+  {/each}
+{/snippet}
+
+<!-- TODO(handoff): these rows, the shift dialog opened from them and the unscheduled sheet have
+     no automated browser test (the mobile fixture mounts the scheduling page only); checked by
+     hand at 390×844. Ledger: proposals/2026-11-21-hub-calendar-phones-followups.md. -->
+<!-- Phone "…" menu rows (spec 145). Rows reuse the calendar's `.cc-row` button look. -->
+{#snippet kebabRows()}
+  {#if compactCalendar}
+    {#if canShift}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="cc-row"
+        onclick={() => (shift.open ? dialogs?.startClose() : dialogs?.startOpen())}
+      >
+        <span class="k-label">{shift.open ? m.pos_shift_close_cta() : m.pos_shift_open_cta()}</span>
+        {#if shift.attention}<span class="k-dot" aria-hidden="true"></span>{/if}
+        {#if shift.stale}<span class="sr-only">{m.pos_shift_stale()}</span>{/if}
+        <span class="k-value">{shiftLabel}</span>
+        <ChevronRight size={iconSizes.sm} />
+      </Button>
+    {:else}
+      <div class="k-row">
+        <span class="k-label">{shiftLabel}</span>
+        {#if shift.attention}<span class="k-dot" aria-hidden="true"></span>{/if}
+        {#if shift.stale}<span class="sr-only">{m.pos_shift_stale()}</span>{/if}
+      </div>
+    {/if}
+    {#if showUnscheduled}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="cc-row"
+        aria-haspopup="dialog"
+        onclick={() => (unscheduledOpen = true)}
+      >
+        <span class="k-label">{m.pos_appt_unscheduled({ count: String(data.pending.length) })}</span>
+        <ChevronRight size={iconSizes.sm} />
+      </Button>
+    {/if}
+    {#if gotoItems.length}
+      <p class="t-caption k-head">{m.pos_appt_goto()}</p>
+      {#each gotoItems as i (i.id)}
+        <a class="k-link" href={i.href}>{i.label}</a>
+      {/each}
+    {/if}
+  {/if}
+{/snippet}
+
 <PageShell
   archetype="collection"
   scroll="region"
   labelledBy="pos-appointments-title"
-  class="pos-appointments-surface"
+  class={compactCalendar
+    ? 'pos-appointments-surface is-compact-calendar'
+    : 'pos-appointments-surface'}
 >
+  {#if !compactCalendar}
   <PageHeader titleId="pos-appointments-title" title={m.pos_nav_appointments()}>
     {#snippet leading()}
       <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
@@ -991,7 +1211,7 @@
     {/snippet}
   </PageHeader>
 
-  {#if data.pending.length > 0 && canSchedule}
+  {#if showUnscheduled}
     <section
       class="tray"
       aria-label={m.pos_appt_unscheduled({ count: String(data.pending.length) })}
@@ -1015,94 +1235,19 @@
           >{/if}
       </div>
       {#if trayOpen}
-        {#snippet trayItem(p: PendingLine)}
-          <div
-            class="tray-item"
-            role="listitem"
-            draggable="true"
-            ondragstart={(e) => startDrag(e, [p])}
-            oncontextmenu={(e) => openTrayMenu(p, e)}
-          >
-            <!-- The whole card is the click target (owner 2026-10-10: "2
-               interactions: click opens a date/time picker; dragging...").
-               `role=button` lives on this inner row, not the outer
-               `role=listitem` draggable wrapper, so the two semantics don't
-               collide. -->
-            <div
-              class="tray-item-hit"
-              role="button"
-              tabindex="0"
-              aria-haspopup="dialog"
-              onclick={() => clickPick(p)}
-              onkeydown={(e) => onCardKeydown(e, p)}
-            >
-              <GripVertical size={iconSizes.sm} class="tray-grip" />
-              <span class="tray-text">
-                <span class="tray-title truncate">{p.description}</span>
-                <span class="t-caption truncate">
-                  {p.customerName ?? '—'}
-                  {#if p.ticketHumanId}· #{p.ticketHumanId}{/if}
-                  · {formatDate(p.submittedAt, {
-                    day: 'numeric',
-                    month: 'short',
-                    timeZone: data.orgTz,
-                  })}
-                </span>
-              </span>
-            </div>
-          </div>
-        {/snippet}
         <div class="tray-items" role="list">
-          {#each pendingGroups as g (g.key)}
-            {#if g.lines.length === 1}
-              {@render trayItem(g.lines[0])}
-            {:else}
-              <div class="tray-group" role="listitem">
-                <!-- The header drags too: ONE gesture books every pending
-                     service of this customer back-to-back. The grip is the
-                     drag affordance and sits OUTSIDE the toggle, so it can't
-                     be mistaken for the expand control. -->
-                <div
-                  class="tray-group-head"
-                  role="group"
-                  draggable="true"
-                  ondragstart={(e) => startDrag(e, g.lines)}
-                >
-                  <GripVertical size={iconSizes.sm} class="tray-grip" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="tray-group-toggle"
-                    aria-expanded={expandedGroups.has(g.key)}
-                    onclick={() => toggleGroup(g.key)}
-                  >
-                    {#if expandedGroups.has(g.key)}<ChevronDown
-                        size={iconSizes.sm}
-                      />{:else}<ChevronRight size={iconSizes.sm} />{/if}
-                    <span class="tray-group-name truncate">{g.customerName ?? '—'}</span>
-                    <Badge size="sm"
-                      >{m.pos_appt_group_count({ count: String(g.lines.length) })}</Badge
-                    >
-                  </Button>
-                </div>
-                {#if expandedGroups.has(g.key)}
-                  {#each g.lines as p (p.lineId)}
-                    {@render trayItem(p)}
-                  {/each}
-                {/if}
-              </div>
-            {/if}
-          {/each}
+          {@render trayGroups(false)}
         </div>
       {/if}
     </section>
+  {/if}
   {/if}
 
   <DataView
     views={['calendar', 'table', 'board']}
     value={pageView}
     onchange={(v) =>
-      navigate({ view: v === 'calendar' ? data.view : v === 'board' ? 'board' : 'table' })}
+      navigate({ view: v === 'calendar' ? (compact ? 'day' : view) : v === 'board' ? 'board' : 'table' })}
   >
     {#snippet children({ switcher, view: dv })}
       {#if dv === 'table' || dv === 'board'}
@@ -1168,7 +1313,12 @@
       {:else}
         <BookingCalendar
           bind:this={calRef}
-          view={data.view}
+          {view}
+          compact={compactCalendar}
+          kebabBadge={compactCalendar && showUnscheduled ? data.pending.length : null}
+          kebabAttention={compactCalendar && shift.attention}
+          style={showAddButton ? FAB_ROOM : undefined}
+          features={{ agenda: compactCalendar }}
           date={currentDay}
           timeZone={data.orgTz}
           {mutationScope}
@@ -1189,11 +1339,11 @@
           busy={winCache.busy}
           windows={winCache.windows}
           onwindowretry={winCache.retry}
-          weekDays={prefs.weekDays}
+          weekDays={compactCalendar ? 3 : prefs.weekDays}
           onweekdays={prefs.setWeekDays}
           pxPerHour={prefs.pxPerHour}
           onpxperhour={prefs.setPxPerHour}
-          subBy={prefs.subBy}
+          subBy={compactCalendar ? 'none' : prefs.subBy}
           onsubby={prefs.setSubBy}
           {customValues}
           onopen={(id) => (detailId = id)}
@@ -1208,19 +1358,22 @@
         >
           {#snippet toolbarStart()}{@render switcher()}{/snippet}
           {#snippet tools()}
-            <FilterToolbar
-              columns={bookingFilter.metas}
-              bind:filters={bookingFilter.filters}
-              bind:advanced={bookingFilter.advanced}
-            />
-            <TagFilter
-              scope="event"
-              tags={filterTagOptions}
-              selected={tagFilter}
-              onselect={(next) => (tagFilter = next)}
-              ontagschange={() => refresh()}
-            />
+            <CollapsibleFilters activeCount={activeFilterCount} {compact}>
+              <FilterToolbar
+                columns={bookingFilter.metas}
+                bind:filters={bookingFilter.filters}
+                bind:advanced={bookingFilter.advanced}
+              />
+              <TagFilter
+                scope="event"
+                tags={filterTagOptions}
+                selected={tagFilter}
+                onselect={(next) => (tagFilter = next)}
+                ontagschange={() => refresh()}
+              />
+            </CollapsibleFilters>
           {/snippet}
+          {#snippet kebabItems()}{@render kebabRows()}{/snippet}
           <!-- POS-only extras. The grid, hover card, views and navigation are shared. -->
           {#snippet chips(b)}
             {@const acc = accrualBySource.get(b.id)}
@@ -1318,6 +1471,16 @@
     {/snippet}
   </DataView>
 </PageShell>
+
+{#if showAddButton}
+  <CalendarAddButton label={m.pos_appt_new()} onclick={() => (createTarget = { day: currentDay })} />
+{/if}
+
+<Sheet bind:open={unscheduledOpen} title={m.pos_appt_unscheduled({ count: String(data.pending.length) })} placement="bottom">
+  <div class="tray-items in-sheet" role="list">
+    {@render trayGroups(true)}
+  </div>
+</Sheet>
 
 <!-- Mounted only with ≥ 1 entry: a menu with nothing to offer must not paint
      an empty box (spec 2026-10-13 I2). -->
@@ -1509,6 +1672,55 @@
   .tray-group-head :global(.tray-group-toggle) {
     flex: 1;
     min-width: 0;
+  }
+  /* Phone sheet: the same cards, stacked and full width. */
+  .tray-items.in-sheet {
+    flex-direction: column;
+    overflow-x: visible;
+    padding-bottom: calc(var(--space-1) + env(safe-area-inset-bottom, 0px));
+  }
+  .in-sheet .tray-item,
+  .in-sheet .tray-group {
+    width: 100%;
+  }
+  .in-sheet .tray-item {
+    cursor: pointer;
+  }
+  .in-sheet .tray-item-hit {
+    min-height: var(--control-height-touch);
+  }
+  /* "…" menu rows (the calendar's `.cc-row` styles the buttons; these are the extras). */
+  .k-label {
+    flex: 1;
+    text-align: left;
+    color: var(--color-text-primary);
+  }
+  .k-value {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .k-row,
+  .k-link {
+    font-size: var(--font-size-label);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-height-touch);
+    padding: 0 var(--space-2);
+    color: var(--color-text-primary);
+    text-decoration: none;
+  }
+  .k-head {
+    margin: var(--space-2) var(--space-2) 0;
+    color: var(--color-text-secondary);
+  }
+  .k-dot {
+    flex-shrink: 0;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-warning-fg);
   }
   .warn {
     color: var(--color-danger-fg);

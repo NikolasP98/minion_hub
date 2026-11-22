@@ -19,6 +19,8 @@
   import { onDestroy, untrack } from 'svelte';
   import { invalidate, goto, replaceState } from '$lib/navigation';
   import { page } from '$app/state';
+  import { phone } from '$lib/state/ui/phone.svelte';
+  import CalendarAddButton from '$lib/components/scheduling/CalendarAddButton.svelte';
   import {
     Button,
     EmptyState,
@@ -70,6 +72,9 @@
   import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
   import type { CompleteResult } from '$lib/components/scheduling/consumption-lines';
   import { instantDateKey } from '$lib/time/zoned';
+
+  /** Bottom room so the last row clears the "+" (56) and the assistant launcher (48 + 3 gaps). */
+  const FAB_ROOM = '--cal-fab-room:calc(56px + 48px + 3 * 12px + env(safe-area-inset-bottom, 0px))';
 
   type PageData = Granted<LoadedPageData['scheduling']>;
   let { data }: { data: PageData } = $props();
@@ -246,7 +251,7 @@
    *  so it runs AHEAD of `data.day` (`settled-day.svelte.ts` owns the workaround). */
   const settled = createSettledDay({
     pageDay: () => data.day,
-    view: () => data.view,
+    view: () => view,
     replaceUrl: (params) => replaceState(`?${params}`, page.state),
   });
   const currentDay = $derived(settled.currentDay);
@@ -262,7 +267,7 @@
       options: showInheritedTags ? cal.tagOptions : cal.tagOptions.filter((t) => !t.origin),
       bookings: visibleBookings,
       range:
-        data.view === 'day'
+        view === 'day'
           ? { first: currentDay, last: currentDay }
           : visibleFirst && visibleLast
             ? { first: visibleFirst, last: visibleLast }
@@ -283,7 +288,7 @@
   function navigate(next: { view?: CalendarPageView; date?: string }) {
     if (next.date !== undefined) calAnchor = undefined;
     const params = new URLSearchParams({
-      view: next.view ?? data.pageView,
+      view: next.view ?? viewNow,
       date: next.date ?? currentDay,
     });
     return goto(`?${params}`, { keepFocus: true, noScroll: true });
@@ -314,6 +319,13 @@
     customValues,
   });
   const shownBookings = $derived(bookingFilter.shown);
+  /** Phone layout (spec 145): seeded from the server's cookie hint so SSR and first paint
+   *  agree, then follows the live media query. */
+  // svelte-ignore state_referenced_locally
+  let compact = $state(data.phoneHint ?? false);
+  $effect(() => {
+    compact = phone.current;
+  });
   /** Live filters shown on the collapsed "Filters" trigger below 768px. */
   const activeFilterCount = $derived(
     Object.values(bookingFilter.filters).filter(isFilterActive).length +
@@ -328,6 +340,35 @@
   const pageView = $derived(
     data.pageView === 'table' || data.pageView === 'board' ? data.pageView : 'calendar',
   );
+
+  const compactCalendar = $derived(
+    compact && pageView === 'calendar' && data.resources.length > 0,
+  );
+  /** A phone opens on the day view unless the address names one. */
+  const viewOverride = $derived((compact || viewWritten) && !data.viewInUrl && pageView === 'calendar');
+  const view = $derived<CalendarView>(viewOverride ? 'day' : data.view);
+  const viewNow = $derived<CalendarPageView>(viewOverride ? 'day' : data.pageView);
+  // Mirror the override in the address ONCE with a shallow replace (no load). The router may
+  // not be started on the first hydration tick, so a failed write is ignored: the URL then just
+  // carries no `view`, which is cosmetic.
+  let viewWritten = $state(false);
+  $effect(() => {
+    if (!viewOverride || viewWritten) return;
+    const id = setTimeout(() => {
+      try {
+        const params = new URLSearchParams(page.url.searchParams);
+        params.set('view', 'day');
+        replaceState(`?${params}`, page.state);
+        viewWritten = true;
+      } catch {
+        // TODO(handoff): if the router is not started yet the address keeps no `view=day`
+        // (the page still shows Día). Retry after `afterNavigate`. Ledger:
+        // proposals/2026-11-21-hub-calendar-phones-followups.md.
+      }
+    }, 0);
+    return () => clearTimeout(id);
+  });
+  const showAddButton = $derived(compactCalendar && data.eventTypes.length > 0 && canCreate);
 
   /** Drag/resize/merge/detach commits — `booking-mover.ts`, on this surface's
    *  own API base (`/api/scheduling/bookings` + its `[id]/group` twin). */
@@ -391,8 +432,11 @@
   archetype="collection"
   scroll="region"
   labelledBy="scheduling-calendar-title"
-  class="scheduling-calendar-surface"
+  class={compactCalendar
+    ? 'scheduling-calendar-surface is-compact-calendar'
+    : 'scheduling-calendar-surface'}
 >
+  {#if !compactCalendar}
   <PageHeader
     titleId="scheduling-calendar-title"
     title={m.sched_calendar_title()}
@@ -413,6 +457,7 @@
       </Button>
     {/snippet}
   </PageHeader>
+  {/if}
 
   {#if data.resources.length === 0}
     <EmptyState title={m.sched_empty_resources()} />
@@ -421,13 +466,13 @@
       views={['calendar', 'table', 'board']}
       value={pageView}
       onchange={(v) =>
-        navigate({ view: v === 'calendar' ? data.view : v === 'board' ? 'board' : 'table' })}
+        navigate({ view: v === 'calendar' ? (compact ? 'day' : view) : v === 'board' ? 'board' : 'table' })}
     >
       {#snippet children({ switcher, view: dv })}
         {#if dv === 'table' || dv === 'board'}
           <div class="dv-bar view-toolbar" data-action-scope="collection">
             {@render switcher()}
-            <CollapsibleFilters activeCount={activeFilterCount}>
+            <CollapsibleFilters activeCount={activeFilterCount} {compact}>
               {#if dv === 'board'}
                 <FilterToolbar
                   columns={bookingFilter.metas}
@@ -488,7 +533,9 @@
           {/if}
         {:else}
           <BookingCalendar
-            view={data.view}
+            {view}
+            compact={compactCalendar}
+            style={showAddButton ? FAB_ROOM : undefined}
             date={currentDay}
             timeZone={data.orgTz}
             {mutationScope}
@@ -503,11 +550,11 @@
             blockColorBy={prefs.blockColorBy}
             sliverColorBy={prefs.sliverColorBy}
             oncolorby={prefs.setColorBy}
-            weekDays={prefs.weekDays}
+            weekDays={compactCalendar ? 3 : prefs.weekDays}
             onweekdays={prefs.setWeekDays}
             pxPerHour={prefs.pxPerHour}
             onpxperhour={prefs.setPxPerHour}
-            subBy={prefs.subBy}
+            subBy={compactCalendar ? 'none' : prefs.subBy}
             onsubby={prefs.setSubBy}
             {customValues}
             onview={(view, date) => navigate({ view, date })}
@@ -524,7 +571,7 @@
           >
             {#snippet toolbarStart()}{@render switcher()}{/snippet}
             {#snippet tools()}
-              <CollapsibleFilters activeCount={activeFilterCount}>
+              <CollapsibleFilters activeCount={activeFilterCount} {compact}>
                 <FilterToolbar
                   columns={bookingFilter.metas}
                   bind:filters={bookingFilter.filters}
@@ -616,6 +663,10 @@
     </DataView>
   {/if}
 </PageShell>
+
+{#if showAddButton}
+  <CalendarAddButton label={m.appt_new_title()} onclick={() => (createTarget = { day: currentDay })} />
+{/if}
 
 <ConsumptionConfirmDialog
   bookingId={completeFor?.id ?? null}

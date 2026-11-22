@@ -36,6 +36,7 @@
   // own view; `?view=day|week|month|agenda` sets both; `?date=` moves the day.
   const data = $state({
     view,
+    viewInUrl: params.has('view'),
     pageView: view,
     day: FIXTURE_DAY,
     orgTz: FIXTURE_TIME_ZONE,
@@ -58,7 +59,10 @@
     const next = params.get('view');
     const d = data as unknown as { view: string; pageView: string; day: string };
     if (next === 'table' || next === 'board') d.pageView = next;
-    else if (next && CALENDAR_VIEWS.has(next)) d.pageView = d.view = next;
+    else if (next && CALENDAR_VIEWS.has(next)) {
+      d.pageView = d.view = next;
+      (data as unknown as { viewInUrl: boolean }).viewInUrl = true;
+    }
     const day = params.get('date');
     if (day) d.day = day;
   });

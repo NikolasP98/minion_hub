@@ -10,6 +10,8 @@ import {
   monthGridDays,
   parseCalendarDate,
   parseCalendarView,
+  parseCalendarPageView,
+  calendarViewOf,
   schedulingTimeZone,
   shiftCalendarDate,
   shiftCalendarMonth,
@@ -222,5 +224,28 @@ describe('productsForVisit (spec 120)', () => {
   it('is empty for an unpaid visit and for payloads without products', () => {
     expect(productsForVisit([{}, { tickets: [] }])).toEqual([]);
     expect(productsForVisit([{ tickets: [{ id: 't1', humanId: null }] }])).toEqual([]);
+  });
+});
+
+describe('phone fallback view (spec 145)', () => {
+  it('defaults to week without a hint', () => {
+    expect(parseCalendarPageView(null)).toBe('week');
+    expect(calendarViewOf(parseCalendarPageView('table'))).toBe('week');
+  });
+  it('uses the fallback when the value is absent or invalid', () => {
+    expect(parseCalendarPageView(null, 'day')).toBe('day');
+    expect(parseCalendarPageView('bogus', 'day')).toBe('day');
+    expect(parseCalendarView(null, 'day')).toBe('day');
+  });
+  it('lets an explicit valid view win', () => {
+    expect(parseCalendarPageView('month', 'day')).toBe('month');
+    expect(parseCalendarPageView('workweek', 'day')).toBe('week');
+  });
+  it('keeps table/board and maps them onto the fallback grid', () => {
+    expect(parseCalendarPageView('table', 'day')).toBe('table');
+    expect(parseCalendarPageView('board', 'day')).toBe('board');
+    expect(calendarViewOf('table', 'day')).toBe('day');
+    expect(calendarViewOf('board', 'day')).toBe('day');
+    expect(calendarViewOf('month', 'day')).toBe('month');
   });
 });

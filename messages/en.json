@@ -7717,5 +7717,16 @@
   "settings_mcp_empty_desc": "Apps you approve to use the MCP endpoint appear here.",
   "oauth_authorize_unverified": "Unverified app",
   "oauth_authorize_registered": "registered {when}",
-  "oauth_authorize_refused_origin": "This request did not come from the Hub page. Reload the page and try again."
+  "oauth_authorize_refused_origin": "This request did not come from the Hub page. Reload the page and try again.",
+  "cal_compact_view_days3": "3 days",
+  "cal_compact_view_list": "List",
+  "cal_compact_sheet_view": "View",
+  "cal_compact_sheet_more": "More",
+  "cal_compact_sheet_date": "Date",
+  "cal_compact_layout": "Layout",
+  "cal_strip_today": "today",
+  "cal_strip_prev_week": "Previous week",
+  "cal_strip_next_week": "Next week",
+  "cal_compact_attention": "Needs attention",
+  "pos_appt_goto": "Go to"
 }

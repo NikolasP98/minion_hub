@@ -1,6 +1,8 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import ShiftBanner from '$lib/components/pos/ShiftBanner.svelte';
+  // The fixture is the POS layout's shape (context + banner + the one dialogs host),
+  // so the open/close buttons render and work as in the app.
+  import ShiftBanner from '$lib/components/pos/ShiftDialogs.fixture.svelte';
 
   // Driven entirely by `page.data` (loaded by the POS layout), mocked per story
   // through `parameters.sveltekit_experimental.state.page.data`.

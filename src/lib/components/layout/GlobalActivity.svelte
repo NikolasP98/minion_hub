@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { cornerReserve } from '$lib/state/ui/corner-reserve.svelte';
   import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
   import Popover from '$lib/components/ui/Popover.svelte';
   import { Button } from '@minion-stack/ui';
@@ -41,7 +42,13 @@
     : ''}
 </div>
 {#if actions.backgroundJobs || actions.attentionRequired}
-  <div class="activity-summary">
+  <!-- A page that reserved the corner (calendar "+") stacks: button, assistant launcher, then this. -->
+  <div
+    class="activity-summary"
+    style:bottom={cornerReserve.bottom
+      ? `calc(var(--space-4) + ${cornerReserve.bottom + 56}px)`
+      : undefined}
+  >
     <Popover placement="top" bind:open>
       {#snippet trigger()}
         <span class="summary-label t-caption">
