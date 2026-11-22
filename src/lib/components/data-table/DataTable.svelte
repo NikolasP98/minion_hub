@@ -828,6 +828,9 @@
   const colLabel = (c: DataColumn<T>): string => cfg?.fields.get(c.key)?.label ?? c.label;
   const instanceId = $props.id();
   const gridMode = $derived(interactionMode === 'grid');
+  // The grid ROLE needs rows to own (ARIA required children). The error, loading and empty
+  // states render no table, so the wrapper is then a plain focusable region, not an empty grid.
+  const gridRole = $derived(gridMode && !hasError && data.length > 0);
   function rowLabel(row: T): string {
     if (getRowLabel) return getRowLabel(row);
     const column = columns.find((c) => c.key === titleColumn?.key) ?? columns[0];
@@ -3734,17 +3737,17 @@
     class:scrolled-x={scrolledX}
     class:dt-dragging={dragging}
     tabindex={gridMode ? 0 : undefined}
-    role={gridMode ? 'grid' : undefined}
-    aria-label={gridMode ? (ariaLabel ?? m.data_view_table()) : undefined}
-    aria-rowcount={gridMode ? flatItems.length + 1 : undefined}
-    aria-colcount={gridMode
+    role={gridRole ? 'grid' : undefined}
+    aria-label={gridRole ? (ariaLabel ?? m.data_view_table()) : undefined}
+    aria-rowcount={gridRole ? flatItems.length + 1 : undefined}
+    aria-colcount={gridRole
       ? visibleColumns.length +
         (selectable ? 1 : 0) +
         (expandEnabled ? 1 : 0) +
         (rowActions ? 1 : 0) +
         (addColShown ? 1 : 0)
       : undefined}
-    aria-activedescendant={activeDescendant}
+    aria-activedescendant={gridRole ? activeDescendant : undefined}
     bind:this={wrapperEl}
     onscroll={onTableScroll}
     onkeydown={onGridKeydown}

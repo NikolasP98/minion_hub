@@ -171,7 +171,12 @@
 
   .wordmark-minion {
     padding: var(--space-0-5) var(--space-2);
+    /* Fallback for engines without relative colour syntax (the previous value). */
     color: var(--color-canvas);
+    /* Black or white, whichever reads on THIS theme's brand colour: lightness under 0.575
+       takes white, the rest black. Canvas-on-brand was below WCAG AA (4.5:1) in 9 of 22
+       themes; PublicTaskShell.contrast.test.ts proves this rule passes in every theme. */
+    color: oklch(from var(--color-brand-pink) clamp(0, (0.575 - l) * 1000, 1) 0 0);
     background: var(--color-brand-pink);
     border-radius: var(--radius-sm) 0 0 var(--radius-sm);
   }
