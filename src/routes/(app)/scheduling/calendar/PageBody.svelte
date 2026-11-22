@@ -262,7 +262,7 @@
 
   /** Tags the filter offers: the ones on bookings currently ON SCREEN plus the
    *  selected ones — and, with the preference off, own-scope tags only. */
-  const filterTagOptions = $derived(
+  const filterTagOptions = $derived.by(() =>
     visibleTagOptions({
       options: showInheritedTags ? cal.tagOptions : cal.tagOptions.filter((t) => !t.origin),
       bookings: visibleBookings,
@@ -345,13 +345,14 @@
     compact && pageView === 'calendar' && data.resources.length > 0,
   );
   /** A phone opens on the day view unless the address names one. */
+  /** Set once the override was written to the address; keeps it across a resize. */
+  let viewWritten = $state(false);
   const viewOverride = $derived((compact || viewWritten) && !data.viewInUrl && pageView === 'calendar');
   const view = $derived<CalendarView>(viewOverride ? 'day' : data.view);
   const viewNow = $derived<CalendarPageView>(viewOverride ? 'day' : data.pageView);
   // Mirror the override in the address ONCE with a shallow replace (no load). The router may
   // not be started on the first hydration tick, so a failed write is ignored: the URL then just
   // carries no `view`, which is cosmetic.
-  let viewWritten = $state(false);
   $effect(() => {
     if (!viewOverride || viewWritten) return;
     const id = setTimeout(() => {
