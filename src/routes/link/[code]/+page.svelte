@@ -36,7 +36,10 @@
   eyebrow={`${data.channelLabel} identity`}
   title={form?.success ? 'Channel linked' : 'Link your channel'}
   description={form?.success
-    ? m.link_accountRecognizedDescription({ channel: data.channelLabel, hubFullName: getBranding().fullName })
+    ? m.link_accountRecognizedDescription({
+        channel: data.channelLabel,
+        hubFullName: getBranding().fullName,
+      })
     : `Confirm the identity that ${data.channelLabel} should use for this channel.`}
   tone={form?.success ? 'success' : 'default'}
   icon={taskIcon}

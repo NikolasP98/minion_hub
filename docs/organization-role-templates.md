@@ -63,13 +63,20 @@ their readers.
 
 ## Organization identity
 
-White-label slices 1–2 supply storage, guarded services, organization creation
-controls, the shared Appearance editor and request-owned branding delivery. The
-shared shell and five localized callers (welcome, agent export/sync, plugin browsing,
-OAuth authorization and profile onboarding) use the resolved name. Remaining identity
-consumers belong to slice 3; complete white-label delivery still requires its
-deployment and runtime proof. Deploy the data prerequisite (PR707), including the
-identity migration above, before merging the slice 2 UI.
+The resolved organization name appears in shared shell and public wordmarks,
+including accessible identity in collapsed navigation, page titles, welcome,
+agent export/sync, plugin browsing, OAuth authorization and profile onboarding.
+Marketplace badges and decorative watermarks, the CRT preview and the Markdown
+story use it too. Existing prefix-only labels stay prefix-only; other consumers
+retain their fixed `Hub`/`hub` suffix and its casing. Custom prefix capitalization
+is preserved. Personal logo presets retain their prefix color and weight, while
+ordinary shell wordmarks use their default styling. Authored agent/customer content,
+native installer identity, distinct services and external attribution are unchanged.
+
+Deploy the data prerequisite (PR707), including the identity migration above, before
+the shared setup/UI (PR708); its production deployment must be ready before the
+final identity-consumer release is merged. Source coverage does not establish
+deployment or runtime proof.
 
 In Settings → Organizations, platform administrators can review the suggested
 **Hub name**, enter a different prefix and preview it before creating an organization.
