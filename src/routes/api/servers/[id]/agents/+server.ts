@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { listAgentsForUser, upsertAgents } from '$server/services/agent.service';
 import { requireTenantCtx } from '$server/auth/authorize';
+import { serverScope } from '$server/auth/server-scope';
 
 export const GET: RequestHandler = async ({ locals, params }) => {
   const ctx = requireTenantCtx(locals);
@@ -18,6 +19,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = requireTenantCtx(locals);
   try {
+    if ((await serverScope(ctx, params.id!, locals.serverId)) !== 'own') {
+      return json({ ok: false, error: 'Not found' }, { status: 404 });
+    }
     const body = await request.json();
     await upsertAgents(ctx, params.id!, body.agents ?? []);
     return json({ ok: true });

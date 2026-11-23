@@ -8,6 +8,7 @@ import { unavailableDocumentsResponse } from '$server/services/marketplace/http'
 import { upsertAgents } from '$server/services/agent.service';
 import { getTenantCtx } from '$server/auth/tenant-ctx';
 import { getCoreCtx } from '$server/auth/core-ctx';
+import { serverScope } from '$server/auth/server-scope';
 import { captureServerEvent } from '$lib/server/posthog';
 import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
 import { requireFeature } from '$server/services/entitlements.service';
@@ -46,6 +47,15 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
     if (unavailable) return unavailable;
     throw cause;
   }
+
+  // `serverId` comes from the body: it may be new (created below) or the caller's
+  // own, but never a server that belongs to another organization (or, for a gateway
+  // token, another server). 404, not 403, so foreign ids stay indistinguishable.
+  // TODO(handoff): this route is gated by the `marketplace` entitlement only (which
+  // merely logs unless ENTITLEMENTS_ENFORCED=true), no capability check; see meta
+  // proposals/2026-11-19-hub-opinionated-erp-standards.md.
+  const scope = await serverScope(tenantCtx, serverId, locals.serverId);
+  if (scope === 'foreign') throw error(404, 'Not found');
 
   // Ensure server row exists (FK required). Use onConflictDoNothing to preserve existing data.
   const now = nowMs();

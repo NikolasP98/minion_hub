@@ -49,6 +49,8 @@ export async function upsertActivityBins(
       .onConflictDoUpdate({
         target: [activityBins.serverId, activityBins.agentId, activityBins.binTs],
         set: { count: sql`MAX(${activityBins.count}, excluded.count)` },
+        // Never touch another tenant's row that shares this (server, agent, bin).
+        setWhere: eq(activityBins.tenantId, ctx.tenantId),
       });
   }
 }

@@ -6,6 +6,7 @@ import {
   pruneOldActivityBins,
 } from '$server/services/activity-bins.service';
 import { requireTenantCtx } from '$server/auth/authorize';
+import { serverScope } from '$server/auth/server-scope';
 
 export const GET: RequestHandler = async ({ locals, params, url }) => {
   const ctx = requireTenantCtx(locals);
@@ -21,6 +22,9 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = requireTenantCtx(locals);
   try {
+    if ((await serverScope(ctx, params.id!, locals.serverId)) !== 'own') {
+      return json({ ok: false, error: 'Not found' }, { status: 404 });
+    }
     const body = await request.json();
     const bins = (body.bins ?? []) as Array<{ agentId: string; binTs: number; count: number }>;
     const validBins = bins.filter(
