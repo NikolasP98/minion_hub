@@ -52,6 +52,7 @@
     subscribeNotificationsPolling,
   } from '$lib/state/features/notifications.svelte';
   import { onMount } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { userState, logout } from '$lib/state/features/user.svelte';
   import { Button, iconSizes } from '$lib/components/ui';
 
@@ -69,6 +70,7 @@
       loadingIndicator.placement === 'icon-ring',
   );
   const isWorkforce = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
+  const iconOnlyBrand = new MediaQuery('(max-width: 400px)');
 
   // Mobile is ALWAYS module-scoped, for every role — `navMode.isModule` only
   // gates the DESKTOP Sidebar's full-vs-module view (untouched here) and is
@@ -186,15 +188,17 @@
 <header
   class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)]"
 >
-  <a
-    use:moduleNavigation.link
-    href="/"
-    class="topbar-wordmark-row no-underline"
-    aria-label={getBranding().fullName}
-  >
-    <MinionLogo size="sm" />
-    <span class="mobile-brand-wordmark t-label"><HubWordmark /></span>
-  </a>
+  {#if !iconOnlyBrand.current}
+    <a
+      use:moduleNavigation.link
+      href="/"
+      class="topbar-wordmark-row no-underline"
+      aria-label={getBranding().fullName}
+    >
+      <MinionLogo size="sm" />
+      <span class="mobile-brand-wordmark t-label"><HubWordmark /></span>
+    </a>
+  {/if}
   <div class="topbar-controls relative">
     <Button
       variant="ghost"
@@ -217,14 +221,16 @@
       {#if mobileMenuOpen}<X size={iconSizes.lg} />{:else}<Menu size={iconSizes.lg} />{/if}
     </Button>
 
-    <a
-      use:moduleNavigation.link
-      href="/"
-      class="topbar-icon-brand no-underline"
-      aria-label={getBranding().fullName}
-    >
-      <MinionLogo size="sm" />
-    </a>
+    {#if iconOnlyBrand.current}
+      <a
+        use:moduleNavigation.link
+        href="/"
+        class="topbar-icon-brand no-underline"
+        aria-label={getBranding().fullName}
+      >
+        <MinionLogo size="sm" />
+      </a>
+    {/if}
 
     <div class="h-5 w-px bg-[var(--hairline)] mx-1 shrink-0"></div>
     <div class="shrink-0 min-w-0"><HostPill /></div>
