@@ -10,11 +10,13 @@ vi.mock('$app/state', async () => ({
 }));
 import { testPage } from '$lib/state/ui/__fixtures__/preference-owner.svelte';
 import { resolveBranding, type Branding } from '$lib/branding';
+import { getBranding } from '$lib/branding.svelte';
 import HubWordmark from './HubWordmark.svelte';
 const data = testPage.data as typeof testPage.data & { branding?: Branding };
 afterEach(() => {
   cleanup();
   delete data.branding;
+  vi.unstubAllGlobals();
 });
 it.each(['WWWWWWWWWWWWWWW', '漢字漢字漢字漢字漢字漢字漢字漢', 'École Faces', '👩🏽‍💻'.repeat(15)])(
   'renders the complete bounded identity %s and fixed suffix',
@@ -35,6 +37,45 @@ it('follows replacement page data without retaining the prior organization', () 
   });
   expect(screen.queryByRole('img', { name: 'Faces Hub' })).toBeNull();
   expect(screen.getByRole('img', { name: 'Second Hub' })).toBeTruthy();
+});
+
+it('fails closed on an unsupported client while retaining only the current organization identity', () => {
+  const first = Object.freeze(
+    resolveBranding({ id: 'org-a', name: 'Organization', hub_name: 'Faces' }),
+  );
+  const second = Object.freeze(
+    resolveBranding({ id: 'org-b', name: 'Another', hub_name: 'Second' }),
+  );
+  expect(first).toMatchObject({ name: 'Faces', source: 'custom', readStatus: 'ready' });
+  expect(second).toMatchObject({ name: 'Second', source: 'custom', readStatus: 'ready' });
+  data.branding = first;
+  vi.stubGlobal('Intl', Object.assign(Object.create(Intl), { Segmenter: undefined }));
+  const fallback = {
+    orgId: 'org-a',
+    name: 'MINION',
+    fullName: 'MINION Hub',
+    source: 'default',
+    readStatus: 'unavailable',
+  };
+  expect(getBranding()).toEqual(fallback);
+  render(HubWordmark);
+  expect(screen.getByRole('img', { name: 'MINION Hub' })).toBeTruthy();
+  expect(screen.queryByRole('img', { name: 'Faces Hub' })).toBeNull();
+  expect(data.branding).toStrictEqual(first);
+
+  flushSync(() => {
+    data.branding = second;
+  });
+  expect(getBranding()).toEqual({ ...fallback, orgId: 'org-b' });
+  expect(screen.getByRole('img', { name: 'MINION Hub' })).toBeTruthy();
+  expect(screen.queryByRole('img', { name: 'Second Hub' })).toBeNull();
+  expect(data.branding).toStrictEqual(second);
+
+  flushSync(() => {
+    delete data.branding;
+  });
+  expect(getBranding()).toEqual({ ...fallback, orgId: null });
+  expect(screen.getByRole('img', { name: 'MINION Hub' })).toBeTruthy();
 });
 
 it('preserves custom case and the explicit shell suffix under an uppercase typography ancestor', () => {
