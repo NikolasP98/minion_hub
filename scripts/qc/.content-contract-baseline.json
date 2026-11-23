@@ -289,7 +289,7 @@
     "src/routes/(app)/stock/PageBody.svelte": 2,
     "src/routes/(app)/stock/commitments/PageBody.svelte": 2,
     "src/routes/(app)/stock/entries/PageBody.svelte": 2,
-    "src/routes/(app)/stock/entries/[id]/PageBody.svelte": 3,
+    "src/routes/(app)/stock/entries/[id]/PageBody.svelte": 2,
     "src/routes/(app)/stock/entries/new/PageBody.svelte": 1,
     "src/routes/(app)/stock/items/[id]/PageBody.svelte": 3,
     "src/routes/(app)/tools/[id]/+page.svelte": 1,

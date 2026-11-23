@@ -3,7 +3,7 @@
   import type { Granted } from '$lib/permissions';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { appLocale, formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney, formatNumber } from '$lib/utils/format';
   import { ArrowLeftRight, ArrowLeft } from 'lucide-svelte';
   import { inPeek } from '$lib/records/peek.svelte';
   import { iconSizes, PageHeader, Button, Badge, Modal, Input } from '$lib/components/ui';
@@ -281,8 +281,7 @@
               {@const sign = sec.out ? '−' : '+'}
               {@const value = lineValue(row)}
               {#if col.key === 'qty'}
-                <span class="tabular-nums">{sign}{Number(row.qty).toLocaleString(appLocale())}</span
-                >
+                <span class="tabular-nums">{sign}{formatNumber(Number(row.qty))}</span>
               {:else if col.key === 'rate'}
                 <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
               {:else if col.key === 'value'}
@@ -307,7 +306,7 @@
         <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
           {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
             {#if col.key === 'qty'}
-              <span class="tabular-nums">{Number(row.qty).toLocaleString(appLocale())}</span>
+              <span class="tabular-nums">{formatNumber(Number(row.qty))}</span>
             {:else if col.key === 'rate'}
               <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
             {/if}
