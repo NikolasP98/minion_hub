@@ -228,6 +228,9 @@
     : ''}"
   aria-label="Primary"
 >
+  {#if collapsed}
+    <span class="sr-only">{getBranding().fullName}</span>
+  {/if}
   <!-- Module switcher (ERPNext-style) + hover-revealed collapse toggle -->
   <div class="shrink-0 px-2 pt-3 pb-2 flex flex-col gap-2">
     <div class="flex items-center gap-1">
