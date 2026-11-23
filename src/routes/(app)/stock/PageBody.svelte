@@ -11,6 +11,7 @@
   import type { EChartsOption } from 'echarts';
   import { canAct } from '$lib/access/can.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
+  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   type PageData = Granted<LoadedPageData['stock']>;
@@ -26,16 +27,7 @@
   } & Partial<FullRecentRow>;
   const recentRows = $derived(data.recentMovements.rows as RecentRow[]);
   const recentFull = $derived(data.recentMovements.projection === 'full');
-  const recentKind = (r: RecentRow) =>
-    r.movementKind === 'receipt'
-      ? m.stock_type_receipt()
-      : r.movementKind === 'issue'
-        ? m.stock_type_issue()
-        : r.movementKind === 'transfer'
-          ? m.stock_type_transfer()
-          : r.movementKind === 'adjustment'
-            ? m.stock_type_adjustment()
-            : m.stock_mv_kind_unknown();
+  const recentKind = (r: RecentRow) => entryTypeLabel(r.movementKind) ?? m.stock_mv_kind_unknown();
   const recentItem = (r: RecentRow) =>
     r.item?.name ?? (recentFull ? r.itemId.slice(0, 8) : m.stock_mv_unavailable_value());
 

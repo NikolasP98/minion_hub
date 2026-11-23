@@ -3,7 +3,7 @@
   import type { Granted } from '$lib/permissions';
   import { invalidate } from '$app/navigation';
   import * as m from '$lib/paraglide/messages';
-  import { appLocale, formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney, formatNumber } from '$lib/utils/format';
   import { ArrowLeftRight, ArrowLeft } from 'lucide-svelte';
   import { inPeek } from '$lib/records/peek.svelte';
   import { iconSizes, PageHeader, Button, Badge, Modal, Input } from '$lib/components/ui';
@@ -11,6 +11,8 @@
   import CorrectionFlow from '$lib/components/stock/CorrectionFlow.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
+  import { stockRefusal } from '$lib/components/stock/exchange';
+  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
   import { AttachmentButton, AttachmentList } from '$lib/components/attachments';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
@@ -26,15 +28,7 @@
         ? m.stock_status_submitted()
         : m.stock_status_cancelled(),
   );
-  const typeLabel = $derived(
-    entry.type === 'receipt'
-      ? m.stock_type_receipt()
-      : entry.type === 'issue'
-        ? m.stock_type_issue()
-        : entry.type === 'transfer'
-          ? m.stock_type_transfer()
-          : m.stock_type_adjustment(),
-  );
+  const typeLabel = $derived(entryTypeLabel(entry.type) ?? entry.type);
 
   // ── Receipt correction (spec 124): cancel + replace with the corrected quantity or rate ──
   const meta = $derived((entry.metadata ?? {}) as Record<string, unknown>);
@@ -113,7 +107,10 @@
     try {
       const res = await fetch(`/api/stock/entries/${entry.id}/submit`, { method: 'POST' });
       if (res.ok) await invalidate('stock:entry-detail');
-      else err = await errMessage(res);
+      else {
+        const r = stockRefusal(await res.json().catch(() => null), entry.type);
+        err = r.detail ? `${r.title} ${r.detail}` : r.title;
+      }
     } finally {
       busy = false;
     }
@@ -146,6 +143,39 @@
       key: 'toWarehouse',
       label: m.stock_field_to_warehouse(),
       accessor: (l) => l.toWarehouseName ?? '—',
+    },
+  ];
+
+  // Canje (spec 142): two tables — what left ("Entregas") and what came in
+  // ("Recibes") — with the unit cost submit wrote on each line and its value.
+  const isExchange = $derived(entry.type === 'exchange');
+  const isOut = (l: LineRow) => !!l.fromWarehouseId;
+  const lineValue = (l: LineRow) => (l.rate != null ? Number(l.qty) * Number(l.rate) : null);
+  const exchangeColumns: DataColumn<LineRow>[] = [
+    { key: 'item', label: m.stock_field_item(), accessor: (l) => l.itemLabel },
+    {
+      key: 'qty',
+      label: m.stock_field_qty(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (l) => Number(l.qty),
+    },
+    {
+      key: 'rate',
+      label: m.stock_exchange_unit_cost(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: (l) => (l.rate != null ? Number(l.rate) : null),
+    },
+    {
+      key: 'value',
+      label: m.stock_col_value(),
+      align: 'right',
+      numeric: true,
+      custom: true,
+      accessor: lineValue,
     },
   ];
 
@@ -237,25 +267,53 @@
       </dl>
     </div>
 
-    <div class="card">
-      <div class="card-h">{m.stock_entry_lines_title()}</div>
-      <!-- TODO(handoff): the sideways-page overflow this card showed was fixed in
-           DataTable (plain variant now owns an overflow-x scroller); no browser
-           check was possible from the authoring worktree (the :5199 dev server
-           serves another branch), so the visual pass — lines table scrolling
-           inside its card at <780px, and sticky `thead` in every other
-           plain-variant table — is still owed. See
-           proposals/2026-09-25-hub-stock-inline-tags-uom-overflow.md. -->
-      <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
-        {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
-          {#if col.key === 'qty'}
-            <span class="tabular-nums">{Number(row.qty).toLocaleString(appLocale())}</span>
-          {:else if col.key === 'rate'}
-            <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
-          {/if}
-        {/snippet}
-      </DataTable>
-    </div>
+    {#if isExchange}
+      {#each [{ out: true, title: m.stock_exchange_out() }, { out: false, title: m.stock_exchange_in() }] as sec (sec.out)}
+        <div class="card">
+          <div class="card-h">{sec.title}</div>
+          <DataTable
+            variant="plain"
+            data={data.lines.filter((l) => isOut(l) === sec.out)}
+            columns={exchangeColumns}
+            getRowId={(l) => l.id}
+          >
+            {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
+              {@const sign = sec.out ? '−' : '+'}
+              {@const value = lineValue(row)}
+              {#if col.key === 'qty'}
+                <span class="tabular-nums">{sign}{formatNumber(Number(row.qty))}</span>
+              {:else if col.key === 'rate'}
+                <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
+              {:else if col.key === 'value'}
+                <span class="tabular-nums"
+                  >{value != null ? `${sign}${formatMoney(value)}` : '—'}</span
+                >
+              {/if}
+            {/snippet}
+          </DataTable>
+        </div>
+      {/each}
+    {:else}
+      <div class="card">
+        <div class="card-h">{m.stock_entry_lines_title()}</div>
+        <!-- TODO(handoff): the sideways-page overflow this card showed was fixed in
+             DataTable (plain variant now owns an overflow-x scroller); no browser
+             check was possible from the authoring worktree (the :5199 dev server
+             serves another branch), so the visual pass — lines table scrolling
+             inside its card at <780px, and sticky `thead` in every other
+             plain-variant table — is still owed. See
+             proposals/2026-09-25-hub-stock-inline-tags-uom-overflow.md. -->
+        <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
+          {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
+            {#if col.key === 'qty'}
+              <span class="tabular-nums">{formatNumber(Number(row.qty))}</span>
+            {:else if col.key === 'rate'}
+              <span class="tabular-nums">{row.rate != null ? formatMoney(row.rate) : '—'}</span>
+            {/if}
+          {/snippet}
+        </DataTable>
+      </div>
+    {/if}
 
     <div class="card">
       <div class="card-h flex items-center justify-between gap-2">

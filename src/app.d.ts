@@ -19,6 +19,8 @@ declare global {
        *  (and any other route that wants a client-distinguishable 409/4xx
        *  without string-matching `message`). */
       code?: string;
+      /** Facts behind `code` for the client's own message (stock negative_stock: item, onHand, requested). */
+      details?: Record<string, string | number>;
       /** Entitlement feature key on a `premium_required` 403 (spec 043). */
       feature?: string;
     }

@@ -8,6 +8,8 @@ export type EntryLine = {
   rate: string;
   fromWarehouseId: string;
   toWarehouseId: string;
+  /** Canje (spec 142) only: the section the line sits in — out = "Entregas", in = "Recibes". */
+  side?: 'out' | 'in';
 };
 
 /**

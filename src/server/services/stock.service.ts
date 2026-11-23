@@ -38,6 +38,8 @@ import {
   computeLegValue,
   wouldGoNegative,
   validateEntryLine,
+  validateExchange,
+  splitExchangeValue,
   expandLine,
   wouldCreateCycle,
   replayBins,
@@ -56,6 +58,8 @@ export class StockError extends Error {
   constructor(
     message: string,
     public readonly code: string,
+    /** Machine-readable facts for the client's own message (e.g. negative_stock: item, onHand, requested). */
+    public readonly details?: Record<string, string | number>,
   ) {
     super(message);
     this.name = 'StockError';
@@ -323,10 +327,14 @@ export function itemSupplyInfo(ctx: CoreCtx): Promise<Map<string, ItemSupplyInfo
              l.posted_at,
              p.name as supplier_name
       from (
-        select distinct on (item_id) item_id, value_delta, qty_delta, posted_at, entry_id
-        from stk_ledger
-        where org_id = ${ctx.tenantId} and qty_delta > 0
-        order by item_id, posted_at desc, id desc
+        -- Only registered purchases count: a canje's incoming value, a found-stock adjustment,
+        -- a transfer leg or a cancel reversal is not what a delivery cost.
+        select distinct on (sl.item_id) sl.item_id, sl.value_delta, sl.qty_delta, sl.posted_at, sl.entry_id
+        from stk_ledger sl
+        join stk_entries se on se.id = sl.entry_id and se.org_id = ${ctx.tenantId}
+          and se.type = 'receipt' and se.status = 'submitted'
+        where sl.org_id = ${ctx.tenantId} and sl.qty_delta > 0
+        order by sl.item_id, sl.posted_at desc, sl.id desc
       ) l
       left join stk_entries e on e.id = l.entry_id and e.org_id = ${ctx.tenantId}
       left join parties p on p.id = e.party_id and p.org_id = ${ctx.tenantId}
@@ -1043,7 +1051,13 @@ export async function submitEntryInTx(
     throw new StockError(`entry is ${entry.status}, not draft`, 'not_draft'); // double-submit guard
 
   const lines =
-    checkedLines ?? (await tx.select().from(stkEntryLines).where(eq(stkEntryLines.entryId, id)));
+    checkedLines ??
+    // line_no order: a canje's rounding remainder lands on the same incoming line every time.
+    (await tx
+      .select()
+      .from(stkEntryLines)
+      .where(eq(stkEntryLines.entryId, id))
+      .orderBy(asc(stkEntryLines.lineNo)));
   if (!lines.length) throw new StockError('entry has no lines', 'no_lines');
   if (!isEntryType(entry.type)) throw new StockError('invalid entry type', 'invalid_type');
   const type = entry.type;
@@ -1076,6 +1090,7 @@ export async function submitEntryInTx(
     throw new StockError(`warehouse ${archivedWarehouse.id} is archived`, 'warehouse_archived');
 
   const lineLikes = lines.map((l) => ({
+    id: l.id,
     itemId: l.itemId,
     qty: Number(l.qty),
     rate: l.rate == null ? null : Number(l.rate),
@@ -1092,6 +1107,10 @@ export async function submitEntryInTx(
         throw new StockError(`warehouse ${wid} not found`, 'warehouse_not_found');
     }
   }
+  if (type === 'exchange') {
+    const code = validateExchange(lineLikes, entry.partyId);
+    if (code) throw new StockError(code.replaceAll('_', ' '), code);
+  }
 
   const binKeys = new Set<string>();
   for (const l of lineLikes)
@@ -1100,7 +1119,9 @@ export async function submitEntryInTx(
 
   if (options.postedAt) await assertPostedAtAdmissible(tx, orgId, options.postedAt, binKeys);
   const ledgerInserts: Array<typeof stkLedger.$inferInsert> = [];
-  for (const l of lineLikes) {
+  /** Posts one line's legs into binMap/ledgerInserts; returns Σ valueDelta. */
+  const postLine = (l: (typeof lineLikes)[number]): number => {
+    let lineValue = 0;
     const legs = expandLine(type, l);
     let carryRate: number | null = null; // transfer: the out-leg's rateUsed feeds the in-leg
     for (const leg of legs) {
@@ -1113,11 +1134,13 @@ export async function submitEntryInTx(
         throw new StockError(
           `insufficient stock for ${itemLabel} in warehouse ${leg.warehouseId}: ${bin.qty} available`,
           'negative_stock',
+          { itemId: l.itemId, item: item?.name ?? l.itemId, onHand: bin.qty, requested: l.qty },
         );
       }
       const { valueDelta, rateUsed } = computeLegValue(bin, leg.qtyDelta, rate);
       const next = applyLedgerDelta(bin, leg.qtyDelta, valueDelta);
       binMap.set(key, next);
+      lineValue += valueDelta;
       if (type === 'transfer' && leg.qtyDelta < 0) carryRate = rateUsed;
       ledgerInserts.push({
         orgId,
@@ -1131,7 +1154,33 @@ export async function submitEntryInTx(
         ...(options.postedAt ? { postedAt: options.postedAt } : {}),
       });
     }
-  }
+    return lineValue;
+  };
+
+  if (type === 'exchange') {
+    // Canje (spec 142): the outgoing side posts first at the locked bins'
+    // averages; that value is carried into the incoming lines by quantity.
+    // Both sides' unit costs are written back to the lines (an outgoing line's
+    // rate is informational — the ledger already consumed at the bin rate).
+    const setRate = (l: (typeof lineLikes)[number], rate: number) =>
+      tx
+        .update(stkEntryLines)
+        .set({ rate: String(rate) })
+        .where(and(eq(stkEntryLines.id, l.id), eq(stkEntryLines.orgId, orgId)));
+    let outValue = 0;
+    for (const l of lineLikes.filter((x) => x.fromWarehouseId)) {
+      const rate = binMap.get(binKey(l.itemId, l.fromWarehouseId!))!.rate;
+      outValue -= postLine(l);
+      await setRate(l, rate);
+    }
+    const ins = lineLikes.filter((l) => l.toWarehouseId);
+    const rates = splitExchangeValue(outValue, ins);
+    for (const [i, l] of ins.entries()) {
+      l.rate = rates[i];
+      postLine(l);
+      await setRate(l, rates[i]);
+    }
+  } else for (const l of lineLikes) postLine(l);
 
   await tx.insert(stkLedger).values(ledgerInserts);
   await writeBins(tx, orgId, binMap, binKeys);

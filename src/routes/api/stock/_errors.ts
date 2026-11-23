@@ -18,6 +18,9 @@ const STATUS_BY_CODE: Record<string, number> = {
   has_stock: 409,
   has_children: 409,
   warehouse_archived: 409,
+  exchange_party_required: 422,
+  exchange_needs_both_sides: 422,
+  exchange_item_both_sides: 422,
 };
 
 /** Maps a StockError to the right HTTP error; re-throws anything else untouched.
@@ -26,6 +29,10 @@ const STATUS_BY_CODE: Record<string, number> = {
  *  the message. */
 export function handleStockError(e: unknown): never {
   if (e instanceof StockError)
-    throw error(STATUS_BY_CODE[e.code] ?? 400, { message: e.message, code: e.code });
+    throw error(STATUS_BY_CODE[e.code] ?? 400, {
+      message: e.message,
+      code: e.code,
+      ...(e.details ? { details: e.details } : {}),
+    });
   throw e;
 }
