@@ -11,6 +11,7 @@ import { listProductCategories } from '$server/services/pos-categories.service';
 import { listPendingSchedulingLines } from '$server/services/pos-accounts.service';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import {
+  DEFAULT_CALENDAR_VIEW,
   calendarLoadWindow,
   parseCalendarDate,
   parseCalendarView,
@@ -26,7 +27,7 @@ import {
  *  is enforced centrally by the (app) route hook guard now (routing-
  *  simplification spec S2 — `/pos/appointments` maps to the `posAppointments`
  *  composite manifest entry) — this load only fetches the tab's data. */
-export const load: PageServerLoad = async ({ locals, depends, url }) => {
+export const load: PageServerLoad = async ({ locals, depends, url, cookies }) => {
   const ctx = await datasetCtx(locals, 'pos');
   if (isDenied(ctx)) return { pos: ctx }; // rendered by DataSource in +page.svelte (spec 039)
   depends('pos:appointments');
@@ -42,7 +43,13 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const resources = await listResources(sched);
   const orgTz = schedulingTimeZone(resources);
 
-  const pageView = parseCalendarPageView(url.searchParams.get('view'));
+  // Phones open on the day view unless the URL names one (cookie mirrors the client media query).
+  const phoneHint = cookies.get('hub_phone') === '1';
+  const viewInUrl = url.searchParams.has('view');
+  const fallbackView = phoneHint ? 'day' : DEFAULT_CALENDAR_VIEW;
+  const pageView = parseCalendarPageView(url.searchParams.get('view'), fallbackView);
+  // Table and board need the wide default window whatever the device (their cache
+  // marks the loaded week as complete), so the phone fallback never sizes it.
   const view = calendarViewOf(pageView);
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
   // The DATA-LOAD window is wider than the rendered view for week (4 ISO
@@ -110,6 +117,8 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
       calendarScope: calendarWindowScope(sched.tenantId, orgTz),
       view,
       pageView,
+      phoneHint,
+      viewInUrl,
       /** Event-scope registry + every tag present on a shown event — the filter's options. */
       tagOptions,
       bookings,

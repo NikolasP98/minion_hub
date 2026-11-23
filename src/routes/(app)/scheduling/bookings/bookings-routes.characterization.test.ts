@@ -14,6 +14,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * drift is out of scope per the spec's personal-org kind-leak carve-out).
  */
 
+/** A request without the phone hint cookie (spec 145). */
+const NO_COOKIES = { get: () => undefined };
+
 const mocks = vi.hoisted(() => ({
   getCoreCtx: vi.fn(),
   shouldMaskSensitive: vi.fn(),
@@ -304,6 +307,7 @@ describe('/pos/appointments load — pinned key set', () => {
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: { stock: true } },
         depends,
         url: POS_URL(),
@@ -316,6 +320,8 @@ describe('/pos/appointments load — pinned key set', () => {
     // resolved (the old 732-line fork had neither, because its window was fixed).
     expect(Object.keys(result).sort()).toEqual(
       [
+        'phoneHint',
+        'viewInUrl',
         'bookings',
         'resources',
         'eventTypes',
@@ -397,12 +403,45 @@ describe('/pos/appointments load — pinned key set', () => {
     expect(result.resources).toEqual([{ id: 'r1', name: 'Front chair', color: '#abcdef' }]);
   });
 
+  it('opens on the day view for a phone (hub_phone cookie) unless the address names a view', async () => {
+    const { load } = await import('../../pos/appointments/+page.server');
+    const phone = { get: (name: string) => (name === 'hub_phone' ? '1' : undefined) };
+    const event = (url: URL) =>
+      ({
+        cookies: phone,
+        locals: { orgKind: 'business', moduleStates: {} },
+        depends: vi.fn(),
+        url,
+      }) as never;
+
+    const bare = new URL(POS_URL());
+    bare.searchParams.delete('view');
+    const noView = body(await load(event(bare)));
+    expect([noView.view, noView.phoneHint, noView.viewInUrl]).toEqual(['day', true, false]);
+
+    const named = new URL(POS_URL());
+    named.searchParams.set('view', 'month');
+    const withView = body(await load(event(named)));
+    expect([withView.view, withView.viewInUrl]).toEqual(['month', true]);
+
+    const desktop = body(
+      await load({
+        cookies: NO_COOKIES,
+        locals: { orgKind: 'business', moduleStates: {} },
+        depends: vi.fn(),
+        url: bare,
+      } as never),
+    );
+    expect([desktop.view, desktop.phoneHint]).toEqual(['week', false]);
+  });
+
   it('leaves a resource with no schedule out of `hours` (unknown, not closed)', async () => {
     const { load } = await import('../../pos/appointments/+page.server');
     mocks.getResourceSchedule.mockResolvedValue(null);
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: { stock: true } },
         depends: vi.fn(),
         url: POS_URL(),
@@ -417,6 +456,7 @@ describe('/pos/appointments load — pinned key set', () => {
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: { stock: true } },
         depends: vi.fn(),
         url: new URL('http://localhost/pos/appointments?view=day&date=2026-09-01'),
@@ -438,6 +478,7 @@ describe('/pos/appointments load — pinned key set', () => {
     mocks.shouldMaskSensitive.mockResolvedValue(true);
 
     await load({
+      cookies: NO_COOKIES,
       locals: { orgKind: 'business', moduleStates: { stock: true } },
       depends: vi.fn(),
       url: POS_URL(),
@@ -460,6 +501,7 @@ describe('/pos/appointments load — pinned key set', () => {
     // not something this characterization suite should "fix".
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'personal', moduleStates: { stock: true } },
         depends: vi.fn(),
         url: POS_URL(),
@@ -474,6 +516,7 @@ describe('/pos/appointments load — pinned key set', () => {
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: {} },
         depends: vi.fn(),
         url: POS_URL(),
@@ -487,6 +530,7 @@ describe('/pos/appointments load — pinned key set', () => {
     const { load } = await import('../../pos/appointments/+page.server');
 
     await load({
+      cookies: NO_COOKIES,
       locals: { orgKind: 'business', moduleStates: { stock: false } },
       depends: vi.fn(),
       url: POS_URL(),
@@ -581,6 +625,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: { stock: true } },
         depends,
         url: new URL('http://localhost/scheduling/calendar'),
@@ -608,6 +653,8 @@ describe('/scheduling/calendar load — pinned key set', () => {
     // `from`/`to`/`events` (the retired `loadCalendarEvents` payload).
     expect(Object.keys(result).sort()).toEqual(
       [
+        'phoneHint',
+        'viewInUrl',
         'day',
         'view',
         'pageView',
@@ -669,6 +716,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: { stock: true } },
         depends: vi.fn(),
         url: new URL(
@@ -690,6 +738,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
 
     const result = body(
       await load({
+        cookies: NO_COOKIES,
         locals: { orgKind: 'business', moduleStates: { stock: true } },
         depends: vi.fn(),
         url: new URL('http://localhost/scheduling/calendar'),

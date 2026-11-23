@@ -14,6 +14,13 @@
   <SchedulingNav />
 {/snippet}
 
-<SectionShell mode="responsive" {navigation}>
+<SectionShell mode="responsive" class="sched-shell" {navigation}>
   {@render children()}
 </SectionShell>
+
+<style>
+  /* Phone calendar (spec 145): the nav row hides, stays mounted. */
+  :global(.sched-shell:has(.is-compact-calendar) > [data-part='section-navigation']) {
+    display: none;
+  }
+</style>

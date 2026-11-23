@@ -58,12 +58,18 @@ export function calendarWindowScope(
  *  calendars). `table`/`board` keep the week data window. */
 export type CalendarPageView = CalendarView | 'table' | 'board';
 export const CALENDAR_PAGE_VIEWS = [...CALENDAR_VIEWS, 'table', 'board'] as const;
-export function parseCalendarPageView(value: string | null): CalendarPageView {
-  return value === 'table' || value === 'board' ? value : parseCalendarView(value);
+export function parseCalendarPageView(
+  value: string | null,
+  fallback: CalendarView = DEFAULT_CALENDAR_VIEW,
+): CalendarPageView {
+  return value === 'table' || value === 'board' ? value : parseCalendarView(value, fallback);
 }
 /** The GRID view a page view resolves to — what sizes the data window. */
-export function calendarViewOf(view: CalendarPageView): CalendarView {
-  return view === 'table' || view === 'board' ? DEFAULT_CALENDAR_VIEW : view;
+export function calendarViewOf(
+  view: CalendarPageView,
+  fallback: CalendarView = DEFAULT_CALENDAR_VIEW,
+): CalendarView {
+  return view === 'table' || view === 'board' ? fallback : view;
 }
 
 const DAY_MS = 86_400_000;
@@ -85,9 +91,12 @@ export function isCalendarView(value: string | null): value is CalendarView {
  *  now retired in favour of `week` + a configurable `weekDays` column count.
  *  Bookmarks/shares carrying it still resolve, onto `week`, rather than
  *  silently falling back to the default. */
-export function parseCalendarView(value: string | null): CalendarView {
+export function parseCalendarView(
+  value: string | null,
+  fallback: CalendarView = DEFAULT_CALENDAR_VIEW,
+): CalendarView {
   if (value === 'workweek') return 'week';
-  return isCalendarView(value) ? value : DEFAULT_CALENDAR_VIEW;
+  return isCalendarView(value) ? value : fallback;
 }
 
 /** `?date=` is only honoured when it is a real `YYYY-MM-DD`; else the fallback. */

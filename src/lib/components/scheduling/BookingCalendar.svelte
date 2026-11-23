@@ -143,6 +143,8 @@
    */
   import { onDestroy, tick, untrack, type Snippet } from 'svelte';
   import {
+    Check,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Minus,
@@ -169,7 +171,7 @@
     Tooltip,
     iconSizes,
   } from '$lib/components/ui';
-  import { ConfirmDialog, Dialog } from '$lib/components/ui/foundations';
+  import { ConfirmDialog, Dialog, Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
   import { dateKeyWeekday, instantDateKey, instantParts } from '$lib/time/zoned';
@@ -247,6 +249,7 @@
     type HoverSubField,
   } from './hover-fields';
   import FieldsList from './FieldsList.svelte';
+  import WeekStrip from './WeekStrip.svelte';
   import { nowLineTop, snapTrackMinutes } from './now-line';
   import { resolveFeatures, type CalendarFeatures } from './calendar-features';
   import { resolveCalendarMutation } from './calendar-time';
@@ -428,6 +431,13 @@
     toolbarStart?: Snippet;
     /** Appended inside the options kebab, below the built-in sections. */
     kebabItems?: Snippet;
+    /** Phone toolbar: one 48 px row (date, view, `tools`, "…") with sheets in
+     *  place of popovers, and the week strip beneath. Default = desktop toolbar. */
+    compact?: boolean;
+    /** Count shown on the compact "…" button (a host's pending items). */
+    kebabBadge?: number | null;
+    /** A dot on the compact "…" button: something there needs attention. */
+    kebabAttention?: boolean;
     /** The agenda view's empty state. Default = a one-line i18n message. */
     empty?: Snippet;
     /** A box was clicked, whatever happened next (a drawer, nothing).
@@ -499,6 +509,9 @@
     visitCard,
     toolbarStart,
     kebabItems,
+    compact = false,
+    kebabBadge = null,
+    kebabAttention = false,
     empty,
     onselect,
     class: klass,
@@ -651,6 +664,9 @@
   // Day view is untouched; MONTH runs the same runway on the y axis (see the
   // month section below).
   const runway = $derived(view === 'week');
+  /** Where a week-view runway opens for `d`: the Monday of its week; the phone
+   *  layout (three days per screen) starts on `d` itself. */
+  const anchorDay = (d: string) => (compact ? d : mondayOf(d));
   /** Narrowest a subcolumn may get before the runway shows FEWER days than
    *  `weekDays` asks for — six status lanes inside a seventh of the screen
    *  were 18px hairlines with one-letter labels (browser QA 2026-10-02). */
@@ -739,7 +755,7 @@
       const i = dayIndex(runwayStart, pendingAnchor.firstDay);
       if (i >= 0 && i < RUNWAY_DAYS) return i;
     }
-    return dayIndex(runwayStart, mondayOf(date));
+    return dayIndex(runwayStart, anchorDay(date));
   });
   const firstIndex = $derived(measured ? Math.round(scrollX / colW) : anchorIndex);
   const range = $derived(
@@ -1084,7 +1100,8 @@
     }
     // Week views open on the MONDAY of the picked day's week, exactly as the
     // `?date=` load anchors them — "Today" shows this week, not a Fri–Thu span.
-    d = mondayOf(d);
+    // (The phone layout opens on the day itself, see `anchorDay`.)
+    d = anchorDay(d);
     let i = dayIndex(runwayStart, d);
     if (i < 0 || i >= RUNWAY_DAYS) {
       runwayStart = dayAt(mondayOf(d), -RUNWAY_BEHIND);
@@ -1667,9 +1684,9 @@
   const rangeLabel = $derived.by(() => {
     if (view === 'day') {
       return formatDateKey(date, {
-        weekday: 'long',
+        weekday: compact ? 'short' : 'long',
         day: 'numeric',
-        month: 'long',
+        month: compact ? 'short' : 'long',
       });
     }
     // Month: the month the visible rows mostly belong to, formatted exactly like
@@ -1693,6 +1710,18 @@
   // re-anchors work-week/week to the Monday of whatever day it's given, so the
   // same call is correct for every view — no view branch needed here.
   let pickerOpen = $state(false);
+  let viewSheetOpen = $state(false);
+  /** The compact view sheet's rows. 3 días IS `week` (the host passes
+   *  `weekDays={3}` on phones), so the row is named for the columns it shows. */
+  const weekName = $derived(weekDays === 3 ? m.cal_compact_view_days3() : m.cal_view_week());
+  const compactViews = $derived<{ value: CalendarView; label: string }[]>([
+    { value: 'day', label: m.cal_view_day() },
+    { value: 'week', label: weekName },
+    { value: 'month', label: m.cal_view_month() },
+    ...(feat.agenda ? [{ value: 'agenda' as const, label: m.cal_compact_view_list() }] : []),
+  ]);
+  const viewName = (v: CalendarView) =>
+    compactViews.find((o) => o.value === v)?.label ?? m.cal_view_week();
   /** Month the mini-grid is showing, `YYYY-MM-DD` (day-of-month is ignored) —
    *  seeded once from `date` and reset every time the popover opens; it must
    *  stay independently mutable so the prev/next month buttons can browse
@@ -2175,6 +2204,19 @@
     timeZone: string;
     mutationScope: string;
   } | null>(null);
+  // Phone ⇄ desktop flip (rotation, window resize): a half-made drag or create
+  // belongs to the toolbar/grid that no longer exists, and an open sheet would
+  // outlive its trigger.
+  $effect(() => {
+    void compact;
+    untrack(() => {
+      drag = null;
+      createDrag = null;
+      viewSheetOpen = false;
+      pickerOpen = false;
+      kebabOpen = false;
+    });
+  });
   let colsEl = $state<HTMLElement | null>(null);
   let colRects: { key: string; left: number; right: number; inv: boolean }[] = [];
   /** Which subcolumn the pointer is over inside a column (the scheduled region
@@ -2841,6 +2883,191 @@
   </Button>
 {/snippet}
 
+{#snippet kebabBody()}
+  {#if kebabPage === 'root'}
+    <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
+             the split has nothing to toggle there. -->
+    {#if feat.split && invoices !== undefined && !monthRunway}
+      <Toggle
+        size="sm"
+        checked={split}
+        label={m.cal_split_label()}
+        onchange={(v) => onsplit?.(v)}
+      />
+    {/if}
+    {#if onsubby && !monthRunway && !compact}
+      {@render kebabRow('sub', m.cal_subcolumns_label(), optionLabel(subOptions, subBy))}
+    {/if}
+    {#if feat.colorPicker && oncolorby && !oncontextmenu}
+      {@render kebabRow('block', m.cal_color_block(), optionLabel(colorOptions, blockColorBy))}
+      {@render kebabRow('sliver', m.cal_color_sliver(), optionLabel(colorOptions, sliverColorBy))}
+    {/if}
+    {#if feat.weekDaysStepper && onweekdays && runway && !compact}
+      <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
+               the week runway shows at once. Day/month views ignore it, so the
+               stepper is hidden rather than inert there. -->
+      <div class="wd-row">
+        <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
+        <div class="wd-stepper">
+          <Button
+            variant="ghost"
+            size="xs"
+            shape="icon"
+            aria-label={m.cal_week_days_fewer()}
+            disabled={weekDays <= WEEK_DAYS_MIN}
+            onclick={() => stepWeekDays(-1)}
+          >
+            <Minus size={iconSizes.xs} />
+          </Button>
+          <span class="wd-value">{weekDays}</span>
+          <Button
+            variant="ghost"
+            size="xs"
+            shape="icon"
+            aria-label={m.cal_week_days_more()}
+            disabled={weekDays >= WEEK_DAYS_MAX}
+            onclick={() => stepWeekDays(1)}
+          >
+            <Plus size={iconSizes.xs} />
+          </Button>
+        </div>
+      </div>
+    {/if}
+    <!-- A surface whose events have a context menu configures their
+               appearance THERE (owner 2026-10-13); the pages stay mounted below
+               because the menu's "Reorder…" row still opens them. -->
+    {#if feat.fieldsMenu && !oncontextmenu}
+      {@render kebabRow(
+        'blockFields',
+        m.cal_block_fields(),
+        String(blockFieldItems.length - blockHidden.size),
+      )}
+      {@render kebabRow(
+        'cardFields',
+        m.cal_card_fields(),
+        String(hoverFieldItems.length - hoverHidden.size),
+      )}
+    {/if}
+    {#if kebabItems}{@render kebabItems()}{/if}
+  {:else}
+    {@render kebabBack(
+      kebabPage === 'sub'
+        ? m.cal_subcolumns_label()
+        : kebabPage === 'block'
+          ? m.cal_color_block()
+          : kebabPage === 'sliver'
+            ? m.cal_color_sliver()
+            : kebabPage === 'blockFields'
+              ? m.cal_block_fields()
+              : m.cal_card_fields(),
+    )}
+    {#if kebabPage === 'sub'}
+      <!-- TODO(handoff): a drop reclassifies only for a custom column (its
+                 value) and staff (the chair). status / kind / service / tags stay
+                 derived views — writing them needs their own endpoints (status has
+                 a workflow); ledger in
+                 proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
+      <ColorSourcePicker
+        label=""
+        value={subBy}
+        options={subOptions}
+        onchange={(v) => onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
+      />
+      {#if cv.canManage}
+        <Button
+          variant="ghost"
+          size="xs"
+          class="cc-manage"
+          onclick={() => (customManagerOpen = true)}
+        >
+          {m.cal_subcolumns_manage()}
+        </Button>
+      {/if}
+    {:else if kebabPage === 'block'}
+      <ColorSourcePicker
+        label=""
+        value={blockColorBy}
+        options={colorOptions}
+        onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
+      />
+    {:else if kebabPage === 'sliver'}
+      <ColorSourcePicker
+        label=""
+        value={sliverColorBy}
+        options={colorOptions}
+        onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
+      />
+    {:else if kebabPage === 'blockFields'}
+      <FieldsList
+        heading=""
+        fields={blockFieldItems}
+        hidden={blockHidden}
+        order={blockOrder}
+        ontoggle={toggleBlockField}
+        onmove={moveBlockField}
+        lockedKeys={BLOCK_LOCKED}
+      />
+    {:else}
+      <FieldsList
+        heading=""
+        fields={hoverFieldItems}
+        hidden={hoverHidden}
+        order={hoverOrder}
+        ontoggle={toggleHoverField}
+        onmove={moveHoverField}
+        lockedKeys={HOVER_LOCKED}
+      />
+    {/if}
+  {/if}
+{/snippet}
+
+{#snippet datePickerBody()}
+  <div class="date-picker">
+    <div class="dp-head">
+      <Button
+        variant="ghost"
+        size="sm"
+        shape="icon"
+        aria-label={m.sched_prev()}
+        onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, -1))}
+      >
+        <ChevronLeft size={iconSizes.sm} />
+      </Button>
+      <span class="dp-month">
+        {formatDateKey(pickerAnchor, { month: 'long', year: 'numeric' })}
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        shape="icon"
+        aria-label={m.sched_next()}
+        onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, 1))}
+      >
+        <ChevronRight size={iconSizes.sm} />
+      </Button>
+    </div>
+    <div class="dp-weekdays">
+      {#each pickerWeekdays as w, i (i)}
+        <span>{w}</span>
+      {/each}
+    </div>
+    <div class="dp-grid">
+      {#each monthGridDays(pickerAnchor) as d (d)}
+        <Button
+          variant="ghost"
+          size="xs"
+          class="dp-day {d.slice(0, 7) !== pickerAnchor.slice(0, 7) ? 'is-muted' : ''} {d === today
+            ? 'is-today'
+            : ''} {selectedDays.has(d) ? 'is-selected' : ''}"
+          onclick={() => pickDate(d)}
+        >
+          {Number(d.slice(8, 10))}
+        </Button>
+      {/each}
+    </div>
+  </div>
+{/snippet}
+
 {#snippet dateLabel()}
   <span class="cal-date" aria-busy={busy}>
     {rangeLabel}
@@ -2862,254 +3089,170 @@
   {#if onwindowretry}
     <CalendarWindowIssues {windows} onretry={onwindowretry} />
   {/if}
-  <div class="cal-toolbar" data-action-scope="collection">
-    {#if toolbarStart}{@render toolbarStart()}{/if}
-    <SegmentedControl
-      items={viewItems}
-      value={view}
-      aria-label={m.cal_view_label()}
-      onValueChange={(v) => onview(v as CalendarView)}
-    />
-    <div class="cal-nav">
-      <Button
-        variant="ghost"
-        size="sm"
-        class="nav-btn"
-        aria-label={m.sched_prev()}
-        onclick={() => step(-1)}
-      >
-        <ChevronLeft size={iconSizes.md} />
-      </Button>
-      {#if !feat.datePicker}
-        <!-- No picker: the label is the same element, just not a trigger. -->
-        {@render dateLabel()}
+  {#if compact}
+    <div class="cal-toolbar is-compact" data-action-scope="collection">
+      {#if feat.datePicker}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="cc-date-btn"
+          aria-haspopup="dialog"
+          onclick={() => (pickerOpen = true)}
+        >
+          {@render dateLabel()}
+        </Button>
       {:else}
-        <Popover bind:open={pickerOpen} placement="bottom">
-          {#snippet trigger()}
-            {@render dateLabel()}
-          {/snippet}
-          <div class="date-picker">
-            <div class="dp-head">
-              <Button
-                variant="ghost"
-                size="sm"
-                shape="icon"
-                aria-label={m.sched_prev()}
-                onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, -1))}
-              >
-                <ChevronLeft size={iconSizes.sm} />
-              </Button>
-              <span class="dp-month">
-                {formatDateKey(pickerAnchor, { month: 'long', year: 'numeric' })}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                shape="icon"
-                aria-label={m.sched_next()}
-                onclick={() => (pickerAnchor = shiftCalendarMonth(pickerAnchor, 1))}
-              >
-                <ChevronRight size={iconSizes.sm} />
-              </Button>
-            </div>
-            <div class="dp-weekdays">
-              {#each pickerWeekdays as w, i (i)}
-                <span>{w}</span>
-              {/each}
-            </div>
-            <div class="dp-grid">
-              {#each monthGridDays(pickerAnchor) as d (d)}
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  class="dp-day {d.slice(0, 7) !== pickerAnchor.slice(0, 7)
-                    ? 'is-muted'
-                    : ''} {d === today ? 'is-today' : ''} {selectedDays.has(d)
-                    ? 'is-selected'
-                    : ''}"
-                  onclick={() => pickDate(d)}
-                >
-                  {Number(d.slice(8, 10))}
-                </Button>
-              {/each}
-            </div>
-          </div>
-        </Popover>
+        {@render dateLabel()}
       {/if}
       <Button
         variant="ghost"
         size="sm"
-        class="nav-btn"
-        aria-label={m.sched_next()}
-        onclick={() => step(1)}
+        class="cc-view-btn"
+        aria-haspopup="dialog"
+        onclick={() => (viewSheetOpen = true)}
       >
-        <ChevronRight size={iconSizes.md} />
+        <span>{viewName(view)}</span>
+        <ChevronDown size={iconSizes.sm} />
       </Button>
-      <Button variant="ghost" size="sm" onclick={() => goToDay(today)}>{m.sched_today()}</Button>
-    </div>
-    <!-- ONE kebab holds every per-viewer calendar config (owner directive
-       2026-09-25): the Invoiced|Scheduled split, the two colour sources and the
-       event-block layout. A `Popover`, not a `Dropdown`: it holds CONTROLS, not
-       menu items. `features.kebab:false` drops it whole — a surface that wants
-       no per-viewer options wants no trigger either. -->
-    {#if feat.kebab}
-      <Popover placement="bottom-end" bind:open={kebabOpen}>
-        {#snippet trigger()}
-          <span class="cc-trigger">
-            <MoreVertical size={iconSizes.sm} />
-            <span class="sr-only">{m.cal_options_label()}</span>
-          </span>
-        {/snippet}
-        <div class="cc-panel">
-          {#if kebabPage === 'root'}
-            <!-- Tickets are not on the month grid (see the TODO by `.m-body` below), so
-             the split has nothing to toggle there. -->
-            {#if feat.split && invoices !== undefined && !monthRunway}
-              <Toggle
-                size="sm"
-                checked={split}
-                label={m.cal_split_label()}
-                onchange={(v) => onsplit?.(v)}
-              />
-            {/if}
-            {#if onsubby && !monthRunway}
-              {@render kebabRow('sub', m.cal_subcolumns_label(), optionLabel(subOptions, subBy))}
-            {/if}
-            {#if feat.colorPicker && oncolorby && !oncontextmenu}
-              {@render kebabRow(
-                'block',
-                m.cal_color_block(),
-                optionLabel(colorOptions, blockColorBy),
-              )}
-              {@render kebabRow(
-                'sliver',
-                m.cal_color_sliver(),
-                optionLabel(colorOptions, sliverColorBy),
-              )}
-            {/if}
-            {#if feat.weekDaysStepper && onweekdays && runway}
-              <!-- Per-viewer preference (owner ask 2026-09-25): how many day columns
-               the week runway shows at once. Day/month views ignore it, so the
-               stepper is hidden rather than inert there. -->
-              <div class="wd-row">
-                <span class="t-caption wd-label">{m.cal_week_days_label()}</span>
-                <div class="wd-stepper">
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    shape="icon"
-                    aria-label={m.cal_week_days_fewer()}
-                    disabled={weekDays <= WEEK_DAYS_MIN}
-                    onclick={() => stepWeekDays(-1)}
-                  >
-                    <Minus size={iconSizes.xs} />
-                  </Button>
-                  <span class="wd-value">{weekDays}</span>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    shape="icon"
-                    aria-label={m.cal_week_days_more()}
-                    disabled={weekDays >= WEEK_DAYS_MAX}
-                    onclick={() => stepWeekDays(1)}
-                  >
-                    <Plus size={iconSizes.xs} />
-                  </Button>
-                </div>
-              </div>
-            {/if}
-            <!-- A surface whose events have a context menu configures their
-               appearance THERE (owner 2026-10-13); the pages stay mounted below
-               because the menu's "Reorder…" row still opens them. -->
-            {#if feat.fieldsMenu && !oncontextmenu}
-              {@render kebabRow(
-                'blockFields',
-                m.cal_block_fields(),
-                String(blockFieldItems.length - blockHidden.size),
-              )}
-              {@render kebabRow(
-                'cardFields',
-                m.cal_card_fields(),
-                String(hoverFieldItems.length - hoverHidden.size),
-              )}
-            {/if}
-            {#if kebabItems}{@render kebabItems()}{/if}
-          {:else}
-            {@render kebabBack(
-              kebabPage === 'sub'
-                ? m.cal_subcolumns_label()
-                : kebabPage === 'block'
-                  ? m.cal_color_block()
-                  : kebabPage === 'sliver'
-                    ? m.cal_color_sliver()
-                    : kebabPage === 'blockFields'
-                      ? m.cal_block_fields()
-                      : m.cal_card_fields(),
-            )}
-            {#if kebabPage === 'sub'}
-              <!-- TODO(handoff): a drop reclassifies only for a custom column (its
-                 value) and staff (the chair). status / kind / service / tags stay
-                 derived views — writing them needs their own endpoints (status has
-                 a workflow); ledger in
-                 proposals/2026-10-02-hub-calendar-time-scale-subcolumns.md. -->
-              <ColorSourcePicker
-                label=""
-                value={subBy}
-                options={subOptions}
-                onchange={(v) =>
-                  onsubby?.(subOptions.some((o) => o.value === v) ? String(v) : 'none')}
-              />
-              {#if cv.canManage}
-                <Button
-                  variant="ghost"
-                  size="xs"
-                  class="cc-manage"
-                  onclick={() => (customManagerOpen = true)}
-                >
-                  {m.cal_subcolumns_manage()}
-                </Button>
-              {/if}
-            {:else if kebabPage === 'block'}
-              <ColorSourcePicker
-                label=""
-                value={blockColorBy}
-                options={colorOptions}
-                onchange={(v) => oncolorby?.({ block: colorSourceOf(v), sliver: sliverColorBy })}
-              />
-            {:else if kebabPage === 'sliver'}
-              <ColorSourcePicker
-                label=""
-                value={sliverColorBy}
-                options={colorOptions}
-                onchange={(v) => oncolorby?.({ block: blockColorBy, sliver: colorSourceOf(v) })}
-              />
-            {:else if kebabPage === 'blockFields'}
-              <FieldsList
-                heading=""
-                fields={blockFieldItems}
-                hidden={blockHidden}
-                order={blockOrder}
-                ontoggle={toggleBlockField}
-                onmove={moveBlockField}
-                lockedKeys={BLOCK_LOCKED}
-              />
-            {:else}
-              <FieldsList
-                heading=""
-                fields={hoverFieldItems}
-                hidden={hoverHidden}
-                order={hoverOrder}
-                ontoggle={toggleHoverField}
-                onmove={moveHoverField}
-                lockedKeys={HOVER_LOCKED}
-              />
-            {/if}
+      {#if tools}<div class="cal-tools" data-action-scope="collection">{@render tools()}</div>{/if}
+      {#if feat.kebab}
+        <Button
+          variant="ghost"
+          size="sm"
+          shape="icon"
+          class="cc-more-btn"
+          aria-haspopup="dialog"
+          aria-label={[
+            m.cal_options_label(),
+            kebabBadge && kebabBadge > 0 ? String(kebabBadge) : '',
+            kebabAttention ? m.cal_compact_attention() : '',
+          ]
+            .filter(Boolean)
+            .join(', ')}
+          onclick={() => (kebabOpen = true)}
+        >
+          <MoreVertical size={iconSizes.md} />
+          {#if kebabBadge && kebabBadge > 0}
+            <Badge size="sm" class="cc-badge">{kebabBadge}</Badge>
           {/if}
-        </div>
-      </Popover>
+          {#if kebabAttention}
+            <span class="cc-dot" aria-hidden="true"></span>
+          {/if}
+        </Button>
+      {/if}
+    </div>
+    {#if view === 'day' || runway || agendaOn}
+      <WeekStrip
+        {date}
+        {today}
+        onday={(d) => goToDay(d)}
+        onweek={(dir) => goToDay(shiftCalendarDate(date, 'week', dir))}
+      />
     {/if}
-    {#if tools}<div class="cal-tools" data-action-scope="collection">{@render tools()}</div>{/if}
-  </div>
+
+    <Sheet bind:open={viewSheetOpen} title={m.cal_compact_sheet_view()} placement="bottom">
+      <div class="sheet-body">
+        <div class="view-opts" role="radiogroup" aria-label={m.cal_view_label()}>
+          {#each compactViews as v (v.value)}
+            <Button
+              variant="ghost"
+              class="vopt"
+              role="radio"
+              aria-checked={view === v.value}
+              onclick={() => {
+                onview(v.value);
+                viewSheetOpen = false;
+              }}
+            >
+              <span>{v.label}</span>
+              {#if view === v.value}<Check size={iconSizes.md} />{/if}
+            </Button>
+          {/each}
+        </div>
+        {#if toolbarStart}
+          <p class="t-caption sheet-caption">{m.cal_compact_layout()}</p>
+          <div class="sheet-layout">{@render toolbarStart()}</div>
+        {/if}
+      </div>
+    </Sheet>
+    <Sheet bind:open={pickerOpen} title={m.cal_compact_sheet_date()} placement="bottom">
+      <div class="sheet-body">
+        {@render datePickerBody()}
+        <Button
+          variant="ghost"
+          size="sm"
+          onclick={() => {
+            goToDay(today);
+            pickerOpen = false;
+          }}
+        >
+          {m.sched_today()}
+        </Button>
+      </div>
+    </Sheet>
+    <Sheet bind:open={kebabOpen} title={m.cal_compact_sheet_more()} placement="bottom">
+      <div class="sheet-body cc-panel">{@render kebabBody()}</div>
+    </Sheet>
+  {:else}
+    <div class="cal-toolbar" data-action-scope="collection">
+      {#if toolbarStart}{@render toolbarStart()}{/if}
+      <SegmentedControl
+        items={viewItems}
+        value={view}
+        aria-label={m.cal_view_label()}
+        onValueChange={(v) => onview(v as CalendarView)}
+      />
+      <div class="cal-nav">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="nav-btn"
+          aria-label={m.sched_prev()}
+          onclick={() => step(-1)}
+        >
+          <ChevronLeft size={iconSizes.md} />
+        </Button>
+        {#if !feat.datePicker}
+          <!-- No picker: the label is the same element, just not a trigger. -->
+          {@render dateLabel()}
+        {:else}
+          <Popover bind:open={pickerOpen} placement="bottom">
+            {#snippet trigger()}
+              {@render dateLabel()}
+            {/snippet}
+            {@render datePickerBody()}
+          </Popover>
+        {/if}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="nav-btn"
+          aria-label={m.sched_next()}
+          onclick={() => step(1)}
+        >
+          <ChevronRight size={iconSizes.md} />
+        </Button>
+        <Button variant="ghost" size="sm" onclick={() => goToDay(today)}>{m.sched_today()}</Button>
+      </div>
+      <!-- ONE kebab holds every per-viewer calendar config (owner directive
+         2026-09-25): the Invoiced|Scheduled split, the two colour sources and the
+         event-block layout. A `Popover`, not a `Dropdown`: it holds CONTROLS, not
+         menu items. `features.kebab:false` drops it whole — a surface that wants
+         no per-viewer options wants no trigger either. -->
+      {#if feat.kebab}
+        <Popover placement="bottom-end" bind:open={kebabOpen}>
+          {#snippet trigger()}
+            <span class="cc-trigger">
+              <MoreVertical size={iconSizes.sm} />
+              <span class="sr-only">{m.cal_options_label()}</span>
+            </span>
+          {/snippet}
+          <div class="cc-panel">{@render kebabBody()}</div>
+        </Popover>
+      {/if}
+      {#if tools}<div class="cal-tools" data-action-scope="collection">{@render tools()}</div>{/if}
+    </div>
+  {/if}
 
   <!-- The grid region owns scroll (the toolbar above it never scrolls away):
      one scroll owner per screen, per the layout contract. In the week views it
@@ -3123,6 +3266,7 @@
     class:is-month={monthRunway}
     class:is-month-runway={monthMeasured}
     class:is-scaling={scaling !== null}
+    class:is-compact={compact}
     bind:this={scrollEl}
     onscroll={runway || monthRunway ? onScroll : undefined}
     onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
@@ -4094,6 +4238,76 @@
       min-height: var(--control-height-touch);
     }
   }
+  /* Compact (phone) toolbar: ONE 48px row. Every control is a touch target via
+     the viewport rule above; the date label takes the free space. */
+  .cal-toolbar.is-compact {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    height: calc(var(--control-height-touch) + var(--space-1));
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+  }
+  .cal-toolbar.is-compact :global(.cc-date-btn) {
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+  .cal-toolbar.is-compact .cal-date {
+    min-width: 0;
+    font-size: var(--font-size-body);
+  }
+  .cal-toolbar.is-compact :global(.cc-view-btn > span) {
+    gap: var(--space-1);
+  }
+  .cal-toolbar.is-compact .cal-tools {
+    flex-wrap: nowrap;
+  }
+  .cal-toolbar.is-compact :global(.cc-more-btn) {
+    position: relative;
+  }
+  .cal-toolbar.is-compact :global(.cc-badge) {
+    position: absolute;
+    top: 0;
+    right: 0;
+  }
+  .cc-dot {
+    position: absolute;
+    /* Bottom corner: the count badge owns the top one. */
+    bottom: var(--space-2);
+    right: var(--space-2);
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-warning-fg);
+  }
+  /* Bottom sheets end clear of the floating "+" and the assistant launcher. */
+  .sheet-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-12) + var(--space-6));
+  }
+  .view-opts {
+    display: flex;
+    flex-direction: column;
+  }
+  .view-opts :global(.vopt) {
+    width: 100%;
+    min-height: var(--control-height-touch);
+    justify-content: flex-start;
+  }
+  .view-opts :global(.vopt > span) {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .sheet-caption {
+    color: var(--color-text-secondary);
+  }
+  .sheet-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
   .cal-date {
     display: inline-block;
     position: relative;
@@ -4152,6 +4366,10 @@
     --cal-tier-col-head: 1;
     --cal-tier-axis: 2;
     --cal-tier-corner: 3;
+  }
+  /* Room for the host's floating buttons (it sets `--cal-fab-room`). */
+  .cal-scroll.is-compact {
+    padding-bottom: calc(var(--space-card) + var(--cal-fab-room, 0px));
   }
   /* Week views: the grid scrolls edge to edge. The horizontal padding goes
      BEFORE the first measurement (not with `.is-runway` below) — it is part of
@@ -4749,6 +4967,12 @@
        laptop viewport: it owns its own scroll rather than clipping. */
     max-height: min(70vh, 34rem);
     overflow-y: auto;
+  }
+  /* In the phone sheet the panel is the sheet's width and the sheet scrolls. */
+  .sheet-body.cc-panel {
+    width: auto;
+    max-height: none;
+    overflow-y: visible;
   }
   .wd-row {
     display: flex;

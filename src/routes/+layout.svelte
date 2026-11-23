@@ -12,6 +12,7 @@
   import { bugReporter } from '$lib/state/ui/bug-reporter.svelte';
   import { crtConfig } from '$lib/state/ui/crt-config.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
+  import { phone, syncPhoneCookie } from '$lib/state/ui/phone.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { loadHosts, hostsState } from '$lib/state/features/hosts.svelte';
   import { wsConnect } from '$lib/services/gateway.svelte';
@@ -42,6 +43,8 @@
     navigationActivity.dispose();
     actions.dispose();
   });
+
+  $effect(() => syncPhoneCookie(phone.current));
 
   const isVoxelized = $derived(theme.preset.id === 'voxelized');
 

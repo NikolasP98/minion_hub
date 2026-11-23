@@ -16,18 +16,22 @@
   let {
     children,
     activeCount = 0,
+    compact,
   }: {
     children: Snippet;
     /** Live filters, shown on the collapsed trigger so a hidden filter is never silent. */
     activeCount?: number;
+    /** When passed, replaces the component's own viewport query (also during SSR). */
+    compact?: boolean;
   } = $props();
 
-  let narrow = $state(false);
+  let narrowMedia = $state(false);
+  const narrow = $derived(compact ?? narrowMedia);
   let open = $state(false);
 
   onMount(() => {
     const media = window.matchMedia('(max-width: 767.98px)');
-    const update = () => (narrow = media.matches);
+    const update = () => (narrowMedia = media.matches);
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);

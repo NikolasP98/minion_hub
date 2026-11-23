@@ -9,6 +9,7 @@ import {
 import { listProductCategories } from '$server/services/pos-categories.service';
 import { loadCalendarWindow } from '$server/services/calendar-window.service';
 import {
+  DEFAULT_CALENDAR_VIEW,
   calendarLoadWindow,
   parseCalendarDate,
   parseCalendarView,
@@ -27,7 +28,7 @@ import {
  *  two calendars can no longer drift: identical window arithmetic, identical
  *  booking projection, identical tag/colour resolution. `pos: false` drops the
  *  POS-only halves (submitted tickets + stock-accrual chips). */
-export const load: PageServerLoad = async ({ locals, depends, url, parent }) => {
+export const load: PageServerLoad = async ({ locals, depends, url, parent, cookies }) => {
   const ctx = await datasetCtx(locals, 'scheduling');
   if (isDenied(ctx)) return { scheduling: ctx }; // rendered by DataSource (spec 039)
   depends('scheduling:data');
@@ -47,7 +48,13 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
   const resources = await listResources(ctx);
   const orgTz = schedulingTimeZone(resources);
 
-  const pageView = parseCalendarPageView(url.searchParams.get('view'));
+  // Phones open on the day view unless the URL names one (cookie mirrors the client media query).
+  const phoneHint = cookies.get('hub_phone') === '1';
+  const viewInUrl = url.searchParams.has('view');
+  const fallbackView = phoneHint ? 'day' : DEFAULT_CALENDAR_VIEW;
+  const pageView = parseCalendarPageView(url.searchParams.get('view'), fallbackView);
+  // Table and board need the wide default window whatever the device (their cache
+  // marks the loaded week as complete), so the phone fallback never sizes it.
   const view = calendarViewOf(pageView);
   const day = parseCalendarDate(url.searchParams.get('date'), todayIn(orgTz));
   const { from, to } = calendarLoadWindow(day, view, orgTz);
@@ -109,6 +116,8 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent }) => 
       calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
       view,
       pageView,
+      phoneHint,
+      viewInUrl,
       staff,
       kindId,
       showInheritedTags,

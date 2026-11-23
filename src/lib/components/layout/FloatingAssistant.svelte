@@ -15,6 +15,8 @@
     type TurnOrigin,
   } from '$lib/assistant/accepted-runs';
   import { useDropRegistry } from '$lib/shell/drop-context.svelte';
+  import { cornerReserve } from '$lib/state/ui/corner-reserve.svelte';
+  import { defaultBottom, raiseAboveReserve } from './floating-assistant-corner';
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { fileDraftContext, type DraftFile } from '$lib/attachments/draft';
@@ -698,6 +700,21 @@
   // ~80px away from where it was dropped. Sampled only while collapsed:
   // hovering expands the label, which must NOT move the anchor.
   let launcherSize = $state({ w: 56, h: 44 });
+  // Saved/dragged `pos` stays raw; what is RENDERED is lifted above a corner a
+  // page reserved (see corner-reserve), so the saved place never changes.
+  const shownPos = $derived(
+    pos
+      ? raiseAboveReserve(pos, launcherSize, { w: vw, h: vh }, cornerReserve.bottom, LAUNCH_MARGIN)
+      : null,
+  );
+  // TODO(handoff): only the launcher clears a reserved corner; the OPEN panel still anchors at
+  // its own bottom offset and can cover a page's floating button. Ledger:
+  // proposals/2026-11-21-hub-calendar-phones-followups.md.
+  // Latched so the default place can slide back down when the reserve is released.
+  let everReserved = $state(false);
+  $effect(() => {
+    if (cornerReserve.bottom > 0) everReserved = true;
+  });
   const launcherW = () => launcherSize.w;
   const launcherH = () => launcherSize.h;
   function measureLauncher() {
@@ -734,9 +751,9 @@
   const inHomeZone = $derived(
     dragging &&
       dragMoved &&
-      !!pos &&
-      vw - (pos.left + launcherSize.w) <= HOME_ZONE &&
-      vh - (pos.top + launcherSize.h) <= HOME_ZONE,
+      !!shownPos &&
+      vw - (shownPos.left + launcherSize.w) <= HOME_ZONE &&
+      vh - (shownPos.top + launcherSize.h) <= HOME_ZONE + cornerReserve.bottom,
   );
 
   // Slide to the default corner with the normal snap transition, then drop the
@@ -744,7 +761,10 @@
   function snapHome() {
     const w = launcherW();
     const h = launcherH();
-    pos = { left: vw - w - LAUNCH_MARGIN, top: vh - h - LAUNCH_MARGIN };
+    pos = {
+      left: vw - w - LAUNCH_MARGIN,
+      top: vh - h - defaultBottom(LAUNCH_MARGIN, cornerReserve.bottom),
+    };
     homing = true;
     frac = savedFrac = null;
     setTimeout(homeSettled, 400); // fallback if no transition fires (already home)
@@ -846,8 +866,8 @@
   const panelAnchor = $derived.by(() => {
     const lw = launcherW();
     const lh = launcherH();
-    const cx = pos ? pos.left + lw / 2 : vw - LAUNCH_MARGIN - lw / 2;
-    const cy = pos ? pos.top + lh / 2 : vh - LAUNCH_MARGIN - lh / 2;
+    const cx = shownPos ? shownPos.left + lw / 2 : vw - LAUNCH_MARGIN - lw / 2;
+    const cy = shownPos ? shownPos.top + lh / 2 : vh - LAUNCH_MARGIN - lh / 2;
     const right = cx > vw / 2;
     const bottom = cy > vh / 2;
     return { right, bottom, origin: `${bottom ? 'bottom' : 'top'} ${right ? 'right' : 'left'}` };
@@ -916,19 +936,24 @@
   });
 
   // Anchor by the half it sits in so hover-expand grows inward (never off-screen).
-  const anchorRight = $derived(!!pos && pos.left + launcherW() / 2 > vw / 2);
+  const anchorRight = $derived(!!shownPos && shownPos.left + launcherW() / 2 > vw / 2);
   // The hover bubble opens toward the screen's centre from wherever the pill sits.
   const bubbleEnd = $derived(!pos || anchorRight);
-  const bubbleBelow = $derived(!!pos && pos.top + launcherH() / 2 < vh / 2);
+  const bubbleBelow = $derived(!!shownPos && shownPos.top + launcherH() / 2 < vh / 2);
   const launcherStyle = $derived.by(() => {
-    if (!pos) return '';
-    if (dragging) return `left:${pos.left}px; right:auto; top:${pos.top}px;`;
     const ease =
       'transition: left var(--duration-normal) var(--ease-standard), top var(--duration-normal) var(--ease-standard), right var(--duration-normal) var(--ease-standard);';
+    // Default place: the `bottom-5` class, raised only once a page reserved the corner.
+    if (!shownPos) {
+      return everReserved
+        ? `bottom:${defaultBottom(LAUNCH_MARGIN, cornerReserve.bottom)}px; transition: bottom var(--duration-normal) var(--ease-standard);`
+        : '';
+    }
+    if (dragging) return `left:${shownPos.left}px; right:auto; top:${shownPos.top}px;`;
     const horiz = anchorRight
-      ? `right:${Math.max(LAUNCH_MARGIN, vw - pos.left - launcherW())}px; left:auto;`
-      : `left:${pos.left}px; right:auto;`;
-    return `${horiz} top:${pos.top}px; ${ease}`;
+      ? `right:${Math.max(LAUNCH_MARGIN, vw - shownPos.left - launcherW())}px; left:auto;`
+      : `left:${shownPos.left}px; right:auto;`;
+    return `${horiz} top:${shownPos.top}px; ${ease}`;
   });
 </script>
 
@@ -993,7 +1018,7 @@
       <div
         aria-hidden="true"
         class="fixed z-[var(--layer-popover,40)] rounded-full bg-accent/14 border border-dashed border-accent pointer-events-none"
-        style={`right:${LAUNCH_MARGIN - 12}px; bottom:${LAUNCH_MARGIN - 12}px; width:${launcherSize.w + 24}px; height:${launcherSize.h + 24}px;`}
+        style={`right:${LAUNCH_MARGIN - 12}px; bottom:${LAUNCH_MARGIN - 12 + cornerReserve.bottom}px; width:${launcherSize.w + 24}px; height:${launcherSize.h + 24}px;`}
       ></div>
     {/if}
     <!-- `!fixed` / `!h-auto` below are load-bearing, not cosmetic: Button's base

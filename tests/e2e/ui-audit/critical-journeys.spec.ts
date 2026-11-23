@@ -167,7 +167,12 @@ test('CJ2 Home sends once and renders the synthetic gateway response', async ({ 
 
 test('CJ3 Calendar staff lanes stay reachable', async ({ page }) => {
   await page.goto('/calendar.html');
-  await expect(page.getByRole('button', { name: 'Today', exact: true })).toBeVisible();
+  // Phones (the coarse projects run at 390px) get the one-row toolbar, where Today lives in the
+  // date sheet (spec 145); wider viewports keep the Today button.
+  const today = page.getByRole('button', { name: 'Today', exact: true });
+  const compactToolbar = page.locator('.cal-toolbar.is-compact');
+  await expect(today.or(compactToolbar)).toBeVisible();
+  const compact = (await compactToolbar.count()) > 0;
   // Scheduling uses the shared calendar grid. Exclude its aggregate “All”
   // column and require every synthetic staff lane, not the retired renderer.
   const lanes = page.locator('.col:not(.is-all) > .col-head');
@@ -186,7 +191,7 @@ test('CJ3 Calendar staff lanes stay reachable', async ({ page }) => {
   expect(box!.width).toBeGreaterThanOrEqual(112);
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
-  await page.getByRole('button', { name: 'Today', exact: true }).focus();
+  await (compact ? compactToolbar.getByRole('button').first() : today).focus();
   await page.keyboard.press('Tab');
   expect(await page.evaluate(() => document.activeElement?.tagName)).not.toBe('BODY');
 });
