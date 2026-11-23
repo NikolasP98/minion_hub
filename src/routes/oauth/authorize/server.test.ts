@@ -42,6 +42,7 @@ const act = (
   url: URL,
   form: Record<string, string> = {},
   origin: string | null = 'https://hub.test',
+  site?: string,
 ) =>
   attempt(
     () =>
@@ -51,7 +52,7 @@ const act = (
         setHeaders,
         request: new Request(url, {
           method: 'POST',
-          headers: origin ? { origin } : {},
+          headers: { ...(origin ? { origin } : {}), ...(site ? { 'sec-fetch-site': site } : {}) },
           body: new URLSearchParams(form),
         }),
       } as never) as Promise<unknown>,
@@ -224,6 +225,15 @@ describe('same-origin assertion (P1)', () => {
       expect(m.createCode).not.toHaveBeenCalled();
     },
   );
+
+  it('approve passes when Origin is blanked but the browser marks the post same-origin', async () => {
+    const r = await act('approve', urlOf(), { org_id: 'org-1' }, 'null', 'same-origin');
+    expect(new URL(r.thrown!.location, 'https://hub.test').searchParams.get('refused')).toBeNull();
+    const cross = await act('approve', urlOf(), { org_id: 'org-1' }, 'null', 'cross-site');
+    expect(new URL(cross.thrown!.location, 'https://hub.test').searchParams.get('refused')).toBe(
+      'origin',
+    );
+  });
 
   it('drops the form-action key from the URL it goes back to', async () => {
     const url = new URL(`${urlOf().href}&%2Fapprove=`);
