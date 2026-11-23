@@ -287,6 +287,11 @@
   {/if}
 
   {#if showText}
-    <div class="min-w-0 {dimensions.text}"><HubWordmark /></div>
+    <div
+      class="min-w-0 font-black {dimensions.text}"
+      style:color={currentPreset.id === 'minion' ? brandPink : currentPreset.secondaryColor}
+    >
+      <HubWordmark inheritStyles />
+    </div>
   {/if}
 </div>
