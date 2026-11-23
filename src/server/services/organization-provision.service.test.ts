@@ -100,3 +100,89 @@ describe('qualified provisioning retry preserves existing access', () => {
     }
   });
 });
+
+describe('branding creation before external effects', () => {
+  const event = {
+    locals: { user: { id: 'owner', supabaseId: '20000000-0000-4000-8000-000000000001' } },
+  } as Parameters<typeof provisionOrganization>[0];
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete f.privateEnv.ORG_ROLE_TEMPLATES_ENABLED;
+    f.workforce.mockRejectedValue(Error('fixture stop before external effects'));
+  });
+  it('rejects invalid explicit/null and missing long suggestion before every provisioning effect', async () => {
+    for (const params of [
+      { name: 'Faces', hubName: 'Faces Hub' },
+      { name: 'Faces', hubName: null },
+      { name: 'Organization Name Beyond Fifteen' },
+    ]) {
+      await expect(
+        provisionOrganization(event, { profileId: 'p', ...params } as never),
+      ).rejects.toThrow();
+    }
+    expect(f.bootstrap).not.toHaveBeenCalled();
+    expect(f.supabase).not.toHaveBeenCalled();
+    expect(f.workforce).not.toHaveBeenCalled();
+  });
+  it('forwards normalized explicit prefix to atomic new-model bootstrap, preserving returned stored retry state', async () => {
+    f.privateEnv.ORG_ROLE_TEMPLATES_ENABLED = 'true';
+    f.bootstrap.mockResolvedValue({
+      id: 'o',
+      name: 'Existing',
+      slug: 'existing',
+      hub_name: 'Original',
+      roleModel: 'organization',
+      created: false,
+    });
+    const result = await provisionOrganization(event, {
+      name: 'Existing',
+      hubName: '  Draft  ',
+      profileId: 'p',
+    });
+    expect(f.bootstrap).toHaveBeenCalledWith(expect.objectContaining({ hubName: 'Draft' }));
+    expect(result.organization).toMatchObject({ name: 'Existing', hub_name: 'Original' });
+    expect(f.supabase).not.toHaveBeenCalled();
+    delete f.privateEnv.ORG_ROLE_TEMPLATES_ENABLED;
+  });
+  it.each(['create', 'existing', 'race'])(
+    'legacy %s writes prefix only in the inserted candidate',
+    async (mode) => {
+      const inserted: Record<string, unknown>[] = [];
+      let lookups = 0;
+      const existing = { id: 'o', name: 'Faces', slug: 'faces', hub_name: 'Original' };
+      f.supabase.mockImplementation(() => ({
+        from: (table: string) => {
+          const chain = {
+            select: () => chain,
+            eq: () => chain,
+            maybeSingle: async () => ({
+              data: mode === 'existing' || (mode === 'race' && lookups++ > 0) ? existing : null,
+              error: null,
+            }),
+            insert: (candidate: Record<string, unknown>) => {
+              inserted.push(candidate);
+              return chain;
+            },
+            single: async () =>
+              mode === 'race'
+                ? { data: null, error: { code: '23505' } }
+                : { data: inserted.at(-1), error: null },
+            upsert: async () => ({ error: null }),
+          };
+          expect(['organizations', 'organization_members', 'member_roles']).toContain(table);
+          return chain;
+        },
+      }));
+      const result = await provisionOrganization(event, {
+        name: 'Faces',
+        hubName: 'New',
+        profileId: 'p',
+      });
+      expect(result.organization).toMatchObject({
+        hub_name: mode === 'create' ? 'New' : 'Original',
+      });
+      expect(inserted).toHaveLength(mode === 'existing' ? 0 : 1);
+      if (inserted.length) expect(inserted[0]).toMatchObject({ name: 'Faces', hub_name: 'New' });
+    },
+  );
+});

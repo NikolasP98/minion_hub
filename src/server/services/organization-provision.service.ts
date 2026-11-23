@@ -9,6 +9,8 @@ import { gatewayAudience, issueGatewayJwt } from '$server/services/gateway-jwt.s
 import { getDb } from '$server/db/client';
 import { env } from '$env/dynamic/private';
 import { bootstrapOrganization } from './organization-bootstrap.service';
+import { suggestHubName, validateHubName, brandingValidationAvailable } from '$lib/branding';
+import { error } from '@sveltejs/kit';
 import { getPgClient } from '$server/db/pg-pool';
 
 export type OrganizationProvisionStepId =
@@ -34,6 +36,7 @@ interface OrganizationRow {
   name: string;
   slug: string;
   role_model?: 'legacy' | 'organization';
+  hub_name?: string | null;
 }
 
 export function normalizeOrganizationName(value: unknown): string {
@@ -66,7 +69,7 @@ function safeMessage(error: unknown): string {
 async function findOrganization(slug: string): Promise<OrganizationRow | null> {
   const { data, error } = await supabaseAdmin()
     .from('organizations')
-    .select('id, name, slug, role_model')
+    .select('id, name, slug, role_model, hub_name')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw new Error(`Organization lookup failed: ${error.message}`);
@@ -88,6 +91,7 @@ async function ensureOrganization(
   name: string,
   slug: string,
   existingWorkforceCompanyId: string | null,
+  hubName: string,
 ): Promise<OrganizationRow> {
   const existing = await findOrganization(slug);
   if (existing) {
@@ -101,12 +105,13 @@ async function ensureOrganization(
     id: existingWorkforceCompanyId ?? crypto.randomUUID(),
     name,
     slug,
+    hub_name: hubName,
     ...(existingWorkforceCompanyId ? { paperclip_company_id: existingWorkforceCompanyId } : {}),
   };
   const { data, error } = await supabaseAdmin()
     .from('organizations')
     .insert(candidate)
-    .select('id, name, slug, role_model')
+    .select('id, name, slug, role_model, hub_name')
     .single();
   if (!error && data) return data as OrganizationRow;
 
@@ -238,11 +243,21 @@ async function verifyTerminalAccess(url: string, token?: string): Promise<void> 
  */
 export async function provisionOrganization(
   event: RequestEvent,
-  params: { name: string; profileId: string; existingWorkforceCompanyId?: string | null },
+  params: {
+    name: string;
+    profileId: string;
+    existingWorkforceCompanyId?: string | null;
+    hubName?: string;
+  },
 ): Promise<OrganizationProvisionResult> {
   const startedAt = new Date().toISOString();
   const steps: OrganizationProvisionStep[] = [];
   const name = normalizeOrganizationName(params.name);
+  if (!brandingValidationAvailable()) throw error(503, 'Branding validation unavailable');
+  const chosen = params.hubName === undefined ? suggestHubName(name) : params.hubName;
+  const validation = validateHubName(chosen);
+  if (!validation.ok) throw error(400, 'A valid short Hub name is required');
+  const hubName = validation.value;
   const slug = organizationSlug(name);
   const existingWorkforceCompanyId = optionalOrganizationId(params.existingWorkforceCompanyId);
   let organization: OrganizationRow | null = null;
@@ -290,6 +305,7 @@ export async function provisionOrganization(
         slug,
         profileId: params.profileId,
         organizationId: existingWorkforceCompanyId,
+        hubName,
       });
       qualifiedBootstrap = true;
       organization = {
@@ -297,9 +313,10 @@ export async function provisionOrganization(
         name: result.name,
         slug: result.slug,
         role_model: result.roleModel,
+        hub_name: result.hub_name,
       };
     } else {
-      organization = await ensureOrganization(name, slug, existingWorkforceCompanyId);
+      organization = await ensureOrganization(name, slug, existingWorkforceCompanyId, hubName);
     }
   });
   await step('membership', 'Provisioning admin is an organization owner', async () => {
