@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
+import { requireServerToken } from '$server/auth/authorize';
 import { waitUntil } from '@vercel/functions';
 import {
   insertMessagesDetailed,
@@ -10,10 +11,9 @@ import {
 import { advanceBrainCorpusJobNow } from '$server/services/brain-corpus-jobs.service';
 
 export const POST: RequestHandler = async ({ locals, request }) => {
-  // Authenticated via Bearer server token (resolveViaMetricsBearer sets tenantCtx + serverId).
-  if (!locals.tenantCtx) throw error(401, 'Unauthorized');
-  const orgId = locals.tenantCtx.tenantId;
-  const serverId = (locals as Record<string, unknown>).serverId as string | undefined;
+  // Gateway token only: a browser session has tenantCtx but no serverId.
+  const { tenantCtx, serverId } = requireServerToken(locals);
+  const orgId = tenantCtx.tenantId;
 
   const body = (await request.json()) as { rows?: IngestRow[]; patches?: RoutingPatch[] };
   const rows = (Array.isArray(body.rows) ? body.rows : []).filter(
@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
   );
   const patches = Array.isArray(body.patches) ? body.patches : [];
 
-  const ingest = await insertMessagesDetailed(orgId, serverId ?? null, rows);
+  const ingest = await insertMessagesDetailed(orgId, serverId, rows);
   await applyRoutingPatches(orgId, patches);
 
   // adapter-vercel's `platform.context` is Edge-only. This app deploys Node 22
