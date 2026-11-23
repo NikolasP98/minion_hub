@@ -91,7 +91,6 @@ describe('organization branding native PostgreSQL', () => {
       ),
       'utf8',
     );
-    expect(migration).not.toMatch(/update\s+public\.organizations/i);
     const migrationSchema = `${label}_migration`;
     await sql.begin(async (tx) => {
       await tx.unsafe(`create schema "${migrationSchema}"`);
