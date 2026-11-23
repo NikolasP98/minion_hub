@@ -179,6 +179,7 @@
   } from '$lib/components/ui';
   import { ConfirmDialog, Dialog, Sheet } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import { blockDetail, statusIcon } from './block-label';
   import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
   import { dateKeyWeekday, instantDateKey, instantParts } from '$lib/time/zoned';
   import {
@@ -649,6 +650,11 @@
   /** 24-hour, like the `{h}:00` gutter these chips are laid over — and pinned to
    *  the paraglide locale rather than the browser's. */
   const hhmm = (iso: string) => formatTime(iso, timeZone);
+  /** A block this tall (px) has room for the status line under its other rows. */
+  // Time, service, client and status lines: a shorter block would clip the status line.
+  const STATUS_LINE_MIN_PX = 72;
+  /** One more caption line: the "N cancelled" line or the bottom clip marker. */
+  const STATUS_LINE_EXTRA_PX = 16;
   function minutesOf(iso: string): number {
     const parts = instantParts(new Date(iso), timeZone);
     return parts.hour * 60 + parts.minute;
@@ -979,6 +985,7 @@
 
   function onScroll() {
     if (!runway && !monthRunway) return;
+    scrolling = true;
     // ONE state write per animation frame (the rendered window + the range
     // label follow the scroll); nothing else is written per scroll event.
     if (!raf)
@@ -1000,6 +1007,7 @@
   }
   /** Scrolling stopped: reflect the landed week/month in the URL and in the cache. */
   function settle() {
+    scrolling = false;
     if (monthRunway) {
       settleMonth();
       return;
@@ -1035,6 +1043,7 @@
    *  what the page's week cache loads around — `calendarLoadDays(day, 'month')`
    *  already covers an arbitrary Monday-anchored range. */
   function settleMonth() {
+    scrolling = false;
     const el = scrollEl;
     if (!el || !monthRunway || rowH <= 0) return;
     scrollY = renderY = el.scrollTop;
@@ -1755,7 +1764,51 @@
     ...(feat.agenda ? [{ value: 'agenda' as const, label: m.cal_compact_view_list() }] : []),
   ]);
   const viewName = (v: CalendarView) =>
-    compactViews.find((o) => o.value === v)?.label ?? m.cal_view_week();
+    (compact ? compactViews : viewItems).find((o) => o.value === v)?.label ?? m.cal_view_week();
+
+  // Screen-reader announcement of a view/range change. It waits for the scroll to
+  // settle and the range's data to land (so the count is the real one), says
+  // nothing until the user has touched the page (first paint and layout
+  // measurement are not news), and never repeats the same view + range.
+  let announcement = $state('');
+  let announceTimer: ReturnType<typeof setTimeout> | undefined;
+  /** True between the first scroll event and the settle that follows. */
+  let scrolling = $state(false);
+  let announceArmed = false;
+  let announcedKey = '';
+  $effect(() => {
+    const arm = () => (announceArmed = true);
+    document.addEventListener('pointerdown', arm, { capture: true, once: true });
+    document.addEventListener('keydown', arm, { capture: true, once: true });
+    return () => {
+      document.removeEventListener('pointerdown', arm, { capture: true });
+      document.removeEventListener('keydown', arm, { capture: true });
+    };
+  });
+  $effect(() => {
+    const key = `${view}|${rangeLabel}`;
+    const waiting = busy || scrolling || windows.some((w) => w.status === 'error');
+    void bookingsByDay; // late data re-arms a range that was not announced yet
+    clearTimeout(announceTimer);
+    if (waiting) return;
+    announceTimer = setTimeout(() => {
+      if (key === announcedKey) return;
+      announcedKey = key;
+      if (!announceArmed) return;
+      const inRange = monthRunway
+        ? (d: string) => d.startsWith(labelMonth)
+        : (d: string) => visibleDays.includes(d);
+      let count = 0;
+      for (const [d, list] of bookingsByDay)
+        if (inRange(d)) count += list.filter((b) => !isInactiveMemberStatus(b.status)).length;
+      const parts = { view: viewName(view), range: rangeLabel };
+      announcement =
+        count === 1
+          ? m.sched_range_announce_one(parts)
+          : m.sched_range_announce_other({ ...parts, count });
+    }, 300);
+  });
+  $effect(() => () => clearTimeout(announceTimer));
   /** Month the mini-grid is showing, `YYYY-MM-DD` (day-of-month is ignored) —
    *  seeded once from `date` and reset every time the popover opens; it must
    *  stay independently mutable so the prev/next month buttons can browse
@@ -3396,6 +3449,7 @@
     ? COMPACT_MONTH_ROW_REM
     : monthRowRem}rem;--cal-col-min:{Math.max(132, subs.length * MIN_SUB_PX)}px;{styleProp ?? ''}"
 >
+  <div class="sr-only cal-announce" role="status" aria-live="polite">{announcement}</div>
   {#if temporalError}
     <p class="t-caption text-destructive" role="alert">{temporalError}</p>
   {/if}
@@ -4249,6 +4303,28 @@
                                   >{m.cal_members_cancelled({ n: cancelledN })}</span
                                 >
                               {/if}
+                              <!-- Same inline height the block is painted with: no measuring. -->
+                              {#if clip.height >= STATUS_LINE_MIN_PX + (cancelledN > 0 ? STATUS_LINE_EXTRA_PX : 0) + (clip.clippedBottom ? STATUS_LINE_EXTRA_PX : 0)}
+                                {@const StatusIcon = statusIcon(b.status)}
+                                <span class="evt-status t-caption" aria-hidden="true">
+                                  <StatusIcon size={iconSizes.xs} aria-hidden="true" />
+                                  <span class="truncate">{statusLabel(b.status)}</span>
+                                </span>
+                              {/if}
+                              <!-- Day, full range and status for screen readers, after the
+                                   visible text (hidden text, not an aria-label: WCAG 2.5.3). -->
+                              <span class="sr-only"
+                                >{blockDetail({
+                                  day: formatDateKey(dayOf(box.start), {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                  }),
+                                  start: hhmm(box.start),
+                                  end: hhmm(box.end),
+                                  status: statusLabel(b.status),
+                                })}</span
+                              >
                               {#if onmove}
                                 <span
                                   class="evt-resize"
@@ -5409,6 +5485,17 @@
     bottom: var(--space-0-5);
     display: flex;
     color: var(--color-text-secondary);
+  }
+  .evt-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    color: var(--color-text-secondary);
+  }
+  /* In a narrow lane the label gives way, not the icon. */
+  .evt-status :global(svg) {
+    flex: none;
   }
   .evt-cancelled {
     display: block;

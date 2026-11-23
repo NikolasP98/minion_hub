@@ -7776,5 +7776,8 @@
   "cal_touch_summary_title": "Appointment",
   "cal_agenda_day_empty": "No appointments",
   "cal_month_count_one": "1 appointment",
-  "cal_month_count_other": "{n} appointments"
+  "cal_month_count_other": "{n} appointments",
+  "sched_block_detail": "{day}, {start} to {end}, {status}",
+  "sched_range_announce_one": "{view}: {range}, 1 appointment",
+  "sched_range_announce_other": "{view}: {range}, {count} appointments"
 }

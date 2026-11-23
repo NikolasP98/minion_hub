@@ -7776,5 +7776,8 @@
   "cal_touch_summary_title": "Cita",
   "cal_agenda_day_empty": "Sin citas",
   "cal_month_count_one": "1 cita",
-  "cal_month_count_other": "{n} citas"
+  "cal_month_count_other": "{n} citas",
+  "sched_block_detail": "{day}, {start} a {end}, {status}",
+  "sched_range_announce_one": "{view}: {range}, 1 cita",
+  "sched_range_announce_other": "{view}: {range}, {count} citas"
 }
