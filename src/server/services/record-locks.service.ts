@@ -49,7 +49,7 @@ export async function getLockPolicy(tx: CoreTx, orgId: string): Promise<LockPoli
   return (await readPolicy(tx, orgId)).policy;
 }
 
-/** The record, then each receipt it replaced, oldest last (`receipt_replace` corrections only). */
+/** The record, then each receipt it replaced, oldest last (`receipt_replace` and `receipt_chain` corrections). */
 async function receiptChain(tx: CoreTx, orgId: string, id: string) {
   const res = (await tx.execute(sql`
     with recursive chain(id, depth) as (
@@ -57,7 +57,7 @@ async function receiptChain(tx: CoreTx, orgId: string, id: string) {
       union all
       select c.source_entry_id, ch.depth + 1
       from stk_corrections c join chain ch on c.replacement_entry_id = ch.id
-      where c.org_id = ${orgId} and c.kind = 'receipt_replace'
+      where c.org_id = ${orgId} and c.kind in ('receipt_replace', 'receipt_chain')
         and c.source_entry_id is not null and ch.depth < ${CHAIN_CAP}
     )
     select chain.id::text as id, e.posted_at as posted_at
@@ -88,6 +88,9 @@ export async function recordLockFor(
   const chainIds = chain.length ? chain.map((c) => c.id) : [record.id];
   const firstRaw = chain.length ? chain[chain.length - 1]!.posted_at : null;
   const firstPostedAt = firstRaw ? new Date(firstRaw) : record.postedAt;
+  // The walk is capped (one row past the cap means it may have stopped early) and the oldest receipt
+  // must have a date: otherwise the age cannot be verified, so fail closed instead of judging a partial chain.
+  const chainUnverified = chain.length > CHAIN_CAP || (chain.length > 0 && !firstRaw);
 
   // External locks are only read while the webhook rule is on: with it off they cannot change the answer.
   const externalRows = policy.webhook
@@ -116,6 +119,7 @@ export async function recordLockFor(
     lockedPeriods: new Set(lockedPeriods),
     externalLocks,
   });
+  if (chainUnverified) rules.push({ rule: 'chain', kind: 'chain_unverified', unlockable: true });
   // Pure and already known not to throw (the verdict above verified the timezone); with no locked
   // periods it returns today's evaluation object for the preview hash.
   const period = evaluateReceiptPeriod({
@@ -132,6 +136,6 @@ export async function recordLockFor(
     lockedPeriods,
     hasPolicyRow: hasRow,
     policy,
-    externalLockIds: externalLocks.map((l) => l.id).sort(),
+    externalLockIds: rules.flatMap((h) => h.lockId ?? []).sort(),
   };
 }

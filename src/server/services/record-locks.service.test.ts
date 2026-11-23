@@ -112,6 +112,11 @@ describe('recordLockFor', () => {
     ]);
     expect(hit.externalLockIds).toEqual(['l1']);
 
+    // Only locks that hit THIS record are listed (an unrelated active lock is not).
+    const other = { ...ext, id: 'l2', recordId: 'zz' };
+    const two = fakeTx([[policyRow({ webhookEnabled: true })], TZ, [], [ext, other]], [chain]);
+    expect((await recordLockFor(two.tx, 'org', rec, { now })).externalLockIds).toEqual(['l1']);
+
     const off = fakeTx([[policyRow()], TZ, [], [ext]], [chain]);
     const miss = await recordLockFor(off.tx, 'org', rec, { now });
     expect(miss.rules).toEqual([]);
@@ -131,5 +136,54 @@ describe('recordLockFor', () => {
     expect((await recordLockFor(f.tx, 'org', old, { now })).rules.map((h) => h.rule)).toEqual([
       'days',
     ]);
+  });
+
+  it('fails closed when the replacement chain hits the cap', async () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ({
+      id: `r${i}`,
+      posted_at: '2026-11-19T15:00:00Z',
+    }));
+    const f = fakeTx([[], TZ, []], [rows]);
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(true);
+    expect(r.rules).toMatchObject([{ kind: 'chain_unverified' }]);
+  });
+
+  it('fails closed when the oldest receipt has no posted_at', async () => {
+    const f = fakeTx(
+      [[], TZ, []],
+      [
+        [
+          { id: 'r2', posted_at: '2026-11-19T15:00:00Z' },
+          { id: 'r1', posted_at: null },
+        ],
+      ],
+    );
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(true);
+    expect(r.rules.map((h) => h.kind)).toEqual(['chain_unverified']);
+  });
+
+  it('a chain of exactly the cap minus one is still evaluated normally', async () => {
+    const rows = Array.from({ length: 20 }, (_, i) => ({
+      id: `r${i}`,
+      posted_at: '2026-11-19T15:00:00Z',
+    }));
+    const f = fakeTx([[], TZ, []], [rows]);
+    expect((await recordLockFor(f.tx, 'org', rec, { now })).locked).toBe(false);
+  });
+
+  it('the chain query follows receipt_chain corrections too', async () => {
+    let text = '';
+    const f = fakeTx([[], TZ, []], []);
+    const tx = {
+      ...(f.tx as object),
+      execute: async (q: unknown) => {
+        text = JSON.stringify(q);
+        return [];
+      },
+    } as never;
+    await recordLockFor(tx, 'org', rec, { now });
+    expect(text).toContain('receipt_chain');
   });
 });

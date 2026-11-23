@@ -126,7 +126,6 @@ afterAll(async () => {
 
 describe('stock corrections against PostgreSQL', () => {
   it('refuses a purchase correction under the organization lock policy (spec 140)', async () => {
-    // TODO(handoff): written without running the native lane (S1 skipped it); run it before S1 merges.
     const wd = await world();
     const item = randomUUID();
     await owner.unsafe(

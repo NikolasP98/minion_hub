@@ -181,12 +181,12 @@ export const orgLockEvents = pgTable(
     usedUniq: uniqueIndex('org_lock_events_used_uniq')
       .on(t.orgId, t.refEventId)
       .where(sql`action = 'unlock_used'`),
-    orgTimeIdx: index('org_lock_events_org_time_idx').on(t.orgId, t.occurredAt),
+    orgTimeIdx: index('org_lock_events_org_time_idx').on(t.orgId, t.occurredAt.desc()),
     recordIdx: index('org_lock_events_record_idx').on(
       t.orgId,
       t.recordType,
       t.recordId,
-      t.occurredAt,
+      t.occurredAt.desc(),
     ),
   }),
 );

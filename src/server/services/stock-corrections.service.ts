@@ -464,7 +464,13 @@ async function plan(
         `period ${lock.rules.map((h) => h.period as string).sort()[0]} is locked`,
         'period_locked',
       );
-    throw new CorrectionError('record is locked', 'record_locked', { locks: lock.rules });
+    throw new CorrectionError(
+      lock.rules.some((h) => h.kind === 'chain_unverified')
+        ? 'record is locked: its replacement history could not be verified; ask an owner'
+        : 'record is locked',
+      'record_locked',
+      { locks: lock.rules },
+    );
   }
   const period = lock.period;
   return {

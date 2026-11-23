@@ -1,8 +1,14 @@
 /** Record lock policy (spec 140): one organization policy decides when a past record stops being editable. */
 
-export type LockRule = 'month' | 'days' | 'sunat' | 'webhook';
+export type LockRule = 'month' | 'days' | 'sunat' | 'webhook' | 'chain';
 export type LockHitKind =
-  'month' | 'month_current' | 'days' | 'sunat' | 'webhook_date' | 'webhook_record';
+  | 'month'
+  | 'month_current'
+  | 'days'
+  | 'sunat'
+  | 'webhook_date'
+  | 'webhook_record'
+  | 'chain_unverified';
 
 export interface LockHit {
   rule: LockRule;

@@ -123,26 +123,33 @@ export function policyFromRow(row: {
 }
 
 const POLICY_KEYS = ['month', 'days', 'sunat', 'webhook'] as const;
+const DAYS_MESSAGE =
+  'Los días deben ser un número entre 1 y 3650. Corrige el valor y guarda de nuevo.';
 
-/** Strict request parser: exactly the four keys, `days` an integer 1-3650 or null. */
+/** Strict request parser (contracts/api.md): `month`, `days` (integer 1-3650 or null, required) and `webhook`; `sunat` is accepted only as false until S5. */
 export function parsePolicyInput(raw: unknown): LockPolicy {
-  const bad = (m: string) => new CorrectionError(`invalid lock policy: ${m}`, 'invalid_request');
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw bad('not an object');
+  const bad = (m: string) => new CorrectionError(m, 'invalid_policy');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+    throw bad('Política inválida: se esperaba un objeto.');
   const o = raw as Record<string, unknown>;
   for (const k of Object.keys(o))
-    if (!(POLICY_KEYS as readonly string[]).includes(k)) throw bad(`unknown key ${k}`);
-  for (const k of ['month', 'sunat', 'webhook'] as const)
-    if (typeof o[k] !== 'boolean') throw bad(`${k} must be a boolean`);
-  const days = o.days ?? null;
+    if (!(POLICY_KEYS as readonly string[]).includes(k))
+      throw bad(`Política inválida: campo desconocido ${k}.`);
+  for (const k of ['month', 'webhook'] as const)
+    if (typeof o[k] !== 'boolean') throw bad(`Política inválida: ${k} debe ser verdadero o falso.`);
+  if (o.sunat !== undefined && o.sunat !== false)
+    throw bad('Política inválida: la regla SUNAT aún no está disponible.');
+  if (!('days' in o)) throw bad(DAYS_MESSAGE);
+  const days = o.days;
   if (
     days !== null &&
     !(Number.isInteger(days) && (days as number) >= 1 && (days as number) <= 3650)
   )
-    throw bad('days must be an integer from 1 to 3650, or null');
+    throw bad(DAYS_MESSAGE);
   return {
     month: o.month as boolean,
     days: days as number | null,
-    sunat: o.sunat as boolean,
+    sunat: false,
     webhook: o.webhook as boolean,
   };
 }

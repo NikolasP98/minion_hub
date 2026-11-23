@@ -229,8 +229,8 @@ describe('combinations', () => {
 });
 
 describe('parsePolicyInput', () => {
-  it('accepts the four keys', () => {
-    expect(parsePolicyInput({ month: true, days: 60, sunat: false, webhook: true })).toEqual({
+  it('accepts the contract body, with or without sunat:false', () => {
+    expect(parsePolicyInput({ month: true, days: 60, webhook: true })).toEqual({
       month: true,
       days: 60,
       sunat: false,
@@ -243,14 +243,21 @@ describe('parsePolicyInput', () => {
   it.each([
     null,
     [],
-    { month: true, days: 0, sunat: false, webhook: false },
-    { month: true, days: 3651, sunat: false, webhook: false },
-    { month: true, days: 1.5, sunat: false, webhook: false },
-    { month: 'yes', days: null, sunat: false, webhook: false },
-    { month: true, days: null, sunat: false, webhook: false, extra: 1 },
+    { month: true, days: 0, webhook: false },
+    { month: true, days: 3651, webhook: false },
+    { month: true, days: 1.5, webhook: false },
+    { month: true, webhook: false }, // days omitted: null must be explicit
+    { month: true, days: null, sunat: true, webhook: false },
+    { month: 'yes', days: null, webhook: false },
+    { month: true, days: null, webhook: false, extra: 1 },
   ])('refuses %j', (raw) => {
     expect(() => parsePolicyInput(raw)).toThrow(
-      expect.objectContaining({ code: 'invalid_request' }),
+      expect.objectContaining({ code: 'invalid_policy' }),
+    );
+  });
+  it('days errors carry the contract message', () => {
+    expect(() => parsePolicyInput({ month: true, days: 0, webhook: false })).toThrow(
+      /entre 1 y 3650/,
     );
   });
 });
