@@ -286,6 +286,14 @@ describe('identity output through the actual hook and server POST', () => {
       const resolve = vi.fn();
       const response = await runHook({ event: event('/api/crm/contacts'), resolve });
       expect(response.status).toBe(authenticated ? 403 : 401);
+      const text = authenticated
+        ? 'No active organization for this request'
+        : 'Authentication required';
+      expect(await response.json()).toEqual({
+        message: text,
+        error: text,
+        code: authenticated ? 'no_organization' : 'unauthenticated',
+      });
       expect(resolve).not.toHaveBeenCalled();
     },
   );
@@ -327,7 +335,10 @@ describe('identity output through the actual hook and server POST', () => {
     mocks.identity.mockResolvedValue({ locals: { user, tenantCtx: ctx }, bypassGate: false });
     mocks.writeCap.mockReturnValue({ module: 'crm', action: 'create' });
     const resolve = vi.fn();
-    expect((await runHook({ event: event('/api/crm/contacts'), resolve })).status).toBe(403);
+    const denied = await runHook({ event: event('/api/crm/contacts'), resolve });
+    expect(denied.status).toBe(403);
+    const text = 'You do not have permission to perform this action.';
+    expect(await denied.json()).toEqual({ message: text, error: text, code: 'forbidden' });
     expect(resolve).not.toHaveBeenCalled();
     expect(mocks.hasCap).toHaveBeenCalled();
   });

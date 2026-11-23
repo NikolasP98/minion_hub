@@ -141,12 +141,12 @@ describe('GET /api/pos/appointments', () => {
     ).resolves.toBeInstanceOf(Response);
   });
 
-  it('hides the endpoint (403) when scheduling or pos is disabled', async () => {
+  it('hides the endpoint (404) when scheduling or pos is disabled', async () => {
     state.enabled = false;
     const { GET } = await import('./+server');
     await expect(
       GET({ locals: { user: state.user }, url: url('?from=2026-09-07&to=2026-09-13') } as never),
-    ).rejects.toMatchObject({ status: 403 });
+    ).rejects.toMatchObject({ status: 404, body: { code: 'module_disabled' } });
     expect(state.required).not.toHaveBeenCalled();
   });
 

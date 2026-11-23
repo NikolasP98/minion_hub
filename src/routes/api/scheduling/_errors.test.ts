@@ -20,6 +20,22 @@ describe('rethrowPosError', () => {
     );
   });
 
+  it('the body carries the sentence in message and error, and the code', () => {
+    try {
+      rethrowPosError(new PosError('package has no sessions left', 'package_exhausted'));
+      expect.unreachable();
+    } catch (e) {
+      expect(e).toMatchObject({
+        status: 409,
+        body: {
+          message: 'package has no sessions left',
+          error: 'package has no sessions left',
+          code: 'package_exhausted',
+        },
+      });
+    }
+  });
+
   it('re-throws a non-PosError untouched', () => {
     const boom = new Error('boom');
     expect(() => rethrowPosError(boom)).toThrow(boom);

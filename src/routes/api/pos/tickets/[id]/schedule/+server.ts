@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { parseBody } from '$server/api/validate';
 import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { PosError } from '$server/services/pos.service';
 import {
@@ -53,7 +54,7 @@ export const POST: RequestHandler = async ({ locals, params, request }) => {
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
   if (!(await isModuleEnabled(ctx, 'pos'))) throw error(404);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   await requireOrgCapability(locals, 'scheduling', 'edit');
   const b = await parseBody(request, postSchema);
   try {

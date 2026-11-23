@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { parseBody } from '$server/api/validate';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import {
   ensureResourceSchedule,
   getResourceSchedule,
@@ -30,7 +30,7 @@ export const PUT: RequestHandler = async ({ locals, request, params }) => {
   await requireOrgCapability(locals, 'scheduling', 'manage');
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
   const b = await parseBody(request, putSchema);
   // A resource without a schedule row gets one here rather than a 404, so the
   // editor works for every resource, not only those seeded by createResource.

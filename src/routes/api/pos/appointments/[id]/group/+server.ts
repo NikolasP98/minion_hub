@@ -3,7 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { getCoreCtx } from '$server/auth/core-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { requireOrgCapability } from '$server/services/rbac.service';
-import { isModuleEnabled } from '$server/services/modules.service';
+import { requireModuleEnabled } from '$server/http/require-module';
 import { groupBookingResponse } from '../../../../scheduling/bookings/_handlers';
 
 /**
@@ -20,8 +20,8 @@ export const POST: RequestHandler = async ({ locals, request, params }) => {
   requireAuth(locals);
   const ctx = await getCoreCtx(locals);
   if (!ctx) throw error(401);
-  if (!(await isModuleEnabled(ctx, 'scheduling'))) throw error(403, 'scheduling module disabled');
-  if (!(await isModuleEnabled(ctx, 'pos'))) throw error(403, 'pos module disabled');
+  await requireModuleEnabled(ctx, 'scheduling');
+  await requireModuleEnabled(ctx, 'pos');
   await requireOrgCapability(locals, 'pos', 'edit');
 
   return groupBookingResponse(ctx, locals, request, params.id!);

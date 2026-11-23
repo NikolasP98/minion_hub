@@ -66,6 +66,6 @@ describe('POST /api/pos/tickets/:id/void', () => {
     mocks.voidTicket.mockRejectedValue(new mocks.PosError('refused', code));
     const res = await POST(post({ refund: 'cash' }));
     expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: 'refused', code });
+    expect(await res.json()).toEqual({ message: 'refused', error: 'refused', code });
   });
 });
