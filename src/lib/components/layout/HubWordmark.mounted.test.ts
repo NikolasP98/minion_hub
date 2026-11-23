@@ -94,13 +94,14 @@ it('preserves custom case and the explicit shell suffix under an uppercase typog
   host.style.textTransform = 'uppercase';
   document.body.append(host);
   try {
-    const { container } = render(
-      HubWordmark,
-      { name: 'Clínica Faces', suffix: 'hub' },
-      { container: host },
-    );
+    const { container } = render(HubWordmark, {
+      target: host,
+      props: { name: 'Clínica Faces', suffix: 'hub' },
+    });
     const prefix = container.querySelector('.hub-prefix')!;
     const suffix = container.querySelector('.hub-suffix')!;
+    expect(host.contains(prefix)).toBe(true);
+    expect(host.contains(suffix)).toBe(true);
     expect(getComputedStyle(host).textTransform).toBe('uppercase');
     expect(getComputedStyle(prefix).textTransform).toBe('none');
     expect(getComputedStyle(suffix).textTransform).toBe('none');
