@@ -378,7 +378,9 @@
   /** A phone opens on the day view unless the address names one. */
   /** Set once the override was written to the address; keeps it across a resize. */
   let viewWritten = $state(false);
-  const viewOverride = $derived((compact || viewWritten) && !data.viewInUrl && pageView === 'calendar');
+  const viewOverride = $derived(
+    (compact || viewWritten) && !data.viewInUrl && pageView === 'calendar',
+  );
   const view = $derived<CalendarView>(viewOverride ? 'day' : data.view);
   const viewNow = $derived<CalendarPageView>(viewOverride ? 'day' : data.pageView);
   // Mirror the override in the address ONCE with a shallow replace (no load). The router may not
@@ -400,9 +402,7 @@
     }, 0);
     return () => clearTimeout(id);
   });
-  const showAddButton = $derived(
-    compactCalendar && data.eventTypes.length > 0 && canSchedule,
-  );
+  const showAddButton = $derived(compactCalendar && data.eventTypes.length > 0 && canSchedule);
 
   // "…" menu rows. Register: same data and 16 h staleness as `ShiftBanner`.
   const dialogs = getShiftDialogs();
@@ -412,12 +412,7 @@
     const id = setInterval(() => (now = Date.now()), 60_000);
     return () => clearInterval(id);
   });
-  const shift = $derived(
-    shiftEntry(
-      page.data.openShift as Parameters<typeof shiftEntry>[0],
-      now,
-    ),
-  );
+  const shift = $derived(shiftEntry(page.data.openShift as Parameters<typeof shiftEntry>[0], now));
   const shiftLabel = $derived(
     shift.open ? m.pos_shift_income({ amount: formatMoney(shift.income) }) : m.pos_no_open_shift(),
   );
@@ -1119,9 +1114,9 @@
             aria-expanded={expandedGroups.has(g.key)}
             onclick={() => toggleGroup(g.key)}
           >
-            {#if expandedGroups.has(g.key)}<ChevronDown
+            {#if expandedGroups.has(g.key)}<ChevronDown size={iconSizes.sm} />{:else}<ChevronRight
                 size={iconSizes.sm}
-              />{:else}<ChevronRight size={iconSizes.sm} />{/if}
+              />{/if}
             <span class="tray-group-name truncate">{g.customerName ?? '—'}</span>
             <Badge size="sm">{m.pos_appt_group_count({ count: String(g.lines.length) })}</Badge>
           </Button>
@@ -1170,7 +1165,8 @@
         aria-haspopup="dialog"
         onclick={() => (unscheduledOpen = true)}
       >
-        <span class="k-label">{m.pos_appt_unscheduled({ count: String(data.pending.length) })}</span>
+        <span class="k-label">{m.pos_appt_unscheduled({ count: String(data.pending.length) })}</span
+        >
         <ChevronRight size={iconSizes.sm} />
       </Button>
     {/if}
@@ -1192,63 +1188,65 @@
     : 'pos-appointments-surface'}
 >
   {#if !compactCalendar}
-  <PageHeader titleId="pos-appointments-title" title={m.pos_nav_appointments()}>
-    {#snippet leading()}
-      <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
-    {/snippet}
-    {#snippet primaryActions()}
-      <!-- "New checkup" folded into this single button (owner: both accomplished
+    <PageHeader titleId="pos-appointments-title" title={m.pos_nav_appointments()}>
+      {#snippet leading()}
+        <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
+      {/snippet}
+      {#snippet primaryActions()}
+        <!-- "New checkup" folded into this single button (owner: both accomplished
            the same task) — checkup is now a same-page choice on the new-appointment
            form, shown once the picked customer has paid treatment history. -->
-      <Button
-        size="sm"
-        onclick={() => (createTarget = { day: currentDay })}
-        disabled={data.eventTypes.length === 0 || !canSchedule}
-        title={canSchedule ? undefined : m.no_permission()}
-      >
-        <Plus size={iconSizes.sm} />
-        {m.pos_appt_new()}
-      </Button>
-    {/snippet}
-  </PageHeader>
-
-  {#if showUnscheduled}
-    <section
-      class="tray"
-      aria-label={m.pos_appt_unscheduled({ count: String(data.pending.length) })}
-    >
-      <div class="tray-head">
         <Button
-          variant="ghost"
           size="sm"
-          class="tray-toggle"
-          aria-expanded={trayOpen}
-          onclick={toggleTray}
+          onclick={() => (createTarget = { day: currentDay })}
+          disabled={data.eventTypes.length === 0 || !canSchedule}
+          title={canSchedule ? undefined : m.no_permission()}
         >
-          {#if trayOpen}<ChevronDown size={iconSizes.sm} />{:else}<ChevronRight
-              size={iconSizes.sm}
-            />{/if}
-          {m.pos_appt_unscheduled({ count: String(data.pending.length) })}
+          <Plus size={iconSizes.sm} />
+          {m.pos_appt_new()}
         </Button>
-        {#if trayOpen}<span class="t-caption">{m.pos_appt_unscheduled_hint()}</span>{/if}
-        {#if trayOpen && hasPendingGroup}<span class="t-caption"
-            >{m.pos_appt_group_drag_hint()}</span
-          >{/if}
-      </div>
-      {#if trayOpen}
-        <div class="tray-items" role="list">
-          {@render trayGroups(false)}
+      {/snippet}
+    </PageHeader>
+
+    {#if showUnscheduled}
+      <section
+        class="tray"
+        aria-label={m.pos_appt_unscheduled({ count: String(data.pending.length) })}
+      >
+        <div class="tray-head">
+          <Button
+            variant="ghost"
+            size="sm"
+            class="tray-toggle"
+            aria-expanded={trayOpen}
+            onclick={toggleTray}
+          >
+            {#if trayOpen}<ChevronDown size={iconSizes.sm} />{:else}<ChevronRight
+                size={iconSizes.sm}
+              />{/if}
+            {m.pos_appt_unscheduled({ count: String(data.pending.length) })}
+          </Button>
+          {#if trayOpen}<span class="t-caption">{m.pos_appt_unscheduled_hint()}</span>{/if}
+          {#if trayOpen && hasPendingGroup}<span class="t-caption"
+              >{m.pos_appt_group_drag_hint()}</span
+            >{/if}
         </div>
-      {/if}
-    </section>
-  {/if}
+        {#if trayOpen}
+          <div class="tray-items" role="list">
+            {@render trayGroups(false)}
+          </div>
+        {/if}
+      </section>
+    {/if}
   {/if}
 
   <DataView
     views={['calendar', 'table', 'board']}
     value={pageView}
     onchange={(v) =>
-      navigate({ view: v === 'calendar' ? (compact ? 'day' : view) : v === 'board' ? 'board' : 'table' })}
+      navigate({
+        view: v === 'calendar' ? (compact ? 'day' : view) : v === 'board' ? 'board' : 'table',
+      })}
   >
     {#snippet children({ switcher, view: dv })}
       {#if dv === 'table' || dv === 'board'}
@@ -1474,10 +1472,17 @@
 </PageShell>
 
 {#if showAddButton}
-  <CalendarAddButton label={m.pos_appt_new()} onclick={() => (createTarget = { day: currentDay })} />
+  <CalendarAddButton
+    label={m.pos_appt_new()}
+    onclick={() => (createTarget = { day: currentDay })}
+  />
 {/if}
 
-<Sheet bind:open={unscheduledOpen} title={m.pos_appt_unscheduled({ count: String(data.pending.length) })} placement="bottom">
+<Sheet
+  bind:open={unscheduledOpen}
+  title={m.pos_appt_unscheduled({ count: String(data.pending.length) })}
+  placement="bottom"
+>
   <div class="tray-items in-sheet" role="list">
     {@render trayGroups(true)}
   </div>

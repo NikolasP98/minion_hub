@@ -16,10 +16,7 @@
   } from '$lib/assistant/accepted-runs';
   import { useDropRegistry } from '$lib/shell/drop-context.svelte';
   import { cornerReserve } from '$lib/state/ui/corner-reserve.svelte';
-  import {
-    defaultBottom,
-    raiseAboveReserve,
-  } from './floating-assistant-corner';
+  import { defaultBottom, raiseAboveReserve } from './floating-assistant-corner';
   import { preferenceOwner } from '$lib/state/ui/scoped-preference.svelte';
   import { fetchJson } from '$lib/api/fetch-json';
   import { fileDraftContext, type DraftFile } from '$lib/attachments/draft';
@@ -707,13 +704,7 @@
   // page reserved (see corner-reserve), so the saved place never changes.
   const shownPos = $derived(
     pos
-      ? raiseAboveReserve(
-          pos,
-          launcherSize,
-          { w: vw, h: vh },
-          cornerReserve.bottom,
-          LAUNCH_MARGIN,
-        )
+      ? raiseAboveReserve(pos, launcherSize, { w: vw, h: vh }, cornerReserve.bottom, LAUNCH_MARGIN)
       : null,
   );
   // TODO(handoff): only the launcher clears a reserved corner; the OPEN panel still anchors at
@@ -770,7 +761,10 @@
   function snapHome() {
     const w = launcherW();
     const h = launcherH();
-    pos = { left: vw - w - LAUNCH_MARGIN, top: vh - h - defaultBottom(LAUNCH_MARGIN, cornerReserve.bottom) };
+    pos = {
+      left: vw - w - LAUNCH_MARGIN,
+      top: vh - h - defaultBottom(LAUNCH_MARGIN, cornerReserve.bottom),
+    };
     homing = true;
     frac = savedFrac = null;
     setTimeout(homeSettled, 400); // fallback if no transition fires (already home)

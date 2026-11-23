@@ -341,13 +341,13 @@
     data.pageView === 'table' || data.pageView === 'board' ? data.pageView : 'calendar',
   );
 
-  const compactCalendar = $derived(
-    compact && pageView === 'calendar' && data.resources.length > 0,
-  );
+  const compactCalendar = $derived(compact && pageView === 'calendar' && data.resources.length > 0);
   /** A phone opens on the day view unless the address names one. */
   /** Set once the override was written to the address; keeps it across a resize. */
   let viewWritten = $state(false);
-  const viewOverride = $derived((compact || viewWritten) && !data.viewInUrl && pageView === 'calendar');
+  const viewOverride = $derived(
+    (compact || viewWritten) && !data.viewInUrl && pageView === 'calendar',
+  );
   const view = $derived<CalendarView>(viewOverride ? 'day' : data.view);
   const viewNow = $derived<CalendarPageView>(viewOverride ? 'day' : data.pageView);
   // Mirror the override in the address ONCE with a shallow replace (no load). The router may
@@ -438,26 +438,26 @@
     : 'scheduling-calendar-surface'}
 >
   {#if !compactCalendar}
-  <PageHeader
-    titleId="scheduling-calendar-title"
-    title={m.sched_calendar_title()}
-    subtitle={m.sched_calendar_subtitle()}
-  >
-    {#snippet leading()}
-      <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
-    {/snippet}
-    {#snippet primaryActions()}
-      <Button
-        size="sm"
-        onclick={() => (createTarget = { day: currentDay })}
-        disabled={data.eventTypes.length === 0 || !canCreate}
-        title={canCreate ? undefined : m.no_permission()}
-      >
-        <Plus size={iconSizes.sm} />
-        {m.appt_new_title()}
-      </Button>
-    {/snippet}
-  </PageHeader>
+    <PageHeader
+      titleId="scheduling-calendar-title"
+      title={m.sched_calendar_title()}
+      subtitle={m.sched_calendar_subtitle()}
+    >
+      {#snippet leading()}
+        <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
+      {/snippet}
+      {#snippet primaryActions()}
+        <Button
+          size="sm"
+          onclick={() => (createTarget = { day: currentDay })}
+          disabled={data.eventTypes.length === 0 || !canCreate}
+          title={canCreate ? undefined : m.no_permission()}
+        >
+          <Plus size={iconSizes.sm} />
+          {m.appt_new_title()}
+        </Button>
+      {/snippet}
+    </PageHeader>
   {/if}
 
   {#if data.resources.length === 0}
@@ -467,7 +467,9 @@
       views={['calendar', 'table', 'board']}
       value={pageView}
       onchange={(v) =>
-        navigate({ view: v === 'calendar' ? (compact ? 'day' : view) : v === 'board' ? 'board' : 'table' })}
+        navigate({
+          view: v === 'calendar' ? (compact ? 'day' : view) : v === 'board' ? 'board' : 'table',
+        })}
     >
       {#snippet children({ switcher, view: dv })}
         {#if dv === 'table' || dv === 'board'}
@@ -666,7 +668,10 @@
 </PageShell>
 
 {#if showAddButton}
-  <CalendarAddButton label={m.appt_new_title()} onclick={() => (createTarget = { day: currentDay })} />
+  <CalendarAddButton
+    label={m.appt_new_title()}
+    onclick={() => (createTarget = { day: currentDay })}
+  />
 {/if}
 
 <ConsumptionConfirmDialog

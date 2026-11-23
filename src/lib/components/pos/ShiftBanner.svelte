@@ -140,7 +140,6 @@
       paymentsError = true;
     }
   }
-
 </script>
 
 <!-- "Shift open" is an ICON with a tooltip, not a text label (owner ask
@@ -278,7 +277,9 @@
       </div>
       <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
       {#if dialogs && canAct('pos', 'edit')}
-        <Button type="button" class="act" onclick={dialogs.startOpen}>{m.pos_shift_open_cta()}</Button>
+        <Button type="button" class="act" onclick={dialogs.startOpen}
+          >{m.pos_shift_open_cta()}</Button
+        >
       {/if}
       {@render colleagues('closed-wide')}
     </div>
@@ -288,7 +289,9 @@
         <span class="mini-status">{m.pos_no_open_shift()}</span>
         {@render colleagues('closed-mini')}
         {#if dialogs && canAct('pos', 'edit')}
-          <Button type="button" class="act" onclick={dialogs.startOpen}>{m.pos_shift_open_cta()}</Button>
+          <Button type="button" class="act" onclick={dialogs.startOpen}
+            >{m.pos_shift_open_cta()}</Button
+          >
         {/if}
       </div>
     </div>
@@ -306,7 +309,9 @@
       <!-- Closing your OWN register is a pos:edit operation (what opens it);
          `pos: manage` only gates closing someone else's (API, close route). -->
       {#if dialogs && canAct('pos', 'edit')}
-        <Button type="button" class="act" onclick={dialogs.startClose}>{m.pos_shift_close_cta()}</Button>
+        <Button type="button" class="act" onclick={dialogs.startClose}
+          >{m.pos_shift_close_cta()}</Button
+        >
       {/if}
     </div>
     <div class="mini-rail">
@@ -319,12 +324,13 @@
         {@render income(false)}
         {@render colleagues('live-mini')}
         {#if dialogs && canAct('pos', 'edit')}
-          <Button type="button" class="act" onclick={dialogs.startClose}>{m.pos_shift_close_cta()}</Button>
+          <Button type="button" class="act" onclick={dialogs.startClose}
+            >{m.pos_shift_close_cta()}</Button
+          >
         {/if}
       </div>
     </div>
   {/if}
-
 </DataSource>
 
 <style>
@@ -608,5 +614,4 @@
   .box :global(.act):hover {
     background: color-mix(in srgb, currentColor 12%, transparent);
   }
-
 </style>

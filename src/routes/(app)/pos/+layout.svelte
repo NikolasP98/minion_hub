@@ -27,21 +27,21 @@
 <!-- `display: contents` keeps the shell a direct flex child of the app frame (height chain
      intact) while giving `:has()` one ancestor above BOTH the strip and the shell. -->
 <div class="pos-root">
-<!-- The shift control lives in the section nav's footer; without that nav the
+  <!-- The shift control lives in the section nav's footer; without that nav the
      cashier had no way to open a shift, so module mode gets it as a strip. -->
-{#if navMode.isModule}
-  <div class="shift-strip">
-    <ShiftBanner />
-  </div>
-{/if}
+  {#if navMode.isModule}
+    <div class="shift-strip">
+      <ShiftBanner />
+    </div>
+  {/if}
 
-<!-- Outside the nav and the strip: both are hidden on phones, and a native
+  <!-- Outside the nav and the strip: both are hidden on phones, and a native
      <dialog> under a hidden ancestor paints nothing but still blocks the page. -->
-<ShiftDialogs />
+  <ShiftDialogs />
 
-<SectionShell mode="responsive" {navigation}>
-  {@render children()}
-</SectionShell>
+  <SectionShell mode="responsive" {navigation}>
+    {@render children()}
+  </SectionShell>
 </div>
 
 <style>
