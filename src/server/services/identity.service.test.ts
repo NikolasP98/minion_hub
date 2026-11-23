@@ -6,6 +6,7 @@ import {
   findByChannelKey,
   getGoogleCredential,
   syncGoogleIdentityFromAccount,
+  removeIdentity,
 } from './identity.service';
 import { encryptAdc } from './identity-secrets';
 
@@ -17,11 +18,13 @@ vi.mock('$server/db/utils', () => ({
 // getGoogleCredential + listIdentities consult the Supabase vault first; these
 // tests exercise the legacy Turso fallback, so stub Supabase to "nothing found"
 // (null credential, empty identity lists) → the code falls back to Turso.
+const deleteFromSupabase = vi.fn().mockResolvedValue(false);
 const getGoogleCredentialFromSupabase = vi.fn().mockResolvedValue(null);
 vi.mock('./supabase-credential', () => ({
   getGoogleCredentialFromSupabase: (...args: unknown[]) => getGoogleCredentialFromSupabase(...args),
   listOAuthIdentitiesFromSupabase: vi.fn().mockResolvedValue([]),
   listChannelIdentitiesFromSupabase: vi.fn().mockResolvedValue([]),
+  deleteIdentityByIdFromSupabase: (...args: unknown[]) => deleteFromSupabase(...args),
 }));
 
 beforeEach(() => vi.clearAllMocks());
@@ -100,7 +103,15 @@ describe('identity.service', () => {
     const { db, resolveSequence } = createMockDb();
     resolveSequence([
       // 1st select: account row (provider=google for user)
-      [{ userId: 'u1', providerId: 'google', refreshToken: 'rt', scope: 'calendar', accountId: 'acc1' }],
+      [
+        {
+          userId: 'u1',
+          providerId: 'google',
+          refreshToken: 'rt',
+          scope: 'calendar',
+          accountId: 'acc1',
+        },
+      ],
       // 2nd select: user row (for email)
       [{ id: 'u1', email: 'nik@example.com' }],
       // 3rd: insert .onConflictDoUpdate chain (awaited, returns [])
@@ -120,5 +131,14 @@ describe('identity.service', () => {
     expect(result).toBeNull();
     expect(db.insert).not.toHaveBeenCalled();
     vi.unstubAllEnvs();
+  });
+
+  it('removeIdentity passes the owner to the Supabase delete and the Turso fallback', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]); // owner-filtered Turso delete matches nothing
+    expect(await removeIdentity({ db, tenantId: 't1' } as never, 'u1', 'iX')).toBe(false);
+    expect(deleteFromSupabase).toHaveBeenCalledWith('u1', 'iX');
+    resolveSequence([[{ id: 'iX' }]]);
+    expect(await removeIdentity({ db, tenantId: 't1' } as never, 'u1', 'iX')).toBe(true);
   });
 });

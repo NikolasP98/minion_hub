@@ -213,13 +213,24 @@ export async function markVerified(ctx: TenantContext, identityId: string) {
     .where(eq(userIdentities.id, identityId));
 }
 
-export async function removeIdentity(ctx: TenantContext, identityId: string) {
+/** Remove an identity only if it belongs to `userId`; false when nothing matched. */
+export async function removeIdentity(
+  ctx: TenantContext,
+  userId: string,
+  identityId: string,
+): Promise<boolean> {
   // Canonical vault first — listIdentities now serves Supabase rows (Supabase
   // ids), so a Turso-only delete would no-op on them. Fall back to Turso when
-  // the id isn't in Supabase (legacy rows / bake-in).
+  // the id isn't in Supabase (legacy rows / bake-in). Both stores filter by
+  // owner: Supabase by profile uuid, Turso by user_identities.user_id (the
+  // same id listIdentities reads with).
   const { deleteIdentityByIdFromSupabase } = await import('./supabase-credential');
-  if (await deleteIdentityByIdFromSupabase(identityId)) return;
-  await ctx.db.delete(userIdentities).where(eq(userIdentities.id, identityId));
+  if (await deleteIdentityByIdFromSupabase(userId, identityId)) return true;
+  const rows = await ctx.db
+    .delete(userIdentities)
+    .where(and(eq(userIdentities.id, identityId), eq(userIdentities.userId, userId)))
+    .returning({ id: userIdentities.id });
+  return rows.length > 0;
 }
 
 /** Backward-compatible channel lookup → provider+externalId. */
