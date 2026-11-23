@@ -2850,7 +2850,8 @@ export async function voidTicket(
   // TODO(handoff): a rebuild that read the sale before the void committed and
   // posts after this lookup still leaves a live movement on a void sale. The
   // close is a one-live-movement-per-sale constraint; see meta
-  // proposals/2026-11-14-hub-till-corrections-followups.md.
+  // proposals/2026-11-14-hub-till-corrections-followups.md. The unique live-entry
+  // index (stk_entries_org_live_source_uniq) exists and does not close this race.
   try {
     const live = await findEntryBySource(ctx, 'pos', id);
     const alreadyFailed = stockWarning && live?.id === ticket.stockEntryId;
