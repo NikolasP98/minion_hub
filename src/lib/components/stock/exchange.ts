@@ -1,5 +1,5 @@
 import * as m from '$lib/paraglide/messages';
-import { appLocale } from '$lib/utils/format';
+import { formatNumber } from '$lib/utils/format';
 import type { ExchangeErrorCode } from '$lib/stock/entry-legs';
 
 /** The form's own sentence for a canje rule (spec 142). */
@@ -26,7 +26,7 @@ const EXCHANGE_CODES = new Set<string>([
  */
 export function stockRefusal(body: App.Error | null, type: string): StockRefusal {
   const d = body?.details;
-  const qty = (v: unknown) => Number(v).toLocaleString(appLocale(), { maximumFractionDigits: 2 });
+  const qty = (v: unknown) => formatNumber(Number(v), { maximumFractionDigits: 2 });
   if (type === 'exchange' && body?.code === 'negative_stock' && d)
     return {
       title: m.stock_exchange_shortage_title({ item: String(d.item) }),
