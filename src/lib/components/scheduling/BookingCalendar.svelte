@@ -142,6 +142,7 @@
    * `proposals/2026-09-25-hub-pos-calendar-color-followups.md`.
    */
   import { onDestroy, tick, untrack, type Snippet } from 'svelte';
+  import { longpress, type LongpressDetail } from '$lib/actions/longpress';
   import {
     Check,
     ChevronDown,
@@ -321,7 +322,7 @@
     weekDays?: number;
     onweekdays?: (n: number) => void;
     /** Clicking an existing event. */
-    onopen: (bookingId: string) => void;
+    onopen: (bookingId: string, opts?: { reschedule?: boolean }) => void;
     /**
      * Right-clicking (or Shift+F10 / the Menu key on) an event block — the host
      * owns the menu, since what an event can be done to is route knowledge
@@ -335,7 +336,7 @@
     /** Route-specific chips inside the hover card (POS stock accrual). */
     chips?: Snippet<[CalendarBooking]>;
     /** Route-specific actions in the hover card footer (POS charge/complete/…). */
-    actions?: Snippet<[CalendarBooking]>;
+    actions?: Snippet<[CalendarBooking, { touch: boolean }?]>;
     /**
      * Working hours for off-hours shading: resourceId → weekday (0 = Sunday)
      * → `[open, close]` in minutes from midnight; a missing weekday = closed,
@@ -541,7 +542,8 @@
     null,
   );
   function beginScale(e: PointerEvent) {
-    if (e.button !== 0 || !scrollEl || !axisEl) return;
+    // Mouse only: on touch the gutter pans (a swipe there must not rescale and save the hours).
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !scrollEl || !axisEl) return;
     // Minutes under the pointer when the gesture starts — that instant stays
     // put on screen while the track grows/shrinks around it.
     const trackTop = axisEl.getBoundingClientRect().top + headHeightPx;
@@ -664,6 +666,19 @@
   // Day view is untouched; MONTH runs the same runway on the y axis (see the
   // month section below).
   const runway = $derived(view === 'week');
+  /** Shortest a block is drawn. A finger needs a little more than a cursor, but
+   *  never the 44px a phone gives every button (the grid opts out: `data-dense`). */
+  const BLOCK_MIN_PX = 18;
+  const BLOCK_MIN_PX_COARSE = 24;
+  let coarse = $state(false);
+  $effect(() => {
+    const mq = matchMedia('(pointer: coarse)');
+    coarse = mq.matches;
+    const onchange = (e: MediaQueryListEvent) => (coarse = e.matches);
+    mq.addEventListener('change', onchange);
+    return () => mq.removeEventListener('change', onchange);
+  });
+  const blockMinPx = $derived(coarse ? BLOCK_MIN_PX_COARSE : BLOCK_MIN_PX);
   /** Where a week-view runway opens for `d`: the Monday of its week; the phone
    *  layout (three days per screen) starts on `d` itself. */
   const anchorDay = (d: string) => (compact ? d : mondayOf(d));
@@ -1427,7 +1442,7 @@
       sub,
       subs: subsN,
       top: ((startMin - startHour * 60) / 60) * hourPx,
-      height: Math.max(18, ((endMin - startMin) / 60) * hourPx),
+      height: Math.max(blockMinPx, ((endMin - startMin) / 60) * hourPx),
     }));
   }
 
@@ -2079,32 +2094,74 @@
     const end = Math.max(start + snapMin, Math.max(d.startMin, d.curMin));
     return { colKey: d.colKey, start, end };
   });
+  // Gesture bookkeeping shared by mouse and touch, read by the edge-scroll loop;
+  // plain variables because nothing renders from them.
+  let gesturePointer = -1;
+  let lastPtr = { x: 0, y: 0 };
+  let gestureScroll = { top: 0 };
+  let createEl: HTMLElement | null = null;
+  const scrollDelta = () => (scrollEl ? scrollEl.scrollTop - gestureScroll.top : 0);
+  function markGesture(pointerId: number, x: number, y: number) {
+    gesturePointer = pointerId;
+    lastPtr = { x, y };
+    gestureScroll = { top: scrollEl?.scrollTop ?? 0 };
+  }
+  /** Drop whatever gesture state a previous press left behind. */
+  function resetGesture() {
+    drag = null;
+    createDrag = null;
+    createEl = null;
+    onHoldEnd();
+  }
+  /** Mouse only: touch and pen start through the long-press (`onHold`). */
   function beginCreate(event: PointerEvent, col: Column) {
-    if (event.button !== 0 || drag) return;
-    const el = event.currentTarget as HTMLElement;
-    el.setPointerCapture(event.pointerId);
-    const min = snappedMinutes(event.clientY, el);
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    resetGesture(); // a lost pointerup (unmounted layer, lost capture) must not block this press
+    startCreate(
+      event.currentTarget as HTMLElement,
+      event.pointerId,
+      event.clientX,
+      event.clientY,
+      col,
+    );
+  }
+  function startCreate(
+    el: HTMLElement,
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    col: Column,
+  ) {
+    if (drag || createDrag) return;
+    el.setPointerCapture(pointerId);
+    markGesture(pointerId, clientX, clientY);
+    createEl = el;
+    const min = snappedMinutes(clientY, el);
     createDrag = {
       colKey: col.key,
-      pressY: event.clientY,
+      pressY: clientY,
       startMin: min,
       curMin: min,
       active: false,
     };
   }
   function moveCreate(event: PointerEvent) {
+    if (event.pointerId !== gesturePointer) return;
+    lastPtr = { x: event.clientX, y: event.clientY };
+    updateCreate(event.clientY, event.currentTarget as HTMLElement);
+  }
+  function updateCreate(clientY: number, el: HTMLElement) {
     const d = createDrag;
     if (!d) return;
-    const active = d.active || Math.abs(event.clientY - d.pressY) >= CREATE_DRAG_PX;
-    createDrag = {
-      ...d,
-      active,
-      curMin: snappedMinutes(event.clientY, event.currentTarget as HTMLElement),
-    };
+    const active = d.active || Math.abs(clientY - d.pressY + scrollDelta()) >= CREATE_DRAG_PX;
+    createDrag = { ...d, active, curMin: snappedMinutes(clientY, el) };
   }
-  function endCreate(col: Column) {
+  function endCreate(event: PointerEvent, col: Column) {
+    if (event.pointerId !== gesturePointer) return;
     const span = createSpan;
     createDrag = null;
+    createEl = null;
+    onHoldEnd();
     if (span) onslot?.(col.day, minLabel(span.start), col.resourceId);
   }
 
@@ -2212,7 +2269,9 @@
     untrack(() => {
       drag = null;
       createDrag = null;
+      onHoldEnd();
       viewSheetOpen = false;
+      summaryOpen = false;
       pickerOpen = false;
       kebabOpen = false;
     });
@@ -2233,25 +2292,37 @@
   /** Set for one tick after a drag commit so the box's click doesn't open it. */
   let suppressClick = false;
 
-  // TODO(handoff): a drag cannot cross the runway's visible edge — there is no
-  // auto-scroll while the pointer is held at the left/right edge, so moving a
-  // booking to next week means scrolling first, then dragging (the same two
-  // steps the old week navigation needed). `colRects` is rebuilt at drag start
-  // only, so adding edge auto-scroll also means re-measuring it as the scroller
-  // moves. Ledger: proposals/2026-09-25-hub-pos-calendar-color-followups.md.
-  function beginDrag(e: PointerEvent, b: Placed, col: Column, mode: DragMode) {
-    if (!onmove || e.button !== 0) return;
-    temporalError = null;
-    e.stopPropagation();
+  /** Re-read every column's rect: at drag start, and again once an edge step has settled. */
+  function measureCols() {
     colRects = columns.map((c, i) => {
       const r = (colsEl?.children[i] as HTMLElement | undefined)?.getBoundingClientRect();
       return { key: c.key, left: r?.left ?? 0, right: r?.right ?? 0, inv: c.invoices !== null };
     });
+  }
+  /** Mouse only: touch and pen start through the long-press (`onHold`). */
+  function beginDrag(e: PointerEvent, b: Placed, col: Column, mode: DragMode) {
+    if (e.pointerType !== 'mouse' || !onmove || e.button !== 0) return;
+    e.stopPropagation();
+    resetGesture();
+    startDrag(e.pointerId, e.clientX, e.clientY, b, col, mode);
+  }
+  function startDrag(
+    pointerId: number,
+    clientX: number,
+    clientY: number,
+    b: Placed,
+    col: Column,
+    mode: DragMode,
+  ) {
+    if (!onmove || drag || createDrag) return;
+    temporalError = null;
+    markGesture(pointerId, clientX, clientY);
+    measureCols();
     drag = {
       boxKey: b.key,
       mode,
-      x0: e.clientX,
-      y0: e.clientY,
+      x0: clientX,
+      y0: clientY,
       fromKey: col.key,
       colKey: col.key,
       sub: b.sub,
@@ -2266,17 +2337,24 @@
     };
   }
   function onDragMove(e: PointerEvent) {
+    if (!drag || e.pointerId !== gesturePointer) return;
+    lastPtr = { x: e.clientX, y: e.clientY };
+    applyDrag(e.clientX, e.clientY);
+  }
+  /** The drag at pointer (x, y) — also called by the edge-scroll loop, since a
+   *  held finger fires no pointermove while the grid scrolls under it. */
+  function applyDrag(x: number, y: number) {
     if (!drag) return;
-    const dx = e.clientX - drag.x0;
-    const dy = e.clientY - drag.y0;
+    const dx = x - drag.x0;
+    const dy = y - drag.y0 + scrollDelta();
     if (!drag.active && Math.hypot(dx, dy) < 4) return;
     drag.active = true;
     drag.dMin = Math.round(((dy / hourPx) * 60) / snapMin) * snapMin;
     if (drag.mode === 'move') {
-      const hit = colRects.find((r) => e.clientX >= r.left && e.clientX < r.right);
+      const hit = colRects.find((r) => x >= r.left && x < r.right);
       if (hit) {
         drag.colKey = hit.key;
-        const lane = subAt(e.clientX, hit);
+        const lane = subAt(x, hit);
         if (dropReclassifies) drag.sub = lane;
         // View-only axis: the pointer may hover a foreign lane but the drag never
         // follows it — the lane is marked as refusing, the ghost stays home.
@@ -2284,6 +2362,186 @@
       }
     }
   }
+  function onDragCancel(e: PointerEvent) {
+    if (e.pointerId !== gesturePointer) return;
+    drag = null;
+    onHoldEnd();
+  }
+
+  // ── Edge scrolling (mouse and touch) ── while a drag or create is held, the
+  // grid scrolls under a pointer parked near its edge and the ghost follows.
+  const EDGE_PX = 48;
+  const EDGE_STEP_PX = 14;
+  const COL_EDGE_PX = 32;
+  const COL_DWELL_MS = 600;
+  function reapply() {
+    if (drag) applyDrag(lastPtr.x, lastPtr.y);
+    else if (createDrag && createEl) updateCreate(lastPtr.y, createEl);
+  }
+  /** Resolves once `el` has stopped scrolling: `scrollend` where it exists, else
+   *  a quiet period (the same fallback `onScroll` uses). */
+  function scrollSettled(el: HTMLElement): Promise<void> {
+    return new Promise((resolve) => {
+      let t: ReturnType<typeof setTimeout>;
+      const done = () => {
+        clearTimeout(t);
+        el.removeEventListener('scroll', bump);
+        el.removeEventListener('scrollend', done);
+        resolve();
+      };
+      const bump = () => {
+        clearTimeout(t);
+        t = setTimeout(done, 120);
+      };
+      el.addEventListener('scroll', bump);
+      if (HAS_SCROLLEND) el.addEventListener('scrollend', done);
+      // A scroll that was already at its target fires neither event.
+      t = setTimeout(done, 400);
+    });
+  }
+  /** Scroll the week runway exactly one column towards `dir`, then re-measure. */
+  async function stepColumn(el: HTMLElement, dir: 1 | -1) {
+    const d = drag;
+    const src = d && columns.find((c) => c.key === d.fromKey);
+    if (!src || !(colW > 0)) return;
+    const srcIdx = dayIndex(runwayStart, src.day);
+    const next = Math.round(el.scrollLeft / colW) + dir;
+    // The rendered window follows the settled scroll: stop before the source
+    // column would fall out of it (it must not unmount mid-drag).
+    if (
+      next < 0 ||
+      next > RUNWAY_DAYS - visibleCount ||
+      next > srcIdx + RENDER_PAD ||
+      next < srcIdx - visibleCount + 1 - RENDER_PAD
+    )
+      return;
+    el.scrollTo({ left: next * colW, behavior: 'smooth' });
+    await scrollSettled(el);
+    if (!drag) return;
+    await tick();
+    measureCols();
+    reapply();
+  }
+  function runEdgeScroll(): () => void {
+    let frame = 0;
+    let side = 0;
+    let since = 0;
+    let stepping = false;
+    const loop = (now: number) => {
+      frame = requestAnimationFrame(loop);
+      const el = scrollEl;
+      if (!el || stepping) return;
+      const r = el.getBoundingClientRect();
+      const up = r.top + EDGE_PX - lastPtr.y;
+      const down = lastPtr.y - (r.bottom - EDGE_PX);
+      const depth = up > 0 ? -up : down > 0 ? down : 0;
+      if (depth) {
+        const before = el.scrollTop;
+        el.scrollTop =
+          before +
+          Math.sign(depth) * Math.ceil(Math.min(1, Math.abs(depth) / EDGE_PX) * EDGE_STEP_PX);
+        if (el.scrollTop !== before) reapply();
+      }
+      // Sideways: the week runway only, and only a MOVE (a create stays in its column).
+      const dir =
+        runway && drag?.mode === 'move'
+          ? lastPtr.x < r.left + COL_EDGE_PX
+            ? -1
+            : lastPtr.x > r.right - COL_EDGE_PX
+              ? 1
+              : 0
+          : 0;
+      if (!dir) {
+        side = 0;
+        return;
+      }
+      if (dir !== side) {
+        side = dir;
+        since = now;
+        return;
+      }
+      if (now - since < COL_DWELL_MS) return;
+      side = 0;
+      stepping = true;
+      void stepColumn(el, dir).finally(() => (stepping = false));
+    };
+    frame = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(frame);
+  }
+  // Only a gesture past its dead zone scrolls: a press held near an edge must stay a click.
+  const gestureActive = $derived(!!drag?.active || !!createDrag?.active);
+  $effect(() => {
+    if (!gestureActive) return;
+    return untrack(runEdgeScroll);
+  });
+
+  // ── Touch ── a press-and-hold LIFTS a block (move) or starts a span on empty
+  // grid (create); a plain swipe scrolls. Mouse never comes through here.
+  let lastPointerType = '';
+  const isTouchLike = () => lastPointerType === 'touch' || lastPointerType === 'pen';
+  let touchHeld = false;
+  let heldEl: HTMLElement | null = null;
+  function onHold(d: LongpressDetail) {
+    if (!(d.target instanceof Element)) return;
+    const evt = d.target.closest<HTMLElement>('.evt[data-box-key]');
+    const track = evt ? null : d.target.closest<HTMLElement>('.slot-layer-track[data-col-key]');
+    const el = evt ?? track;
+    const col = columns.find((c) => c.key === el?.dataset.colKey);
+    if (!el || !col) return;
+    resetGesture(); // a new hold is a new gesture
+    try {
+      if (evt) {
+        const box = col.events.find((x) => x.key === evt.dataset.boxKey);
+        if (!box) return;
+        startDrag(d.pointerId, d.x, d.y, box, col, 'move');
+        if (drag) evt.setPointerCapture(d.pointerId);
+      } else if (feat.createDrag) {
+        startCreate(el, d.pointerId, d.x, d.y, col);
+      }
+    } catch {
+      // The pointer is already gone (released between the timer and here).
+      drag = null;
+      createDrag = null;
+      return;
+    }
+    if (!drag && !createDrag) return;
+    touchHeld = true;
+    heldEl = el;
+    el.setAttribute('data-held', '');
+  }
+  function onHoldEnd() {
+    touchHeld = false;
+    heldEl?.removeAttribute('data-held');
+    heldEl = null;
+  }
+  // ONE permanent non-passive listener (a browser only honours preventDefault on
+  // a touchmove listener that existed before the gesture began): it blocks the
+  // scroll only while a hold is lifted.
+  $effect(() => {
+    const el = scrollEl;
+    if (!el) return;
+    const block = (e: TouchEvent) => {
+      if (touchHeld && e.cancelable) e.preventDefault();
+    };
+    // A long press must lift the block, never open the browser's own menu.
+    const noMenu = (e: Event) => isTouchLike() && e.preventDefault();
+    el.addEventListener('touchmove', block, { passive: false });
+    el.addEventListener('contextmenu', noMenu);
+    return () => {
+      el.removeEventListener('touchmove', block);
+      el.removeEventListener('contextmenu', noMenu);
+    };
+  });
+  /** Touch card: pressing one of the host's action buttons hands over to the
+   *  host's own dialog, so the sheet closes behind it. */
+  function closeSheetOnPress(node: HTMLElement, on: boolean) {
+    const close = () => {
+      if (on) summaryOpen = false;
+    };
+    node.addEventListener('click', close);
+    return { destroy: () => node.removeEventListener('click', close) };
+  }
+
   /** Where the dragged box would land — rendered as a ghost in the target column. */
   const ghost = $derived.by(() => {
     if (!drag?.active) return null;
@@ -2310,7 +2568,7 @@
       startMin: s,
       endMin: en,
       top: ((s - DAY_START) / 60) * hourPx,
-      height: Math.max(18, ((en - s) / 60) * hourPx),
+      height: Math.max(blockMinPx, ((en - s) / 60) * hourPx),
       sub: reclass ? drag.sub : (src?.sub ?? 0),
       subs: src?.subs ?? 1,
     };
@@ -2349,7 +2607,9 @@
     return onto ? { colKey: target.key, box, onto, resourceId } : null;
   });
 
-  async function onDragEnd() {
+  async function onDragEnd(e: PointerEvent) {
+    if (e.pointerId !== gesturePointer) return;
+    onHoldEnd();
     const d = drag;
     const g = ghost;
     // Read BEFORE `drag` is cleared — it is the same derived value the outline
@@ -2518,15 +2778,36 @@
     optimistic = rest;
     optimisticLane = lanes;
   }
-  function openBox(id: string) {
+  /** Tap summary: the booking whose card the bottom sheet shows. */
+  let summary = $state<{ id: string; box: BookingBox } | null>(null);
+  let summaryOpen = $state(false);
+  function openBox(id: string, box?: BookingBox) {
     if (suppressClick) return;
     onselect?.(id);
+    if (box && feat.tapSummary && isTouchLike()) {
+      summary = { id, box };
+      summaryOpen = true;
+      return;
+    }
     onopen(id);
+  }
+  /** A sheet button: close first, then hand the host the booking. */
+  function summaryGo(opts?: { reschedule: true }) {
+    const id = summary?.id;
+    summaryOpen = false;
+    if (!id) return;
+    if (opts) onopen(id, opts);
+    else onopen(id);
   }
 
   /** Right-click on an event block: hand the host the box and the pointer.
    *  The native menu is only suppressed when a host actually offers one. */
   function boxContextMenu(e: MouseEvent, box: BookingBox) {
+    // A long press must lift the block, not open a menu over the drag.
+    if (isTouchLike()) {
+      e.preventDefault();
+      return;
+    }
     if (!oncontextmenu) return;
     e.preventDefault();
     e.stopPropagation();
@@ -2669,7 +2950,7 @@
 <svelte:window
   onpointermove={drag ? onDragMove : undefined}
   onpointerup={drag ? onDragEnd : undefined}
-  onpointercancel={drag ? () => (drag = null) : undefined}
+  onpointercancel={drag ? onDragCancel : undefined}
 />
 
 <!-- Products sold with the visit (spec 120): a fixed section, read-only. A line
@@ -2692,14 +2973,14 @@
 
 <!-- The per-booking hover card of a LONE booking. A multi-service event shows
      `defaultVisitCard` instead, and its per-service detail lives in the tray. -->
-{#snippet defaultBookingCard(sel: CalendarBooking)}
+{#snippet defaultBookingCard(sel: CalendarBooking, touch: boolean = false)}
   {@const selTone = statusTones[sel.status] ?? null}
   {@const sold = productsForVisit([sel])}
   <div class="hover-card">
     <div class="hc-head">
       <span class="t-label hc-time">{hhmm(sel.start)} – {hhmm(sel.end)}</span>
       <span class="hc-head-end">
-        {#if !hoverHidden.has('status')}
+        {#if touch || !hoverHidden.has('status')}
           {#if selTone}
             <Badge variant="semantic" value={selTone} size="sm">{statusLabel(sel.status)}</Badge>
           {:else}
@@ -2711,7 +2992,13 @@
     {#each hoverRows as f (f)}
       <!-- Above the actions, so the buttons stay last. -->
       {#if f === 'actions'}{@render soldProducts(sold)}{/if}
-      {#if f === 'title'}
+      {#if f === 'title' && touch}
+        <!-- The sheet has its own "Open appointment" button. -->
+        <p class="t-title hc-title">
+          {eventTitle(sel.eventTypeId)}
+          {#if sel.checkup}<Badge size="sm">{m.cal_checkup_badge()}</Badge>{/if}
+        </p>
+      {:else if f === 'title'}
         <!-- The title IS the opener (owner ask 2026-09-26: no "Open" button); the
              expand glyph slides in on hover/focus so the affordance reads
              without taking a slot when idle. -->
@@ -2766,8 +3053,13 @@
       {:else if f === 'chips' && chips}
         <div class="hc-chips">{@render chips(sel)}</div>
       {:else if f === 'actions'}
-        <div class="hc-actions" data-action-scope="row">
-          {#if actions}{@render actions(sel)}{/if}
+        <div
+          class="hc-actions"
+          data-action-scope="row"
+          class:is-touch={touch}
+          use:closeSheetOnPress={touch}
+        >
+          {#if actions}{@render actions(sel, { touch })}{/if}
         </div>
       {/if}
     {/each}
@@ -2779,7 +3071,7 @@
      window and status, the client, the chair, the tag union and a read-only list
      of the services. No member selector, no per-member action: a click opens the
      appointment, and the hint says so. -->
-{#snippet defaultVisitCard(box: BookingBox)}
+{#snippet defaultVisitCard(box: BookingBox, touch: boolean = false)}
   {@const b = box.statusLead}
   {@const tone = statusTones[b.status] ?? null}
   {@const cancelledN = inactiveMemberCount(box)}
@@ -2787,7 +3079,7 @@
     <div class="hc-head">
       <span class="t-label hc-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
       <span class="hc-head-end">
-        {#if !hoverHidden.has('status')}
+        {#if touch || !hoverHidden.has('status')}
           {#if tone}
             <Badge variant="semantic" value={tone} size="sm">{statusLabel(b.status)}</Badge>
           {:else}
@@ -3078,6 +3370,9 @@
 <div
   {...rest}
   class="cal-root {klass ?? ''}"
+  onpointerdowncapture={(e) => (lastPointerType = e.pointerType)}
+  onpointerupcapture={(e) => (lastPointerType = e.pointerType)}
+  onkeydowncapture={() => (lastPointerType = '')}
   style="--cal-gutter:{gutterPx}px;--cal-head-h:{headHeightPx}px;--cal-month-row:{monthRowRem}rem;--cal-col-min:{Math.max(
     132,
     subs.length * MIN_SUB_PX,
@@ -3254,6 +3549,35 @@
     </div>
   {/if}
 
+  {#if feat.tapSummary}
+    <!-- Tap summary (touch/pen only): the SAME card the hover shows, once, in
+         touch mode, with the two built-in ways on. -->
+    <Sheet bind:open={summaryOpen} title={m.cal_touch_summary_title()} placement="bottom">
+      {#if summary}
+        {@const box = summary.box}
+        <div class="sheet-body">
+          {#if box.members.length > 1}
+            {#if visitCard}{@render visitCard(box)}{:else}{@render defaultVisitCard(box, true)}{/if}
+          {:else if hoverCard}
+            {@render hoverCard(box.statusLead, box)}
+          {:else}
+            {@render defaultBookingCard(box.statusLead, true)}
+          {/if}
+          <div class="summary-go">
+            {#if onmove}
+              <Button variant="outline" size="md" onclick={() => summaryGo({ reschedule: true })}>
+                {m.board_move_to()}
+              </Button>
+            {/if}
+            <Button variant="primary" size="md" onclick={() => summaryGo()}>
+              {m.cal_open_appointment()}
+            </Button>
+          </div>
+        </div>
+      {/if}
+    </Sheet>
+  {/if}
+
   <!-- The grid region owns scroll (the toolbar above it never scrolls away):
      one scroll owner per screen, per the layout contract. In the week views it
      scrolls BOTH axes: x walks the day runway (snapped per day), y is the time
@@ -3267,7 +3591,9 @@
     class:is-month-runway={monthMeasured}
     class:is-scaling={scaling !== null}
     class:is-compact={compact}
+    data-dense
     bind:this={scrollEl}
+    use:longpress={{ ms: 400, slop: 12, onhold: onHold, onend: onHoldEnd }}
     onscroll={runway || monthRunway ? onScroll : undefined}
     onscrollend={(runway || monthRunway) && HAS_SCROLLEND ? settle : undefined}
   >
@@ -3327,7 +3653,7 @@
                       variant="ghost"
                       class="ag-row"
                       style="border-left-color:{sliver ?? 'var(--color-accent)'}"
-                      onclick={() => openBox(b.id)}
+                      onclick={() => openBox(b.id, box)}
                     >
                       <span class="ag-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
                       <span class="ag-title truncate">
@@ -3490,7 +3816,7 @@
                             onpointermove={monthChipMove}
                             onpointerup={monthChipUp}
                             onpointercancel={monthChipUp}
-                            onclick={() => openBox(b.id)}
+                            onclick={() => openBox(b.id, box)}
                           >
                             <span class="m-chip-t">{hhmm(box.start)}</span>
                             <span class="m-chip-n truncate">{chipLabel(box)}</span>
@@ -3686,8 +4012,11 @@
                       ? (e: PointerEvent) => beginCreate(e, col)
                       : undefined}
                     onpointermove={feat.createDrag ? moveCreate : undefined}
-                    onpointerup={feat.createDrag ? () => endCreate(col) : undefined}
-                    onpointercancel={feat.createDrag ? () => (createDrag = null) : undefined}
+                    onpointerup={feat.createDrag
+                      ? (e: PointerEvent) => endCreate(e, col)
+                      : undefined}
+                    onpointercancel={feat.createDrag ? resetGesture : undefined}
+                    data-col-key={col.key}
                     onkeydown={(e: KeyboardEvent) =>
                       e.key === 'Enter' && onslot?.(col.day, MONTH_NEW_TIME, col.resourceId)}
                   ></Button>
@@ -3775,8 +4104,10 @@
                               .filter(Boolean)
                               .join(' ') || undefined}
                             data-booking-id={box.lead.id}
+                            data-box-key={box.key}
+                            data-col-key={col.key}
                             data-sub={box.subs > 1 ? box.sub : undefined}
-                            onclick={() => openBox(box.lead.id)}
+                            onclick={() => openBox(box.lead.id, box)}
                             oncontextmenu={(e: MouseEvent) => boxContextMenu(e, box)}
                             onkeydown={(e: KeyboardEvent) => boxMenuKey(e, box)}
                           >
@@ -4449,7 +4780,7 @@
      its own (`TRACK_H` renders endHour's row). */
   .axis-scale {
     cursor: ns-resize;
-    touch-action: none;
+    touch-action: pan-x pan-y;
     user-select: none;
   }
   /* The pointer is captured, but the cursor follows whatever is under it —
@@ -4793,7 +5124,10 @@
     padding: 0;
     background: transparent;
     opacity: 0;
-    touch-action: none;
+    touch-action: pan-x pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
   }
   /* The span being dragged out. Pointer-transparent so it can never steal the
      drag on a box or the release that books it. */
@@ -4821,6 +5155,9 @@
      Button renders children inside an inner fixed-height inline-flex `<span>` —
      hence the `> span` override. See governance "Button slot trap". */
   .track :global(.evt) {
+    /* A block's height is its duration: no touch-target floor (the shared Button sets one on
+       coarse pointers that `data-dense` does not lift). The minimum is the inline height. */
+    min-height: 0;
     position: absolute;
     display: block;
     min-width: 0;
@@ -4832,6 +5169,21 @@
     padding: var(--space-0-5) var(--space-2);
     overflow: hidden;
     text-align: left;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* A held block (touch long-press) lifts before it moves. */
+  .track :global(.evt[data-held]) {
+    transform: scale(1.03);
+    box-shadow: var(--shadow-elevation-2);
+    transition: transform var(--duration-fast) var(--ease-standard);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .track :global(.evt[data-held]) {
+      transform: none;
+      transition: none;
+    }
   }
   .track :global(.evt:hover) {
     background: var(--color-surface-3);
@@ -4890,7 +5242,7 @@
   }
   .evt-in.draggable {
     cursor: grab;
-    touch-action: none;
+    touch-action: pan-x pan-y;
   }
   /* Tag marks sit in the block's top-right corner, not under the text: a
      30-minute block has no room below its title, so an in-flow row was clipped
@@ -5002,6 +5354,37 @@
     height: 6px;
     cursor: ns-resize;
     touch-action: none;
+  }
+  /* No finger-sized resize edge on a 6px strip: a touch move is the only gesture. */
+  @media (pointer: coarse) {
+    .evt-resize {
+      display: none;
+    }
+  }
+  /* The grid opts out of the 44px button floor (`data-dense`) so short blocks
+     keep their real height; what is NOT a block gets the floor back here, with
+     the same condition `app.css` uses. */
+  @media (pointer: coarse), (max-width: 767.98px) {
+    .cal-scroll[data-dense] :global(.ag-row),
+    .cal-scroll[data-dense] :global(.m-num),
+    .cal-scroll[data-dense] :global(.m-more),
+    .cal-scroll[data-dense] :global(.m-inv),
+    .cal-scroll[data-dense] :global(.m-hint) {
+      min-height: var(--control-height-touch);
+    }
+  }
+  .summary-go {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
+  }
+  .summary-go :global(button) {
+    flex: 1 1 auto;
+  }
+  .hc-actions.is-touch {
+    contain: none;
+    flex-wrap: wrap;
   }
   .track :global(.evt.is-dragging) {
     opacity: 0.35;

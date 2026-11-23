@@ -35,6 +35,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import { ConfirmDialog, Sheet } from '$lib/components/ui/foundations';
+  import { untrack } from 'svelte';
   import * as m from '$lib/paraglide/messages';
   import { formatDate, formatMoney, formatTime } from '$lib/utils/format';
   import { instantParts } from '$lib/time/zoned';
@@ -211,6 +212,9 @@
      *  only: custom fields are one set per EVENT, like notes, status and
      *  payment (owner decision 2026-10-10 — per-service fields out of scope). */
     customValues?: BookingCustomValues;
+    /** Open straight into the time editor once the detail has loaded (the
+     *  calendar's "Mover a…"). Read once per open, never on a later reload. */
+    startInReschedule?: boolean;
   };
 
   let {
@@ -225,6 +229,7 @@
     timeZone,
     mutationScope,
     customValues,
+    startInReschedule = false,
   }: Props = $props();
 
   let detail = $state<Detail | null>(null);
@@ -310,6 +315,7 @@
     const scopeChanged = detailScope !== nextScope;
     detailScope = nextScope;
     const token = ++gen;
+    const wantEdit = untrack(() => startInReschedule);
     if (scopeChanged) {
       detail = null;
       eventTags = null;
@@ -335,6 +341,7 @@
         const d = await loadDetail(id);
         if (token !== gen) return; // a newer open superseded this fetch
         detail = d;
+        if (wantEdit) openEdit();
         // loadDetail may have swapped a clicked member id for its visit lead;
         // the custom-fields section always keys off the lead (d.booking.id).
         if (d.booking.id !== id) customValues?.ensure([d.booking.id]);

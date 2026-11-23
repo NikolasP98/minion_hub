@@ -246,6 +246,8 @@
   /** The create tray's own gate — same capability the button uses. */
   const canBook = $derived(canCreate);
   let detailId = $state<string | null>(null);
+  /** Set by the calendar's "Mover a…": the drawer opens on the time editor. */
+  let detailReschedule = $state(false);
 
   /** The focused day per the URL, which the runway moves with a shallow replace —
    *  so it runs AHEAD of `data.day` (`settled-day.svelte.ts` owns the workaround). */
@@ -549,7 +551,7 @@
             tagOptions={cal.tagOptions}
             categories={data.categories}
             hours={data.hours}
-            features={{ agenda: true, split: false }}
+            features={{ agenda: true, split: false, tapSummary: true }}
             blockColorBy={prefs.blockColorBy}
             sliverColorBy={prefs.sliverColorBy}
             oncolorby={prefs.setColorBy}
@@ -568,7 +570,10 @@
             busy={winCache.busy}
             windows={winCache.windows}
             onwindowretry={winCache.retry}
-            onopen={(id) => (detailId = id)}
+            onopen={(id, opts) => {
+              detailId = id;
+              detailReschedule = !!opts?.reschedule;
+            }}
             onslot={canCreate ? newAt : undefined}
             onmove={canEdit ? mover.moveBooking : undefined}
           >
@@ -617,8 +622,22 @@
               </CollapsibleFilters>
             {/snippet}
 
-            {#snippet actions(b)}
-              {#if b.status === 'accepted' || b.status === 'pending'}
+            {#snippet actions(b, o)}
+              <!-- Touch: labelled buttons only; cancel and no-show stay in the
+                   appointment drawer, behind their confirmations. -->
+              {#if o?.touch}
+                {#if b.status === 'accepted' || b.status === 'pending'}
+                  <Button
+                    variant="outline"
+                    size="md"
+                    disabled={!canEdit}
+                    onclick={() => openComplete(b.id)}
+                  >
+                    <Check size={iconSizes.sm} />
+                    {m.sched_mark_complete()}
+                  </Button>
+                {/if}
+              {:else if b.status === 'accepted' || b.status === 'pending'}
                 <span
                   class="hc-act"
                   data-tip={canEdit ? m.sched_mark_complete() : m.no_permission()}
@@ -685,11 +704,18 @@
 
 <BookingDetailDrawer
   bookingId={detailId}
+  startInReschedule={detailReschedule}
   apiBase="/api/scheduling/bookings"
   {canEdit}
-  onclose={() => (detailId = null)}
+  onclose={() => {
+    detailId = null;
+    detailReschedule = false;
+  }}
   onchanged={() => refresh()}
-  onnavigate={(id) => (detailId = id)}
+  onnavigate={(id) => {
+    detailId = id;
+    detailReschedule = false;
+  }}
   resources={data.resources}
   timeZone={data.orgTz}
   {mutationScope}

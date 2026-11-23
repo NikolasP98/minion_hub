@@ -263,6 +263,8 @@
   // /api/pos/appointments*, which the central gate maps to pos:create/edit.
   const canSchedule = $derived(canAct('pos', 'edit') || canAct('pos', 'create'));
   let detailId = $state<string | null>(null);
+  /** Set by the calendar's "Mover a…": the drawer opens on the time editor. */
+  let detailReschedule = $state(false);
 
   /**
    * The focused day per the URL, which the calendar's runway moves with a
@@ -1317,7 +1319,7 @@
           kebabBadge={compactCalendar && showUnscheduled ? data.pending.length : null}
           kebabAttention={compactCalendar && shift.attention}
           style={showAddButton ? FAB_ROOM : undefined}
-          features={{ agenda: compactCalendar }}
+          features={{ agenda: compactCalendar, tapSummary: true }}
           date={currentDay}
           timeZone={data.orgTz}
           {mutationScope}
@@ -1345,7 +1347,10 @@
           subBy={compactCalendar ? 'none' : prefs.subBy}
           onsubby={prefs.setSubBy}
           {customValues}
-          onopen={(id) => (detailId = id)}
+          onopen={(id, opts) => {
+            detailId = id;
+            detailReschedule = !!opts?.reschedule;
+          }}
           oncontextmenu={openEventMenu}
           onslot={newAt}
           hours={data.hours}
@@ -1409,16 +1414,34 @@
 
           <!-- PATCH/complete live under /api/scheduling → gated centrally by
          scheduling:edit, not pos:edit — gate on that capability here too. -->
-          {#snippet actions(b)}
+          {#snippet actions(b, o)}
             <!-- Same gate as the context menu: a booking a ticket already charged is not
                  offered for charging again (FACES report 2026-11-03). -->
             {#if b.status === 'completed' && !b.paid && canAct('pos', 'edit')}
-              <Button variant="outline" size="sm" onclick={() => chargeOne(b as Booking)}>
+              <Button
+                variant="outline"
+                size={o?.touch ? 'md' : 'sm'}
+                onclick={() => chargeOne(b as Booking)}
+              >
                 <ShoppingCart size={iconSizes.sm} />
                 {m.pos_appt_charge()}
               </Button>
             {/if}
-            {#if b.status === 'accepted' || b.status === 'pending'}
+            <!-- Touch: labelled buttons only. Cancel and no-show stay in the
+                 appointment drawer, behind their confirmations. -->
+            {#if o?.touch}
+              {#if b.status === 'accepted' || b.status === 'pending'}
+                <Button
+                  variant="outline"
+                  size="md"
+                  disabled={!canSchedule}
+                  onclick={() => (completeFor = { id: b.id, productId: b.productId ?? null })}
+                >
+                  <Check size={iconSizes.sm} />
+                  {m.sched_mark_complete()}
+                </Button>
+              {/if}
+            {:else if b.status === 'accepted' || b.status === 'pending'}
               <span
                 class="hc-act"
                 data-tip={canSchedule ? m.sched_mark_complete() : m.no_permission()}
@@ -1543,11 +1566,18 @@
 
 <BookingDetailDrawer
   bookingId={detailId}
+  startInReschedule={detailReschedule}
   apiBase="/api/pos/appointments"
   canEdit={canSchedule}
-  onclose={() => (detailId = null)}
+  onclose={() => {
+    detailId = null;
+    detailReschedule = false;
+  }}
   onchanged={() => refresh()}
-  onnavigate={(id) => (detailId = id)}
+  onnavigate={(id) => {
+    detailId = id;
+    detailReschedule = false;
+  }}
   resources={data.resources}
   timeZone={data.orgTz}
   {mutationScope}

@@ -285,7 +285,12 @@ async function dragAcrossLane(view: RenderResult<typeof Calendar>, label = 'Room
   const x = i * 100 + Math.round(((k + 0.5) / lanes.length) * 100);
   const handle = box.querySelector<HTMLElement>('.evt-in')!;
   const y = 300;
-  await fireEvent.pointerDown(handle, { button: 0, clientX: i * 100 + 10, clientY: y });
+  await fireEvent.pointerDown(handle, {
+    button: 0,
+    pointerType: 'mouse',
+    clientX: i * 100 + 10,
+    clientY: y,
+  });
   const dy = hours * DEFAULT_PX_PER_HOUR;
   await fireEvent.pointerMove(window, { clientX: x, clientY: y + dy });
   await fireEvent.pointerUp(window, { clientX: x, clientY: y + dy });

@@ -6,8 +6,8 @@
  * default is what `/pos/appointments` — the surface the grid grew up on — does
  * today, so a caller that passes nothing keeps that behaviour exactly.
  *
- * `agenda` is the one default-OFF flag: it adds a view to the switcher, so a
- * surface has to ask for it.
+ * `agenda` and `tapSummary` are default-OFF: they add a view / a touch
+ * behaviour, so a surface has to ask for them.
  */
 
 export const CALENDAR_FEATURE_DEFAULTS = {
@@ -36,6 +36,9 @@ export const CALENDAR_FEATURE_DEFAULTS = {
   datePicker: true,
   /** The `agenda` view — a day-grouped list — and its switcher entry. */
   agenda: false,
+  /** Touch/pen tap on a booking opens a summary sheet instead of the drawer.
+   *  Default-off: a surface has to ask for it. */
+  tapSummary: false,
 } as const;
 
 export type CalendarFeature = keyof typeof CALENDAR_FEATURE_DEFAULTS;

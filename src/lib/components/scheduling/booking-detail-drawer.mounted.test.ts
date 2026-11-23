@@ -192,4 +192,22 @@ describe('BookingDetailDrawer acts on the booking it shows (spec 116 FR-008)', (
       .map((u) => new URL(u, 'http://x').searchParams.get('sourceId'));
     expect(read).toEqual(['V1']);
   });
+
+  it('startInReschedule opens the time editor once the detail has loaded, and only once', async () => {
+    net.details.A = detailOf('A', 'Ana');
+    const view = render(BookingDetailDrawer, { ...props('A'), startInReschedule: true });
+    await waitFor(() => expect(view.container.querySelector('.edit-box')).not.toBeNull());
+    // Closing the editor is not undone by the still-true flag.
+    await fireEvent.click(
+      view.container.querySelector('.edit-box .row:last-child button:last-child')!,
+    );
+    expect(view.container.querySelector('.edit-box')).toBeNull();
+  });
+
+  it('without startInReschedule the editor stays closed', async () => {
+    net.details.A = detailOf('A', 'Ana');
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByRole('button', { name: 'Mark no-show' });
+    expect(view.container.querySelector('.edit-box')).toBeNull();
+  });
 });
