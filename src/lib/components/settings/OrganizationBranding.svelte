@@ -63,7 +63,7 @@
     controller?.abort();
   });
 
-  const validation = $derived(draft === null ? { ok: true } : validateHubName(draft));
+  const validation = $derived(draft === null ? { ok: true as const } : validateHubName(draft));
   const preview = $derived(
     resolveBranding({
       id: settings.branding.orgId ?? '',
@@ -234,7 +234,13 @@
           draft = (event.target as HTMLInputElement).value;
         }}
         disabled={!editable || locked}
-        error={validation.ok ? undefined : m.branding_invalid()}
+        error={validation.ok || validation.code === 'unavailable'
+          ? undefined
+          : validation.code === 'bytes'
+            ? m.branding_complexName()
+            : validation.code === 'suffix'
+              ? m.branding_suffixInvalid()
+              : m.branding_invalid()}
       />
       <p class="t-caption copy">
         {m.branding_counter({ count: String(hubNameLength(draft ?? preview.name)) })}
@@ -267,9 +273,11 @@
         </div>
       {:else}
         <p class="t-caption copy">
-          {settings.branding.readStatus === 'ready'
-            ? m.branding_readOnly()
-            : m.branding_unavailable()}
+          {!brandingValidationAvailable()
+            ? m.branding_runtimeUnavailable()
+            : settings.branding.readStatus === 'ready'
+              ? m.branding_readOnly()
+              : m.branding_unavailable()}
         </p>
       {/if}
       {#if notice !== 'idle'}

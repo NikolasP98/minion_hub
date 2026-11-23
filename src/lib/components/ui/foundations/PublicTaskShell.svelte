@@ -173,6 +173,7 @@
   }
 
   .wordmark-minion {
+    text-transform: none;
     min-width: 0;
     overflow-wrap: anywhere;
     padding: var(--space-0-5) var(--space-2);

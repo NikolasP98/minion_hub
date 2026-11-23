@@ -41,7 +41,7 @@
   let name = $state('');
   let hubNameDraft = $state('');
   let hubNameEdited = $state(false);
-  const hubName = $derived(hubNameEdited ? hubNameDraft : (suggestHubName(name) ?? 'MINION'));
+  const hubName = $derived(hubNameEdited ? hubNameDraft : (suggestHubName(name) ?? ''));
   const hubNameValidation = $derived(validateHubName(hubName));
   let existingWorkforceCompanyId = $state('');
   let submitting = $state(false);
@@ -134,7 +134,15 @@
               hubNameDraft = (event.target as HTMLInputElement).value;
               hubNameEdited = true;
             }}
-            error={hubNameValidation.ok ? undefined : m.branding_invalid()}
+            error={hubNameValidation.ok
+              ? undefined
+              : hubNameValidation.code === 'bytes'
+                ? m.branding_complexName()
+                : hubNameValidation.code === 'unavailable'
+                  ? m.branding_runtimeUnavailable()
+                  : hubNameValidation.code === 'suffix'
+                    ? m.branding_suffixInvalid()
+                    : m.branding_invalid()}
           />
           <p class="t-caption form-copy">
             {m.branding_counter({ count: String(hubNameLength(hubName)) })}

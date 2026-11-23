@@ -243,3 +243,25 @@ it('retires pending editor state when the action runtime changes scope for the s
   await Promise.resolve();
   expect(invalidate).not.toHaveBeenCalled();
 });
+
+it('explains a complex one-grapheme name without dispatching a shared change', async () => {
+  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+  render(OrganizationBranding, { settings: settings() });
+  const complexName = 'a' + '\u0301'.repeat(130);
+  await edit(complexName);
+  expect(screen.getByText('This name is too complex. Use fewer accents or simpler characters.')).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Save shared name' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(fetcher).not.toHaveBeenCalled();
+});
+
+it('explains unavailable browser validation independently of a ready authorized server projection', () => {
+  const ready = settings();
+  vi.stubGlobal('Intl', Object.assign(Object.create(Intl), { Segmenter: undefined }));
+  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+  render(OrganizationBranding, { settings: ready });
+  expect(screen.getByText('This browser cannot validate Hub names. Use an updated browser to choose a Hub name.')).toBeTruthy();
+  expect(screen.queryByText('Only an organization owner with permission to manage settings can change this name.')).toBeNull();
+  expect((screen.getByLabelText('Hub name') as HTMLInputElement).disabled).toBe(true);
+  expect(screen.queryByRole('button', { name: 'Save shared name' })).toBeNull();
+  expect(fetcher).not.toHaveBeenCalled();
+});

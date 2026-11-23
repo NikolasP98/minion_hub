@@ -184,9 +184,18 @@
 <svelte:document onpointerdown={onPickerPointerDown} onkeydown={onPickerKeydown} />
 
 <header
-  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] min-h-14"
+  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)]"
 >
-  <div class="topbar-controls relative flex items-center min-h-14 px-3 py-2 gap-2">
+  <a
+    use:moduleNavigation.link
+    href="/"
+    class="topbar-wordmark-row no-underline"
+    aria-label={getBranding().fullName}
+  >
+    <MinionLogo size="sm" />
+    <span class="mobile-brand-wordmark t-label"><HubWordmark /></span>
+  </a>
+  <div class="topbar-controls relative">
     <Button
       variant="ghost"
       size="xs"
@@ -211,11 +220,10 @@
     <a
       use:moduleNavigation.link
       href="/"
-      class="flex items-center gap-2 no-underline group min-w-0 flex-1"
+      class="topbar-icon-brand no-underline"
       aria-label={getBranding().fullName}
     >
       <MinionLogo size="sm" />
-      <span class="mobile-brand-wordmark t-label"><HubWordmark /></span>
     </a>
 
     <div class="h-5 w-px bg-[var(--hairline)] mx-1 shrink-0"></div>
@@ -472,14 +480,47 @@
 </header>
 
 <style>
+  .mobile-topbar {
+    min-height: var(--page-header-height);
+    height: auto;
+  }
+  .topbar-wordmark-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3) var(--space-3) 0;
+  }
+  .mobile-brand-wordmark {
+    min-width: 0;
+  }
+  .topbar-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: var(--page-header-height);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+  .topbar-icon-brand {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-height-touch);
+    min-height: var(--control-height-touch);
+  }
   .mobile-topbar :global(button) {
     min-width: var(--control-height-touch);
     min-height: var(--control-height-touch);
     flex-shrink: 0;
   }
   @media (max-width: 400px) {
-    .mobile-brand-wordmark {
+    .topbar-wordmark-row {
       display: none;
+    }
+    .topbar-icon-brand {
+      display: flex;
     }
   }
   .mobile-menu-nav {
