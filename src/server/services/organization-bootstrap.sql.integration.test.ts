@@ -28,7 +28,7 @@ beforeAll(async () => {
   await owner.unsafe(`create schema "${schema}"`);
   await app.unsafe(`
     create table profiles(id uuid primary key);
-    create table organizations(id uuid primary key,name text,slug text unique,status text default 'active');
+    create table organizations(id uuid primary key,name text,slug text unique,status text default 'active',hub_name text);
     create table org_roles(org_id text,key text,name text,rank int,source_role_key text,created_by text,primary key(org_id,key));
     create table permission_rules(org_id uuid,role_key text,module text,can_view bool,can_create bool,can_edit bool,can_delete bool,can_export bool,can_manage bool,if_owner bool,field_level int,unique(org_id,role_key,module));
     create table organization_members(organization_id uuid references organizations(id),profile_id uuid references profiles(id),role text,primary key(organization_id,profile_id));
@@ -70,10 +70,16 @@ describe('organization role bootstrap against PostgreSQL', () => {
   });
   it('creates one Administrator with explicit full organization grants and separate ownership', async () => {
     const result = await bootstrapOrganization(
-      { name: 'New org', slug: 'new-org', profileId: creator },
+      { name: 'New org', slug: 'new-org', profileId: creator, hubName: 'Custom' },
       app,
     );
-    expect(result).toMatchObject({ created: true, roleModel: 'organization' });
+    expect(result).toMatchObject({ created: true, roleModel: 'organization', hub_name: 'Custom' });
+    expect(
+      await bootstrapOrganization(
+        { name: 'Retry', slug: 'new-org', profileId: creator, hubName: 'Replacement' },
+        app,
+      ),
+    ).toMatchObject({ created: false, hub_name: 'Custom', name: 'New org' });
     const [audit] =
       await app`select jsonb_typeof(changes) as kind,changes->0->>'field' as field,changes->0->>'defaultRole' as role from doc_audit_log where org_id=${result.id}`;
     expect(audit).toEqual({ kind: 'array', field: 'role_model', role: INITIAL_ADMINISTRATOR_KEY });
@@ -98,7 +104,10 @@ describe('organization role bootstrap against PostgreSQL', () => {
   });
   it('rolls back organization, role and matrix when membership cannot commit', async () => {
     await expect(
-      bootstrapOrganization({ name: 'Invalid creator', slug: 'invalid', profileId: creator }, app),
+      bootstrapOrganization(
+        { name: 'Invalid creator', slug: 'invalid', profileId: creator, hubName: 'Invalid' },
+        app,
+      ),
     ).rejects.toThrow();
     expect(await app`select id from organizations where slug='invalid'`).toHaveLength(0);
     expect(

@@ -830,3 +830,23 @@ describe('stock corrections admission (spec 124)', () => {
     expect(apiReadCapability('/api/stock/entries')).toMatchObject({ module: 'stock' });
   });
 });
+
+describe('exact organization identity PATCH capability', () => {
+  test('requires settings manage only for both exact PATCH writers and preserves read/near-path mappings', async () => {
+    const { apiWriteCapability } = await import('./rbac.service');
+    for (const path of ['/api/organizations/branding', '/api/tenants/me']) {
+      expect(apiWriteCapability(path, 'PATCH')).toEqual({ module: 'settings', action: 'manage' });
+      expect(apiWriteCapability(path, 'GET')).toBeNull();
+      for (const near of [path + '/', path + '/other', path + '-other'])
+        expect(apiWriteCapability(near, 'PATCH')).not.toEqual({
+          module: 'settings',
+          action: 'manage',
+        });
+      for (const method of ['POST', 'PUT', 'DELETE'])
+        expect(apiWriteCapability(path, method)).not.toEqual({
+          module: 'settings',
+          action: 'manage',
+        });
+    }
+  });
+});

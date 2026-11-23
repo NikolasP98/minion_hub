@@ -15,6 +15,7 @@ import { testDatabaseUrl } from '../../../src/server/test-utils/test-db-url';
 import { runSeed } from './index';
 import { countAllSeededRows, type RowRef } from './db';
 import { MATRIX, matrixById } from './matrix';
+import { resolveBranding } from '../../../src/lib/branding';
 import { matrixUuid } from './ids';
 import { MODULES } from '../../../src/server/services/rbac.service';
 import { templateCaps } from '../../../src/server/services/role-templates';
@@ -35,6 +36,29 @@ describe.skipIf(!dbUrl)('QA seed matrix contract', () => {
   let sql: ReturnType<typeof postgres>;
   let libsql: LibsqlClient;
   let registered: ReadonlyMap<string, RowRef>;
+
+  it('branding fixtures preserve null automatic modes, explicit defaults and independent authorized actors', async () => {
+    for (const [key, expected, source, hubName] of [
+      ['short', 'Faces', 'organization', null],
+      ['long', 'MINION', 'default', null],
+      ['custom', 'Clínica Faces', 'custom', 'Clínica Faces'],
+      ['minion', 'MINION', 'custom', 'MINION'],
+      ['maximum', 'WWWWWWWWWWWWWWW', 'custom', 'WWWWWWWWWWWWWWW'],
+    ] as const) {
+      const id = matrixUuid(`tenancy.branding.${key}`);
+      const [row] = await sql<
+        { id: string; name: string; hub_name: string | null }[]
+      >`select id,name,hub_name from organizations where id=${id}::uuid`;
+      expect(row.hub_name).toBe(hubName);
+      expect(resolveBranding(row)).toMatchObject({ name: expected, source });
+      expect(
+        await sql`select role from organization_members where organization_id=${id}::uuid and profile_id=${registered.get('tenancy.user.branding-owner')!.where.id}::uuid`,
+      ).toEqual([{ role: 'owner' }]);
+      expect(
+        await sql`select role from organization_members where organization_id=${id}::uuid and profile_id=${registered.get('tenancy.user.branding-staff')!.where.id}::uuid`,
+      ).toEqual([{ role: 'member' }]);
+    }
+  });
 
   it('new role model seeds exactly one local Administrator and never falls back for missing assignments', async () => {
     expect(

@@ -651,6 +651,19 @@ export const NATIVE_POSTGRES_MANIFEST = {
   ],
   'qa-native': [
     {
+      file: 'src/server/services/organization-branding.sql.integration.test.ts',
+      minimumAssertions: 7,
+      requiredBehaviors: [
+        'organization branding native PostgreSQL migration has no backfill and enforces nullable nonblank trimmed byte envelope',
+        'organization branding native PostgreSQL fresh owner membership permits both role models independently of the assigned role key',
+        'organization branding native PostgreSQL staff foreign profiles and deleting profiles cannot bypass either identity writer; simulation is read-only',
+        'organization branding native PostgreSQL authenticated direct owner staff and foreign SQL cannot update the branding column',
+        'organization branding native PostgreSQL unique slug rollback preserves both automatic source name and stored override',
+        'organization branding native PostgreSQL revocation committed before admission rejects the queued writer without changing identity',
+        'organization branding native PostgreSQL admitted writer holds membership locks through commit before a concurrent revocation',
+      ],
+    },
+    {
       file: 'src/server/services/brain-access-grants.sql.integration.test.ts',
       minimumAssertions: 19,
       requiredBehaviors: [

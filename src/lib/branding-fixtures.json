@@ -1,0 +1,98 @@
+[
+  {
+    "input": "Faces",
+    "valid": true,
+    "normalized": "Faces"
+  },
+  {
+    "input": " MINION ",
+    "valid": true,
+    "normalized": "MINION"
+  },
+  {
+    "input": "  Clínica Faces ",
+    "valid": true,
+    "normalized": "Clínica Faces"
+  },
+  {
+    "input": "é",
+    "valid": true,
+    "normalized": "é"
+  },
+  {
+    "input": "WWWWWWWWWWWWWWW",
+    "valid": true
+  },
+  {
+    "input": "WWWWWWWWWWWWWWWW",
+    "valid": false
+  },
+  {
+    "input": "界界界界界界界界界界界界界界界",
+    "valid": true
+  },
+  {
+    "input": "界界界界界界界界界界界界界界界界",
+    "valid": false
+  },
+  {
+    "input": "👩‍👩‍👧‍👦",
+    "valid": true
+  },
+  {
+    "input": "1️⃣",
+    "valid": true
+  },
+  {
+    "input": "️",
+    "valid": false
+  },
+  {
+    "input": "a‍b",
+    "valid": false
+  },
+  {
+    "input": "Faces\n",
+    "valid": false
+  },
+  {
+    "input": "A\tB",
+    "valid": false
+  },
+  {
+    "input": "A‮B",
+    "valid": false
+  },
+  {
+    "input": "",
+    "valid": false
+  },
+  {
+    "input": "   ",
+    "valid": false
+  },
+  {
+    "input": "Hub",
+    "valid": false
+  },
+  {
+    "input": "Faces Hub",
+    "valid": false
+  },
+  {
+    "input": "Faces-Hub",
+    "valid": true
+  },
+  {
+    "input": "FacesHub",
+    "valid": true
+  },
+  {
+    "input": "á́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́́",
+    "valid": false
+  },
+  {
+    "input": "<b>Hi</b>",
+    "valid": true
+  }
+]

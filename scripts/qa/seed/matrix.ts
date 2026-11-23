@@ -45,6 +45,16 @@ export interface MatrixEntry {
 export const MATRIX_VERSION = 'qa-seed-v1';
 
 export const MATRIX: readonly MatrixEntry[] = [
+  ...['owner', 'staff', 'admin'].map((key) => ({
+    id: `tenancy.user.branding-${key}`,
+    domain: 'tenancy' as const,
+    why: 'Independent branding actors across five fixture organizations without changing established persona memberships',
+  })),
+  ...['short', 'long', 'custom', 'minion', 'maximum'].map((key) => ({
+    id: `tenancy.branding.${key}`,
+    domain: 'tenancy' as const,
+    why: 'Shared Hub identity: automatic short/long fallback, custom, explicit MINION and 15-grapheme width boundary',
+  })),
   ...[
     'tenancy.org.organization-roles',
     'tenancy.role.organization-administrator',
