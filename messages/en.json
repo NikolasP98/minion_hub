@@ -7728,5 +7728,6 @@
   "cal_strip_prev_week": "Previous week",
   "cal_strip_next_week": "Next week",
   "cal_compact_attention": "Needs attention",
-  "pos_appt_goto": "Go to"
+  "pos_appt_goto": "Go to",
+  "cal_touch_summary_title": "Appointment"
 }

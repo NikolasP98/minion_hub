@@ -21,6 +21,7 @@ describe('resolveFeatures', () => {
     ['split', true],
     ['datePicker', true],
     ['agenda', false],
+    ['tapSummary', false],
   ];
 
   it.each(table)('%s defaults to %s', (flag, expected) => {

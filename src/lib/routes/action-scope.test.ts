@@ -41,7 +41,7 @@ describe('action scope on the pilots', () => {
     const calendar = componentSource('scheduling/BookingCalendar.svelte');
     expect(calendar).toContain('class="cal-toolbar" data-action-scope="collection"');
     expect(calendar).toContain('class="cal-tools" data-action-scope="collection"');
-    expect(calendar).toContain('class="hc-actions" data-action-scope="row"');
+    expect(calendar).toMatch(/class="hc-actions"\s+data-action-scope="row"/);
     expect(routeSource('scheduling/calendar/PageBody.svelte')).toContain(
       'class="dv-bar view-toolbar" data-action-scope="collection"',
     );

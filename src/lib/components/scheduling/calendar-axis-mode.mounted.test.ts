@@ -203,6 +203,7 @@ async function dragToForeignLane(view: RenderResult<typeof Calendar>) {
   const y = 300;
   await fireEvent.pointerDown(box.querySelector<HTMLElement>('.evt-in')!, {
     button: 0,
+    pointerType: 'mouse',
     clientX: i * 100 + 10,
     clientY: y,
   });

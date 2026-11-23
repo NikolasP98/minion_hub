@@ -104,6 +104,7 @@ describe('NavContextMenu', () => {
       });
       await fireEvent.pointerDown(screen.getByTestId('row'), {
         pointerType: 'touch',
+        isPrimary: true,
         clientX: 20,
         clientY: 30,
       });
