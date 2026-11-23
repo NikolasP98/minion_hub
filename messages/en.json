@@ -7756,5 +7756,8 @@
   "cal_strip_next_week": "Next week",
   "cal_compact_attention": "Needs attention",
   "pos_appt_goto": "Go to",
-  "cal_touch_summary_title": "Appointment"
+  "cal_touch_summary_title": "Appointment",
+  "cal_agenda_day_empty": "No appointments",
+  "cal_month_count_one": "1 appointment",
+  "cal_month_count_other": "{n} appointments"
 }

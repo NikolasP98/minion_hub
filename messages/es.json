@@ -7756,5 +7756,8 @@
   "cal_strip_next_week": "Próxima semana",
   "cal_compact_attention": "Requiere atención",
   "pos_appt_goto": "Ir a",
-  "cal_touch_summary_title": "Cita"
+  "cal_touch_summary_title": "Cita",
+  "cal_agenda_day_empty": "Sin citas",
+  "cal_month_count_one": "1 cita",
+  "cal_month_count_other": "{n} citas"
 }
