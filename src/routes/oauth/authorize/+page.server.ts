@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { fromSameOrigin } from '$server/auth/csrf';
 import { publicBase } from '$server/mcp/base-url';
 import { createCode, getClient } from '$server/mcp/oauth.service';
 import {
@@ -92,9 +93,6 @@ function signedIn(locals: App.Locals, url: URL): string {
   return id;
 }
 
-/** The decision is a same-origin form post; assert it here as well as in the hook (P1). */
-const sameOrigin = (request: Request, url: URL) => request.headers.get('origin') === url.origin;
-
 export const load: PageServerLoad = async ({ url, locals }) => {
   const userId = signedIn(locals, url);
   const req = await parse(url);
@@ -115,7 +113,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
 export const actions: Actions = {
   approve: async ({ url, locals, request }) => {
-    if (!sameOrigin(request, url)) refuse(url, 'origin');
+    // The decision is a same-origin form post; asserted here as well as in the hook (P1).
+    if (!fromSameOrigin(request, url)) refuse(url, 'origin');
     const userId = signedIn(locals, url);
     const req = await parse(url);
     if (!req.ok) {
@@ -139,7 +138,8 @@ export const actions: Actions = {
   },
 
   deny: async ({ url, locals, request }) => {
-    if (!sameOrigin(request, url)) refuse(url, 'origin');
+    // The decision is a same-origin form post; asserted here as well as in the hook (P1).
+    if (!fromSameOrigin(request, url)) refuse(url, 'origin');
     signedIn(locals, url);
     const req = await parse(url);
     if (!req.ok) {
