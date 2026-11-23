@@ -287,11 +287,12 @@
   {/if}
 
   {#if showText}
-    <div
-      class="min-w-0 font-black {dimensions.text}"
-      style:color={currentPreset.id === 'minion' ? brandPink : currentPreset.secondaryColor}
-    >
-      <HubWordmark inheritStyles />
+    <div class="min-w-0 font-black {dimensions.text}">
+      <HubWordmark
+        inheritStyles
+        prefixColor={currentPreset.id === 'minion' ? brandPink : currentPreset.secondaryColor}
+        logoSuffixStyles
+      />
     </div>
   {/if}
 </div>

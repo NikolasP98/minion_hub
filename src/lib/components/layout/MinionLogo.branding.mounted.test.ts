@@ -67,6 +67,7 @@ beforeEach(async () => {
   host = document.createElement('div');
   host.style.setProperty('--color-brand-pink', defaultPreset.secondaryColor);
   host.style.setProperty('--color-text-primary', agentPreset.primaryColor);
+  host.style.setProperty('--color-foreground', agentPreset.primaryColor);
   const contract = JSON.parse(
     readFileSync(resolve('node_modules/@minion-stack/design-tokens/contract.json'), 'utf8'),
   ) as { foundations: { fontWeights: Record<string, string> } };
@@ -96,17 +97,19 @@ describe('MinionLogo preserves its personal preset text palette', () => {
     const expected = computedColor(preset.secondaryColor);
     expect(getComputedStyle(host).color).not.toBe(expected);
     expect(inheritedPresentation(prefix, 'color')).toBe(expected);
-    expect(getComputedStyle(textWrapper).color).toBe(expected);
+    expect(getComputedStyle(textWrapper).color).toBe(computedColor(agentPreset.primaryColor));
     expect(getComputedStyle(textWrapper).fontWeight).toBe('900');
     expect(inheritedPresentation(prefix, 'fontWeight')).toBe('900');
-    expect(getComputedStyle(suffix).fontWeight).toBe('600');
-    expect(getComputedStyle(suffix).color).toBe(computedColor(agentPreset.primaryColor));
+    expect(getComputedStyle(suffix).fontWeight).toBe('700');
+    expect(getComputedStyle(suffix).color).toBe(
+      computedColor('color-mix(in oklab, var(--color-foreground) 90%, transparent)'),
+    );
     expect(prefix.textContent).toBe('Clínica Faces');
     expect(getComputedStyle(prefix).textTransform).toBe('none');
     expect(suffix.textContent).toBe('hub');
   });
 
-  it('reacts to preset and organization replacement without replacing the fixed suffix palette', async () => {
+  it('reacts to preset and organization replacement while preserving the original suffix palette', async () => {
     const view = render(MinionLogo, {
       target: host,
       props: { preset: 'agent', showText: true },
@@ -127,8 +130,9 @@ describe('MinionLogo preserves its personal preset text palette', () => {
       computedColor(orbital.secondaryColor),
     );
     expect(getComputedStyle(host.querySelector('.hub-suffix')!).color).toBe(
-      computedColor(agentPreset.primaryColor),
+      computedColor('color-mix(in oklab, var(--color-foreground) 90%, transparent)'),
     );
+    expect(getComputedStyle(host.querySelector('.hub-suffix')!).fontWeight).toBe('700');
   });
 
   it('retains the default brand-pink prefix for ordinary shell wordmarks', () => {

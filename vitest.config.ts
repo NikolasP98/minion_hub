@@ -63,6 +63,9 @@ const unitTest = {
 const storybookProject = () => ({
   extends: true,
   plugins: [
+    // TODO(handoff): This lane omits Tailwind processing; align its CSS producer
+    // and qualify the broad styled-story regressions before enabling it. See meta
+    // proposals/2026-11-23-storybook-vitest-css-producer-parity.md.
     // The plugin will run tests for the stories defined in your Storybook config
     // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
     storybookTest({
