@@ -42,6 +42,7 @@ vi.mock('$server/services/marketplace.service', () => ({
   getAgentWithFiles: f.catalog,
   recordInstall: f.install,
 }));
+vi.mock('$server/auth/server-scope', () => ({ serverScope: async () => 'own' }));
 vi.mock('$server/services/agent.service', () => ({ upsertAgents: f.agents }));
 vi.mock('$server/services/ssrf-guard', () => ({
   assertSafeUrl: f.safeUrl,

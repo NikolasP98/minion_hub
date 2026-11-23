@@ -38,6 +38,8 @@ export async function upsertAgents(ctx: TenantContext, serverId: string, items: 
       )
       .onConflictDoUpdate({
         target: [agents.id, agents.serverId],
+        // Never overwrite another tenant's row that shares this (id, serverId).
+        setWhere: eq(agents.tenantId, ctx.tenantId),
         set: {
           name: sql`excluded.name`,
           emoji: sql`excluded.emoji`,
