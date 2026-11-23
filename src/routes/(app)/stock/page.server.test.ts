@@ -16,6 +16,7 @@ vi.mock('$server/services/stock.service', () => ({
   getBins: async () => [],
   itemOnHandInfo: async () => new Map(),
   getStockDailyFlow: async () => [],
+  ledgerValueGaps: async () => [],
   getRecentLedger: h.legacy,
 }));
 vi.mock('$server/services/stock-entries-read.service', async (original) => ({
@@ -42,6 +43,7 @@ describe('/stock overview loader', () => {
     expect(out.stock).not.toHaveProperty('recent');
     expect(out.stock).toHaveProperty('series');
     expect(out.stock).toHaveProperty('lowStock');
+    expect(out.stock.gaps).toEqual([]);
     expect(h.legacy).not.toHaveBeenCalled();
   });
 

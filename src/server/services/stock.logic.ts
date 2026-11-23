@@ -45,7 +45,11 @@ const EPS = 1e-9;
  * why rebuildBins can just replay the ledger's own qty_after/valuation_rate
  * snapshots instead of re-running this arithmetic.
  */
-export function applyLedgerDelta(bin: BinState, qtyDelta: number, valueDelta: number): BinState {
+export function applyLedgerDelta(
+  bin: BinState,
+  qtyDelta: number,
+  valueDelta: number,
+): BinState & { residual: number } {
   const newQty = bin.qty + qtyDelta;
   const newValue = bin.qty * bin.rate + valueDelta;
   const rate = Math.abs(newQty) > EPS ? newValue / newQty : 0;
@@ -56,8 +60,13 @@ export function applyLedgerDelta(bin: BinState, qtyDelta: number, valueDelta: nu
   // healthy chronological postings (rate stays ≥ 0); guards the future hub-UI
   // path against backdated entries.
   const newRate = rate < 0 ? bin.rate : rate;
-  return { qty: newQty, rate: newRate };
+  // Value the average cannot carry (a carried rate, or value left at 0 units).
+  // The caller books it as a value-only ledger row, so Σ value_delta = qty × rate (spec 144).
+  return { qty: newQty, rate: newRate, residual: newValue - newQty * newRate };
 }
+
+/** Residuals at or below this are float noise, not value (spec 144). */
+export const RESIDUAL_EPS = 0.005;
 
 /**
  * Value contributed by one movement leg. Incoming (qtyDelta >= 0) legs value

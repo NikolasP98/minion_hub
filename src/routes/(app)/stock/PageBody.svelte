@@ -1,22 +1,23 @@
 <script lang="ts">
   import type { PageData as LoadedPageData } from './$types';
   import type { Granted } from '$lib/permissions';
-  import { Warehouse } from 'lucide-svelte';
+  import { List, TriangleAlert, Warehouse } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
-  import { appLocale, formatMoney } from '$lib/utils/format';
-  import { iconSizes, PageHeader, EmptyState, Badge } from '$lib/components/ui';
+  import { appLocale, formatDate, formatMoney } from '$lib/utils/format';
+  import { iconSizes, PageHeader, EmptyState, Badge, Button } from '$lib/components/ui';
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import Chart from '$lib/components/charts/Chart.svelte';
   import { chartColors } from '$lib/utils/chart-colors';
   import type { EChartsOption } from 'echarts';
   import { canAct } from '$lib/access/can.svelte';
   import { isAdmin } from '$lib/state/features/user.svelte';
-  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
+  import { entryTypeLabel, movementLabel } from '$lib/components/stock/entry-type-label';
   import DataTable, { type DataColumn } from '$lib/components/data-table/DataTable.svelte';
 
   type PageData = Granted<LoadedPageData['stock']>;
   let { data }: { data: PageData } = $props();
   type LowStockRow = PageData['lowStock'][number];
+  type GapRow = PageData['gaps'][number];
   type FullRecentRow = Extract<PageData['recentMovements'], { projection: 'full' }>['rows'][number];
   type RecentRow = {
     ledgerId: string;
@@ -27,7 +28,7 @@
   } & Partial<FullRecentRow>;
   const recentRows = $derived(data.recentMovements.rows as RecentRow[]);
   const recentFull = $derived(data.recentMovements.projection === 'full');
-  const recentKind = (r: RecentRow) => entryTypeLabel(r.movementKind) ?? m.stock_mv_kind_unknown();
+  const recentKind = (r: RecentRow) => movementLabel(r.movementKind, r.qtyDelta);
   const recentItem = (r: RecentRow) =>
     r.item?.name ?? (recentFull ? r.itemId.slice(0, 8) : m.stock_mv_unavailable_value());
 
@@ -130,6 +131,29 @@
       accessor: (r) => r.reorderLevel,
     },
   ];
+
+  // Spec 144: items whose movements don't add up to their stock value.
+  let gapsOpen = $state(false);
+  const gapColumns: DataColumn<GapRow>[] = [
+    { key: 'item', label: m.stock_col_item(), custom: true, accessor: (r) => r.itemName },
+    {
+      key: 'gap',
+      label: m.stock_gaps_col_gap(),
+      align: 'right',
+      numeric: true,
+      money: true,
+      custom: true,
+      accessor: (r) => r.gap,
+    },
+    {
+      key: 'since',
+      label: m.stock_gaps_col_since(),
+      custom: true,
+      accessor: (r) => r.since?.postedAt ?? '',
+    },
+  ];
+  const sinceLabel = (s: NonNullable<GapRow['since']>) =>
+    `${entryTypeLabel(s.type) ?? s.humanId ?? m.stock_mv_kind_unknown()} · ${formatDate(s.postedAt, { day: '2-digit', month: '2-digit', year: 'numeric' })}`;
 
   /** Exact decimal strings: Number() is only the local ordering key, never the display. */
   const deltaCmp = (a: RecentRow, b: RecentRow) =>
@@ -289,6 +313,60 @@
 
   <div class="flex-1 min-h-0 overflow-auto p-4">
     <div class="w-full max-w-6xl mx-auto">
+      {#if data.gaps.length}
+        <div class="gaps">
+          <div class="callout warning" role="status">
+            <TriangleAlert size={iconSizes.md} aria-hidden="true" />
+            <div class="callout-body">
+              <span class="t-body">
+                {data.gaps.length === 1
+                  ? m.stock_gaps_title_one()
+                  : m.stock_gaps_title({ count: data.gaps.length })}
+              </span>
+              <span class="t-caption">{m.stock_gaps_body()}</span>
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-expanded={gapsOpen}
+                  onclick={() => (gapsOpen = !gapsOpen)}
+                >
+                  <List size={iconSizes.sm} />
+                  {gapsOpen ? m.stock_gaps_hide() : m.stock_gaps_view()}
+                </Button>
+              </div>
+            </div>
+          </div>
+          {#if gapsOpen}
+            <section class="card" aria-label={m.stock_gaps_list_title()}>
+              <div class="card-h">{m.stock_gaps_list_title()}</div>
+              <p class="t-caption">{m.stock_gaps_list_hint()}</p>
+              <DataTable
+                variant="plain"
+                data={data.gaps}
+                columns={gapColumns}
+                getRowId={(r) => `${r.itemId}:${r.warehouseId}`}
+              >
+                {#snippet cell(row: GapRow, col: DataColumn<GapRow>)}
+                  {#if col.key === 'item'}
+                    <a href="/stock/items/{row.itemId}" class="hover:underline">{row.itemName}</a>
+                  {:else if col.key === 'gap'}
+                    <span class="tabular-nums">{formatMoney(row.gap)}</span>
+                  {:else if col.key === 'since'}
+                    {#if row.since}
+                      <a href="/stock/items/{row.itemId}" class="hover:underline">
+                        {sinceLabel(row.since)}
+                      </a>
+                    {:else}
+                      <span class="t-caption">—</span>
+                    {/if}
+                  {/if}
+                {/snippet}
+              </DataTable>
+            </section>
+          {/if}
+        </div>
+      {/if}
       {#if !data.hasData}
         <EmptyState
           icon={Warehouse}
@@ -396,5 +474,29 @@
   }
   .delta-out {
     color: var(--color-destructive);
+  }
+  .gaps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+  .callout {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    border: 1px solid;
+  }
+  .callout-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .callout.warning {
+    background: var(--color-warning-surface);
+    border-color: var(--color-warning-border);
+    color: var(--color-warning-fg);
   }
 </style>

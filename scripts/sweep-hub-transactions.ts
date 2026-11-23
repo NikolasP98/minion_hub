@@ -70,7 +70,7 @@ export const IMPORTED_STOCK_SOURCE = 'seed-faces-csv';
  * Only stock entries the hub UI itself wrote are in scope — an ALLOW-list, not
  * a deny-list. Prod audit 2026-09-25 (FACES) found four other writers that a
  * deny-list on `seed-faces-csv` alone would have deleted: `repair-opening-balance`
- * (scripts/repair-stock-valuation.ts), `analyst-reconciliation-2026-08` (kardex
+ * (the one-time valuation repair script, removed by spec 144), `analyst-reconciliation-2026-08` (kardex
  * corrections) and `invoice` (the SUSII invoice → consumption backfill, real
  * August sales). `pos` = POS sale issues; no source = a receipt/adjustment
  * keyed in by hand on /stock.

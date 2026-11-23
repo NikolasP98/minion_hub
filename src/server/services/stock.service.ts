@@ -35,6 +35,7 @@ import {
   type BinState,
   EMPTY_BIN,
   applyLedgerDelta,
+  RESIDUAL_EPS,
   computeLegValue,
   wouldGoNegative,
   validateEntryLine,
@@ -958,6 +959,16 @@ async function lockBins(
   return out;
 }
 
+/** A movement's ledger row, plus a value-only row (qty 0, value = −residual) when the
+ *  moving average could not carry the movement's value — keeps Σ value_delta = qty × rate (spec 144). */
+function withResidual(
+  row: typeof stkLedger.$inferInsert,
+  residual: number,
+): Array<typeof stkLedger.$inferInsert> {
+  if (Math.abs(residual) <= RESIDUAL_EPS) return [row];
+  return [row, { ...row, qtyDelta: '0', valueDelta: String(-residual) }];
+}
+
 async function writeBins(
   tx: CoreTx,
   orgId: string,
@@ -1138,21 +1149,26 @@ export async function submitEntryInTx(
         );
       }
       const { valueDelta, rateUsed } = computeLegValue(bin, leg.qtyDelta, rate);
-      const next = applyLedgerDelta(bin, leg.qtyDelta, valueDelta);
+      const { residual, ...next } = applyLedgerDelta(bin, leg.qtyDelta, valueDelta);
       binMap.set(key, next);
       lineValue += valueDelta;
       if (type === 'transfer' && leg.qtyDelta < 0) carryRate = rateUsed;
-      ledgerInserts.push({
-        orgId,
-        itemId: l.itemId,
-        warehouseId: leg.warehouseId,
-        entryId: id,
-        qtyDelta: String(leg.qtyDelta),
-        qtyAfter: String(next.qty),
-        valuationRate: String(next.rate),
-        valueDelta: String(valueDelta),
-        ...(options.postedAt ? { postedAt: options.postedAt } : {}),
-      });
+      ledgerInserts.push(
+        ...withResidual(
+          {
+            orgId,
+            itemId: l.itemId,
+            warehouseId: leg.warehouseId,
+            entryId: id,
+            qtyDelta: String(leg.qtyDelta),
+            qtyAfter: String(next.qty),
+            valuationRate: String(next.rate),
+            valueDelta: String(valueDelta),
+            ...(options.postedAt ? { postedAt: options.postedAt } : {}),
+          },
+          residual,
+        ),
+      );
     }
     return lineValue;
   };
@@ -1240,10 +1256,12 @@ export async function cancelEntryInTx(
   if (entry.status !== 'submitted')
     throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
 
+  // Posting order: a residual row is reversed after the movement it corrected.
   const origRows = await tx
     .select()
     .from(stkLedger)
-    .where(and(eq(stkLedger.entryId, id), eq(stkLedger.orgId, orgId)));
+    .where(and(eq(stkLedger.entryId, id), eq(stkLedger.orgId, orgId)))
+    .orderBy(asc(stkLedger.id));
   if (!origRows.length) throw new StockError('no ledger rows to reverse', 'no_ledger');
 
   const binKeys = new Set(origRows.map((r) => binKey(r.itemId, r.warehouseId)));
@@ -1262,19 +1280,24 @@ export async function cancelEntryInTx(
         'negative_stock',
       );
     }
-    const next = applyLedgerDelta(bin, qtyDelta, valueDelta);
+    const { residual, ...next } = applyLedgerDelta(bin, qtyDelta, valueDelta);
     binMap.set(key, next);
-    ledgerInserts.push({
-      orgId,
-      itemId: r.itemId,
-      warehouseId: r.warehouseId,
-      entryId: id,
-      qtyDelta: String(qtyDelta),
-      qtyAfter: String(next.qty),
-      valuationRate: String(next.rate),
-      valueDelta: String(valueDelta),
-      ...(options.postedAt ? { postedAt: options.postedAt } : {}),
-    });
+    ledgerInserts.push(
+      ...withResidual(
+        {
+          orgId,
+          itemId: r.itemId,
+          warehouseId: r.warehouseId,
+          entryId: id,
+          qtyDelta: String(qtyDelta),
+          qtyAfter: String(next.qty),
+          valuationRate: String(next.rate),
+          valueDelta: String(valueDelta),
+          ...(options.postedAt ? { postedAt: options.postedAt } : {}),
+        },
+        residual,
+      ),
+    );
   }
 
   await tx.insert(stkLedger).values(ledgerInserts);
@@ -1302,6 +1325,84 @@ export function getBins(
       .select()
       .from(stkBins)
       .where(and(...conds));
+  });
+}
+
+/** An item + warehouse whose movements don't add up to its stock value (spec 144). */
+export interface LedgerValueGap {
+  itemId: string;
+  itemName: string;
+  warehouseId: string;
+  /** Stock value (qty × average) minus Σ movement value. */
+  gap: number;
+  /** The first movement after which the running sum stopped matching the bin snapshot. */
+  since: { entryId: string; type: string; humanId: string | null; postedAt: string } | null;
+}
+
+/** Items whose Σ ledger value_delta ≠ qty × valuation_rate by more than a cent, largest first.
+ *  TODO(handoff): spec 144 TO-BE §2 also wants this in the spec 122 stock reconciliation report,
+ *  which is not on master yet — call ledgerValueGaps there when it lands
+ *  (meta proposals/2026-11-17-hub-faces-stock-reconciliation-handoff.md item 7). */
+export function ledgerValueGaps(ctx: CoreCtx): Promise<LedgerValueGap[]> {
+  return withOrgCore(ctx, async (tx) => {
+    const org = ctx.tenantId;
+    const rows = (await tx.execute(sql`
+      with sums as (
+        select item_id, warehouse_id, sum(value_delta) v from stk_ledger
+         where org_id = ${org} group by 1, 2
+      ), gaps as (
+        select coalesce(s.item_id, b.item_id) item_id, coalesce(s.warehouse_id, b.warehouse_id) warehouse_id,
+               coalesce(b.qty * b.valuation_rate, 0) - coalesce(s.v, 0) gap
+          from sums s
+          full join (select * from stk_bins where org_id = ${org}) b
+            on b.item_id = s.item_id and b.warehouse_id = s.warehouse_id
+      ), bad as (
+        select * from gaps where abs(gap) > 0.01
+      ), drift as (
+        select l.id, l.item_id, l.warehouse_id, l.entry_id, l.posted_at,
+               sum(l.value_delta) over (partition by l.item_id, l.warehouse_id order by l.id)
+                 - l.qty_after * l.valuation_rate d,
+               lead(l.entry_id) over (partition by l.item_id, l.warehouse_id order by l.id) next_entry
+          from stk_ledger l join bad o on o.item_id = l.item_id and o.warehouse_id = l.warehouse_id
+         where l.org_id = ${org}
+      ), first_off as (
+        -- Judge an entry on its LAST row for the bin: between a movement and its own
+        -- residual row the running sum is off by exactly that residual, and is healthy.
+        select distinct on (item_id, warehouse_id) item_id, warehouse_id, entry_id, posted_at
+          from drift where abs(d) > 0.01 and next_entry is distinct from entry_id
+         order by item_id, warehouse_id, id
+      )
+      select o.item_id::text item_id, i.name item_name, o.warehouse_id::text warehouse_id,
+             o.gap::float8 gap, f.entry_id::text entry_id, f.posted_at, e.type, e.human_id
+        from bad o
+        join stk_items i on i.id = o.item_id and i.org_id = ${org}
+        left join first_off f on f.item_id = o.item_id and f.warehouse_id = o.warehouse_id
+        left join stk_entries e on e.id = f.entry_id and e.org_id = ${org}
+       order by abs(o.gap) desc`)) as unknown as Array<{
+      item_id: string;
+      item_name: string;
+      warehouse_id: string;
+      gap: number;
+      entry_id: string | null;
+      posted_at: Date | string | null;
+      type: string | null;
+      human_id: string | null;
+    }>;
+    return rows.map((r) => ({
+      itemId: r.item_id,
+      itemName: r.item_name,
+      warehouseId: r.warehouse_id,
+      gap: Number(r.gap),
+      since:
+        r.entry_id && r.posted_at
+          ? {
+              entryId: r.entry_id,
+              type: r.type ?? '',
+              humanId: r.human_id,
+              postedAt: new Date(r.posted_at).toISOString(),
+            }
+          : null,
+    }));
   });
 }
 

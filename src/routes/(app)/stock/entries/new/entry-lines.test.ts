@@ -3,6 +3,7 @@ import {
   autofillPartyId,
   binKey,
   convertRates,
+  costPlausibility,
   mergePickedLine,
   previewStockChange,
   unitRate,
@@ -220,5 +221,26 @@ describe('autofillPartyId', () => {
   it('does nothing when the item has no standing supplier', () => {
     expect(autofillPartyId({ ...base, itemSupplierPartyId: null })).toBeNull();
     expect(autofillPartyId({ ...base, itemSupplierPartyId: undefined })).toBeNull();
+  });
+});
+
+describe('costPlausibility (spec 144)', () => {
+  it('flags the two historical totals typed as unit cost', () => {
+    // STE-2026-00559: 5,474.58 typed per unit, average 250 → ×21.9.
+    expect(costPlausibility(5474.58, 250)).toEqual({ ratio: 5474.58 / 250, high: true });
+    // STE-2026-00560: 1,995 typed per unit, average 670 → ×3.0.
+    expect(costPlausibility(1995, 670)?.high).toBe(true);
+  });
+
+  it('flags a cost 2.5 times below the average', () => {
+    expect(costPlausibility(100, 250)).toEqual({ ratio: 2.5, high: false });
+  });
+
+  it('a normal price change, no average yet, or no cost typed: no warning', () => {
+    expect(costPlausibility(600, 250)).toBeNull(); // ×2.4
+    expect(costPlausibility(110, 250)).toBeNull(); // ÷2.27
+    expect(costPlausibility(5474.58, 0)).toBeNull();
+    expect(costPlausibility(5474.58, undefined)).toBeNull();
+    expect(costPlausibility(null, 250)).toBeNull();
   });
 });

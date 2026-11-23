@@ -10,6 +10,8 @@ export type EntryLine = {
   toWarehouseId: string;
   /** Canje (spec 142) only: the section the line sits in — out = "Entregas", in = "Recibes". */
   side?: 'out' | 'in';
+  /** Spec 144: the rate the user confirmed with "Es el total" — no cost warning while it stands. */
+  costConfirmed?: string;
 };
 
 /**
@@ -78,6 +80,27 @@ export function convertRates(lines: EntryLine[], from: RateMode, to: RateMode): 
     const next = to === 'total' ? v * q : v / q;
     return { ...l, rate: String(Math.round(next * 10_000) / 10_000) };
   });
+}
+
+// ── Unit-vs-total cost warning (spec 144) ────────────────────────────────────
+
+/** How far a typed unit cost may stray from the item's average before the line warns. */
+export const COST_WARN_RATIO = 2.5;
+
+/**
+ * Is a receipt's unit cost plausible next to the item's average? Null when it
+ * is (or there is nothing to compare: no average yet, no cost typed);
+ * otherwise how many times above (`high`) or below the average it is. FACES'
+ * own history (2026-11-21): no legitimate receipt ever crossed ×2.5 either way.
+ */
+export function costPlausibility(
+  unit: number | null,
+  avg: number | null | undefined,
+): { ratio: number; high: boolean } | null {
+  if (unit == null || !(unit > 0) || avg == null || !(avg > 0)) return null;
+  if (unit >= avg * COST_WARN_RATIO) return { ratio: unit / avg, high: true };
+  if (unit * COST_WARN_RATIO <= avg) return { ratio: avg / unit, high: false };
+  return null;
 }
 
 // ── Stock-change preview (owner ask 2026-10-10) ──────────────────────────────

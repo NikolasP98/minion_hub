@@ -25,6 +25,7 @@ import {
   distinctUoms,
   buildLowStockRows,
   EMPTY_BIN,
+  RESIDUAL_EPS,
   type BinState,
   buildStockSeries,
 } from './stock.logic';
@@ -32,7 +33,7 @@ import {
 describe('applyLedgerDelta — moving-average valuation', () => {
   it('a receipt into an empty bin sets rate = the incoming rate', () => {
     const next = applyLedgerDelta(EMPTY_BIN, 10, 10 * 5);
-    expect(next).toEqual({ qty: 10, rate: 5 });
+    expect(next).toEqual({ qty: 10, rate: 5, residual: 0 });
   });
 
   it('blends two receipts at different rates into a weighted average', () => {
@@ -67,7 +68,7 @@ describe('applyLedgerDelta — moving-average valuation', () => {
   it('an emptied bin (qty → 0) resets rate to 0 instead of dividing by zero', () => {
     const bin: BinState = { qty: 5, rate: 8 };
     const next = applyLedgerDelta(bin, -5, -40);
-    expect(next).toEqual({ qty: 0, rate: 0 });
+    expect(next).toEqual({ qty: 0, rate: 0, residual: 0 });
   });
 
   it('never persists a negative rate — an over-issued bin carries its prior rate', () => {
@@ -79,6 +80,19 @@ describe('applyLedgerDelta — moving-average valuation', () => {
     const next = applyLedgerDelta(bin, 1, -100);
     expect(next.qty).toBe(3);
     expect(next.rate).toBe(10); // carried, not -26.7
+    // ...and the value it could not carry is returned, not dropped (spec 144): -80 - 3×10.
+    expect(next.residual).toBe(-110);
+  });
+
+  it('a healthy blend leaves no residual beyond float noise', () => {
+    const next = applyLedgerDelta({ qty: 3, rate: 7.3 }, 7, 7 * 11.17);
+    expect(Math.abs(next.residual)).toBeLessThan(RESIDUAL_EPS);
+  });
+
+  it('draining to 0 units with value left returns that value as the residual', () => {
+    // 1 left @ 300 (value 300); a cancel takes the unit out at its old cost 100.
+    const next = applyLedgerDelta({ qty: 1, rate: 300 }, -1, -100);
+    expect(next).toEqual({ qty: 0, rate: 0, residual: 200 });
   });
 });
 

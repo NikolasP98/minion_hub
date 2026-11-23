@@ -13,3 +13,9 @@ const LABELS: Record<EntryType, () => string> = {
 export function entryTypeLabel(type: string | null | undefined): string | null {
   return type && Object.hasOwn(LABELS, type) ? LABELS[type as EntryType]() : null;
 }
+
+/** A ledger row's label: a value-only row (qty 0) is the engine's valuation residual (spec 144). */
+export function movementLabel(type: string | null | undefined, qtyDelta?: string): string {
+  if (qtyDelta !== undefined && Number(qtyDelta) === 0) return m.stock_mv_kind_residual();
+  return entryTypeLabel(type) ?? m.stock_mv_kind_unknown();
+}

@@ -8,11 +8,13 @@
   import {
     ArrowLeftRight,
     ArrowRightLeft,
+    Check,
     PackageMinus,
     PackagePlus,
     Pencil,
     Plus,
     Trash2,
+    TriangleAlert,
   } from 'lucide-svelte';
   import {
     iconSizes,
@@ -23,7 +25,7 @@
     PickerCombobox,
     type PickerColumn,
   } from '$lib/components/ui';
-  import { appLocale, formatMoney } from '$lib/utils/format';
+  import { appLocale, formatMoney, formatNumber } from '$lib/utils/format';
   import {
     AttachmentButton,
     AttachmentPreviewSwitch,
@@ -55,6 +57,7 @@
     autofillPartyId,
     binKey,
     convertRates,
+    costPlausibility,
     mergePickedLine,
     previewStockChange,
     unitRate,
@@ -166,6 +169,21 @@
     lines = convertRates(lines, rateMode, to);
     rateMode = to;
   }
+  /** Spec 144: a receipt line whose unit cost is far from its bin's average (null = plausible).
+   *  Only in the org currency — a USD cost is converted server-side. */
+  function costWarning(l: EntryLine) {
+    if (type !== 'receipt' || fxNeeded || l.rate === l.costConfirmed) return null;
+    const unit = unitRate(l.rate, l.qty, rateMode);
+    const avg = rateByBin.get(binKey(l.itemId, l.toWarehouseId));
+    const p = costPlausibility(unit, avg);
+    return p && unit != null && avg != null ? { ...p, unit, avg } : null;
+  }
+  /** "Es el total": what was typed per unit was the line total — divide it by the qty. */
+  function lineIsTotal(i: number) {
+    const unit = unitRate(lines[i].rate, lines[i].qty, 'total');
+    if (unit != null) lines[i] = { ...lines[i], rate: String(unit), costConfirmed: String(unit) };
+  }
+  const lineColumns = $derived(3 + (needsRate ? 1 : 0) + (needsFrom ? 1 : 0) + (needsTo ? 1 : 0));
   function rateRequired(l: EntryLine): boolean {
     if (type === 'receipt') return true;
     if (type === 'adjustment') return l.toWarehouseId !== '';
@@ -931,6 +949,7 @@
       {#each lines as l, i (l.itemId + i)}
         {#if side === null || sideOf(l) === side}
           {@const preview = previewStockChange(type, l, itemById.get(l.itemId), onHandByBin)}
+          {@const warn = costWarning(l)}
           <tr bind:this={rowEls[i]} class:invalid={!lineValid(l)} class:flash={flashIndex === i}>
             <td class="item-cell" title={itemLabel(l.itemId)}>
               <div class="item-stack">
@@ -1014,11 +1033,13 @@
                 {#if rateRequired(l)}
                   <input
                     class="inp cell-in num"
+                    class:cost-warn-in={warn}
                     type="number"
                     min="0"
                     step="0.01"
                     bind:value={l.rate}
                     aria-label={m.stock_field_rate()}
+                    aria-describedby={warn ? `cost-warn-${i}` : undefined}
                     data-assist="stock_entry.rate"
                   />
                 {:else if type === 'adjustment'}
@@ -1061,6 +1082,38 @@
               </Button>
             </td>
           </tr>
+          {#if warn}
+            <tr class="cost-warn-row">
+              <td colspan={lineColumns}>
+                <div class="callout warning" role="status" id="cost-warn-{i}">
+                  <TriangleAlert size={iconSizes.md} aria-hidden="true" />
+                  <div class="callout-body">
+                    <span class="t-body tabular-nums">
+                      {(warn.high ? m.stock_cost_warn_high : m.stock_cost_warn_low)({
+                        rate: formatMoney(warn.unit),
+                        times: formatNumber(warn.ratio, { maximumFractionDigits: 0 }),
+                        avg: formatMoney(warn.avg),
+                      })}
+                    </span>
+                    {#if warn.high && rateMode === 'unit' && Number(l.qty) > 1}
+                      <span class="t-caption tabular-nums">
+                        {m.stock_cost_warn_total_hint({
+                          qty: fmtQty(Number(l.qty)),
+                          unit: formatMoney(warn.unit / Number(l.qty)),
+                        })}
+                      </span>
+                      <div>
+                        <Button variant="outline" size="sm" onclick={() => lineIsTotal(i)}>
+                          <Check size={iconSizes.sm} />
+                          {m.stock_cost_warn_is_total()}
+                        </Button>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              </td>
+            </tr>
+          {/if}
         {/if}
       {/each}
     </tbody>
@@ -1344,5 +1397,17 @@
     background: var(--color-danger-surface);
     border-color: var(--color-danger-border);
     color: var(--color-danger-fg);
+  }
+  /* Spec 144: unit-vs-total cost warning under a receipt line. */
+  .callout.warning {
+    background: var(--color-warning-surface);
+    border-color: var(--color-warning-border);
+    color: var(--color-warning-fg);
+  }
+  .mini-table tr.cost-warn-row td {
+    padding: var(--space-2) 0;
+  }
+  .inp.cost-warn-in {
+    border-color: var(--color-warning-border);
   }
 </style>

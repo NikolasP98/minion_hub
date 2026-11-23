@@ -39,7 +39,7 @@
   import { inPeek } from '$lib/records/peek.svelte';
   import OverviewCard, { type OverviewFact } from '$lib/records/OverviewCard.svelte';
   import { entryTypeBadgeSpec, type EntryType } from '$lib/components/stock/entry-type-badge';
-  import { entryTypeLabel } from '$lib/components/stock/entry-type-label';
+  import { entryTypeLabel, movementLabel } from '$lib/components/stock/entry-type-label';
 
   type PageData = Granted<LoadedPageData['stock']>;
   let { data }: { data: PageData } = $props();
@@ -66,7 +66,7 @@
     const qs = sp.toString();
     return `/stock/items/${item.id}${qs ? `?${qs}` : ''}`;
   };
-  const kindLabel = (l: LedgerRow) => entryTypeLabel(l.movementKind) ?? m.stock_mv_kind_unknown();
+  const kindLabel = (l: LedgerRow) => movementLabel(l.movementKind, l.qtyDelta);
   const sourceKindLabel = (k: string) =>
     k === 'ticket'
       ? m.stock_document_ticket()
