@@ -1,4 +1,5 @@
 <script module lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import MarkdownView from '$lib/components/prompt/MarkdownView.svelte';
 
@@ -105,10 +106,6 @@ You are a support agent for a small clinic.
     argTypes: { value: { control: 'text' } },
     args: { value: KITCHEN_SINK },
   });
-</script>
-
-<script lang="ts">
-  import { getBranding } from '$lib/branding.svelte';
 </script>
 
 <Story name="Kitchen sink">
