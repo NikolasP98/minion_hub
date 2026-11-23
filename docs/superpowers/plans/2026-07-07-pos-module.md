@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Commit with `git -c commit.gpgsign=false commit …` (1Password GPG hangs otherwise).
-- NEVER `git add -A` / `git add .` — the working tree carries other sessions' WIP (`src/server/services/stock.logic.ts`, `src/server/services/finance.service.ts`, `src/lib/components/charts/Chart.svelte`, finances pages, `messages/en.json`+`es.json` hunks you didn't write). Stage ONLY files you created/edited, by exact path.
+- NEVER `git add -A` / `git add .` — the working tree carries other sessions' WIP (`scripts/repair-stock-valuation.ts`, `src/server/services/stock.logic.ts`, `src/server/services/finance.service.ts`, `src/lib/components/charts/Chart.svelte`, finances pages, `messages/en.json`+`es.json` hunks you didn't write). Stage ONLY files you created/edited, by exact path.
 - `+server.ts` files may export ONLY HTTP handlers (GET/POST/PATCH/PUT/DELETE) — helper exports break the prod build.
 - Drizzle `numeric` columns are strings in JS: wrap reads `Number(x)` and writes `String(x)`; money compares use `Math.abs(a-b) < 0.01`.
 - Never apply migrations to any database; never run `drizzle-kit push`. The migration FILE is the deliverable — the orchestrator applies it.
