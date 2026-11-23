@@ -63,9 +63,36 @@ their readers.
 
 ## Organization identity
 
-White-label slice 1 supplies storage and guarded services. Creation UI, the owner
-Appearance editor, request-owned branding delivery and remaining UI consumers are
-sequenced in later slices; this slice does not make the visible Hub white-labelable.
+White-label slices 1–2 supply storage, guarded services, organization creation
+controls, the shared Appearance editor and request-owned branding delivery. The
+shared shell and five localized callers (welcome, agent export/sync, plugin browsing,
+OAuth authorization and profile onboarding) use the resolved name. Remaining identity
+consumers belong to slice 3; complete white-label delivery still requires its
+deployment and runtime proof. Deploy the data prerequisite (PR707), including the
+identity migration above, before merging the slice 2 UI.
+
+In Settings → Organizations, platform administrators can review the suggested
+**Hub name**, enter a different prefix and preview it before creating an organization.
+A full organization name that cannot produce a valid suggestion needs an explicit
+short prefix. The public full organization name and ID remain separate.
+
+In Settings → Appearance, **Organization Hub name** is shared by the organization;
+theme and logo choices remain personal. Members with Settings view access see the
+value read-only unless they meet the write authority below. Choose **Use organization
+name** for automatic mode or **Use MINION** for an explicit default override, then
+**Save shared name**. A preview alone does not save. If a save result is uncertain,
+use **Reload current name** before making a deliberate new change; that read cannot
+confirm the earlier write. After a confirmed save with a failed refresh, **Retry
+refresh** retries the read without resubmitting the write.
+
+The layout loaders own the branding projection for each request, and
+[`getBranding()`](../src/lib/branding.svelte.ts) reads the current page data. Branding
+mutations refresh `app:branding`; organization changes must not retain another
+organization's identity. The app remains browser-initialized (`ssr=false`): request
+route data and the visible mount are distinct from first-document HTML SSR. The
+existing architecture exception and its meta-repo proposal are linked at the exact
+[`ssr` declaration](../src/routes/+layout.ts); JavaScript-disabled HTML is not branded
+SSR evidence.
 
 `POST /api/organizations/provision` retains its platform-admin gate and accepts an
 optional `hubName` prefix. When omitted, the provisioner must derive a valid short
