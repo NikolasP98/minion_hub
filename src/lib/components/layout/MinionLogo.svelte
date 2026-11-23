@@ -1,4 +1,5 @@
 <script lang="ts">
+    import HubWordmark from './HubWordmark.svelte';
     import { logoState } from "$lib/state/ui/logo.svelte";
 
     interface Props {
@@ -360,14 +361,6 @@
     {/if}
 
     {#if showText}
-        <div class="flex items-center leading-none {dimensions.text}">
-            <span
-                class="font-black tracking-wide uppercase"
-                style="color: {currentPreset.id === 'minion'
-                    ? brandPink
-                    : currentPreset.secondaryColor}">MINION</span
-            >
-            <span class="font-bold text-foreground/90 ml-1">hub</span>
-        </div>
+        <div class="min-w-0 {dimensions.text}"><HubWordmark /></div>
     {/if}
 </div>

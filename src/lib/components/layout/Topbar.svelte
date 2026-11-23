@@ -1,4 +1,6 @@
 <script lang="ts">
+  import HubWordmark from './HubWordmark.svelte';
+  import { getBranding } from '$lib/branding.svelte';
   import PersonalSidebar from '$lib/components/navigation/PersonalSidebar.svelte';
   import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
   import SettingsLayerHeader from '$lib/components/settings/SettingsLayerHeader.svelte';
@@ -182,9 +184,9 @@
 <svelte:document onpointerdown={onPickerPointerDown} onkeydown={onPickerKeydown} />
 
 <header
-  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14"
+  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] min-h-14"
 >
-  <div class="topbar-controls relative flex items-center h-full px-3 gap-2">
+  <div class="topbar-controls relative flex items-center min-h-14 px-3 py-2 gap-2">
     <Button
       variant="ghost"
       size="xs"
@@ -209,14 +211,11 @@
     <a
       use:moduleNavigation.link
       href="/"
-      class="flex items-center gap-2 no-underline group shrink-0"
-      aria-label="Minion Hub"
+      class="flex items-center gap-2 no-underline group min-w-0 flex-1"
+      aria-label={getBranding().fullName}
     >
       <MinionLogo size="sm" />
-      <span class="mobile-brand-wordmark flex items-center leading-none">
-        <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
-        <span class="font-semibold text-sm text-foreground/80 ml-1">hub</span>
-      </span>
+      <span class="mobile-brand-wordmark t-label"><HubWordmark /></span>
     </a>
 
     <div class="h-5 w-px bg-[var(--hairline)] mx-1 shrink-0"></div>

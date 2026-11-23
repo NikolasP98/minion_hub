@@ -25,6 +25,7 @@ import { captureServerEvent } from '$lib/server/posthog';
 import { requestIdentity, distinctIdFor } from '$lib/server/observability-context';
 import { inactiveSimulation } from '$lib/role-simulation';
 import { loadRoleSimulationState } from '$server/services/role-simulation.service';
+import { resolveBranding } from '$lib/branding';
 import { ALL_FEATURE_KEYS } from '$server/entitlements/evaluate';
 
 const SLOW_LOAD_WARNING_MS = 3_000;
@@ -81,6 +82,7 @@ export const load: LayoutServerLoad = async ({
   // dev-only). Only slow loads log, so this stays quiet on healthy requests.
   const loadStartedAt = Date.now();
   depends(
+    'app:branding',
     'app:user',
     'app:permissions',
     'app:workspaces',
@@ -111,6 +113,7 @@ export const load: LayoutServerLoad = async ({
     // no tenant handle is fabricated and no revoked organization data is loaded.
     return {
       user,
+      branding: resolveBranding(null),
       roleSimulation,
       permissions: { permissions: [] as string[], roles: [roleSimulation.roleKey ?? ''] },
       schedulingEnabled: false,
@@ -231,23 +234,25 @@ export const load: LayoutServerLoad = async ({
     coreBundle;
 
   const activeOrgId = organizations.activeOrgId;
-  // `locals.orgKind` was already resolved for this exact org by the request
-  // hook (resolveIdentity -> resolveSupabaseTenant, see src/server/auth/
-  // resolve-identity.ts). Re-querying `organizations` here just to re-derive
-  // the same `kind` is the per-request duplicate the perf audit flagged
-  // (debloat-b §2) — skip it when the ids agree; keep the authoritative
-  // lookup as a fallback for the rare mismatch (e.g. an org switch mid-request).
-  const activeOrgKind =
-    activeOrgId && activeOrgId === locals.orgId && locals.orgKind
-      ? locals.orgKind
-      : activeOrgId
-        ? (
-            await traceLayoutLoad(
-              'active-tenant-kind',
-              getTenant({ db: getDb(), tenantId: activeOrgId }),
-            )
-          )?.kind
-        : null;
+  // One combined request-scoped identity/kind read. Shell identity never needs Settings access.
+  let branding = resolveBranding(null);
+  let activeOrgKind = locals.orgKind;
+  if (activeOrgId) {
+    try {
+      const tenant = await traceLayoutLoad(
+        'active-tenant-identity',
+        getTenant({ db: getDb(), tenantId: activeOrgId }),
+      );
+      branding =
+        tenant?.id === activeOrgId
+          ? resolveBranding(tenant)
+          : { ...resolveBranding(null, 'unavailable'), orgId: activeOrgId };
+      activeOrgKind = tenant?.id === activeOrgId ? (tenant.kind ?? locals.orgKind) : locals.orgKind;
+    } catch (cause) {
+      if (isHttpError(cause) && [401, 403].includes(cause.status)) throw cause;
+      branding = { ...resolveBranding(null, 'unavailable'), orgId: activeOrgId };
+    }
+  }
 
   // Central route-policy guard moved to hooks.server.ts
   // (applyRouteAccessGuard, perf spec 2026-08-22 §S3) — it must run per
@@ -319,6 +324,7 @@ export const load: LayoutServerLoad = async ({
 
   return {
     user,
+    branding,
     roleSimulation,
     permissions,
     // Module states shape the SIDEBAR, which renders on every authenticated

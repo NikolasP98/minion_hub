@@ -11,6 +11,13 @@
   } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
+  import {
+    suggestHubName,
+    validateHubName,
+    hubNameLength,
+    brandingValidationAvailable,
+  } from '$lib/branding';
+  import HubWordmark from '$lib/components/layout/HubWordmark.svelte';
   import { canViewPath } from '$lib/access/can.svelte';
 
   type ProvisionStep = {
@@ -32,6 +39,10 @@
   // svelte-ignore state_referenced_locally
   let organizations = $state(data.organizations);
   let name = $state('');
+  let hubNameDraft = $state('');
+  let hubNameEdited = $state(false);
+  const hubName = $derived(hubNameEdited ? hubNameDraft : (suggestHubName(name) ?? 'MINION'));
+  const hubNameValidation = $derived(validateHubName(hubName));
   let existingWorkforceCompanyId = $state('');
   let submitting = $state(false);
   let result = $state<ProvisionResult | null>(null);
@@ -49,7 +60,8 @@
 
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault();
-    if (!name.trim() || submitting) return;
+    if (!name.trim() || submitting || !hubNameValidation.ok || !brandingValidationAvailable())
+      return;
     submitting = true;
     requestError = null;
     result = null;
@@ -59,6 +71,7 @@
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
+          hubName,
           existingWorkforceCompanyId: existingWorkforceCompanyId.trim() || undefined,
         }),
       });
@@ -112,6 +125,22 @@
             disabled={submitting}
           />
           <Input
+            id="new-organization-hub-name"
+            label={m.branding_label()}
+            helper={m.branding_helper()}
+            value={hubName}
+            disabled={submitting || !brandingValidationAvailable()}
+            oninput={(event) => {
+              hubNameDraft = (event.target as HTMLInputElement).value;
+              hubNameEdited = true;
+            }}
+            error={hubNameValidation.ok ? undefined : m.branding_invalid()}
+          />
+          <p class="t-caption form-copy">
+            {m.branding_counter({ count: String(hubNameLength(hubName)) })}
+          </p>
+          <div><HubWordmark name={hubName} /></div>
+          <Input
             id="workforce-company-id"
             label={m.orgProvision_workforceIdLabel()}
             helper={m.orgProvision_workforceIdHelper()}
@@ -120,7 +149,15 @@
             disabled={submitting}
           />
           {#if requestError}<p class="error-message" role="alert">{requestError}</p>{/if}
-          <Button type="submit" variant="primary" disabled={submitting || !name.trim()}>
+          <Button
+            type="submit"
+            variant="primary"
+            loading={submitting}
+            disabled={submitting ||
+              !name.trim() ||
+              !hubNameValidation.ok ||
+              !brandingValidationAvailable()}
+          >
             {#if submitting}
               <Spinner size="xs" />
               {m.orgProvision_running()}

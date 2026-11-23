@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { getBranding } from '$lib/branding.svelte';
   import { Button, iconSizes } from '$lib/components/ui';
   import { Minus, Square, X } from 'lucide-svelte';
   import { toastError } from '$lib/state/ui/toast.svelte';
@@ -20,7 +21,7 @@
 
 {#if native}
   <header class="desktop-titlebar" data-tauri-drag-region>
-    <span class="t-label" data-tauri-drag-region>Minion Hub</span>
+    <span class="t-label" data-tauri-drag-region>{getBranding().fullName}</span>
     <div class="window-actions">
       <Button
         variant="ghost"
@@ -57,10 +58,16 @@
     background: var(--color-surface-1);
     color: var(--color-text-primary);
     border-bottom: 1px solid var(--color-border);
+    min-width: 0;
     user-select: none;
     flex-shrink: 0;
   }
+  .desktop-titlebar > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
   .window-actions {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     gap: var(--space-1);

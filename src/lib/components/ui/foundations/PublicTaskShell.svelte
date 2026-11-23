@@ -18,6 +18,7 @@
 </script>
 
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   let {
     eyebrow,
     title,
@@ -47,7 +48,7 @@
     <section class="task-panel" data-tone={tone} aria-labelledby={titleId}>
       <div class="task-chrome" aria-hidden="true">
         <div class="wordmark">
-          <span class="wordmark-minion">Minion</span>
+          <span class="wordmark-minion">{getBranding().name}</span>
           <span class="wordmark-hub">Hub</span>
         </div>
         <span class="task-eyebrow">{eyebrow}</span>
@@ -149,7 +150,7 @@
 
   .task-chrome {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
     align-items: center;
     min-height: var(--control-height-touch);
     gap: var(--space-3);
@@ -160,6 +161,8 @@
 
   .wordmark {
     display: inline-flex;
+    min-width: 0;
+    flex-wrap: wrap;
     align-items: center;
     font-family: var(--font-display);
     font-size: var(--font-size-telemetry);
@@ -170,6 +173,8 @@
   }
 
   .wordmark-minion {
+    min-width: 0;
+    overflow-wrap: anywhere;
     padding: var(--space-0-5) var(--space-2);
     /* Fallback for engines without relative colour syntax (the previous value). */
     color: var(--color-canvas);
@@ -351,7 +356,7 @@
     }
 
     .task-chrome {
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: minmax(0, auto) minmax(0, 1fr);
     }
 
     .signal-lights {

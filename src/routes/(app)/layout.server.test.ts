@@ -141,6 +141,13 @@ describe('(app)/+layout.server load', () => {
     const out = await load(ev);
     expect(out).toEqual({
       user,
+      branding: {
+        orgId: 'org-1',
+        name: 'Org',
+        fullName: 'Org Hub',
+        source: 'organization',
+        readStatus: 'ready',
+      },
       roleSimulation: inactiveSimulation(),
       permissions: { permissions: ['perm.a', 'perm.b'] },
       // The sidebar renders on every page, so module states ride this bundle
@@ -174,6 +181,7 @@ describe('(app)/+layout.server load', () => {
     });
     // depends() should register all nine keys
     expect(ev.depends).toHaveBeenCalledWith(
+      'app:branding',
       'app:user',
       'app:permissions',
       'app:workspaces',
@@ -215,7 +223,7 @@ describe('(app)/+layout.server load', () => {
     expect(out.brainAgentIds).toEqual([]);
   });
 
-  it('skips the redundant organizations lookup when the hook already resolved this org (debloat-b §2)', async () => {
+  it('reads identity and kind together once even when the hook already resolved this org', async () => {
     const { getTenant } = await import('$server/services/tenant.service');
     const user = {
       id: 'u-1',
@@ -233,8 +241,9 @@ describe('(app)/+layout.server load', () => {
       orgKind: 'personal',
     }) as unknown as Parameters<typeof load>[0];
     const out = await load(ev);
-    expect(out).toHaveProperty('activeOrgKind', 'personal');
-    expect(getTenant).not.toHaveBeenCalled();
+    expect(out).toHaveProperty('activeOrgKind', 'business');
+    expect(getTenant).toHaveBeenCalledTimes(1);
+    expect(out).toHaveProperty('branding.fullName', 'Org Hub');
   });
 
   describe('navConfig (spec 037)', () => {
@@ -347,5 +356,42 @@ describe('slow layout telemetry boundary', () => {
       warn.mockRestore();
       telemetry.capture.mockReset();
     }
+  });
+});
+
+describe('branding request projection', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('falls back within current org on a read failure and keeps verified kind', async () => {
+    const { getTenant } = await import('$server/services/tenant.service');
+    vi.mocked(getTenant).mockRejectedValueOnce(new Error('unavailable'));
+    const ev = makeEvent({
+      user: { id: 'u-1', role: 'admin', onboardedAt: '2026-01-01' },
+      orgKind: 'personal',
+    }) as Parameters<typeof load>[0];
+    const out = await load(ev);
+    expect(out).toHaveProperty('branding', {
+      orgId: 'org-1',
+      name: 'MINION',
+      fullName: 'MINION Hub',
+      source: 'default',
+      readStatus: 'unavailable',
+    });
+    expect(out).toHaveProperty('activeOrgKind', 'personal');
+    expect(getTenant).toHaveBeenCalledTimes(1);
+  });
+  it('returns refreshed committed identity through app:branding', async () => {
+    const { getTenant } = await import('$server/services/tenant.service');
+    vi.mocked(getTenant).mockResolvedValueOnce({
+      id: 'org-1',
+      name: 'Org',
+      kind: 'business',
+      hub_name: 'Faces',
+    } as never);
+    const out = await load(
+      makeEvent({ user: { id: 'u-1', role: 'admin', onboardedAt: '2026-01-01' } }) as Parameters<
+        typeof load
+      >[0],
+    );
+    expect(out).toHaveProperty('branding.fullName', 'Faces Hub');
   });
 });
