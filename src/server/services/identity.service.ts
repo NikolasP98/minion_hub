@@ -21,9 +21,8 @@ export async function listIdentities(ctx: TenantContext, userId: string) {
   // return nothing; read Supabase first and only fall back to the legacy Turso
   // vault when Supabase yields nothing (bake-in / self-host). Never worse than
   // the pre-cutover behavior.
-  const { listOAuthIdentitiesFromSupabase, listChannelIdentitiesFromSupabase } = await import(
-    './supabase-credential'
-  );
+  const { listOAuthIdentitiesFromSupabase, listChannelIdentitiesFromSupabase } =
+    await import('./supabase-credential');
   const [oauth, channel] = await Promise.all([
     listOAuthIdentitiesFromSupabase(userId),
     listChannelIdentitiesFromSupabase(userId),
@@ -53,10 +52,7 @@ export async function listIdentities(ctx: TenantContext, userId: string) {
   if (supa.length > 0) return supa;
 
   // Legacy fallback: Turso user_identities (keyed by legacy userId).
-  const rows = await ctx.db
-    .select()
-    .from(userIdentities)
-    .where(eq(userIdentities.userId, userId));
+  const rows = await ctx.db.select().from(userIdentities).where(eq(userIdentities.userId, userId));
   // Back-compat aliases (channel/channelUserId) so existing consumers keep
   // working alongside the native provider/kind/externalId fields.
   return rows.map((r) => ({ ...r, channel: r.provider, channelUserId: r.externalId }));
@@ -184,10 +180,7 @@ export async function syncGoogleIdentityFromAccount(
   const acct = accountRows[0];
   if (!acct || !acct.refreshToken) return null;
 
-  const userRows = await ctx.db
-    .select({ email: user.email })
-    .from(user)
-    .where(eq(user.id, userId));
+  const userRows = await ctx.db.select({ email: user.email }).from(user).where(eq(user.id, userId));
   const email = userRows[0]?.email ?? acct.accountId;
 
   await attachGoogleIdentity(ctx, userId, {
@@ -199,7 +192,9 @@ export async function syncGoogleIdentityFromAccount(
       type: 'authorized_user',
     },
     scope: acct.scope ?? undefined,
-    expiresAt: acct.refreshTokenExpiresAt ? new Date(acct.refreshTokenExpiresAt).getTime() : undefined,
+    expiresAt: acct.refreshTokenExpiresAt
+      ? new Date(acct.refreshTokenExpiresAt).getTime()
+      : undefined,
   });
 
   return { email };
@@ -213,13 +208,24 @@ export async function markVerified(ctx: TenantContext, identityId: string) {
     .where(eq(userIdentities.id, identityId));
 }
 
-export async function removeIdentity(ctx: TenantContext, identityId: string) {
+/** Remove an identity only if it belongs to `userId`; false when nothing matched. */
+export async function removeIdentity(
+  ctx: TenantContext,
+  userId: string,
+  identityId: string,
+): Promise<boolean> {
   // Canonical vault first — listIdentities now serves Supabase rows (Supabase
   // ids), so a Turso-only delete would no-op on them. Fall back to Turso when
-  // the id isn't in Supabase (legacy rows / bake-in).
+  // the id isn't in Supabase (legacy rows / bake-in). Both stores filter by
+  // owner: Supabase by profile uuid, Turso by user_identities.user_id (the
+  // same id listIdentities reads with).
   const { deleteIdentityByIdFromSupabase } = await import('./supabase-credential');
-  if (await deleteIdentityByIdFromSupabase(identityId)) return;
-  await ctx.db.delete(userIdentities).where(eq(userIdentities.id, identityId));
+  if (await deleteIdentityByIdFromSupabase(userId, identityId)) return true;
+  const rows = await ctx.db
+    .delete(userIdentities)
+    .where(and(eq(userIdentities.id, identityId), eq(userIdentities.userId, userId)))
+    .returning({ id: userIdentities.id });
+  return rows.length > 0;
 }
 
 /** Backward-compatible channel lookup → provider+externalId. */

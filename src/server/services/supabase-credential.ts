@@ -205,15 +205,22 @@ export async function deleteOAuthIdentityFromSupabase(
 
 /**
  * Delete any identity (oauth OR channel) from the canonical Supabase vault by
- * its row id. Admin/owner-gated at the route layer; the id is a uuid pk. Returns
- * true only when a row was actually deleted, so callers can fall back to the
- * legacy Turso store on a miss.
+ * row id, scoped to the owning profile. `userId` is mandatory: a row that
+ * belongs to someone else is never deleted. Returns true only when a row was
+ * actually deleted, so callers can fall back to the legacy Turso store on a miss.
  */
-export async function deleteIdentityByIdFromSupabase(identityId: string): Promise<boolean> {
+export async function deleteIdentityByIdFromSupabase(
+  userId: string,
+  identityId: string,
+): Promise<boolean> {
   try {
-    const { data, error } = await supabaseAdmin()
+    const admin = supabaseAdmin();
+    const profileId = await resolveProfileId(admin, userId);
+    if (!profileId) return false;
+    const { data, error } = await admin
       .from('user_identities')
       .delete()
+      .eq('user_id', profileId)
       .eq('id', identityId)
       .select('id');
     return !error && (data?.length ?? 0) > 0;

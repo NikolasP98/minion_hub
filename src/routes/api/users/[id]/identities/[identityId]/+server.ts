@@ -18,6 +18,10 @@ export const DELETE: RequestHandler = async ({ locals, params, url }) => {
     return json({ ok: true });
   }
 
-  await removeIdentity(locals.tenantCtx, params.identityId);
+  // Scoped to the URL user (owner, or the admin-named user) so an id belonging
+  // to anyone else is indistinguishable from an unknown one.
+  if (!(await removeIdentity(locals.tenantCtx, params.id, params.identityId))) {
+    throw error(404, 'identity not found');
+  }
   return json({ ok: true });
 };
