@@ -367,6 +367,26 @@ export async function seed(ctx: SeedContext): Promise<void> {
   `;
   register('sched.link.expired', { table: 'sched_links', where: { id: linkExpiredId } });
 
+  // Agenda closure (spec 147): one "Cerrar agenda" action over two days. Relative to
+  // the seed day so the calendar always has a visible closed band.
+  const closureGroup = matrixUuid('sched.closure.multi-day');
+  for (const n of [1, 2]) {
+    await sql`
+      insert into sched_closures (id, org_id, starts_at, ends_at, reason, group_id)
+      values (
+        ${matrixUuid('sched.closure.multi-day', String(n))}, ${ORG_BUSINESS},
+        (date_trunc('day', now() at time zone 'America/Lima') + make_interval(days => ${n}, hours => 9)) at time zone 'America/Lima',
+        (date_trunc('day', now() at time zone 'America/Lima') + make_interval(days => ${n}, hours => 14)) at time zone 'America/Lima',
+        'QA Viaje del doctor', ${closureGroup}
+      )
+      on conflict (id) do update set starts_at = excluded.starts_at, ends_at = excluded.ends_at
+    `;
+  }
+  register('sched.closure.multi-day', {
+    table: 'sched_closures',
+    where: { group_id: closureGroup },
+  });
+
   // ── HR ──────────────────────────────────────────────────────────────
   const employeeActive = matrixUuid('hr.employee.active');
   const employeeLeft = matrixUuid('hr.employee.left');

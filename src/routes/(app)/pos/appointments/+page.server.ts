@@ -67,7 +67,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, cookies }) =>
 
   // These three are mutually independent (none consumes another's result) —
   // run them concurrently instead of three sequential round trips.
-  const [{ bookings, invoices, accrualSummaries, tagOptions }, categories, pending] =
+  const [{ bookings, invoices, accrualSummaries, tagOptions, closures }, categories, pending] =
     await Promise.all([
       // pos/stock/crm slices of the window come through THEIR handles (a denied one degrades its slice).
       loadCalendarWindow(sched, locals, {
@@ -122,6 +122,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, cookies }) =>
       /** Event-scope registry + every tag present on a shown event — the filter's options. */
       tagOptions,
       bookings,
+      closures,
       invoices,
       resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
       hours,

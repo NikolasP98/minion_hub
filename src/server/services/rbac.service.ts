@@ -1055,6 +1055,16 @@ export function apiWriteCapability(
   ) {
     return { module: 'pos', action: 'create' };
   }
+  // Closing / reopening the agenda (spec 147) is booking work: whoever may create an
+  // appointment — from the scheduling calendar OR the POS one — may close and reopen.
+  if (
+    method === 'POST' &&
+    (pathname === '/api/scheduling/closures' ||
+      /^\/api\/scheduling\/closures\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/reopen$/i.test(
+        pathname,
+      ))
+  )
+    return { module: 'scheduling', action: 'create', anyOf: [{ module: 'pos', action: 'create' }] };
   if (method === 'POST') {
     const readEndpoint = READ_POST_ENDPOINTS.find(([pattern]) => pattern.test(pathname));
     if (readEndpoint) return { module: readEndpoint[1], action: 'view' };

@@ -14,6 +14,8 @@
     partyId?: string | null;
     customerName?: string | null;
     eventTypeId?: string | null;
+    /** Open straight on "Cerrar agenda" (the calendar's "…" menu entry, spec 147). */
+    mode?: 'book' | 'close';
   };
 </script>
 
@@ -26,6 +28,10 @@
    * panel inside it relies on are the primitive's, not hand-rolled.
    */
   import { Sheet } from '$lib/components/ui/foundations';
+  import { SegmentedControl } from '$lib/components/ui';
+  import AgendaClosureForm from './AgendaClosureForm.svelte';
+  import { instantDateKey, instantParts } from '$lib/time/zoned';
+  import type { CalendarClosure } from './calendar-window';
   import AppointmentCreatePanel, { type AppointmentKind } from './AppointmentCreatePanel.svelte';
   import type {
     AppointmentEventType,
@@ -42,8 +48,11 @@
     mutationScope,
     bookEndpoint,
     canBook,
+    closures = [],
+    canClose = false,
     onclose,
     onbooked,
+    onclosed,
   }: {
     /** `null` = closed. Every field of a fresh target seeds a fresh panel. */
     target: BookingCreateTarget | null;
@@ -55,9 +64,36 @@
      *  `AppointmentCreatePanel`, which defaults both to the POS pair. */
     bookEndpoint?: string;
     canBook?: boolean;
+    /** Loaded agenda closures (spec 147): booking into one shows a warning. */
+    closures?: CalendarClosure[];
+    /** Offer the "Agendar cita | Cerrar agenda" switch. */
+    canClose?: boolean;
     onclose: () => void;
     onbooked: (booking: CreatedBooking) => void | Promise<void>;
+    /** A closure was saved; refresh the calendar. */
+    onclosed?: () => void | Promise<void>;
   } = $props();
+
+  let mode = $state<'book' | 'close'>('book');
+  const closing = $derived(mode === 'close' && canClose && !target?.ticketId);
+  /** The closure the clicked slot falls in, if any — booking there is allowed, but said. */
+  const closedHere = $derived.by(() => {
+    if (!target) return null;
+    const p = (iso: string) => {
+      const x = instantParts(new Date(iso), timeZone);
+      return x.hour * 60 + x.minute;
+    };
+    const at = target.time ? +target.time.slice(0, 2) * 60 + +target.time.slice(3, 5) : null;
+    return (
+      closures.find(
+        (c) =>
+          instantDateKey(new Date(c.start), timeZone) === target.day &&
+          (at === null ||
+            (at >= p(c.start) &&
+              (instantDateKey(new Date(c.end), timeZone) !== target.day || at < p(c.end)))),
+      ) ?? null
+    );
+  });
 
   let kind = $state<AppointmentKind>('appointment');
   let panelDirty = $state(false);
@@ -65,6 +101,7 @@
   $effect(() => {
     if (target) {
       kind = 'appointment';
+      mode = target.mode ?? 'book';
       panelDirty = false;
     }
   });
@@ -72,8 +109,16 @@
 
 <Sheet
   open={target !== null}
-  title={kind === 'checkup' ? m.appt_checkup_title() : m.appt_new_title()}
-  description={kind === 'checkup' ? m.appt_checkup_subtitle() : m.appt_new_subtitle()}
+  title={closing
+    ? m.cal_closure_mode_close()
+    : kind === 'checkup'
+      ? m.appt_checkup_title()
+      : m.appt_new_title()}
+  description={closing
+    ? undefined
+    : kind === 'checkup'
+      ? m.appt_checkup_subtitle()
+      : m.appt_new_subtitle()}
   size="lg"
   placement="right"
   dirty={panelDirty}
@@ -82,28 +127,72 @@
   {#if target}
     <!-- Keyed on the target so a second slot click always opens on ITS
          prefill instead of the previous visit's half-filled form. -->
-    {#key `${target.day}|${target.time ?? ''}|${target.resourceId ?? ''}|${target.lineId ?? ''}`}
-      <AppointmentCreatePanel
-        {eventTypes}
-        {resources}
-        {timeZone}
-        {mutationScope}
-        initialDate={target.day}
-        initialTime={target.time ?? null}
-        initialResourceId={target.resourceId ?? null}
-        ticketId={target.ticketId ?? null}
-        lineId={target.lineId ?? null}
-        initialPartyId={target.partyId ?? null}
-        initialCustomerName={target.customerName ?? null}
-        initialEventTypeId={target.eventTypeId ?? null}
-        lockCustomer={Boolean(target.ticketId)}
-        {...bookEndpoint === undefined ? {} : { bookEndpoint }}
-        {...canBook === undefined ? {} : { canBook }}
-        bind:kind
-        {onbooked}
-        oncancel={onclose}
-        bind:dirty={panelDirty}
-      />
+    {#if canClose && !target.ticketId}
+      <div class="mode-row">
+        <SegmentedControl
+          aria-label={m.cal_closure_mode_label()}
+          bind:value={mode}
+          items={[
+            { value: 'book', label: m.cal_closure_mode_book() },
+            { value: 'close', label: m.cal_closure_mode_close() },
+          ]}
+        />
+      </div>
+    {/if}
+    {#key `${target.day}|${target.time ?? ''}|${target.resourceId ?? ''}|${target.lineId ?? ''}|${closing}`}
+      {#if closing}
+        <AgendaClosureForm
+          initialDate={target.day}
+          initialTime={target.time ?? null}
+          oncancel={onclose}
+          onclosed={async () => {
+            await onclosed?.();
+            onclose();
+          }}
+          bind:dirty={panelDirty}
+        />
+      {:else}
+        {#if closedHere}
+          <p class="closure-warn t-body" role="status">
+            {m.cal_closure_warning({ reason: closedHere.reason })}
+          </p>
+        {/if}
+        <AppointmentCreatePanel
+          {eventTypes}
+          {resources}
+          {timeZone}
+          {mutationScope}
+          initialDate={target.day}
+          initialTime={target.time ?? null}
+          initialResourceId={target.resourceId ?? null}
+          ticketId={target.ticketId ?? null}
+          lineId={target.lineId ?? null}
+          initialPartyId={target.partyId ?? null}
+          initialCustomerName={target.customerName ?? null}
+          initialEventTypeId={target.eventTypeId ?? null}
+          lockCustomer={Boolean(target.ticketId)}
+          {...bookEndpoint === undefined ? {} : { bookEndpoint }}
+          {...canBook === undefined ? {} : { canBook }}
+          bind:kind
+          {onbooked}
+          oncancel={onclose}
+          bind:dirty={panelDirty}
+        />
+      {/if}
     {/key}
   {/if}
 </Sheet>
+
+<style>
+  .mode-row {
+    margin-bottom: var(--space-4);
+  }
+  .closure-warn {
+    margin: 0 0 var(--space-4);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-danger-border);
+    border-radius: var(--radius-md);
+    background: var(--color-danger-surface);
+    color: var(--color-danger-fg);
+  }
+</style>

@@ -326,3 +326,14 @@ export function calendarLoadWindow(
   const window = zonedDayWindow(days[0], days[days.length - 1], tz);
   return { days, from: window.from!, to: new Date(window.to!.getTime() - 1) };
 }
+
+/** An agenda closure as the calendar draws it (spec 147). `groupSize` counts the
+ *  whole group (every day closed by the same action), not just the loaded window. */
+export interface CalendarClosure {
+  id: string;
+  groupId: string;
+  groupSize: number;
+  start: string;
+  end: string;
+  reason: string;
+}

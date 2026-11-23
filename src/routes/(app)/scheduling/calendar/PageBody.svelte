@@ -67,6 +67,7 @@
     knownStaff,
   } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { reopenClosure } from '$lib/components/scheduling/kit/closures';
   import { fetchJson } from '$lib/api/fetch-json';
   import { toastError } from '$lib/state/ui/toast.svelte';
   import ConsumptionConfirmDialog from '$lib/components/scheduling/ConsumptionConfirmDialog.svelte';
@@ -86,7 +87,7 @@
   // ── Week cache for the calendar's infinite scrolling ──────────────────────
   // Identical wiring to `/pos/appointments` (`window-cache.svelte.ts`), over the
   // narrower scheduling payload: no tickets, no accrual chips.
-  type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions'>;
+  type WindowPayload = Pick<PageData, 'bookings' | 'tagOptions' | 'closures'>;
   const winCache = createCalendarWindowCache<WindowPayload>({
     fetchWindow: async (from, to, signal) => {
       const res = await fetch(`/api/scheduling/calendar?from=${from}&to=${to}`, { signal });
@@ -99,11 +100,13 @@
     merge: (parts) => {
       const bookings: WindowPayload['bookings'] = [];
       const tags = new Map<string, WindowPayload['tagOptions'][number]>();
+      const closures = new Map<string, WindowPayload['closures'][number]>();
       for (const week of parts) {
         bookings.push(...week.bookings);
         for (const t of week.tagOptions) if (!tags.has(t.id)) tags.set(t.id, t);
+        for (const c of week.closures) closures.set(c.id, c);
       }
-      return { bookings, tagOptions: [...tags.values()] };
+      return { bookings, tagOptions: [...tags.values()], closures: [...closures.values()] };
     },
   });
   onDestroy(winCache.dispose);
@@ -126,11 +129,14 @@
       const key = mondayOf(day);
       let week = out.get(key);
       // `tagOptions` is window-wide and merge deduplicates it across buckets.
-      if (!week) out.set(key, (week = { bookings: [], tagOptions: current.tagOptions }));
+      if (!week)
+        out.set(key, (week = { bookings: [], tagOptions: current.tagOptions, closures: [] }));
       return week;
     };
     for (const booking of current.bookings)
       bucket(instantDateKey(new Date(booking.start), current.orgTz)).bookings.push(booking);
+    for (const c of current.closures ?? [])
+      bucket(instantDateKey(new Date(c.start), current.orgTz)).closures.push(c);
     return out;
   }
 
@@ -243,6 +249,8 @@
 
   const canEdit = $derived(canAct('scheduling', 'edit'));
   const canCreate = $derived(canAct('scheduling', 'create'));
+  /** Spec 147: closing the agenda is booking work (central gate: scheduling:create OR pos:create). */
+  const canClose = $derived(canCreate || canAct('pos', 'create'));
   /** The create tray's own gate — same capability the button uses. */
   const canBook = $derived(canCreate);
   let detailId = $state<string | null>(null);
@@ -575,9 +583,24 @@
               detailReschedule = !!opts?.reschedule;
             }}
             onslot={canCreate ? newAt : undefined}
+            closures={cal.closures}
+            onreopen={canClose ? (c, o) => reopenClosure(c, o.group, refresh) : undefined}
             onmove={canEdit ? mover.moveBooking : undefined}
           >
             {#snippet toolbarStart()}{@render switcher()}{/snippet}
+            {#snippet kebabItems()}
+              {#if canClose}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="cc-row"
+                  aria-haspopup="dialog"
+                  onclick={() => (createTarget = { day: currentDay, mode: 'close' })}
+                >
+                  {m.cal_closure_menu()}
+                </Button>
+              {/if}
+            {/snippet}
             {#snippet tools()}
               <CollapsibleFilters activeCount={activeFilterCount} {compact}>
                 <FilterToolbar
@@ -732,8 +755,11 @@
   {mutationScope}
   bookEndpoint="/api/scheduling/bookings"
   {canBook}
+  closures={cal.closures}
+  {canClose}
   onclose={() => (createTarget = null)}
   onbooked={onCreated}
+  onclosed={refresh}
 />
 
 <style>

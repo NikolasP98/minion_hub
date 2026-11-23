@@ -605,6 +605,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'scheduling',
     why: 'sched_booking_products row charged by pos.ticket.product-on-event — visit.products[].paid=true',
   },
+  {
+    id: 'sched.closure.multi-day',
+    domain: 'scheduling',
+    why: 'two sched_closures rows sharing one group_id (tomorrow and the day after, 09:00–14:00 Lima) — the calendar band, "Reabrir todos (2 días)" (spec 147)',
+  },
   { id: 'sched.kind.default', domain: 'scheduling', why: 'is_default=true' },
   { id: 'sched.kind.custom', domain: 'scheduling', why: 'org-defined non-default kind' },
   {

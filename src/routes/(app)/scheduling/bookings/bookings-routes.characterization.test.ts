@@ -338,6 +338,8 @@ describe('/pos/appointments load — pinned key set', () => {
         'categories',
         'orgTz',
         'calendarScope',
+        // Agenda closures (spec 147).
+        'closures',
       ].sort(),
     );
     expect(depends).toHaveBeenCalledWith('pos:appointments');
@@ -670,6 +672,8 @@ describe('/scheduling/calendar load — pinned key set', () => {
         'categories',
         'orgTz',
         'calendarScope',
+        // Agenda closures (spec 147).
+        'closures',
       ].sort(),
     );
     // Bookings arrive in `BookingCalendar`'s compact shape, identical to POS's.
