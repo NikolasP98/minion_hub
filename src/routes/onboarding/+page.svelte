@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
   import * as m from '$lib/paraglide/messages';
@@ -55,7 +56,7 @@
 </script>
 
 <svelte:head>
-  <title>{eyebrow} — Minion Hub</title>
+  <title>{eyebrow} — {getBranding().fullName}</title>
 </svelte:head>
 
 {#snippet taskIcon()}
@@ -68,7 +69,7 @@
   {eyebrow}
   title={data.scope === 'org'
     ? m.onboarding_orgTitle({ org: data.org.name })
-    : m.onboarding_userTitle()}
+    : m.onboarding_userTitle({ hubName: getBranding().name })}
   description={data.scope === 'org' ? m.onboarding_orgSubtitle() : m.onboarding_userSubtitle()}
   icon={taskIcon}
   size="medium"

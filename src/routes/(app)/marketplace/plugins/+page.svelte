@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { Search, Grid3X3, List, X, Puzzle, Package, Star, Download } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { iconSizes, Button, Input, PageHeader, Select } from '$lib/components/ui';
@@ -293,7 +294,7 @@
         >
       {/if}
       <span class="text-xs text-muted-strong hidden md:block truncate"
-        >{m.marketplace_pluginsSubtitle()}</span
+        >{m.marketplace_pluginsSubtitle({ hubFullName: getBranding().fullName })}</span
       >
       <div class="flex-1"></div>
 
