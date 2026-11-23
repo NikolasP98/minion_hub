@@ -89,6 +89,7 @@
     knownStaff,
   } from '$lib/components/scheduling/kit/calendar-prefs.svelte';
   import { canAct } from '$lib/access/can.svelte';
+  import { reopenClosure } from '$lib/components/scheduling/kit/closures';
   import { formatDate, formatMoney } from '$lib/utils/format';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
   import { groupPendingLines } from '$lib/components/pos/pending-groups';
@@ -118,7 +119,10 @@
   // seed data, visible-range commands fetch missing neighbours through
   // `GET /api/pos/appointments`, and distant weeks are dropped so an hour of
   // scrolling can't grow the tab without bound.
-  type WindowPayload = Pick<PageData, 'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions'>;
+  type WindowPayload = Pick<
+    PageData,
+    'bookings' | 'invoices' | 'accrualSummaries' | 'tagOptions' | 'closures'
+  >;
 
   const winCache = createCalendarWindowCache<WindowPayload>({
     fetchWindow: async (from, to, signal) => {
@@ -134,9 +138,11 @@
       const invoices: WindowPayload['invoices'] = [];
       const accruals = new Map<string, WindowPayload['accrualSummaries'][number]>();
       const tags = new Map<string, WindowPayload['tagOptions'][number]>();
+      const closures = new Map<string, WindowPayload['closures'][number]>();
       for (const week of parts) {
         bookings.push(...week.bookings);
         invoices.push(...week.invoices);
+        for (const c of week.closures) closures.set(c.id, c);
         for (const a of week.accrualSummaries) accruals.set(a.sourceId, a);
         for (const t of week.tagOptions) if (!tags.has(t.id)) tags.set(t.id, t);
       }
@@ -145,6 +151,7 @@
         invoices,
         accrualSummaries: [...accruals.values()],
         tagOptions: [...tags.values()],
+        closures: [...closures.values()],
       };
     },
   });
@@ -176,6 +183,7 @@
           invoices: [],
           accrualSummaries: current.accrualSummaries,
           tagOptions: current.tagOptions,
+          closures: [],
         };
         out.set(key, week);
       }
@@ -185,6 +193,8 @@
       bucket(instantDateKey(new Date(booking.start), current.orgTz)).bookings.push(booking);
     for (const invoice of current.invoices)
       bucket(instantDateKey(new Date(invoice.at), current.orgTz)).invoices.push(invoice);
+    for (const c of current.closures ?? [])
+      bucket(instantDateKey(new Date(c.start), current.orgTz)).closures.push(c);
     return out;
   }
 
@@ -262,6 +272,8 @@
   // unlinked appointments here without a scheduling role); the calls go through
   // /api/pos/appointments*, which the central gate maps to pos:create/edit.
   const canSchedule = $derived(canAct('pos', 'edit') || canAct('pos', 'create'));
+  /** Spec 147: closing the agenda is booking work (central gate: scheduling:create OR pos:create). */
+  const canClose = $derived(canAct('scheduling', 'create') || canAct('pos', 'create'));
   let detailId = $state<string | null>(null);
   /** Set by the calendar's "Mover a…": the drawer opens on the time editor. */
   let detailReschedule = $state(false);
@@ -1179,6 +1191,18 @@
       {/each}
     {/if}
   {/if}
+  {#if canClose}
+    <Button
+      variant="ghost"
+      size="sm"
+      class="cc-row"
+      aria-haspopup="dialog"
+      onclick={() => (createTarget = { day: currentDay, mode: 'close' })}
+    >
+      <span class="k-label">{m.cal_closure_menu()}</span>
+      <ChevronRight size={iconSizes.sm} />
+    </Button>
+  {/if}
 {/snippet}
 
 <PageShell
@@ -1353,6 +1377,8 @@
           }}
           oncontextmenu={openEventMenu}
           onslot={newAt}
+          closures={cal.closures}
+          onreopen={canClose ? (c, o) => reopenClosure(c, o.group, refresh) : undefined}
           hours={data.hours}
           onmove={canSchedule ? mover.moveBooking : undefined}
           ondropexternal={canSchedule ? dropLine : undefined}
@@ -1591,8 +1617,11 @@
   resources={data.resources}
   timeZone={data.orgTz}
   {mutationScope}
+  closures={cal.closures}
+  {canClose}
   onclose={() => (createTarget = null)}
   onbooked={onCreated}
+  onclosed={refresh}
 />
 
 <ConsumptionConfirmDialog

@@ -45,7 +45,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const to = new Date(window.to!.getTime() - 1);
 
   const eventTypes = await listEventTypes(ctx);
-  const { bookings, tagOptions } = await loadCalendarWindow(ctx, locals, {
+  const { bookings, tagOptions, closures } = await loadCalendarWindow(ctx, locals, {
     from,
     to,
     eventTypes,
@@ -54,6 +54,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   return json({
     bookings,
     tagOptions,
+    closures,
     calendarScope: calendarWindowScope(ctx.tenantId, orgTz),
   });
 };

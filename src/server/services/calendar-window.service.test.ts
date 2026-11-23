@@ -19,6 +19,9 @@ vi.mock('$server/services/rbac.service', () => ({
 vi.mock('$server/services/scheduling-bookings.service', () => ({
   listBookings: () => Promise.resolve(state.bookings),
 }));
+vi.mock('$server/services/scheduling-closures.service', () => ({
+  listClosures: vi.fn(async () => []),
+}));
 vi.mock('$server/services/finance-products.service', () => ({
   categoryColorsForProducts: (_ctx: unknown, ids: string[]) => {
     state.categoryCalls.push(ids);

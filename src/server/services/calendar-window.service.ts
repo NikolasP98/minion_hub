@@ -2,6 +2,7 @@ import type { CoreCtx } from '$server/auth/core-ctx';
 import { isDenied, type DatasetDenied } from '$lib/permissions';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
+import { listClosures } from '$server/services/scheduling-closures.service';
 import { categoryColorsForProducts } from '$server/services/finance-products.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
@@ -11,7 +12,10 @@ import {
   listTicketsForCalendar,
   type BookingTicketLink,
 } from '$server/services/pos-accounts.service';
-import type { CalendarBookingTag } from '$lib/components/scheduling/calendar-window';
+import type {
+  CalendarBookingTag,
+  CalendarClosure,
+} from '$lib/components/scheduling/calendar-window';
 
 /** The subset of an event type the window needs for `kindId`/`productOf`
  *  resolution — callers already have the full list loaded (once per page
@@ -71,6 +75,8 @@ export async function loadCalendarWindow(
   // branch here. Ledger §39,
   // proposals/2026-09-25-hub-pos-calendar-color-followups.md.
   const maskAttendeePii = await shouldMaskSensitive(locals, 'scheduling');
+  // Agenda closures (spec 147). Fail-soft: a closure read must never cost the calendar.
+  const closures = await listClosures(ctx, { from, to }).catch((): CalendarClosure[] => []);
   const bookings = await listBookings(ctx, { from, to, limit: 2000, maskAttendeePii });
 
   // Name + colour of each booking's product category — the one interchangeable
@@ -224,5 +230,6 @@ export async function loadCalendarWindow(
     })),
     accrualSummaries,
     tagOptions: [...tagOptions.values()],
+    closures,
   };
 }

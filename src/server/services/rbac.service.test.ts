@@ -177,6 +177,24 @@ describe('role definition and page policy API actions', () => {
   });
 });
 
+describe('agenda closure gates (spec 147)', () => {
+  test('closing and reopening is booking work: scheduling:create or pos:create', () => {
+    const id = '0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d';
+    const need = {
+      module: 'scheduling',
+      action: 'create',
+      anyOf: [{ module: 'pos', action: 'create' }],
+    };
+    expect(apiWriteCapability('/api/scheduling/closures', 'POST')).toEqual(need);
+    expect(apiWriteCapability(`/api/scheduling/closures/${id}/reopen`, 'POST')).toEqual(need);
+    // Anything else under the prefix keeps the ordinary scheduling gate.
+    expect(apiWriteCapability(`/api/scheduling/closures/${id}`, 'DELETE')).toEqual({
+      module: 'scheduling',
+      action: 'delete',
+    });
+  });
+});
+
 describe('automation, gateway and organization write gates', () => {
   const need = (path: string, method: string) => apiWriteCapability(path, method);
   test('flows and flow-groups map to the flows module by method', () => {

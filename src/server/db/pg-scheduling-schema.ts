@@ -343,6 +343,29 @@ export const schedBookingProducts = pgTable(
   }),
 );
 
+/**
+ * Spec 147 "Cerrar agenda": a stretch of ONE local day nobody should book, with a
+ * reason. A multi-day closure is one row per day sharing `groupId`.
+ * Org-wide: a closure blocks the whole agenda, every resource.
+ */
+export const schedClosures = pgTable(
+  'sched_closures',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    reason: text('reason').notNull(),
+    groupId: uuid('group_id').notNull(),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    orgStartIdx: index('sched_closures_org_start_idx').on(t.orgId, t.startsAt),
+    groupIdx: index('sched_closures_group_idx').on(t.orgId, t.groupId),
+  }),
+);
+
 /** A shareable scheduling link aggregating one or more event types. */
 export const schedLinks = pgTable(
   'sched_links',

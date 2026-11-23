@@ -178,6 +178,7 @@
     iconSizes,
   } from '$lib/components/ui';
   import { ConfirmDialog, Dialog, Sheet } from '$lib/components/ui/foundations';
+  import { createOptimistic } from '$lib/utils/optimistic';
   import * as m from '$lib/paraglide/messages';
   import { blockDetail, statusIcon } from './block-label';
   import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
@@ -191,6 +192,7 @@
     todayIn,
     type CalendarBooking,
     type CalendarBookingTag,
+    type CalendarClosure,
     type CalendarInvoice,
     type CalendarResource,
     type CalendarView,
@@ -339,6 +341,12 @@
     oncontextmenu?: (box: BookingBox, at: { x: number; y: number }) => void;
     /** Clicking empty grid space. Omit to leave the background inert. */
     onslot?: (day: string, time: string, resourceId: string | null) => void;
+    /** Agenda closures (spec 147): drawn as a hatched danger band over the closed
+     *  time of every column of that day, with the reason as a label. */
+    closures?: CalendarClosure[];
+    /** Reopen one closed day, or (`group`) every day closed with it. Resolve to
+     *  whether the server accepted it; the band hides meanwhile. Omit = read-only. */
+    onreopen?: (closure: CalendarClosure, opts: { group: boolean }) => Promise<boolean>;
     /** Route-specific chips inside the hover card (POS stock accrual). */
     chips?: Snippet<[CalendarBooking]>;
     /** Route-specific actions in the hover card footer (POS charge/complete/…). */
@@ -485,6 +493,8 @@
     onopen,
     oncontextmenu,
     onslot,
+    closures = [],
+    onreopen,
     chips,
     actions,
     hours,
@@ -1634,9 +1644,13 @@
     agendaOn
       ? (compact
           ? visibleDays
-          : [...bookingsByDay.entries()]
-              .filter(([day, list]) => list.length > 0 && agendaDays.has(day))
-              .map(([day]) => day)
+          : [
+              ...new Set([
+                ...[...bookingsByDay.entries()].filter(([, l]) => l.length > 0).map(([d]) => d),
+                ...shownClosures.map((c) => dayOf(c.start)),
+              ]),
+            ]
+              .filter((day) => agendaDays.has(day))
               .sort()
         ).map((day) => ({
           day,
@@ -2306,6 +2320,36 @@
         top: ((a - DAY_START) / 60) * hourPx,
         height: ((b - a) / 60) * hourPx,
       }));
+  }
+
+  // ── Agenda closures (spec 147) ─────────────────────────────────────────────
+  const reopening = createOptimistic<boolean>();
+  const shownClosures = $derived(
+    closures.filter(
+      (c) => !reopening.get(c.id, false) && !reopening.get(`group:${c.groupId}`, false),
+    ),
+  );
+  /** Closures touching a local day (a closure is one local day, so by its start). */
+  const closuresOn = (day: string) => shownClosures.filter((c) => dayOf(c.start) === day);
+  /** Closed bands (px) for a column, clipped to the visible hours. */
+  function closureBands(col: Column): { c: CalendarClosure; top: number; height: number }[] {
+    return closuresOn(col.day).flatMap((c) => {
+      const a = Math.max(minutesOf(c.start), DAY_START);
+      const b = Math.min(dayOf(c.end) === col.day ? minutesOf(c.end) : 24 * 60, DAY_END);
+      return b > a
+        ? [{ c, top: ((a - DAY_START) / 60) * hourPx, height: ((b - a) / 60) * hourPx }]
+        : [];
+    });
+  }
+  const closureSpan = (c: CalendarClosure) =>
+    `${hhmm(c.start)} – ${dayOf(c.end) === dayOf(c.start) ? hhmm(c.end) : '24:00'}`;
+  const closureName = (c: CalendarClosure) =>
+    m.cal_closure_name({ span: closureSpan(c), reason: c.reason });
+  let closureOpen = $state<CalendarClosure | null>(null);
+  async function reopen(c: CalendarClosure, group: boolean) {
+    closureOpen = null;
+    if (!onreopen) return;
+    await reopening.run(group ? `group:${c.groupId}` : c.id, true, () => onreopen(c, { group }));
   }
 
   // ── Drag to move / resize ── pointer events on the box itself; the window
@@ -3694,7 +3738,20 @@
             })}
           </h3>
           <ul class="ag-list">
-            {#if group.boxes.length === 0}
+            {#each closuresOn(group.day) as c (c.id)}
+              <li>
+                <Button
+                  variant="ghost"
+                  class="ag-row ag-closed"
+                  aria-label={closureName(c)}
+                  onclick={() => (closureOpen = c)}
+                >
+                  <span class="ag-time">{closureSpan(c)}</span>
+                  <span class="ag-main truncate">{m.cal_closure_label({ reason: c.reason })}</span>
+                </Button>
+              </li>
+            {/each}
+            {#if group.boxes.length === 0 && closuresOn(group.day).length === 0}
               <li class="ag-empty t-caption">{m.cal_agenda_day_empty()}</li>
             {/if}
             {#each group.boxes as box (box.key)}
@@ -3795,6 +3852,7 @@
                 <div
                   class="m-cell"
                   class:is-today={cell.isToday}
+                  class:is-closed={closuresOn(cell.day).length > 0}
                   class:is-outside={cell.day.slice(0, 7) !== labelMonth}
                   ondragover={(e) => monthCellDragOver(e, cell.day)}
                   ondrop={(e) => (e.preventDefault(), (monthHint = null))}
@@ -3852,7 +3910,13 @@
                       {#if cell.active > 0}
                         <span class="m-count" aria-hidden="true">{cell.active}</span>
                       {/if}
-                      <span class="sr-only">{cell.active > 0 ? `${full}, ${count}` : full}</span>
+                      <span class="sr-only"
+                        >{cell.active > 0
+                          ? `${full}, ${count}`
+                          : full}{#each closuresOn(cell.day) as c (c.id)}, {closureName(
+                            c,
+                          )}{/each}</span
+                      >
                     </Button>
                   {:else}
                     <div class="m-body">
@@ -3873,6 +3937,17 @@
                       >
                         {cell.num}
                       </Button>
+                      {#each closuresOn(cell.day) as c (c.id)}
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          class="m-closed"
+                          aria-label={closureName(c)}
+                          onclick={() => (closureOpen = c)}
+                        >
+                          <span class="truncate">{m.cal_closure_label({ reason: c.reason })}</span>
+                        </Button>
+                      {/each}
                       {#if monthHint === cell.day}
                         <!-- The refusal, in place of the chips so it is always on
                          screen; a real Button, so Enter is the keyboard path. -->
@@ -4149,6 +4224,26 @@
                       e.key === 'Enter' && onslot?.(col.day, MONTH_NEW_TIME, col.resourceId)}
                   ></Button>
                 {/if}
+
+                <!-- TODO(handoff): dragging/dropping an event INTO a closure is not warned
+                   (only the create drawer warns); spec 147 EGM F3 cut it for the first
+                   release. Ledger: proposals/2026-11-23-hub-agenda-closures-and-stock-count-followups.md. -->
+                <!-- Agenda closures (spec 147): the band ignores the pointer like
+                   `.offhours`, so grid gestures and drops pass through; only its
+                   label is a control. Events paint above it (later in tree order). -->
+                {#each closureBands(col) as band (band.c.id)}
+                  <div class="closure" style="top:{band.top}px;height:{band.height}px">
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      class="closure-label"
+                      aria-label={closureName(band.c)}
+                      onclick={() => (closureOpen = band.c)}
+                    >
+                      <span class="truncate">{m.cal_closure_label({ reason: band.c.reason })}</span>
+                    </Button>
+                  </div>
+                {/each}
 
                 <!-- Containment (HC-022): committed boxes live in `.track-clip`,
                    which clips to the track — a 06:30 booking on a 07:00 grid
@@ -4518,6 +4613,29 @@
     isScopeCurrent={(key) => key === BOOKINGS_TABLE}
     onreload={cv.load}
   />
+{/if}
+{#if closureOpen}
+  {@const c = closureOpen}
+  <Dialog open size="sm" title={m.cal_closure_title()} onclose={() => (closureOpen = null)}>
+    <p class="t-body">{c.reason}</p>
+    <p class="t-caption">
+      {formatDateKey(dayOf(c.start), { weekday: 'long', day: 'numeric', month: 'long' })} ·
+      {closureSpan(c)}
+    </p>
+    {#snippet footer()}
+      <Button variant="ghost" onclick={() => (closureOpen = null)}>{m.cal_closure_keep()}</Button>
+      {#if onreopen}
+        {#if c.groupSize > 1}
+          <Button variant="secondary" onclick={() => reopen(c, true)}>
+            {m.cal_closure_reopen_all({ n: c.groupSize })}
+          </Button>
+        {/if}
+        <Button variant="primary" onclick={() => reopen(c, false)}>
+          {m.cal_closure_reopen_day()}
+        </Button>
+      {/if}
+    {/snippet}
+  </Dialog>
 {/if}
 {#if conflictAsk}
   <Dialog open size="sm" title={m.cal_conflict_title()} onclose={() => (conflictAsk = null)}>
@@ -5275,6 +5393,52 @@
      reads as a texture and not only as a shade (owner ask 2026-09-20). The
      stripe is a tertiary-text mix at a few percent — visible on every theme,
      never louder than the grid lines. */
+  /* Agenda closure (spec 147): the off-hours hatch in the danger triple, over
+     the closed time. Ignores the pointer (gestures and drops pass through);
+     only its label takes clicks. */
+  .closure {
+    position: absolute;
+    left: 0;
+    right: 0;
+    --hatch: color-mix(in srgb, var(--color-danger-border) 35%, transparent);
+    background-color: color-mix(in srgb, var(--color-danger-surface) 70%, transparent);
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--hatch) 0,
+      var(--hatch) 1px,
+      transparent 1px,
+      transparent 8px
+    );
+    border-left: 3px solid var(--color-danger-border);
+    pointer-events: none;
+  }
+  .closure :global(.closure-label) {
+    pointer-events: auto;
+    max-width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 0 var(--space-1);
+    color: var(--color-danger-fg);
+    font-weight: 600;
+  }
+  .ag-list :global(.ag-closed) {
+    border-left-color: var(--color-danger-border);
+    background: var(--color-danger-surface);
+    color: var(--color-danger-fg);
+  }
+  .m-cell.is-closed {
+    background: color-mix(in srgb, var(--color-danger-surface) 60%, transparent);
+  }
+  .m-body :global(.m-closed) {
+    align-self: stretch;
+    justify-content: flex-start;
+    height: auto;
+    min-height: 0;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-xs);
+    background: var(--color-danger-surface);
+    color: var(--color-danger-fg);
+  }
   .offhours {
     position: absolute;
     left: 0;

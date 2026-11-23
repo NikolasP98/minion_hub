@@ -73,7 +73,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent, cooki
     Promise.all(activeResources.map((r) => getResourceSchedule(ctx, r.id))),
   ]);
 
-  const { bookings, tagOptions } = await loadCalendarWindow(ctx, locals, {
+  const { bookings, tagOptions, closures } = await loadCalendarWindow(ctx, locals, {
     from,
     to,
     eventTypes,
@@ -124,6 +124,7 @@ export const load: PageServerLoad = async ({ locals, depends, url, parent, cooki
       /** Event-scope registry + every tag present on a shown event — the filter's options. */
       tagOptions,
       bookings,
+      closures,
       resources: activeResources.map((r) => ({ id: r.id, name: r.name, color: r.color })),
       hours,
       eventTypes: eventTypes.map((e) => ({

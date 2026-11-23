@@ -155,6 +155,10 @@ export interface SlotsResult {
  * container visit (`createBookingGroup`): the slot has to be as long as the
  * whole visit, and only a resource assigned to EVERY procedure can offer it.
  */
+// TODO(handoff): agenda closures (spec 147, `sched_closures`) are NOT subtracted here, so the
+// assistant and the public booking page can still offer a closed slot. Staff and the assistant
+// both book with source 'internal' + bypassRules, so this needs an explicit `respectClosures`
+// flag (closures unpadded by buffers). Ledger: proposals/2026-11-23-hub-agenda-closures-and-stock-count-followups.md.
 export async function getSlotsForEventType(
   ctx: CoreCtx,
   eventTypeId: string,
