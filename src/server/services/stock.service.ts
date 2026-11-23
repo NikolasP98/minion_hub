@@ -1339,7 +1339,10 @@ export interface LedgerValueGap {
   since: { entryId: string; type: string; humanId: string | null; postedAt: string } | null;
 }
 
-/** Items whose Σ ledger value_delta ≠ qty × valuation_rate by more than a cent, largest first. */
+/** Items whose Σ ledger value_delta ≠ qty × valuation_rate by more than a cent, largest first.
+ *  TODO(handoff): spec 144 TO-BE §2 also wants this in the spec 122 stock reconciliation report,
+ *  which is not on master yet — call ledgerValueGaps there when it lands
+ *  (meta proposals/2026-11-17-hub-faces-stock-reconciliation-handoff.md item 7). */
 export function ledgerValueGaps(ctx: CoreCtx): Promise<LedgerValueGap[]> {
   return withOrgCore(ctx, async (tx) => {
     const org = ctx.tenantId;
