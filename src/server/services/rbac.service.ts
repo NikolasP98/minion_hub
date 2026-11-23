@@ -935,9 +935,6 @@ const CUSTOMER_REGISTRATION_ALTERNATIVES: Partial<
 };
 const READ_POST_ENDPOINTS: ReadonlyArray<readonly [RegExp, Module]> = [
   [/^\/api\/brains\/[^/]+\/search$/, 'brains'],
-  // Recording a finished Test Run is history bookkeeping the editor fires for
-  // anyone who can open the page (flows:view), not an edit of the flow.
-  [/^\/api\/flows\/[^/]+\/runs$/, 'flows'],
 ];
 const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/roles',

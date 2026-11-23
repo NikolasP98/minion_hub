@@ -189,7 +189,8 @@ describe('automation, gateway and organization write gates', () => {
     expect(need('/api/flow-groups/g1', 'DELETE')).toEqual({ module: 'flows', action: 'delete' });
   });
   test('recording a run needs only flows:view; other nested POSTs stay edit', () => {
-    expect(need('/api/flows/f1/runs', 'POST')).toEqual({ module: 'flows', action: 'view' });
+    // Recording a run adds history and prunes older runs, so it needs edit, not view.
+    expect(need('/api/flows/f1/runs', 'POST')).toEqual({ module: 'flows', action: 'edit' });
     expect(need('/api/flows/f1/copilot', 'POST')).toEqual({ module: 'flows', action: 'edit' });
   });
   test('reads stay ungated and neighbouring paths are unchanged', () => {
