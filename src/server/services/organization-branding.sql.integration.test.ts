@@ -12,7 +12,13 @@ import {
   saveOrganizationMetadata,
   loadOrganizationBrandingSettings,
 } from './organization-branding.service';
-import { runWithEffectiveAuthority } from '$server/auth/effective-authority';
+import {
+  runWithEffectiveAuthority,
+  runWithRequestCapabilities,
+} from '$server/auth/effective-authority';
+import { isHttpError } from '@sveltejs/kit';
+import { PATCH as brandingPatch } from '../../routes/api/organizations/branding/+server';
+import { PATCH as metadataPatch } from '../../routes/api/tenants/me/+server';
 const url = testDatabaseUrl();
 validateMarkedLoopbackPostgres(
   url,
@@ -79,6 +85,147 @@ afterAll(async () => {
   await sql.end();
 });
 describe('organization branding native PostgreSQL', () => {
+  it('PATCH handlers return committed branding and preserve identity through reset and rejected requests', async () => {
+    const id = await org();
+    const transcript: unknown[] = [];
+    // Supply the request capability scope normally admitted by hooks, then run
+    // the real preflight gate and the fresh locked database admission together.
+    vi.mocked(rbac.requireOrgCapability).mockRestore();
+    try {
+      async function invoke(
+        handler: typeof brandingPatch,
+        path: string,
+        body: unknown,
+        profileId = users[0],
+        raw = JSON.stringify(body),
+      ) {
+        const request = new Request(`http://localhost${path}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: raw,
+        });
+        let status: number;
+        let output: unknown;
+        let cacheControl: string | null = null;
+        try {
+          const response = await runWithRequestCapabilities(
+            {
+              orgId: id,
+              profileId,
+              capabilities: rbac.buildCapabilities(
+                [profileId === users[0] ? 'owner' : 'staff'],
+                [],
+              ),
+            },
+            () => handler({ locals: locals(id, profileId), request } as never),
+          );
+          status = response.status;
+          cacheControl = response.headers.get('cache-control');
+          output = await response.json();
+        } catch (cause) {
+          if (!isHttpError(cause)) throw cause;
+          status = cause.status;
+          output = cause.body;
+        }
+        const [persisted] =
+          await sql`select id,name,hub_name from public.organizations where id=${id}::uuid`;
+        transcript.push({
+          path,
+          actor: profileId === users[0] ? 'owner' : 'staff',
+          body,
+          bytes: new TextEncoder().encode(raw).length,
+          status,
+          cacheControl,
+          output,
+          persisted,
+        });
+        return { status, cacheControl, output, persisted };
+      }
+      const brandingPath = '/api/organizations/branding';
+      const metadataPath = '/api/tenants/me';
+      expect(
+        await invoke(brandingPatch, brandingPath, { hubName: '  Clínica Faces  ' }),
+      ).toMatchObject({
+        status: 200,
+        cacheControl: 'private, no-store',
+        output: {
+          hubName: 'Clínica Faces',
+          branding: {
+            orgId: id,
+            name: 'Clínica Faces',
+            fullName: 'Clínica Faces Hub',
+            source: 'custom',
+            readStatus: 'ready',
+          },
+        },
+        persisted: { id, name: 'Faces', hub_name: 'Clínica Faces' },
+      });
+      expect(
+        await invoke(metadataPatch, metadataPath, { name: 'Faces International' }),
+      ).toMatchObject({
+        status: 200,
+        output: { ok: true },
+        persisted: { id, name: 'Faces International', hub_name: 'Clínica Faces' },
+      });
+      expect(await invoke(brandingPatch, brandingPath, { hubName: 'MINION' })).toMatchObject({
+        status: 200,
+        output: { branding: { name: 'MINION', source: 'custom' } },
+      });
+      expect(await invoke(metadataPatch, metadataPath, { name: 'New Faces' })).toMatchObject({
+        status: 200,
+        persisted: { name: 'New Faces', hub_name: 'MINION' },
+      });
+      expect(await invoke(brandingPatch, brandingPath, { hubName: null })).toMatchObject({
+        status: 200,
+        output: {
+          hubName: null,
+          branding: { name: 'New Faces', fullName: 'New Faces Hub', source: 'organization' },
+        },
+        persisted: { name: 'New Faces', hub_name: null },
+      });
+      for (const body of [
+        { hubName: 'x'.repeat(16) },
+        { hubName: 'Faces Hub' },
+        { hubName: 'Faces', orgId: randomUUID() },
+      ])
+        expect(await invoke(brandingPatch, brandingPath, body)).toMatchObject({
+          status: 400,
+          persisted: { name: 'New Faces', hub_name: null },
+        });
+      const body = { hubName: 'Faces' };
+      const padded = JSON.stringify(body).padEnd(2048, ' ');
+      expect(await invoke(brandingPatch, brandingPath, body, users[0], padded)).toMatchObject({
+        status: 200,
+        persisted: { name: 'New Faces', hub_name: 'Faces' },
+      });
+      expect(await invoke(brandingPatch, brandingPath, body, users[0], padded + ' ')).toMatchObject(
+        {
+          status: 400,
+          persisted: { name: 'New Faces', hub_name: 'Faces' },
+        },
+      );
+      expect(
+        await invoke(brandingPatch, brandingPath, { hubName: 'Stolen' }, users[1]),
+      ).toMatchObject({ status: 403, persisted: { name: 'New Faces', hub_name: 'Faces' } });
+      expect(await invoke(metadataPatch, metadataPath, { name: 'Stolen' }, users[1])).toMatchObject(
+        { status: 403, persisted: { name: 'New Faces', hub_name: 'Faces' } },
+      );
+      if (process.env.PRINT_BRANDING_API_EVIDENCE === '1')
+        console.info(
+          JSON.stringify(
+            {
+              surface:
+                'PATCH handlers + PostgreSQL; verified request identity supplied by fixture, no HTTP auth-hook exercise',
+              transcript,
+            },
+            null,
+            2,
+          ),
+        );
+    } finally {
+      vi.spyOn(rbac, 'requireOrgCapability').mockResolvedValue(null);
+    }
+  });
   it('migration has no backfill and enforces nullable nonblank trimmed byte envelope', async () => {
     const id = await org();
     expect(await sql`select hub_name from public.organizations where id=${id}::uuid`).toMatchObject(

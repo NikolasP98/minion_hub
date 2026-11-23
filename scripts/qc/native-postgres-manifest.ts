@@ -652,8 +652,9 @@ export const NATIVE_POSTGRES_MANIFEST = {
   'qa-native': [
     {
       file: 'src/server/services/organization-branding.sql.integration.test.ts',
-      minimumAssertions: 7,
+      minimumAssertions: 8,
       requiredBehaviors: [
+        'organization branding native PostgreSQL PATCH handlers return committed branding and preserve identity through reset and rejected requests',
         'organization branding native PostgreSQL migration has no backfill and enforces nullable nonblank trimmed byte envelope',
         'organization branding native PostgreSQL fresh owner membership permits both role models independently of the assigned role key',
         'organization branding native PostgreSQL staff foreign profiles and deleting profiles cannot bypass either identity writer; simulation is read-only',

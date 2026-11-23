@@ -1,4 +1,4 @@
--- Optional owner-selected prefix; NULL follows the organization name. No backfill.
+-- Optional owner-selected prefix; NULL uses src/lib/branding.ts resolution. No backfill.
 alter table public.organizations add column hub_name text default null;
 alter table public.organizations add constraint organizations_hub_name_envelope
   check (hub_name is null or (
