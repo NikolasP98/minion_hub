@@ -9,6 +9,12 @@
    * columns as the pointer enhancement (native HTML5 drag) — both perform the
    * same single write. After a move the card keeps focus in its new column and
    * a polite live region says what happened (HC-015).
+   *
+   * Opt-in for boards that are not a full page (spec 146, the session task
+   * board): `fit` shares the width between the columns instead of scrolling
+   * sideways; `unclassified={false}` drops the "unset" column and move target
+   * when every row always has a column; and without `onopen` a card is a plain
+   * block, not a button that does nothing.
    */
   import RecordContextMenu from '$lib/records/RecordContextMenu.svelte';
   import { recordActions, type RecordAction } from '$lib/records/actions';
@@ -31,6 +37,8 @@
     rowLabel = rowKey,
     unclassifiedLabel = m.cal_sub_unset(),
     emptyMessage,
+    fit = false,
+    unclassified = true,
   }: {
     columns: readonly { id: string; label: string; color?: string | null }[];
     rows: readonly T[];
@@ -48,6 +56,10 @@
     unclassifiedLabel?: string;
     /** Overrides the empty-board title when `rows.length === 0`. */
     emptyMessage?: string;
+    /** Columns share the available width (no horizontal scroll). */
+    fit?: boolean;
+    /** `false` = every row always has a column: no "unset" column or move target. */
+    unclassified?: boolean;
   } = $props();
 
   const grouped = $derived.by(() => {
@@ -62,7 +74,7 @@
     }
     return by;
   });
-  const showUnclassified = $derived((grouped.get(null)?.length ?? 0) > 0);
+  const showUnclassified = $derived(unclassified && (grouped.get(null)?.length ?? 0) > 0);
 
   /** Column titles that are actually cut off (HC-023): only those get the
    *  shared Tooltip, opened by hover, tap or focus — never a native `title`. */
@@ -95,7 +107,7 @@
   /** `DropdownItem.value` is a string; the unclassified target rides on a sentinel. */
   const UNSET = '\0unset';
   const moveItems = (row: T) =>
-    [...columns, { id: UNSET, label: unclassifiedLabel }].map((c) => ({
+    [...columns, ...(unclassified ? [{ id: UNSET, label: unclassifiedLabel }] : [])].map((c) => ({
       value: c.id,
       label: c.label,
       disabled: (columnOf(row) ?? UNSET) === c.id,
@@ -119,8 +131,11 @@
       ? m.board_moved_to({ label, column: columnLabel(id) })
       : m.board_move_failed({ label });
     await tick();
+    // The card's own button when it has one, else its "Move to…" trigger.
     board
-      ?.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(key)}"] .bcard`)
+      ?.querySelector<HTMLElement>(
+        `[data-row-key="${CSS.escape(key)}"] :is(button.bcard, a.bcard, [data-scope="menu"][data-part="trigger"])`,
+      )
       ?.focus({ preventScroll: true });
   }
 
@@ -158,6 +173,7 @@
 {:else}
   <div
     class="board"
+    class:is-fit={fit}
     class:is-dragging={dragging !== null}
     bind:this={board}
     data-component="board-view"
@@ -205,9 +221,13 @@
                 ondragstart={(e: DragEvent) => dragStart(e, row)}
                 ondragend={() => ((dragging = null), (over = undefined))}
               >
-                <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
-                  {@render card(row)}
-                </Button>
+                {#if onopen}
+                  <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
+                    {@render card(row)}
+                  </Button>
+                {:else}
+                  <div class="bcard bcard-static">{@render card(row)}</div>
+                {/if}
                 {#if onmove}
                   <Dropdown
                     items={moveItems(row)}
@@ -244,6 +264,17 @@
     min-width: 0;
     min-height: 0;
     flex: 1;
+  }
+  /* `fit`: an embedded board. The host owns the gutter; columns share the width. */
+  .board.is-fit {
+    overflow-x: visible;
+    padding-inline: 0;
+    padding-bottom: 0;
+    align-items: stretch;
+  }
+  .board.is-fit .bcol {
+    flex: 1 1 0;
+    min-width: 0;
   }
   .bcol {
     flex: 0 0 16rem;
@@ -326,11 +357,19 @@
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
   }
-  .bcards :global(.bcard > span) {
+  .bcards :global(:is(button, a).bcard > span) {
     flex-direction: column;
     align-items: stretch;
     width: 100%;
     gap: var(--space-0-5);
+  }
+  /* A card with nothing to open: same surface, not a control. */
+  .bcard-static {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-caption);
   }
   @media (pointer: coarse) {
     .bcard-wrap :global([data-scope='menu'][data-part='trigger']) {

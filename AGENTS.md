@@ -192,23 +192,22 @@ bun run a11y --update-baseline                   # after a FIX lowered a count: 
 
 All components are organized into domain subdirectories — no loose `.svelte` files at root:
 
-| Directory      | Purpose                                               |
-| -------------- | ----------------------------------------------------- |
-| `agents/`      | Agent list, detail, settings, skills, tools panels    |
-| `sessions/`    | Session cards, kanban, monitor, viewer                |
-| `hosts/`       | Host dropdown, pill, overlay                          |
-| `chat/`        | Chat message and panel                                |
-| `tasks/`       | Kanban column and task card                           |
-| `charts/`      | Chart, sparkline, activity bars                       |
-| `layout/`      | Topbar, splitter, detail panel, particle canvas, etc. |
-| `config/`      | Config editor components                              |
-| `decorations/` | Visual effects (BgPattern, ScanLine, etc.)            |
-| `flow-editor/` | Flow editor canvas, sidebar, nodes                    |
-| `marketplace/` | Marketplace browsing components                       |
-| `reliability/` | Reliability dashboard panels                          |
-| `settings/`    | Settings page components                              |
-| `users/`       | User management components                            |
-| `workshop/`    | Workshop canvas overlays                              |
+| Directory      | Purpose                                                               |
+| -------------- | --------------------------------------------------------------------- |
+| `agents/`      | Agent list, detail, settings, skills, tools panels                    |
+| `sessions/`    | Session cards, task board (on `data-view/BoardView`), monitor, viewer |
+| `hosts/`       | Host dropdown, pill, overlay                                          |
+| `chat/`        | Chat message and panel                                                |
+| `charts/`      | Chart, sparkline, activity bars                                       |
+| `layout/`      | Topbar, splitter, detail panel, particle canvas, etc.                 |
+| `config/`      | Config editor components                                              |
+| `decorations/` | Visual effects (BgPattern, ScanLine, etc.)                            |
+| `flow-editor/` | Flow editor canvas, sidebar, nodes                                    |
+| `marketplace/` | Marketplace browsing components                                       |
+| `reliability/` | Reliability dashboard panels                                          |
+| `settings/`    | Settings page components                                              |
+| `users/`       | User management components                                            |
+| `workshop/`    | Workshop canvas overlays                                              |
 
 ### Auth
 
