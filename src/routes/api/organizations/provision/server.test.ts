@@ -40,7 +40,11 @@ describe('POST /api/organizations/provision', () => {
   });
 
   it('runs the provisioner as the authenticated Supabase profile', async () => {
-    mocks.provisionOrganization.mockResolvedValue({ ok: true, organization: { id: 'org-3' }, steps: [] });
+    mocks.provisionOrganization.mockResolvedValue({
+      ok: true,
+      organization: { id: 'org-3' },
+      steps: [],
+    });
     const requestEvent = event({ name: 'PINONITE' });
     const response = await POST(requestEvent);
     expect(response.status).toBe(200);
@@ -59,6 +63,23 @@ describe('POST /api/organizations/provision', () => {
     });
     const response = await POST(event({ name: 'PINONITE' }));
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({ ok: false, organization: { id: 'org-3' } });
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      organization: { id: 'org-3' },
+    });
   });
+});
+
+it('validates optional creation branding before invoking provisioning and retains admin gate', async () => {
+  for (const hubName of [null, '', 'Faces Hub', 'x'.repeat(16), 1]) {
+    await expect(POST(event({ name: 'Faces', hubName }))).rejects.toMatchObject({ status: 400 });
+  }
+  expect(mocks.provisionOrganization).not.toHaveBeenCalled();
+  mocks.provisionOrganization.mockResolvedValue({ ok: true });
+  const request = event({ name: 'Faces', hubName: 'Clinic' });
+  await POST(request);
+  expect(mocks.provisionOrganization).toHaveBeenCalledWith(
+    request,
+    expect.objectContaining({ hubName: 'Clinic', profileId: 'profile-1' }),
+  );
 });

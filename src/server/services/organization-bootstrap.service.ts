@@ -1,3 +1,4 @@
+import { suggestHubName, validateHubName } from '$lib/branding';
 import { randomUUID } from 'node:crypto';
 import { getPgClient } from '$server/db/pg-pool';
 import { MODULES, ACTIONS, defaultCaps, defaultFieldLevel } from './rbac.service';
@@ -9,13 +10,25 @@ export interface BootstrappedOrganization {
   slug: string;
   roleModel: 'legacy' | 'organization';
   created: boolean;
+  hub_name: string | null;
 }
 
 /** Bootstrap is the only new-model writer; external provisioning happens after commit. */
 export async function bootstrapOrganization(
-  input: { name: string; slug: string; profileId: string; organizationId?: string | null },
+  input: {
+    name: string;
+    slug: string;
+    profileId: string;
+    organizationId?: string | null;
+    hubName?: string;
+  },
   client = getPgClient(),
 ): Promise<BootstrappedOrganization> {
+  const validation = validateHubName(
+    input.hubName === undefined ? suggestHubName(input.name) : input.hubName,
+  );
+  if (!validation.ok) throw new Error('A valid short Hub name is required');
+  const hubName = validation.value;
   return client.begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(hashtextextended(${input.profileId},114))`;
     const [creator] = await tx<{ pending: boolean }[]>`
@@ -30,8 +43,9 @@ export async function bootstrapOrganization(
         slug: string;
         role_model: 'legacy' | 'organization';
         status: string;
+        hub_name: string | null;
       }[]
-    >`select id,name,slug,role_model,status from organizations where slug=${input.slug}`;
+    >`select id,name,slug,role_model,status,hub_name from organizations where slug=${input.slug}`;
     if (existing) {
       if (input.organizationId && existing.id !== input.organizationId)
         throw new Error('Organization slug already exists with a different Workforce company ID');
@@ -43,9 +57,10 @@ export async function bootstrapOrganization(
           slug: string;
           role_model: 'legacy' | 'organization';
           status: string;
+          hub_name: string | null;
         }[]
       >`
-        select id,name,slug,role_model,status from organizations where id=${existing.id}::uuid for update`;
+        select id,name,slug,role_model,status,hub_name from organizations where id=${existing.id}::uuid for update`;
       if (current?.status !== 'active')
         throw new Error('Active organization required for provisioning');
       if (!current || current.slug !== input.slug)
@@ -61,10 +76,12 @@ export async function bootstrapOrganization(
     }
     const id = input.organizationId ?? randomUUID();
     await tx`select pg_advisory_xact_lock(hashtextextended(${id},112))`;
-    const [organization] = await tx<{ id: string; name: string; slug: string }[]>`
-      insert into organizations(id,name,slug,role_model,default_role_key)
-      values(${id}::uuid,${input.name},${input.slug},'organization',${INITIAL_ADMINISTRATOR_KEY})
-      returning id,name,slug`;
+    const [organization] = await tx<
+      { id: string; name: string; slug: string; hub_name: string | null }[]
+    >`
+      insert into organizations(id,name,slug,role_model,default_role_key,hub_name)
+      values(${id}::uuid,${input.name},${input.slug},'organization',${INITIAL_ADMINISTRATOR_KEY},${hubName})
+      returning id,name,slug,hub_name`;
     await tx`insert into org_roles(org_id,key,name,rank,source_role_key,template_id,template_version,created_by)
       values(${id},${INITIAL_ADMINISTRATOR_KEY},'Administrator',80,'admin','admin',1,${input.profileId})`;
     const rules = MODULES.map((module) => {

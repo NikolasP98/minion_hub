@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '$server/supabase';
 import type { TenantContext } from './base';
+import { saveOrganizationMetadata } from './organization-branding.service';
 
 /**
  * Org info for the active tenant — Supabase `organizations` (the single tenancy
@@ -9,21 +10,14 @@ import type { TenantContext } from './base';
 export async function getTenant(ctx: TenantContext) {
   const { data, error } = await supabaseAdmin()
     .from('organizations')
-    .select('id, name, slug, status, created_at, kind')
+    .select('id, name, hub_name, slug, status, created_at, kind')
     .eq('id', ctx.tenantId)
     .maybeSingle();
   if (error) throw error;
   return data ?? null;
 }
 
-export async function updateTenant(
-  ctx: TenantContext,
-  data: { name?: string; slug?: string; logo?: string; metadata?: string },
-) {
-  const set: Record<string, unknown> = {};
-  if (data.name !== undefined) set.name = data.name;
-  if (data.slug !== undefined) set.slug = data.slug;
-  if (Object.keys(set).length === 0) return;
-  const { error } = await supabaseAdmin().from('organizations').update(set).eq('id', ctx.tenantId);
-  if (error) throw error;
+/** Both automatic identity source fields share the locked owner boundary. */
+export async function updateTenant(locals: App.Locals, data: unknown) {
+  return saveOrganizationMetadata(locals, data);
 }

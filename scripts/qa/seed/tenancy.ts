@@ -595,6 +595,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
     table: 'org_roles',
     where: { org_id: ORG_BUSINESS, key: 'custom-qa-empty' },
   });
+  await seedBrandingFixtures(ctx);
   register('tenancy.simulation.crm-limits', {
     table: 'permission_rules',
     where: {
@@ -686,5 +687,59 @@ export async function seedOrganizationRoleFixtures(
       agentId: matrixTextId(matrixId, 'personal-agent'),
       displayName: `${matrixId} agent`,
     });
+  }
+}
+
+/** Additive branding fixtures; safe to run independently after existing tenancy seeds. */
+export async function seedBrandingFixtures(
+  ctx: Pick<SeedContext, 'sql' | 'admin' | 'register' | 'now'>,
+) {
+  const personas = [
+    ['tenancy.user.branding-owner', 'owner', 'owner'],
+    ['tenancy.user.branding-staff', 'member', 'staff'],
+    ['tenancy.user.branding-admin', 'member', 'staff'],
+  ] as const;
+  const profiles = new Map<string, string>();
+  for (const [persona] of personas) {
+    const profile = await findOrCreateGoTrueUser(
+      ctx.admin,
+      userId(persona),
+      personaEmail(persona),
+      QA_PASSWORD,
+      { full_name: persona },
+    );
+    profiles.set(persona, profile);
+    await ctx.sql`insert into profiles(id,email,display_name,role,onboarded_at)
+      values(${profile},${personaEmail(persona)},${persona},${persona.endsWith('-admin') ? 'admin' : 'user'},${ctx.now})
+      on conflict(id) do update set role=excluded.role,onboarded_at=excluded.onboarded_at`;
+    ctx.register(persona, { table: 'profiles', where: { id: profile } });
+    await ensureSeededPersonalAgent(ctx, {
+      profileId: profile,
+      agentId: matrixTextId(persona, 'personal-agent'),
+      displayName: `${persona} agent`,
+    });
+  }
+  const fixtures = [
+    ['short', 'Faces', null],
+    ['long', 'An Organization Name Longer Than Fifteen', null],
+    ['custom', 'Shared Legal Organization', 'Clínica Faces'],
+    ['minion', 'An Explicit Default Organization', 'MINION'],
+    ['maximum', 'Maximum Width Name', 'WWWWWWWWWWWWWWW'],
+  ] as const;
+  for (const [key, name, hubName] of fixtures) {
+    const matrixId = `tenancy.branding.${key}`;
+    const id = matrixUuid(matrixId);
+    await ctx.sql`insert into organizations(id,name,slug,kind,onboarded_at,hub_name)
+      values(${id},${name},${`qa-branding-${key}`},'business',${ctx.now},${hubName})
+      on conflict(id) do update set name=excluded.name,hub_name=excluded.hub_name`;
+    ctx.register(matrixId, { table: 'organizations', where: { id, name } });
+    for (const [persona, role, roleKey] of personas) {
+      const profile = profiles.get(persona);
+      if (!profile) throw new Error('Branding fixture profile was not provisioned');
+      await ctx.sql`insert into organization_members(organization_id,profile_id,role)
+        values(${id},${profile},${role}) on conflict(organization_id,profile_id) do nothing`;
+      await ctx.sql`insert into member_roles(org_id,profile_id,role_key)
+        values(${id},${profile},${roleKey}) on conflict(org_id,profile_id,role_key) do nothing`;
+    }
   }
 }

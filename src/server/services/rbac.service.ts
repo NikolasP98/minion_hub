@@ -1010,6 +1010,11 @@ export function apiWriteCapability(
   anyOf?: ReadonlyArray<{ module: Module; action: PermAction }>;
 } | null {
   if (!WRITE_METHODS.has(method)) return null;
+  if (
+    method === 'PATCH' &&
+    (pathname === '/api/organizations/branding' || pathname === '/api/tenants/me')
+  )
+    return { module: 'settings', action: 'manage' };
   if (pathname === '/api/nav/access' || pathname === '/api/roles/overrides')
     return { module: 'roles', action: 'edit' };
   if (isSelfOnlyObservation(pathname, method)) return null;

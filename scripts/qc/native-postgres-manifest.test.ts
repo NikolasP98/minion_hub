@@ -75,6 +75,11 @@ describe('native PostgreSQL ownership manifest', () => {
     const audit = NATIVE_POSTGRES_MANIFEST['qa-native'].filter(
       ({ file }) => file === 'src/server/services/pos/accounts/audit.sql.integration.test.ts',
     );
+    const branding = NATIVE_POSTGRES_MANIFEST['qa-native'].find(
+      ({ file }) => file === 'src/server/services/organization-branding.sql.integration.test.ts',
+    );
+    expect(branding?.minimumAssertions).toBe(8);
+    expect(branding?.requiredBehaviors).toHaveLength(8);
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ exactAssertions: true, minimumAssertions: 8 });
     expect(audit[0].requiredBehaviors).toHaveLength(8);
