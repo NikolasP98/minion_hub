@@ -404,6 +404,10 @@ export function createCalendarWindowCache<T>(
 
   function refetchVisible(): void {
     if (disposed || activeScope === null || observedKeys.size === 0) return;
+    // A mutation can reach far weeks (a closure spans up to 62 days): drop cached weeks
+    // that are not on screen so scrolling back refetches them instead of showing stale data.
+    const kept = new Map([...fetchedWeeks].filter(([key]) => observedKeys.has(key)));
+    if (kept.size !== fetchedWeeks.size) fetchedWeeks = kept;
 
     let nextStatus = new Map(statusByKey);
     for (const key of observedKeys) {

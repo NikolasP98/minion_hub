@@ -34,7 +34,9 @@
   let allDay = $state(!initialTime);
   // svelte-ignore state_referenced_locally
   let startTime = $state(initialTime ?? '09:00');
-  let endTime = $state('20:00');
+  // A click at or after 20:00 must not prefill an empty (start ≥ end) range.
+  // svelte-ignore state_referenced_locally
+  let endTime = $state(startTime < '20:00' ? '20:00' : '23:59');
   let reason = $state('');
   let submitting = $state(false);
   let err = $state<string | null>(null);
