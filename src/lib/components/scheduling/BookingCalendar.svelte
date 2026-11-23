@@ -54,6 +54,11 @@
   /** Month-row height, in rem — default for the `monthRowRem` prop, published as
    *  `--cal-month-row`. */
   export const DEFAULT_MONTH_ROW_REM = 7.5;
+  /** Month-row height while `compact`: a cell is only the day number and a
+   *  count. Feeds the same `--cal-month-row`. */
+  // 5.5rem ≈ 7 rows on a phone: about one month on screen, so the label and the dimming name the
+  // right month and the visible weeks stay inside what the page already loaded (3.5rem showed ~12).
+  const COMPACT_MONTH_ROW_REM = 5.5;
   /** Event chips a month cell shows before it collapses the rest into "+N more". */
   const MONTH_CHIPS = 3;
   /** A month cell has no y axis to read a time off, so its empty-space click
@@ -845,7 +850,8 @@
   );
   /** `YYYY-MM` the visible rows mostly belong to: the label, and what decides
    *  which cells are "outside the month" and dim. */
-  const labelMonth = $derived(majorityMonth(visibleMondays));
+  // Phones can still show more than a month of rows; the label follows the first six.
+  const labelMonth = $derived(majorityMonth(compact ? visibleMondays.slice(0, 6) : visibleMondays));
 
   let raf = 0;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1613,15 +1619,22 @@
   // range label names (`visibleDays`), not the wider loaded window, so the
   // list and the label agree; switching to it and back never re-fetches.
   const agendaDays = $derived(new Set(visibleDays));
+  // Compact lists EVERY visible day (an empty one gets a "no appointments" row)
+  // so a phone user sees the day exists; wider screens keep only busy days.
   const agendaGroups = $derived.by(() =>
     agendaOn
-      ? [...bookingsByDay.entries()]
-          .filter(([day, list]) => list.length > 0 && agendaDays.has(day))
-          .sort(([a], [b]) => (a < b ? -1 : 1))
-          .map(([day, list]) => ({
-            day,
-            boxes: pack(list).sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0)),
-          }))
+      ? (compact
+          ? visibleDays
+          : [...bookingsByDay.entries()]
+              .filter(([day, list]) => list.length > 0 && agendaDays.has(day))
+              .map(([day]) => day)
+              .sort()
+        ).map((day) => ({
+          day,
+          boxes: pack(bookingsByDay.get(day) ?? []).sort((a, b) =>
+            a.start < b.start ? -1 : a.start > b.start ? 1 : 0,
+          ),
+        }))
       : [],
   );
 
@@ -1636,6 +1649,8 @@
     /** Tickets rung up that day, while the split is on — the month's signal
      *  for the week view's invoiced column (HC-021). */
     invoiced: number;
+    /** Bookings (not visits) that still count — compact only, else 0. */
+    active: number;
   };
   const monthRows = $derived.by(() =>
     Array.from({ length: Math.max(0, rowLast - rowFirst + 1) }, (_, k) => {
@@ -1657,6 +1672,10 @@
             boxes: boxes.slice(0, MONTH_CHIPS),
             more: Math.max(0, boxes.length - MONTH_CHIPS),
             invoiced: splitOn ? (invoicesByDay.get(day)?.length ?? 0) : 0,
+            active: compact
+              ? (bookingsByDay.get(day) ?? []).filter((b) => !isInactiveMemberStatus(b.status))
+                  .length
+              : 0,
           } satisfies MonthCell;
         }),
       };
@@ -3373,10 +3392,9 @@
   onpointerdowncapture={(e) => (lastPointerType = e.pointerType)}
   onpointerupcapture={(e) => (lastPointerType = e.pointerType)}
   onkeydowncapture={() => (lastPointerType = '')}
-  style="--cal-gutter:{gutterPx}px;--cal-head-h:{headHeightPx}px;--cal-month-row:{monthRowRem}rem;--cal-col-min:{Math.max(
-    132,
-    subs.length * MIN_SUB_PX,
-  )}px;{styleProp ?? ''}"
+  style="--cal-gutter:{gutterPx}px;--cal-head-h:{headHeightPx}px;--cal-month-row:{compact
+    ? COMPACT_MONTH_ROW_REM
+    : monthRowRem}rem;--cal-col-min:{Math.max(132, subs.length * MIN_SUB_PX)}px;{styleProp ?? ''}"
 >
   {#if temporalError}
     <p class="t-caption text-destructive" role="alert">{temporalError}</p>
@@ -3608,7 +3626,7 @@
          contract as an event block — the sliver on its leading edge — and the
          same hover card the grid shows. -->
       <div class="agenda">
-        {#if agendaGroups.length === 0}
+        {#if agendaGroups.length === 0 && !compact}
           {#if empty}{@render empty()}{:else}<EmptyState title={m.cal_agenda_empty()} />{/if}
         {/if}
         {#each agendaGroups as group (group.day)}
@@ -3620,6 +3638,9 @@
             })}
           </h3>
           <ul class="ag-list">
+            {#if group.boxes.length === 0}
+              <li class="ag-empty t-caption">{m.cal_agenda_day_empty()}</li>
+            {/if}
             {#each group.boxes as box (box.key)}
               {@const b = box.statusLead}
               {@const visit = box.members.length > 1}
@@ -3655,11 +3676,33 @@
                       style="border-left-color:{sliver ?? 'var(--color-accent)'}"
                       onclick={() => openBox(b.id, box)}
                     >
-                      <span class="ag-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
-                      <span class="ag-title truncate">
-                        {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
-                      </span>
-                      <span class="ag-staff truncate">{resourceName(b.resourceId)}</span>
+                      {#if compact}
+                        {@const staff = resources.find((r) => r.id === b.resourceId)?.name}
+                        {@const who = [b.attendeeName, staff].filter(Boolean).join(' · ')}
+                        <span class="ag-time is-stack">
+                          <span>{hhmm(box.start)}</span>
+                          <span class="ag-end">{hhmm(box.end)}</span>
+                        </span>
+                        <span class="ag-main">
+                          <span class="ag-title truncate">
+                            {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
+                          </span>
+                          {#if who}<span class="ag-sub truncate">{who}</span>{/if}
+                        </span>
+                        {#if tone}
+                          <Badge variant="semantic" value={tone} size="sm"
+                            >{statusLabel(b.status)}</Badge
+                          >
+                        {:else}
+                          <Badge size="sm">{statusLabel(b.status)}</Badge>
+                        {/if}
+                      {:else}
+                        <span class="ag-time">{hhmm(box.start)} – {hhmm(box.end)}</span>
+                        <span class="ag-title truncate">
+                          {box.members.map((mb) => eventTitle(mb.eventTypeId)).join(', ')}
+                        </span>
+                        <span class="ag-staff truncate">{resourceName(b.resourceId)}</span>
+                      {/if}
                     </Button>
                   {/snippet}
                 </Tooltip>
@@ -3704,7 +3747,7 @@
                   <!-- Empty-space affordance, the same full-area shared Button the
                      week tracks use — it sits FIRST so `.m-body` (positioned, and
                      later in tree order) paints and clicks above it. -->
-                  {#if onslot && feat.createDblClick}
+                  {#if onslot && feat.createDblClick && !compact}
                     <Button
                       variant="ghost"
                       class="slot-layer"
@@ -3730,130 +3773,159 @@
                        create            unchanged (`onslot` at MONTH_NEW_TIME)
                      Day-snapped drag in month was decided against: the time
                      track is the editing surface; month provides the jump. -->
-                  <div class="m-body">
-                    <!-- A single click opens the day view, so the owner's
-                       double-click gesture lands there too — a day number that
-                       did nothing until the second click is a dead affordance. -->
+                  {#if compact}
+                    {@const full = formatDateKey(cell.day, {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                    })}
+                    {@const count =
+                      cell.active === 1
+                        ? m.cal_month_count_one()
+                        : m.cal_month_count_other({ n: cell.active })}
+                    <!-- Phone: the whole cell is ONE button to the day (the day
+                       number's own behaviour). The visible bits are aria-hidden
+                       and the sr-only name carries the same words (WCAG 2.5.3). -->
                     <Button
                       variant="ghost"
-                      size="xs"
-                      class="m-num"
-                      aria-label={formatDateKey(cell.day, {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                      })}
+                      class="m-day"
+                      aria-current={cell.isToday ? 'date' : undefined}
                       onclick={() => openDay(cell.day)}
-                      ondblclick={() => openDay(cell.day)}
                     >
-                      {cell.num}
+                      <span class="m-day-num" aria-hidden="true">{cell.num}</span>
+                      {#if cell.active > 0}
+                        <span class="m-count" aria-hidden="true">{cell.active}</span>
+                      {/if}
+                      <span class="sr-only">{cell.active > 0 ? `${full}, ${count}` : full}</span>
                     </Button>
-                    {#if monthHint === cell.day}
-                      <!-- The refusal, in place of the chips so it is always on
+                  {:else}
+                    <div class="m-body">
+                      <!-- A single click opens the day view, so the owner's
+                       double-click gesture lands there too — a day number that
+                       did nothing until the second click is a dead affordance. -->
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        class="m-num"
+                        aria-label={formatDateKey(cell.day, {
+                          weekday: 'long',
+                          day: 'numeric',
+                          month: 'long',
+                        })}
+                        onclick={() => openDay(cell.day)}
+                        ondblclick={() => openDay(cell.day)}
+                      >
+                        {cell.num}
+                      </Button>
+                      {#if monthHint === cell.day}
+                        <!-- The refusal, in place of the chips so it is always on
                          screen; a real Button, so Enter is the keyboard path. -->
-                      <div class="m-hint-wrap" aria-live="polite">
+                        <div class="m-hint-wrap" aria-live="polite">
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            class="m-hint"
+                            onclick={() => openDay(cell.day)}
+                          >
+                            {m.cal_month_move_hint()}
+                          </Button>
+                        </div>
+                      {/if}
+                      {#each monthHint === cell.day ? [] : cell.boxes as box (box.key)}
+                        {@const b = box.statusLead}
+                        {@const visit = box.members.length > 1}
+                        {@const tone = statusTones[b.status] ?? null}
+                        {@const blockBg = bookingColor(blockColorBy, b, colorCtx)}
+                        {@const sliver =
+                          sliverColorBy === 'status'
+                            ? (toneBorders[tone ?? ''] ?? 'var(--color-border-strong)')
+                            : bookingColor(sliverColorBy, b, colorCtx)}
+                        <!-- Same colour contract as an event block, so the viewer's
+                         two colour sources apply on both surfaces — and the same
+                         hover/focus card (HC-021A). -->
+                        <Tooltip
+                          asChild
+                          interactive
+                          bare
+                          placement="bottom"
+                          openDelay={180}
+                          closeDelay={320}
+                          id="mchip-{cell.day}-{box.key}"
+                        >
+                          {#snippet content()}
+                            {#if visit}
+                              <div class="m-visit-card">
+                                {@render (visitCard ?? defaultVisitCard)(box)}
+                                <Button size="xs" variant="ghost" onclick={() => openDay(cell.day)}
+                                  >{m.cal_month_open_day()}</Button
+                                >
+                              </div>
+                            {:else if hoverCard}
+                              {@render hoverCard(b, box)}
+                            {:else}
+                              {@render defaultBookingCard(b)}
+                            {/if}
+                          {/snippet}
+                          {#snippet children(trigger)}
+                            <Button
+                              {...trigger ?? {}}
+                              variant="ghost"
+                              size="xs"
+                              class="m-chip {b.status} {blockColorBy === 'status'
+                                ? tone
+                                  ? `tone-${tone}`
+                                  : 'tone-neutral'
+                                : blockBg
+                                  ? 'has-color'
+                                  : 'tone-neutral'} {visit ? 'is-visit' : ''}"
+                              style="border-left-color:{sliver ??
+                                'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
+                              aria-describedby={visit ? `mcount-${cell.day}-${box.key}` : undefined}
+                              onpointerdown={(e: PointerEvent) => monthChipDown(e, cell.day)}
+                              onpointermove={monthChipMove}
+                              onpointerup={monthChipUp}
+                              onpointercancel={monthChipUp}
+                              onclick={() => openBox(b.id, box)}
+                            >
+                              <span class="m-chip-t">{hhmm(box.start)}</span>
+                              <span class="m-chip-n truncate">{chipLabel(box)}</span>
+                              {#if visit}
+                                <span class="m-chip-c" aria-hidden="true"
+                                  >×{box.members.length}</span
+                                >
+                                <span class="sr-only" id="mcount-{cell.day}-{box.key}"
+                                  >{m.cal_visit_title({ n: box.members.length })}</span
+                                >
+                              {/if}
+                            </Button>
+                          {/snippet}
+                        </Tooltip>
+                      {/each}
+                      {#if cell.invoiced > 0 && monthHint !== cell.day}
+                        <!-- The split's signal: tickets that day, as a jump to the
+                         day view where the invoiced column lives. -->
                         <Button
                           variant="ghost"
                           size="xs"
-                          class="m-hint"
+                          class="m-inv"
                           onclick={() => openDay(cell.day)}
                         >
-                          {m.cal_month_move_hint()}
+                          <Receipt size={iconSizes.xs} />
+                          {m.cal_month_invoiced({ n: cell.invoiced })}
                         </Button>
-                      </div>
-                    {/if}
-                    {#each monthHint === cell.day ? [] : cell.boxes as box (box.key)}
-                      {@const b = box.statusLead}
-                      {@const visit = box.members.length > 1}
-                      {@const tone = statusTones[b.status] ?? null}
-                      {@const blockBg = bookingColor(blockColorBy, b, colorCtx)}
-                      {@const sliver =
-                        sliverColorBy === 'status'
-                          ? (toneBorders[tone ?? ''] ?? 'var(--color-border-strong)')
-                          : bookingColor(sliverColorBy, b, colorCtx)}
-                      <!-- Same colour contract as an event block, so the viewer's
-                         two colour sources apply on both surfaces — and the same
-                         hover/focus card (HC-021A). -->
-                      <Tooltip
-                        asChild
-                        interactive
-                        bare
-                        placement="bottom"
-                        openDelay={180}
-                        closeDelay={320}
-                        id="mchip-{cell.day}-{box.key}"
-                      >
-                        {#snippet content()}
-                          {#if visit}
-                            <div class="m-visit-card">
-                              {@render (visitCard ?? defaultVisitCard)(box)}
-                              <Button size="xs" variant="ghost" onclick={() => openDay(cell.day)}
-                                >{m.cal_month_open_day()}</Button
-                              >
-                            </div>
-                          {:else if hoverCard}
-                            {@render hoverCard(b, box)}
-                          {:else}
-                            {@render defaultBookingCard(b)}
-                          {/if}
-                        {/snippet}
-                        {#snippet children(trigger)}
-                          <Button
-                            {...trigger ?? {}}
-                            variant="ghost"
-                            size="xs"
-                            class="m-chip {b.status} {blockColorBy === 'status'
-                              ? tone
-                                ? `tone-${tone}`
-                                : 'tone-neutral'
-                              : blockBg
-                                ? 'has-color'
-                                : 'tone-neutral'} {visit ? 'is-visit' : ''}"
-                            style="border-left-color:{sliver ??
-                              'var(--color-accent)'};--evt-c:{blockBg ?? 'transparent'}"
-                            aria-describedby={visit ? `mcount-${cell.day}-${box.key}` : undefined}
-                            onpointerdown={(e: PointerEvent) => monthChipDown(e, cell.day)}
-                            onpointermove={monthChipMove}
-                            onpointerup={monthChipUp}
-                            onpointercancel={monthChipUp}
-                            onclick={() => openBox(b.id, box)}
-                          >
-                            <span class="m-chip-t">{hhmm(box.start)}</span>
-                            <span class="m-chip-n truncate">{chipLabel(box)}</span>
-                            {#if visit}
-                              <span class="m-chip-c" aria-hidden="true">×{box.members.length}</span>
-                              <span class="sr-only" id="mcount-{cell.day}-{box.key}"
-                                >{m.cal_visit_title({ n: box.members.length })}</span
-                              >
-                            {/if}
-                          </Button>
-                        {/snippet}
-                      </Tooltip>
-                    {/each}
-                    {#if cell.invoiced > 0 && monthHint !== cell.day}
-                      <!-- The split's signal: tickets that day, as a jump to the
-                         day view where the invoiced column lives. -->
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        class="m-inv"
-                        onclick={() => openDay(cell.day)}
-                      >
-                        <Receipt size={iconSizes.xs} />
-                        {m.cal_month_invoiced({ n: cell.invoiced })}
-                      </Button>
-                    {/if}
-                    {#if cell.more > 0}
-                      <Button
-                        variant="ghost"
-                        size="xs"
-                        class="m-more"
-                        onclick={() => openDay(cell.day)}
-                      >
-                        {m.cal_month_more({ n: cell.more })}
-                      </Button>
-                    {/if}
-                  </div>
+                      {/if}
+                      {#if cell.more > 0}
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          class="m-more"
+                          onclick={() => openDay(cell.day)}
+                        >
+                          {m.cal_month_more({ n: cell.more })}
+                        </Button>
+                      {/if}
+                    </div>
+                  {/if}
                 </div>
               {/each}
             </div>
@@ -4484,6 +4556,68 @@
     width: 100%;
     gap: var(--space-3);
     justify-content: flex-start;
+  }
+  .ag-time.is-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .ag-end {
+    color: var(--color-text-tertiary);
+  }
+  .ag-main {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+  }
+  .ag-sub {
+    max-width: 100%;
+    color: var(--color-text-secondary);
+  }
+  .ag-empty {
+    padding: var(--space-1) var(--space-2);
+    color: var(--color-text-tertiary);
+  }
+  .cal-scroll.is-compact :global(.ag-row) {
+    min-height: var(--control-height-touch);
+  }
+  /* The whole phone month cell is one button; its inner row <span> is the
+     element the children actually sit in. */
+  .m-cell :global(.m-day) {
+    flex: 1;
+    width: 100%;
+    height: auto;
+    min-height: var(--control-height-touch);
+    padding: var(--space-0-5);
+    border-radius: 0;
+  }
+  .m-cell :global(.m-day > span) {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--space-0-5);
+    width: 100%;
+  }
+  .m-cell.is-outside :global(.m-day) {
+    opacity: 0.6;
+  }
+  .m-day-num {
+    padding: 0 var(--space-1);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .m-cell.is-today .m-day-num {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    border-radius: var(--radius-full);
+    color: var(--color-accent);
+    font-weight: 700;
+  }
+  .m-count {
+    font-size: var(--font-size-caption);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
   }
   .ag-time {
     flex: none;
