@@ -42,8 +42,12 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     }),
     itemOnHandInfo(ctx),
     getStockDailyFlow(ctx, SERIES_DAYS),
-    // Spec 144: items whose movements don't add up to their stock value.
-    ledgerValueGaps(ctx),
+    // Spec 144: items whose movements don't add up to their stock value. Advisory:
+    // a failed or slow check must not take the overview down — show no warning instead.
+    ledgerValueGaps(ctx).catch((e) => {
+      console.error('[stock] ledgerValueGaps failed', e);
+      return [];
+    }),
   ]);
 
   const totalValuation = bins.reduce((sum, b) => sum + Number(b.qty) * Number(b.valuationRate), 0);

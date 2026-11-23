@@ -160,6 +160,20 @@ describe('ledgerValueGaps (FR-002)', () => {
     });
   });
 
+  it('names the real culprit, not an earlier healthy movement that booked a residual', async () => {
+    await post('receipt', 3, 10);
+    const dear = await post('receipt', 1, 1000);
+    await post('issue', 1);
+    await cancelEntry(ctx, dear, actor); // healthy: posts a residual row
+    const late = await post('receipt', 1, 50);
+    await client.query('UPDATE stk_bins SET valuation_rate = valuation_rate + 1');
+    await client.query(
+      `UPDATE stk_ledger SET valuation_rate = valuation_rate + 1 WHERE id = (SELECT max(id) FROM stk_ledger)`,
+    );
+    const [gap] = await ledgerValueGaps(ctx);
+    expect(gap.since).toMatchObject({ entryId: late });
+  });
+
   it('is empty when every item adds up', async () => {
     await post('receipt', 2, 100);
     await post('issue', 1);

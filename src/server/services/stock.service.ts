@@ -1361,12 +1361,16 @@ export function ledgerValueGaps(ctx: CoreCtx): Promise<LedgerValueGap[]> {
       ), drift as (
         select l.id, l.item_id, l.warehouse_id, l.entry_id, l.posted_at,
                sum(l.value_delta) over (partition by l.item_id, l.warehouse_id order by l.id)
-                 - l.qty_after * l.valuation_rate d
+                 - l.qty_after * l.valuation_rate d,
+               lead(l.entry_id) over (partition by l.item_id, l.warehouse_id order by l.id) next_entry
           from stk_ledger l join bad o on o.item_id = l.item_id and o.warehouse_id = l.warehouse_id
          where l.org_id = ${org}
       ), first_off as (
+        -- Judge an entry on its LAST row for the bin: between a movement and its own
+        -- residual row the running sum is off by exactly that residual, and is healthy.
         select distinct on (item_id, warehouse_id) item_id, warehouse_id, entry_id, posted_at
-          from drift where abs(d) > 0.01 order by item_id, warehouse_id, id
+          from drift where abs(d) > 0.01 and next_entry is distinct from entry_id
+         order by item_id, warehouse_id, id
       )
       select o.item_id::text item_id, i.name item_name, o.warehouse_id::text warehouse_id,
              o.gap::float8 gap, f.entry_id::text entry_id, f.posted_at, e.type, e.human_id
