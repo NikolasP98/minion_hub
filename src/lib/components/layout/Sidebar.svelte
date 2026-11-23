@@ -1,4 +1,6 @@
 <script lang="ts">
+  import HubWordmark from './HubWordmark.svelte';
+  import { getBranding } from '$lib/branding.svelte';
   import { createModuleNavigation } from '$lib/shell/module-navigation';
   const moduleNavigation = createModuleNavigation();
   import { utilityLinks, hasVisibleSectionItems } from './utility-links';
@@ -569,12 +571,14 @@
     <SidebarUtilities {collapsed}>
       {#snippet brand()}
         {#if isMd}
-          <a use:moduleNavigation.link href="/" class="brand-row" aria-label="Minion Hub">
+          <a
+            use:moduleNavigation.link
+            href="/"
+            class="brand-row"
+            aria-label={getBranding().fullName}
+          >
             <span class="brand-copy">
-              <span class="brand-name t-body">
-                <span class="brand-minion">MINION</span>
-                <span class="brand-hub">hub</span>
-              </span>
+              <span class="brand-name t-body"><HubWordmark /></span>
               {#if serverVersion}
                 <span class="brand-version t-telemetry" title={serverVersion}>{serverVersion}</span>
               {/if}
@@ -732,15 +736,6 @@
     gap: var(--space-1);
     white-space: nowrap;
     line-height: var(--line-height-compact);
-  }
-  .brand-minion {
-    color: var(--color-brand-pink);
-    font-weight: var(--font-weight-bold);
-    letter-spacing: var(--letter-spacing-label);
-  }
-  .brand-hub {
-    color: var(--color-text-secondary);
-    font-weight: var(--font-weight-semibold);
   }
   .brand-version {
     overflow: hidden;

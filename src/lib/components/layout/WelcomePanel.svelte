@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { conn } from '$lib/state/gateway/connection.svelte';
   import { ui } from '$lib/state/ui/ui.svelte';
   import { hostsState } from '$lib/state/features/hosts.svelte';
@@ -25,7 +26,7 @@
       </div>
       <div>
         <h1 class="text-2xl font-bold text-foreground mb-2">
-          {m.welcome_heading()}
+          {m.welcome_heading({ hubFullName: getBranding().fullName })}
         </h1>
         <p class="text-muted-foreground max-w-md mx-auto">
           {m.welcome_subtitle()}

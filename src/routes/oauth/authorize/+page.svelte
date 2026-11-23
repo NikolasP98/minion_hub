@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { page } from '$app/state';
   import { ShieldCheck, TriangleAlert } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
@@ -31,7 +32,7 @@
   const orgId = $derived(orgs.length === 1 ? orgs[0]!.id : picked);
 </script>
 
-<svelte:head><title>{m.oauth_authorize_eyebrow()} — Minion Hub</title></svelte:head>
+<svelte:head><title>{m.oauth_authorize_eyebrow()} — {getBranding().fullName}</title></svelte:head>
 
 {#snippet taskIcon()}
   {#if data.valid && orgs.length > 0}
@@ -45,7 +46,7 @@
   eyebrow={m.oauth_authorize_eyebrow()}
   title={data.valid
     ? orgs.length > 0
-      ? m.oauth_authorize_title({ app: data.appName })
+      ? m.oauth_authorize_title({ app: data.appName, hubFullName: getBranding().fullName })
       : m.oauth_authorize_no_org_title()
     : m.oauth_authorize_invalid_title()}
   description={data.valid

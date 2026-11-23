@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { resolveBranding } from '$lib/branding';
   import { onDestroy, untrack, type ComponentProps } from 'svelte';
   import { inactiveSimulation } from '$lib/role-simulation';
   import { Button } from '$lib/components/ui';
@@ -98,6 +99,7 @@
   function makeData(owner: 'a' | 'b', seed: NotificationHealthSeed): PageData {
     return {
       env: { backend: 'prd', local: false },
+      branding: resolveBranding({ id: orgId(owner), name: `Fixture ${owner.toUpperCase()}` }),
       // Module states now ride the (app) layout payload so the sidebar has them
       // on every page, not only inside each module's own subtree.
       schedulingEnabled: true,

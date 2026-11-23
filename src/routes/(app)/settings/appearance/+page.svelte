@@ -1,4 +1,13 @@
 <script lang="ts">
+  import OrganizationBranding from '$lib/components/settings/OrganizationBranding.svelte';
+  import type { ComponentProps } from 'svelte';
+  let {
+    data = {},
+  }: {
+    data?: {
+      organizationBranding?: ComponentProps<typeof OrganizationBranding>['settings'] | null;
+    };
+  } = $props();
   import { iconSizes, Button, Card, SegmentedControl } from '$lib/components/ui';
   import { theme } from '$lib/state/ui/theme.svelte';
   import type { ThemePreset } from '$lib/themes/presets';
@@ -23,6 +32,10 @@
 
 <div class="flex-1 overflow-y-auto p-6 md:p-10">
   <div class="max-w-2xl mx-auto space-y-4">
+    {#if data.organizationBranding}
+      <OrganizationBranding settings={data.organizationBranding} />
+    {/if}
+
     <!-- Language (segmented) -->
     <Card padding="md" class="flex items-center justify-between gap-4 flex-wrap">
       <h2 class="text-xs font-semibold text-foreground uppercase tracking-wider">

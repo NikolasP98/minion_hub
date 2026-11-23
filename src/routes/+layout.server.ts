@@ -1,5 +1,8 @@
 import type { LayoutServerLoad } from './$types';
 import { dev } from '$app/environment';
+import { isHttpError } from '@sveltejs/kit';
+import { resolveBranding } from '$lib/branding';
+import { getTenant } from '$server/services/tenant.service';
 
 /**
  * Root layout server load. Exposes `locals.user` (populated by hooks.server.ts
@@ -21,10 +24,24 @@ import { dev } from '$app/environment';
  * in `(app)/+layout.server.ts` and the login page's own load, so the Topbar
  * badge can render before login with one source of truth.
  */
-export const load: LayoutServerLoad = ({ locals, depends }) => {
-  depends('app:user');
+export const load: LayoutServerLoad = async ({ locals, depends, route }) => {
+  depends('app:user', 'app:branding');
+  let branding = resolveBranding(null);
+  if (!route.id?.startsWith('/(app)') && locals.user && locals.tenantCtx) {
+    try {
+      const tenant = await getTenant(locals.tenantCtx);
+      branding =
+        tenant?.id === locals.tenantCtx.tenantId
+          ? resolveBranding(tenant)
+          : { ...resolveBranding(null, 'unavailable'), orgId: locals.tenantCtx.tenantId };
+    } catch (cause) {
+      if (isHttpError(cause) && [401, 403].includes(cause.status)) throw cause;
+      branding = { ...resolveBranding(null, 'unavailable'), orgId: locals.tenantCtx.tenantId };
+    }
+  }
   return {
     user: locals.user ?? null,
+    branding,
     env: { backend: locals.backend, local: dev },
   };
 };

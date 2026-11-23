@@ -1,4 +1,6 @@
 <script lang="ts">
+  import HubWordmark from './HubWordmark.svelte';
+  import { getBranding } from '$lib/branding.svelte';
   import PersonalSidebar from '$lib/components/navigation/PersonalSidebar.svelte';
   import SettingsNav from '$lib/components/settings/SettingsNav.svelte';
   import SettingsLayerHeader from '$lib/components/settings/SettingsLayerHeader.svelte';
@@ -50,6 +52,7 @@
     subscribeNotificationsPolling,
   } from '$lib/state/features/notifications.svelte';
   import { onMount } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
   import { userState, logout } from '$lib/state/features/user.svelte';
   import { Button, iconSizes } from '$lib/components/ui';
 
@@ -67,6 +70,7 @@
       loadingIndicator.placement === 'icon-ring',
   );
   const isWorkforce = $derived(canonicalPath(page.url.pathname).startsWith('/workforce'));
+  const iconOnlyBrand = new MediaQuery('(max-width: 400px)');
 
   // Mobile is ALWAYS module-scoped, for every role — `navMode.isModule` only
   // gates the DESKTOP Sidebar's full-vs-module view (untouched here) and is
@@ -182,9 +186,20 @@
 <svelte:document onpointerdown={onPickerPointerDown} onkeydown={onPickerKeydown} />
 
 <header
-  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)] h-14"
+  class="mobile-topbar md:hidden shrink-0 relative z-[var(--layer-navigation,20)] bg-bg/95 backdrop-blur-md border-b border-[var(--hairline)]"
 >
-  <div class="topbar-controls relative flex items-center h-full px-3 gap-2">
+  {#if !iconOnlyBrand.current}
+    <a
+      use:moduleNavigation.link
+      href="/"
+      class="topbar-wordmark-row no-underline"
+      aria-label={getBranding().fullName}
+    >
+      <MinionLogo size="sm" />
+      <span class="mobile-brand-wordmark t-label"><HubWordmark /></span>
+    </a>
+  {/if}
+  <div class="topbar-controls relative">
     <Button
       variant="ghost"
       size="xs"
@@ -206,18 +221,16 @@
       {#if mobileMenuOpen}<X size={iconSizes.lg} />{:else}<Menu size={iconSizes.lg} />{/if}
     </Button>
 
-    <a
-      use:moduleNavigation.link
-      href="/"
-      class="flex items-center gap-2 no-underline group shrink-0"
-      aria-label="Minion Hub"
-    >
-      <MinionLogo size="sm" />
-      <span class="mobile-brand-wordmark flex items-center leading-none">
-        <span class="font-black text-sm tracking-wide uppercase text-brand-pink">MINION</span>
-        <span class="font-semibold text-sm text-foreground/80 ml-1">hub</span>
-      </span>
-    </a>
+    {#if iconOnlyBrand.current}
+      <a
+        use:moduleNavigation.link
+        href="/"
+        class="topbar-icon-brand no-underline"
+        aria-label={getBranding().fullName}
+      >
+        <MinionLogo size="sm" />
+      </a>
+    {/if}
 
     <div class="h-5 w-px bg-[var(--hairline)] mx-1 shrink-0"></div>
     <div class="shrink-0 min-w-0"><HostPill /></div>
@@ -473,14 +486,47 @@
 </header>
 
 <style>
+  .mobile-topbar {
+    min-height: var(--page-header-height);
+    height: auto;
+  }
+  .topbar-wordmark-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3) var(--space-3) 0;
+  }
+  .mobile-brand-wordmark {
+    min-width: 0;
+  }
+  .topbar-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: var(--page-header-height);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+  .topbar-icon-brand {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-height-touch);
+    min-height: var(--control-height-touch);
+  }
   .mobile-topbar :global(button) {
     min-width: var(--control-height-touch);
     min-height: var(--control-height-touch);
     flex-shrink: 0;
   }
   @media (max-width: 400px) {
-    .mobile-brand-wordmark {
+    .topbar-wordmark-row {
       display: none;
+    }
+    .topbar-icon-brand {
+      display: flex;
     }
   }
   .mobile-menu-nav {

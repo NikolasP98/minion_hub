@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
   import { Button, Select } from '$lib/components/ui';
@@ -483,7 +484,7 @@
 
           <div class="surface-2 rounded-lg p-3 text-xs text-muted leading-relaxed">
             <p class="text-foreground font-semibold mb-1">
-              {m.marketplace_wizardStep5SyncHeading()}
+              {m.marketplace_wizardStep5SyncHeading({ hubFullName: getBranding().fullName })}
             </p>
             <p>{m.marketplace_wizardStep5SyncHint()}</p>
           </div>

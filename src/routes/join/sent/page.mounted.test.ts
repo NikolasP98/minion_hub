@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { page } from '$app/state';
+import { resolveBranding } from '$lib/branding';
 
 const invalidateAll = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('$app/navigation', () => ({ invalidateAll }));
@@ -18,6 +19,7 @@ describe('join waiting route composition and refresh', () => {
   it('renders the shared public shell and checks route status after refreshing', async () => {
     const view = render(JoinSentPage, {
       data: {
+        branding: resolveBranding(null),
         user: { id: 'applicant', email: 'applicant@example.test', displayName: null, role: 'user' },
         env: { backend: 'dev', local: true },
         pending: { kind: 'none', requests: [], hasMore: false },
