@@ -1317,6 +1317,7 @@
             variant="secondary"
             size="sm"
             onclick={addNote}
+            aria-label={m.crm_add_note()}
             disabled={busy || !noteBody.trim()}
             loading={busy}><Plus size={iconSizes.sm} /></Button
           >

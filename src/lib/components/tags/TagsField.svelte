@@ -142,7 +142,7 @@
     />
   {/each}
   {#if !disabled}
-    <Popover bind:open placement="bottom">
+    <Popover bind:open placement="bottom" label={m.tags_add()}>
       {#snippet trigger()}
         {#if showAdd}
           <span class="add-pill">
