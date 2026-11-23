@@ -31,9 +31,17 @@ const projectRoot = process.cwd();
 
 describe('route design contracts', () => {
   it('retains the existing Appearance settings surface without adding another page', () => {
-    expect(ROUTE_DESIGN_MANIFEST.filter((route) => route.pattern === '/settings/appearance')).toHaveLength(1);
-    expect(SCREEN_DESIGN_MANIFEST.find((route) => route.pattern === '/settings/appearance')?.archetype).toBe('form-settings');
-    expect(discoverPageEndpoints(projectRoot).filter((route) => route.pattern === '/settings/appearance')).toHaveLength(1);
+    expect(
+      ROUTE_DESIGN_MANIFEST.filter((route) => route.pattern === '/settings/appearance'),
+    ).toHaveLength(1);
+    expect(
+      SCREEN_DESIGN_MANIFEST.find((route) => route.pattern === '/settings/appearance')?.archetype,
+    ).toBe('form-settings');
+    expect(
+      discoverPageEndpoints(projectRoot).filter(
+        (route) => route.pattern === '/settings/appearance',
+      ),
+    ).toHaveLength(1);
   });
   it('covers the complete filesystem inventory with valid metadata', () => {
     const endpoints = discoverPageEndpoints(projectRoot);

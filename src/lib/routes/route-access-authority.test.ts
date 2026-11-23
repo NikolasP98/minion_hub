@@ -20,7 +20,9 @@ describe('route access authority', () => {
   it('keeps personal Appearance available without organization settings authority', () => {
     expect(routeAccessPolicyIdForPath('/settings/appearance')).toBe('authenticated');
     expect(decideRouteAccess('/settings/appearance', authenticated).allowed).toBe(true);
-    expect(decideRouteAccess('/settings/appearance', { ...authenticated, authenticated: false }).allowed).toBe(false);
+    expect(
+      decideRouteAccess('/settings/appearance', { ...authenticated, authenticated: false }).allowed,
+    ).toBe(false);
   });
   it('opens the role matrix with roles:view independently from Team management or role CRUD', () => {
     expect(routeAccessPolicyIdForPath('/settings/roles')).toBe('org-capability:roles:view');

@@ -205,9 +205,19 @@ describe('organization branding editor', () => {
 });
 
 it('persists null for automatic mode, applies long-name fallback, and reacts to full-name changes', async () => {
-  const fetcher = vi.fn(async () => new Response(JSON.stringify({ branding: resolveBranding({ id: 'org-a', name: 'Organization' }), hubName: null })));
+  const fetcher = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          branding: resolveBranding({ id: 'org-a', name: 'Organization' }),
+          hubName: null,
+        }),
+      ),
+  );
   vi.stubGlobal('fetch', fetcher);
-  const view = render(OrganizationBranding, { settings: settings({ hubName: null, organizationName: 'A very long organization name' }) });
+  const view = render(OrganizationBranding, {
+    settings: settings({ hubName: null, organizationName: 'A very long organization name' }),
+  });
   expect(screen.getByRole('img', { name: 'MINION Hub' })).toBeTruthy();
   await view.rerender({ settings: settings({ hubName: null, organizationName: 'Short' }) });
   expect(screen.getByRole('img', { name: 'Short Hub' })).toBeTruthy();
@@ -225,8 +235,16 @@ it('keeps a custom prefix when the full organization name changes', async () => 
 });
 
 it('rejects a malformed successful reply as unknown without refresh or a false acknowledgement', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ branding: branding('New', 'org-foreign'), hubName: 'New' }))));
-  render(OrganizationBranding, { settings: settings() }); await edit(); await save();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ branding: branding('New', 'org-foreign'), hubName: 'New' })),
+    ),
+  );
+  render(OrganizationBranding, { settings: settings() });
+  await edit();
+  await save();
   await vi.waitFor(() => expect(runtime.attention[0]?.status).toBe('unknown'));
   expect(invalidate).not.toHaveBeenCalled();
   expect(data.branding?.fullName).toBe('Faces Hub');
@@ -234,33 +252,59 @@ it('rejects a malformed successful reply as unknown without refresh or a false a
 
 it('retires pending editor state when the action runtime changes scope for the same account and org', async () => {
   let done!: (response: Response) => void;
-  vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>((resolve) => { done = resolve; })));
-  render(OrganizationBranding, { settings: settings() }); await edit(); await save();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          done = resolve;
+        }),
+    ),
+  );
+  render(OrganizationBranding, { settings: settings() });
+  await edit();
+  await save();
   flushSync(() => runtime.setScope('new-authority-generation'));
   expect((screen.getByLabelText('Hub name') as HTMLInputElement).value).toBe('Faces');
-  expect((screen.getByRole('button', { name: 'Save shared name' }) as HTMLButtonElement).disabled).toBe(false);
+  expect(
+    (screen.getByRole('button', { name: 'Save shared name' }) as HTMLButtonElement).disabled,
+  ).toBe(false);
   done(reply());
   await Promise.resolve();
   expect(invalidate).not.toHaveBeenCalled();
 });
 
 it('explains a complex one-grapheme name without dispatching a shared change', async () => {
-  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
   render(OrganizationBranding, { settings: settings() });
   const complexName = 'a' + '\u0301'.repeat(130);
   await edit(complexName);
-  expect(screen.getByText('This name is too complex. Use fewer accents or simpler characters.')).toBeTruthy();
-  expect((screen.getByRole('button', { name: 'Save shared name' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    screen.getByText('This name is too complex. Use fewer accents or simpler characters.'),
+  ).toBeTruthy();
+  expect(
+    (screen.getByRole('button', { name: 'Save shared name' }) as HTMLButtonElement).disabled,
+  ).toBe(true);
   expect(fetcher).not.toHaveBeenCalled();
 });
 
 it('explains unavailable browser validation independently of a ready authorized server projection', () => {
   const ready = settings();
   vi.stubGlobal('Intl', Object.assign(Object.create(Intl), { Segmenter: undefined }));
-  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
   render(OrganizationBranding, { settings: ready });
-  expect(screen.getByText('This browser cannot validate Hub names. Use an updated browser to choose a Hub name.')).toBeTruthy();
-  expect(screen.queryByText('Only an organization owner with permission to manage settings can change this name.')).toBeNull();
+  expect(
+    screen.getByText(
+      'This browser cannot validate Hub names. Use an updated browser to choose a Hub name.',
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText(
+      'Only an organization owner with permission to manage settings can change this name.',
+    ),
+  ).toBeNull();
   expect((screen.getByLabelText('Hub name') as HTMLInputElement).disabled).toBe(true);
   expect(screen.queryByRole('button', { name: 'Save shared name' })).toBeNull();
   expect(fetcher).not.toHaveBeenCalled();
