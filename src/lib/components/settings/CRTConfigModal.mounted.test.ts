@@ -46,7 +46,7 @@ it('opens the actual modal, applies one change once, and reloads stored settings
   expect(set).toHaveBeenCalledTimes(1);
   expect(apply).toHaveBeenCalledTimes(1);
 
-  await fireEvent.click(screen.getByRole('button', { name: 'Deep', exact: true }));
+  await fireEvent.click(screen.getByRole('button', { name: 'Deep' }));
   expect(crtConfig.bloom).toBe('deep');
   expect(document.documentElement.dataset.crtBloom).toBe('deep');
   expect(set).toHaveBeenCalledTimes(2);
@@ -55,7 +55,7 @@ it('opens the actual modal, applies one change once, and reloads stored settings
   flushSync();
   expect(apply).toHaveBeenCalledTimes(2);
 
-  await fireEvent.click(screen.getAllByRole('button', { name: 'Close', exact: true }).at(-1)!);
+  await fireEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!);
   // happy-dom does not run CSS animations; finish the actual Dialog content's
   // exit animation at the same DOM boundary its native handler listens to.
   await fireEvent.animationEnd(dialog.querySelector('[data-part="content"]')!);
@@ -71,9 +71,7 @@ it('opens the actual modal, applies one change once, and reloads stored settings
   expect(apply).toHaveBeenCalledTimes(2);
   await view.rerender({ open: true });
   expect(dialog.open).toBe(true);
-  expect(
-    screen.getByRole('button', { name: 'Halo', exact: true }).getAttribute('aria-pressed'),
-  ).toBe('true');
+  expect(screen.getByRole('button', { name: 'Halo' }).getAttribute('aria-pressed')).toBe('true');
   expect(crtConfig.bloom).toBe('halation');
   expect(crtConfig.scan).toBe('off');
   expect(document.documentElement.dataset.crtBloom).toBe('halation');
