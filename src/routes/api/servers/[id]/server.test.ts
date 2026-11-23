@@ -20,6 +20,14 @@ let currentUser: { id: string; role: 'user' | 'admin'; supabaseId?: string } = {
   supabaseId: 'profile-1',
 };
 
+const cap = vi.hoisted(() => ({ granted: true }));
+// Mirrors requireOrgCapability: platform admin passes, otherwise the capability must be held.
+vi.mock('$server/services/rbac.service', () => ({
+  requireOrgCapability: async (locals: { user?: { role: string } }) => {
+    if (locals.user?.role !== 'admin' && !cap.granted)
+      throw Object.assign(new Error('x'), { status: 403 });
+  },
+}));
 vi.mock('$server/auth/authorize', () => ({ requireAuth: mocks.requireAuth }));
 
 vi.mock('$server/auth/tenant-ctx', () => ({ getOrCreateTenantCtx: mocks.getTenant }));
@@ -80,6 +88,7 @@ function event(id = 'server-1') {
 
 // Shared defaults. Describe-level hooks run after these and may override.
 beforeEach(() => {
+  cap.granted = true;
   mocks.requireAuth.mockReset().mockImplementation(() => currentUser);
   mocks.getTenant
     .mockReset()
@@ -521,4 +530,35 @@ describe('server update URL policy with the real guard', () => {
       expect(mocks.deleteServer).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('PUT/DELETE /api/servers/[id] capability', () => {
+  beforeEach(() => {
+    mocks.gatewayBelongsToOrg.mockReset().mockResolvedValue(true);
+    mocks.resolveGatewayId.mockReset().mockResolvedValue('gateway-1');
+    mocks.userHasGatewayAccess.mockReset().mockResolvedValue(true);
+    mocks.updateGatewayForOrgByServerId.mockReset().mockResolvedValue('gateway-1');
+    mocks.deleteGatewayForOrgByServerId.mockReset().mockResolvedValue('gateway-1');
+    fakeDbRows = [];
+    fakeDbRowQueue = [];
+  });
+  test('a linked member without settings:manage is refused and nothing is written', async () => {
+    currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
+    cap.granted = false;
+    await expect(PUT(event())).rejects.toMatchObject({ status: 403 });
+    await expect(DELETE(event())).rejects.toMatchObject({ status: 403 });
+    expect(mocks.updateGatewayForOrgByServerId).not.toHaveBeenCalled();
+    expect(mocks.deleteGatewayForOrgByServerId).not.toHaveBeenCalled();
+  });
+  test('a linked member holding it can update and delete', async () => {
+    currentUser = { id: 'user-2', role: 'user', supabaseId: 'profile-2' };
+    expect((await PUT(event())).status).toBe(200);
+    expect((await DELETE(event())).status).toBe(200);
+  });
+  test('a platform admin works without the org capability', async () => {
+    currentUser = { id: 'user-1', role: 'admin', supabaseId: 'profile-1' };
+    cap.granted = false;
+    expect((await PUT(event())).status).toBe(200);
+    expect((await DELETE(event())).status).toBe(200);
+  });
 });

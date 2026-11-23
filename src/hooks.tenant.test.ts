@@ -68,6 +68,7 @@ vi.mock('$server/services/rbac.service', async (original) => ({
     .apiReadCapability,
   apiWriteCapability: mocks.writeCap,
   hasOrgCapability: mocks.hasCap,
+  requireOrgCapability: async () => null,
   resolveCapabilities: async () => ({ explicitView: mocks.explicit }),
 }));
 vi.mock('$server/services/nav-config.service', () => ({ readNavConfig: mocks.navConfig }));

@@ -12,6 +12,7 @@ import {
   resolveGatewayId,
   updateGatewayForOrgByServerId,
 } from '$server/services/gateway.pg.service';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 type AccessResult = { ok: true; gatewayId: string | null } | { ok: false; status: 404 | 503 };
@@ -101,6 +102,7 @@ function accessDeniedResponse(access: Extract<AccessResult, { ok: false }>) {
 
 export const PUT: RequestHandler = async ({ locals, params, request }) => {
   const user = requireAuth(locals);
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const id = params.id!;
@@ -137,6 +139,7 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
 export const DELETE: RequestHandler = async ({ locals, params }) => {
   const user = requireAuth(locals);
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const id = params.id!;
