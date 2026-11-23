@@ -880,6 +880,9 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/meta', 'ads'],
   ['/api/pos', 'pos'],
   ['/api/pulse', 'pulse'],
+  // Automations. Org-shared rows, so any write needs the flows capability.
+  ['/api/flows', 'flows'],
+  ['/api/flow-groups', 'flows'],
   ['/api/projects', 'projects'],
   ['/api/project-tasks', 'projects'],
   ['/api/project-templates', 'projects'],
@@ -932,6 +935,9 @@ const CUSTOMER_REGISTRATION_ALTERNATIVES: Partial<
 };
 const READ_POST_ENDPOINTS: ReadonlyArray<readonly [RegExp, Module]> = [
   [/^\/api\/brains\/[^/]+\/search$/, 'brains'],
+  // Recording a finished Test Run is history bookkeeping the editor fires for
+  // anyone who can open the page (flows:view), not an edit of the flow.
+  [/^\/api\/flows\/[^/]+\/runs$/, 'flows'],
 ];
 const CREATE_COLLECTION_ENDPOINTS = new Set([
   '/api/roles',
@@ -953,6 +959,8 @@ const CREATE_COLLECTION_ENDPOINTS = new Set([
   // cashier (the page itself is gated `pos:create`) — see
   // src/routes/api/pos/appointments/+server.ts.
   '/api/pos/appointments',
+  '/api/flows',
+  '/api/flow-groups',
 ]);
 
 /** Authenticated observations concern only the current actor; route enforces CoreCtx/origin. */
@@ -976,6 +984,9 @@ export function apiReadCapability(pathname: string): {
   // Known-key correction status: the service itself admits pos:view OR stock:view (a POS-only
   // operator recovering a stockless swap needs no stock access) and answers uniformly otherwise.
   if (pathname === '/api/stock/corrections') return null;
+  // Flow reads stay as before this write gate: session bootstrap lists active flows for every
+  // signed-in member, including roles without `flows:view`.
+  if (/^\/api\/flow(s|-groups)(\/|$)/.test(pathname)) return null;
   if (pathname === '/api/nav/access' || pathname === '/api/roles/overrides')
     return { module: 'roles', action: 'edit' };
   // Parties are shared customer/supplier records, used outside CRM too.

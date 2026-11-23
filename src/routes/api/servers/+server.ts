@@ -6,6 +6,7 @@ import { getOrCreateTenantCtx } from '$server/auth/tenant-ctx';
 import { requireAuth } from '$server/auth/authorize';
 import { captureServerEvent } from '$lib/server/posthog';
 import { requestIdentity, distinctIdFor, correlationId } from '$lib/server/observability-context';
+import { requireOrgCapability } from '$server/services/rbac.service';
 import { assertSafeUrl, SsrfBlockedError } from '$server/services/ssrf-guard';
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -25,6 +26,8 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
   // leave the row orphaned (visible only to admins, invisible to the
   // person who added it on next session).
   const user = requireAuth(locals);
+  // The upsert overwrites the stored token on a (tenant, url) match: org-config write.
+  await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();

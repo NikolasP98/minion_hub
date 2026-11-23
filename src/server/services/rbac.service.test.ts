@@ -177,6 +177,36 @@ describe('role definition and page policy API actions', () => {
   });
 });
 
+describe('automation, gateway and organization write gates', () => {
+  const need = (path: string, method: string) => apiWriteCapability(path, method);
+  test('flows and flow-groups map to the flows module by method', () => {
+    expect(need('/api/flows', 'POST')).toEqual({ module: 'flows', action: 'create' });
+    expect(need('/api/flows/f1', 'PUT')).toEqual({ module: 'flows', action: 'edit' });
+    expect(need('/api/flows/f1', 'DELETE')).toEqual({ module: 'flows', action: 'delete' });
+    expect(need('/api/flows/reconcile', 'POST')).toEqual({ module: 'flows', action: 'edit' });
+    expect(need('/api/flow-groups', 'POST')).toEqual({ module: 'flows', action: 'create' });
+    expect(need('/api/flow-groups/g1', 'PATCH')).toEqual({ module: 'flows', action: 'edit' });
+    expect(need('/api/flow-groups/g1', 'DELETE')).toEqual({ module: 'flows', action: 'delete' });
+  });
+  test('recording a run needs only flows:view; other nested POSTs stay edit', () => {
+    expect(need('/api/flows/f1/runs', 'POST')).toEqual({ module: 'flows', action: 'view' });
+    expect(need('/api/flows/f1/copilot', 'POST')).toEqual({ module: 'flows', action: 'edit' });
+  });
+  test('reads stay ungated and neighbouring paths are unchanged', () => {
+    expect(need('/api/flows', 'GET')).toBeNull();
+    expect(apiReadCapability('/api/flows')).toBeNull();
+    expect(apiReadCapability('/api/flow-groups')).toBeNull();
+    expect(need('/api/flowsmith', 'POST')).toBeNull();
+    expect(need('/api/flow-groupsx', 'POST')).toBeNull();
+    expect(need('/api/servers', 'POST')).toBeNull(); // gated in-handler
+    expect(need('/api/servers/s1', 'PUT')).toBeNull();
+    expect(need('/api/roles', 'POST')).toEqual({ module: 'roles', action: 'create' });
+  });
+  test('organization rename stays settings:manage', () => {
+    expect(need('/api/tenants/me', 'PATCH')).toEqual({ module: 'settings', action: 'manage' });
+  });
+});
+
 describe('defaultCaps — role tiers', () => {
   test('owner/admin get everything', () => {
     for (const r of ['owner', 'admin']) {

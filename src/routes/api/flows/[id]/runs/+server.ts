@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json, error } from '@sveltejs/kit';
 import { randomUUID } from 'node:crypto';
 import { flows, flowRuns } from '$server/db/pg-schema/flows';
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { requireAuth } from '$server/auth/authorize';
 import { getFlowsCtx, type FlowsCtx } from '$server/auth/flows-ctx';
 
@@ -11,12 +11,12 @@ const MAX_RUNS_PER_FLOW = 50;
 /** How many runs the history list returns. */
 const LIST_LIMIT = 30;
 
-/** Resolve a flow and verify it belongs to the caller's org (mirrors /api/flows/[id]). */
+/** Resolve a flow and verify it belongs to the caller's org (mirrors /api/flows/[id]; no legacy null-tenant rows). */
 async function requireFlowInOrg(tenantId: string, flowId: string, ctx: FlowsCtx) {
   const [flow] = await ctx.db
     .select()
     .from(flows)
-    .where(and(eq(flows.id, flowId), or(eq(flows.tenantId, tenantId), isNull(flows.tenantId))));
+    .where(and(eq(flows.id, flowId), eq(flows.tenantId, tenantId)));
   if (!flow) throw error(404, 'Flow not found');
   return flow;
 }

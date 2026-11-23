@@ -8,6 +8,13 @@ const mocks = vi.hoisted(() => ({
   capture: vi.fn(),
   loadHosts: vi.fn(),
 }));
+const cap = vi.hoisted(() => ({ role: 'user' as 'user' | 'admin', granted: true }));
+// Mirrors requireOrgCapability: platform admin passes, otherwise the capability must be held.
+vi.mock('$server/services/rbac.service', () => ({
+  requireOrgCapability: async () => {
+    if (cap.role !== 'admin' && !cap.granted) throw Object.assign(new Error('x'), { status: 403 });
+  },
+}));
 vi.mock('$server/auth/authorize', () => ({ requireAuth: mocks.requireAuth }));
 vi.mock('$server/auth/tenant-ctx', () => ({ getOrCreateTenantCtx: mocks.getTenant }));
 vi.mock('$server/services/server.service', () => ({ upsertServer: mocks.upsertServer }));
@@ -45,6 +52,8 @@ function event() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  cap.role = 'user';
+  cap.granted = true;
   mocks.requireAuth.mockReturnValue({ id: 'user-1' });
   mocks.getTenant.mockResolvedValue(ctx);
   mocks.upsertServer.mockResolvedValue('server-1');
@@ -126,5 +135,20 @@ describe('GET /api/servers credential containment', () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ ok: false, error: 'Unable to load servers.' });
     expect(recordedDiagnostics()).not.toContain(secret);
+  });
+});
+
+describe('POST /api/servers capability', () => {
+  test('a member without settings:manage is refused and nothing is written', async () => {
+    cap.granted = false;
+    await expect(POST(event())).rejects.toMatchObject({ status: 403 });
+    expect(mocks.upsertServer).not.toHaveBeenCalled();
+  });
+  test('a member holding it, and a platform admin without it, can save', async () => {
+    expect((await POST(event())).status).toBe(200);
+    cap.granted = false;
+    cap.role = 'admin';
+    expect((await POST(event())).status).toBe(200);
+    expect(mocks.upsertServer).toHaveBeenCalledTimes(2);
   });
 });
