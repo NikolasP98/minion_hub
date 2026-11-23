@@ -1798,6 +1798,8 @@
       const inRange = monthRunway
         ? (d: string) => d.startsWith(labelMonth)
         : (d: string) => visibleDays.includes(d);
+      // TODO(handoff): this counts appointments, so a visit drawn as ONE block with two
+      // services is spoken as two. Ledger: meta `proposals/2026-11-21-hub-calendar-phones-followups.md` #14.
       let count = 0;
       for (const [d, list] of bookingsByDay)
         if (inRange(d)) count += list.filter((b) => !isInactiveMemberStatus(b.status)).length;
@@ -5493,6 +5495,8 @@
     min-width: 0;
     color: var(--color-text-secondary);
   }
+  /* TODO(handoff): on blocks 72 to 90 px tall the products marker (absolute, bottom right)
+     can cover the end of this line. Ledger: meta `proposals/2026-11-21-hub-calendar-phones-followups.md` #15. */
   /* In a narrow lane the label gives way, not the icon. */
   .evt-status :global(svg) {
     flex: none;
