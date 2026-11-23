@@ -43,7 +43,15 @@ export const GET: RequestHandler = async ({ request }) => {
         opened += c.opened;
         unclear += c.unclear;
       } catch (e) {
-        console.error('[reminders] tick failed for org', orgId, e);
+        // Name and driver code only: a driver message can carry query params (phones, message text).
+        const code =
+          e instanceof Error ? (e.cause as { code?: string } | undefined)?.code : undefined;
+        console.error(
+          '[reminders] tick failed for org',
+          orgId,
+          e instanceof Error ? e.name : 'unknown',
+          code,
+        );
       }
     });
   }

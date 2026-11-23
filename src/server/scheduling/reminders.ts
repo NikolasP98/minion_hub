@@ -142,14 +142,40 @@ export function parseYesNo(text: string | null | undefined): 'yes' | 'no' | null
   return null;
 }
 
+// Phrases that decline or move the visit; matched on `norm`ed text (accent-insensitive).
+const NEGATION_PHRASES = [
+  'no puedo',
+  'no voy',
+  'no podre',
+  'no voy a poder',
+  'cancelar',
+  'cancelo',
+  'cambiar la fecha',
+];
+
 /**
- * Spec 139: `parseYesNo` as a classified verdict (the keyword path, no model). A reply of at
- * most three words ("no", "no gracias", "sí confirmo") is decisive (1); a longer sentence that
- * merely contains a token ("no sé a qué hora es") is a weak signal (0.5) and so is acted on as unclear.
+ * Spec 139: `parseYesNo` as a classified verdict (the keyword path, no model).
+ * - A yes with no negation token is decisive (1), as on master ("Sí, confirmo mi cita").
+ * - A no is decisive (1) when it carries a clear negation phrase ("no puedo", "cancelar") or is
+ *   at most two words ("no", "no gracias"); a bare "no" inside a longer sentence ("no sé a qué
+ *   hora es") is ambiguous (0.5) and so is acted on as unclear.
+ * - A clear phrase with no yes token ("cambiar la fecha") is a negation even without a `no`.
  */
 export function keywordVerdict(text: string | null | undefined): Classified<'yes' | 'negation' | 'unclear'> {
   const r = parseYesNo(text);
-  if (!r) return { verdict: 'unclear', confidence: 0, via: 'keyword' };
-  const words = norm(text ?? '').split(/\s+/).filter(Boolean).length;
-  return { verdict: r === 'yes' ? 'yes' : 'negation', confidence: words <= 3 ? 1 : 0.5, via: 'keyword' };
+  const n = norm(text ?? '').split(/\s+/).filter(Boolean);
+  const padded = ` ${n.join(' ')} `;
+  const phrase = NEGATION_PHRASES.some((p) => padded.includes(` ${p} `));
+  if (r === 'yes') return { verdict: 'yes', confidence: 1, via: 'keyword' };
+  if (r === 'no') return { verdict: 'negation', confidence: phrase || n.length <= 2 ? 1 : 0.5, via: 'keyword' };
+  if (phrase && !n.some((t) => YES_TOKENS.has(t))) return { verdict: 'negation', confidence: 1, via: 'keyword' };
+  return { verdict: 'unclear', confidence: 0, via: 'keyword' };
+}
+
+/**
+ * Did this reminder ask the client for an answer? The confirmation stage always counts; the
+ * 24h/2h templates ask "¿Confirmas tu asistencia?", and the SÍ/NO call-to-action counts too.
+ */
+export function reminderAsksForAnswer(stage: string, text: string | null | undefined): boolean {
+  return stage === 'confirmation' || norm(text ?? '').includes('confirm'); // confirmas / confirm / confirmar
 }

@@ -72,6 +72,8 @@ export const schedReminders = pgTable(
     content: text('content'),
     status: text('status').notNull(), // 'sending' | 'sent' | 'failed' | 'skipped'
     messageId: text('message_id'),
+    /** Spec 139: the account the reminder was sent with; null = legacy row or the gateway default. */
+    accountId: text('account_id'),
     error: text('error'),
     sentAt: timestamp('sent_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -142,11 +144,13 @@ export const schedReconfirmEvents = pgTable(
     step: text('step'),
     messageId: text('message_id'),
     inboundAt: timestamp('inbound_at', { withTimezone: true }),
+    inboundMessageId: uuid('inbound_message_id'),
     data: jsonb('data').notNull().default({}),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     bookingIdx: index('sched_reconfirm_events_booking_idx').on(t.orgId, t.bookingId, t.createdAt),
+    caseIdx: index('sched_reconfirm_events_case_idx').on(t.orgId, t.caseId, t.createdAt),
     caseStepUniq: uniqueIndex('sched_reconfirm_events_case_step_uniq')
       .on(t.caseId, t.step)
       .where(sql`${t.kind} = 'agent_message'`),

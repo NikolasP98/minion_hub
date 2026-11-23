@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient, parseYesNo, keywordVerdict } from './reminders';
+import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient, parseYesNo, keywordVerdict, reminderAsksForAnswer } from './reminders';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
 
 const STAGES: ReminderStage[] = [
@@ -135,17 +135,46 @@ describe('resolveRecipient', () => {
 });
 
 describe('keywordVerdict', () => {
-  it('maps no to negation, with full confidence for a short reply', () => {
+  it('maps a short no to a decisive negation', () => {
     expect(keywordVerdict('no')).toEqual({ verdict: 'negation', confidence: 1, via: 'keyword' });
     expect(keywordVerdict('No, gracias')).toMatchObject({ verdict: 'negation', confidence: 1 });
-    expect(keywordVerdict('sí confirmo')).toMatchObject({ verdict: 'yes', confidence: 1 });
   });
-  it('gives a long sentence that merely contains the token a weak 0.5', () => {
+  it('a yes with no negation token keeps full confidence however long it is (as master)', () => {
+    for (const t of ['sí confirmo', 'Sí, confirmo mi cita', 'sí, gracias, ahí estaré', 'Ok']) {
+      expect(keywordVerdict(t)).toEqual({ verdict: 'yes', confidence: 1, via: 'keyword' });
+    }
+  });
+  it('clear negation phrases are decisive, accent-insensitive', () => {
+    for (const t of [
+      'no puedo',
+      'no voy a poder',
+      'no voy a poder ir',
+      'no, mejor no puedo',
+      'No podré asistir mañana',
+      'no podre',
+      'quiero cancelar',
+      'cancelo',
+      'necesito cambiar la fecha',
+    ]) {
+      expect(keywordVerdict(t)).toMatchObject({ verdict: 'negation', confidence: 1 });
+    }
+  });
+  it('a bare no inside a longer sentence stays ambiguous (0.5)', () => {
     expect(keywordVerdict('no sé a qué hora es')).toMatchObject({ verdict: 'negation', confidence: 0.5 });
   });
   it('is unclear with confidence 0 when nothing or both match', () => {
     expect(keywordVerdict('hola')).toEqual({ verdict: 'unclear', confidence: 0, via: 'keyword' });
     expect(keywordVerdict('si no')).toMatchObject({ verdict: 'unclear', confidence: 0 });
+    expect(keywordVerdict('👍')).toMatchObject({ verdict: 'unclear', confidence: 0 });
     expect(keywordVerdict(null)).toMatchObject({ verdict: 'unclear', confidence: 0 });
+  });
+});
+
+describe('reminderAsksForAnswer', () => {
+  it('counts the confirmation stage and any text that asks to confirm', () => {
+    expect(reminderAsksForAnswer('confirmation', 'Tu cita quedó agendada')).toBe(true);
+    expect(reminderAsksForAnswer('24h', 'Te recordamos tu cita. ¿Confirmas tu asistencia?')).toBe(true);
+    expect(reminderAsksForAnswer('2h', 'Reply YES to confirm or NO to cancel.')).toBe(true);
+    expect(reminderAsksForAnswer('24h', 'Te esperamos mañana a las 10.')).toBe(false);
   });
 });

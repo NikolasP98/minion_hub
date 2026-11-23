@@ -7,7 +7,7 @@
 create table if not exists public.sched_reconfirm_cases (
   id                       uuid primary key default gen_random_uuid(),
   org_id                   text not null,
-  booking_id               uuid not null references public.sched_bookings(id) on delete cascade,
+  booking_id               uuid not null references public.sched_bookings(id) on delete restrict,
   subject_key              text not null,           -- the visit's groupId, else the booking id
   contact_id               uuid,
   channel                  text not null,
@@ -41,8 +41,8 @@ create index if not exists sched_reconfirm_cases_booking_idx
 create table if not exists public.sched_reconfirm_events (
   id          uuid primary key default gen_random_uuid(),
   org_id      text not null,
-  booking_id  uuid not null references public.sched_bookings(id) on delete cascade,
-  case_id     uuid references public.sched_reconfirm_cases(id) on delete cascade,
+  booking_id  uuid not null references public.sched_bookings(id) on delete restrict,
+  case_id     uuid references public.sched_reconfirm_cases(id) on delete restrict,
   kind        text not null
     check (kind in ('verdict','agent_message','client_message','staff_action','system')),
   verdict     text,
@@ -53,11 +53,15 @@ create table if not exists public.sched_reconfirm_events (
   step        text,
   message_id  text,
   inbound_at  timestamptz,                  -- newest client message this row covers (the cursor)
+  inbound_message_id uuid,                  -- that message's id: with inbound_at it orders equal timestamps
   data        jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now()
 );
 create index if not exists sched_reconfirm_events_booking_idx
   on public.sched_reconfirm_events (org_id, booking_id, created_at);
+alter table public.sched_reconfirm_events add column if not exists inbound_message_id uuid;
+create index if not exists sched_reconfirm_events_case_idx
+  on public.sched_reconfirm_events (org_id, case_id, created_at);
 -- One agent message per step per case: two overlapping ticks cannot send twice.
 create unique index if not exists sched_reconfirm_events_case_step_uniq
   on public.sched_reconfirm_events (case_id, step) where kind = 'agent_message';
@@ -66,6 +70,10 @@ create unique index if not exists sched_reconfirm_events_case_step_uniq
 alter table public.sched_reminder_config
   add column if not exists negation_wait_hours integer not null default 24
     check (negation_wait_hours between 1 and 168);
+
+-- 4. The account a reminder was sent with, so the reply scan reads that account's inbox.
+-- Null = legacy row or the gateway default (the scan falls back to the config's account).
+alter table public.sched_reminders add column if not exists account_id text;
 
 -- RLS: enable + force + <table>_org_guc policy + grant to app_ledger
 -- (convention: 20261025100000_crm_doors.sql).
@@ -80,6 +88,24 @@ begin
         'create policy %I on public.%I using (org_id = current_setting(''app.current_org_id'', true)) with check (org_id = current_setting(''app.current_org_id'', true))',
         t || '_org_guc', t);
     end if;
-    execute format('grant select, insert, update, delete on public.%I to app_ledger', t);
+    -- The events log is append-only: no UPDATE/DELETE grant (see the triggers below).
+    execute format('grant select, insert%s on public.%I to app_ledger',
+      case when t = 'sched_reconfirm_cases' then ', update, delete' else '' end, t);
   end loop;
 end $$;
+
+-- Append-only events: revoke the write paths and raise on any UPDATE, DELETE or TRUNCATE.
+-- The booking and case foreign keys are `on delete restrict`, so no cascade ever reaches this
+-- trigger: a booking that has a case cannot be deleted (the app never deletes bookings).
+revoke update, delete, truncate on public.sched_reconfirm_events from public, anon, authenticated, service_role, app_ledger;
+create or replace function public.sched_reconfirm_events_append_only() returns trigger
+  language plpgsql as $$
+begin
+  raise exception 'sched_reconfirm_events is append-only' using errcode = '23514';
+end $$;
+drop trigger if exists sched_reconfirm_events_no_change on public.sched_reconfirm_events;
+create trigger sched_reconfirm_events_no_change before update or delete on public.sched_reconfirm_events
+  for each row execute function public.sched_reconfirm_events_append_only();
+drop trigger if exists sched_reconfirm_events_no_truncate on public.sched_reconfirm_events;
+create trigger sched_reconfirm_events_no_truncate before truncate on public.sched_reconfirm_events
+  for each statement execute function public.sched_reconfirm_events_append_only();

@@ -1,4 +1,11 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+
+const usage = vi.hoisted(() => ({ record: vi.fn() }));
+vi.mock('$server/ai-usage', async (orig) => ({
+  ...(await orig<object>()),
+  recordAiUsage: (...a: unknown[]) => usage.record(...a),
+}));
+
 import { reminderTemplate, composeReminder, inferConfirmationReply } from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
 
@@ -61,12 +68,30 @@ describe('inferConfirmationReply (spec 139)', () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
+    usage.record.mockReset();
     vi.stubGlobal('fetch', fetchMock);
     process.env.OPENROUTER_API_KEY = 'test-key';
   });
   afterEach(() => {
     vi.unstubAllGlobals();
     delete process.env.OPENROUTER_API_KEY;
+  });
+
+  it('meters every successful classifier call (a direct fetch bypasses the usage middleware)', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ...answer('negation', { negation: 0.9, yes: 0.05, unclear: 0.05 }),
+          usage: { cost: 0.001, prompt_tokens: 300 },
+        }),
+      ),
+    );
+    await inferConfirmationReply(['no voy'], about);
+    expect(usage.record).toHaveBeenCalledTimes(1);
+    expect(usage.record.mock.calls[0]![0]).toMatchObject({ model: '~typesafe/jev-latest' });
+    fetchMock.mockResolvedValue(new Response('nope', { status: 500 }));
+    await inferConfirmationReply(['no voy'], about);
+    expect(usage.record).toHaveBeenCalledTimes(1); // a failed call is not billed
   });
 
   it('sends the reminder text and the replies as state, one choice over three options', async () => {

@@ -136,10 +136,13 @@ describe('reminders for an org without ai.proactive', () => {
           channel: 'whatsapp',
           recipient: '+51999888777',
           reminder_text: null,
-          since: new Date(Date.now() - 3_600_000).toISOString(),
+          stage: 'confirmation',
+          rem_at: new Date(Date.now() - 3_600_000).toISOString(),
+          account_id: null,
         },
       ],
-      [{ content: 'si', occurred_at: new Date().toISOString() }],
+      [{ id: 'm1', content: 'si', occurred_at: new Date().toISOString() }],
+      [], // outbound
     ];
     const { scanConfirmationReplies } = await import('$server/services/reminders.service');
     const r = await scanConfirmationReplies(ctx, new Date());
@@ -170,10 +173,13 @@ describe('reminders for an org without ai.proactive', () => {
           channel: 'whatsapp',
           recipient: '+51999888777',
           reminder_text: null,
-          since: new Date(Date.now() - 3_600_000).toISOString(),
+          stage: 'confirmation',
+          rem_at: new Date(Date.now() - 3_600_000).toISOString(),
+          account_id: null,
         },
       ],
-      [{ content: 'si', occurred_at: new Date().toISOString() }],
+      [{ id: 'm1', content: 'si', occurred_at: new Date().toISOString() }],
+      [], // outbound
     ];
     const { scanConfirmationReplies } = await import('$server/services/reminders.service');
     await scanConfirmationReplies(ctx, new Date());

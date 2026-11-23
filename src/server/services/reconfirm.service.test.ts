@@ -67,7 +67,6 @@ const input = (over: Partial<Parameters<typeof openCase>[1]> = {}) => ({
   channel: 'whatsapp',
   accountId: 'acct',
   recipient: '+51999000111',
-  bookingStartAt: new Date('2026-12-01T15:00:00Z'),
   verdict,
   texts: ['no voy a poder'],
   inboundAt: new Date('2026-11-23T12:00:00Z'),
@@ -92,8 +91,14 @@ describe('openCase', () => {
     const ev = f.log[1]!;
     expect(ev.text).toContain("'verdict'");
     expect(ev.params).toContain(0.95);
-    // No booking, stock or package statement of any kind.
-    expect(f.log.some((s) => /sched_bookings|stk_|pos_/.test(s.text))).toBe(false);
+    // The start is copied in SQL (a JS Date would drop microseconds and look like a move later).
+    expect(f.log[0]!.text).toContain('(select start_time from sched_bookings');
+    // No booking, stock or package WRITE of any kind.
+    expect(
+      f.log.some((s) =>
+        /(update|insert into|delete from)\s+(sched_bookings|stk_|pos_)/.test(s.text),
+      ),
+    ).toBe(false);
   });
 
   it('a second negation for the same subject returns created:false and adds only an event', async () => {
@@ -146,6 +151,9 @@ describe('closeStaleCases', () => {
     expect(text).toContain('b.start_time <> c.booking_start_at');
     expect(text).toContain("'moved_by_staff'");
     expect(text).toContain("'booking_closed'");
+    // One audit event per closed case, written by the same statement.
+    expect(text).toContain('insert into sched_reconfirm_events');
+    expect(text).toContain("'system'");
   });
 });
 
@@ -158,10 +166,11 @@ describe('lookups', () => {
 
   it('lastInboundAt maps booking to its newest classified message', async () => {
     (f.tx as { execute: unknown }).execute = async () => [
-      { booking_id: 'b1', last_at: '2026-11-23T12:00:00.000Z' },
+      { booking_id: 'b1', last_at: '2026-11-23T12:00:00.000Z', last_id: 'm-9' },
     ];
     const m = await lastInboundAt(ctx, ['b1']);
-    expect(m.get('b1')?.toISOString()).toBe('2026-11-23T12:00:00.000Z');
+    expect(m.get('b1')?.at.toISOString()).toBe('2026-11-23T12:00:00.000Z');
+    expect(m.get('b1')?.id).toBe('m-9');
   });
 });
 

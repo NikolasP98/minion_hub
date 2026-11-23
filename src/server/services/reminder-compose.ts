@@ -1,6 +1,7 @@
 import { generateText } from 'ai';
 import { env } from '$env/dynamic/private';
 import { getOpenRouterModel } from '$server/llm';
+import { recordAiUsage } from '$server/ai-usage';
 import { assertAiCallAllowed, isEnforced } from './entitlements.service';
 
 /**
@@ -70,6 +71,13 @@ async function jevDecide(
     const body: unknown = JSON.parse(raw);
     if (!isRecord(body) || !isRecord(body.answers)) return null;
     const cost = isRecord(body.usage) ? body.usage.cost : null;
+    // A direct fetch bypasses the usage middleware, so meter the call here (as embeddings.ts does).
+    const promptTokens =
+      isRecord(body.usage) && typeof body.usage.prompt_tokens === 'number' ? body.usage.prompt_tokens : 0;
+    recordAiUsage({
+      model: JEV_MODEL,
+      usage: { inputTokens: { total: promptTokens, noCache: promptTokens } },
+    });
     return {
       answers: body.answers,
       cost: typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null,

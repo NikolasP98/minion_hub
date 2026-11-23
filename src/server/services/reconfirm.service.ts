@@ -26,12 +26,14 @@ function verdictEvent(
   verdict: Classified<string>,
   texts: string[],
   inboundAt: Date,
+  inboundMessageId: string | null,
 ) {
   return sql`
     insert into sched_reconfirm_events
-      (org_id, booking_id, case_id, kind, verdict, confidence, via, content, inbound_at, data)
+      (org_id, booking_id, case_id, kind, verdict, confidence, via, content, inbound_at, inbound_message_id, data)
     values (${ctx.tenantId}, ${bookingId}::uuid, ${caseId}::uuid, 'verdict', ${verdict.verdict},
       ${verdict.confidence}, ${verdict.via}, ${clip(texts)}, ${iso(inboundAt)}::timestamptz,
+      ${inboundMessageId}::uuid,
       ${JSON.stringify({ probabilities: verdict.probabilities ?? null, cost: verdict.cost ?? null })}::jsonb)
   `;
 }
@@ -50,11 +52,11 @@ export async function openCase(
     channel: string;
     accountId: string | null;
     recipient: string;
-    bookingStartAt: Date;
     result?: 'unclear' | 'late_reply' | null;
     verdict: Classified<ReplyVerdict>;
     texts: string[];
     inboundAt: Date;
+    inboundMessageId?: string | null;
   },
 ): Promise<{ caseId: string; created: boolean }> {
   return withOrgCore(ctx, async (tx) => {
@@ -64,7 +66,8 @@ export async function openCase(
           (org_id, booking_id, subject_key, contact_id, channel, account_id, recipient,
            booking_start_at, result, last_inbound_at)
         values (${ctx.tenantId}, ${input.bookingId}::uuid, ${input.subjectKey}, ${input.contactId}::uuid,
-          ${input.channel}, ${input.accountId}, ${input.recipient}, ${iso(input.bookingStartAt)}::timestamptz,
+          ${input.channel}, ${input.accountId}, ${input.recipient},
+          (select start_time from sched_bookings where id = ${input.bookingId}::uuid and org_id = ${ctx.tenantId}),
           ${input.result ?? null}, ${iso(input.inboundAt)}::timestamptz)
         on conflict (org_id, subject_key) where closed_at is null do nothing
         returning id
@@ -86,7 +89,15 @@ export async function openCase(
       caseId = String(open[0].id);
     }
     await tx.execute(
-      verdictEvent(ctx, input.bookingId, caseId, input.verdict, input.texts, input.inboundAt),
+      verdictEvent(
+        ctx,
+        input.bookingId,
+        caseId,
+        input.verdict,
+        input.texts,
+        input.inboundAt,
+        input.inboundMessageId ?? null,
+      ),
     );
     return { caseId, created };
   });
@@ -101,6 +112,7 @@ export async function logVerdict(
     verdict: Classified<string>;
     texts: string[];
     inboundAt: Date;
+    inboundMessageId?: string | null;
   },
 ): Promise<void> {
   await withOrgCore(ctx, (tx) =>
@@ -112,33 +124,39 @@ export async function logVerdict(
         input.verdict,
         input.texts,
         input.inboundAt,
+        input.inboundMessageId ?? null,
       ),
     ),
   );
 }
 
-/** The scan's cursor: newest client message already classified, per booking. */
+/** The scan's cursor: newest client message already classified, per booking. (at, id) orders ties. */
 export async function lastInboundAt(
   ctx: CoreCtx,
   bookingIds: string[],
-): Promise<Map<string, Date>> {
-  const out = new Map<string, Date>();
+): Promise<Map<string, { at: Date; id: string | null }>> {
+  const out = new Map<string, { at: Date; id: string | null }>();
   if (!bookingIds.length) return out;
   const found = rows(
     await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
-        select booking_id, max(inbound_at) as last_at
+        select distinct on (booking_id) booking_id, inbound_at as last_at, inbound_message_id as last_id
         from sched_reconfirm_events
         where org_id = ${ctx.tenantId} and kind = 'verdict' and inbound_at is not null
           and booking_id in (${sql.join(
             bookingIds.map((id) => sql`${id}::uuid`),
             sql`, `,
           )})
-        group by booking_id
+        order by booking_id, inbound_at desc, inbound_message_id desc nulls last
       `),
     ),
   );
-  for (const r of found) if (r.last_at) out.set(String(r.booking_id), new Date(String(r.last_at)));
+  for (const r of found)
+    if (r.last_at)
+      out.set(String(r.booking_id), {
+        at: new Date(String(r.last_at)),
+        id: r.last_id == null ? null : String(r.last_id),
+      });
   return out;
 }
 
@@ -271,19 +289,25 @@ export async function closeCase(
  */
 export async function closeStaleCases(ctx: CoreCtx, now: Date): Promise<number> {
   return withOrgCore(ctx, async (tx) => {
-    const closed = rows(
+    // One audit event per closed case (the log is the only record of why it closed).
+    const logged = rows(
       await tx.execute(sql`
-        update sched_reconfirm_cases c
-        set closed_at = ${iso(now)}::timestamptz,
-            close_action = case when b.status in ('pending','accepted') then 'moved_by_staff' else 'booking_closed' end
-        from sched_bookings b
-        where c.org_id = ${ctx.tenantId} and c.closed_at is null
-          and b.id = c.booking_id and b.org_id = c.org_id
-          and (b.status not in ('pending','accepted') or b.start_time <> c.booking_start_at)
-        returning c.id
+        with closed as (
+          update sched_reconfirm_cases c
+          set closed_at = ${iso(now)}::timestamptz,
+              close_action = case when b.status in ('pending','accepted') then 'moved_by_staff' else 'booking_closed' end
+          from sched_bookings b
+          where c.org_id = ${ctx.tenantId} and c.closed_at is null
+            and b.id = c.booking_id and b.org_id = c.org_id
+            and (b.status not in ('pending','accepted') or b.start_time <> c.booking_start_at)
+          returning c.id, c.org_id, c.booking_id, c.close_action
+        )
+        insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, data)
+        select org_id, booking_id, id, 'system', jsonb_build_object('action', close_action) from closed
+        returning id
       `),
     );
-    return closed.length;
+    return logged.length;
   });
 }
 

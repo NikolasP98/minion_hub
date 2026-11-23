@@ -9,6 +9,7 @@ import {
   resolveRecipient,
   keywordVerdict,
   confirmCta,
+  reminderAsksForAnswer,
 } from '$server/scheduling/reminders';
 import type { RecipientRole } from '$server/scheduling/reminders';
 import {
@@ -176,6 +177,7 @@ export async function processOrgReminders(
                 channel: chan.channel,
                 recipientRole: role,
                 recipient,
+                accountId: chan.accountId ?? null,
                 status: 'sending',
               })
               .onConflictDoNothing({
@@ -324,19 +326,67 @@ interface ScanRow {
   channel: string;
   recipient: string;
   reminder_text: string | null;
-  since: string;
+  stage: string;
+  rem_at: string;
+  account_id: string | null;
+}
+
+interface ScanMsg {
+  id: string;
+  content: string | null;
+  at: number;
 }
 
 const phone9 = (raw: string): string => raw.replace(/\D/g, '').slice(-9);
+const msgAfter = (m: ScanMsg, c: { at: Date; id: string | null }) =>
+  m.at > c.at.getTime() || (m.at === c.at.getTime() && c.id !== null && m.id > c.id);
+
+/**
+ * Attribute each client message to ONE booking of a (phone, account) group: the booking whose
+ * latest client reminder was sent closest before the message, ties broken by the nearest
+ * upcoming start. A message only counts while no non-reminder outbound message (staff or agent)
+ * was sent in the chat after that reminder: past it the chat is a conversation, not a reply.
+ */
+export function attributeReplies(
+  group: Array<Pick<ScanRow, 'id' | 'start_time' | 'rem_at'>>,
+  inbound: ScanMsg[],
+  outboundAt: number[],
+  now: number,
+): Map<string, ScanMsg[]> {
+  const out = new Map<string, ScanMsg[]>();
+  const rank = (b: { start_time: string }) => {
+    const s = new Date(b.start_time).getTime();
+    return s >= now ? s - now : Number.MAX_SAFE_INTEGER / 2 + (now - s); // upcoming first, nearest first
+  };
+  for (const m of inbound) {
+    const open = group
+      .filter((b) => new Date(b.rem_at).getTime() <= m.at)
+      .sort(
+        (a, b) =>
+          new Date(b.rem_at).getTime() - new Date(a.rem_at).getTime() ||
+          rank(a) - rank(b) ||
+          a.id.localeCompare(b.id),
+      );
+    const b = open[0];
+    if (!b) continue;
+    const remAt = new Date(b.rem_at).getTime();
+    if (outboundAt.some((o) => o > remAt && o < m.at)) continue;
+    out.set(b.id, [...(out.get(b.id) ?? []), m]);
+  }
+  return out;
+}
 
 /**
  * Spec 139: read client replies to a sent reminder and act on what they mean.
  *
- * - Scope: `pending` or `accepted` bookings that got ANY client reminder in the last 7 days.
- * - Only messages newer than the last logged verdict are classified, so a reply is read once.
- * - Replies are matched on the phone AND the account the reminder used.
- * - yes on `pending` -> `accepted`. A confident negation opens a reconfirmation case and changes
- *   nothing else: no cancel, no stock release, no package hand-back, no message to the client.
+ * - Scope: `pending` or `accepted` bookings that got a client reminder in the last 7 days.
+ * - Candidates sharing a phone and account form a group; each one-to-one WhatsApp reply is
+ *   attributed to ONE booking of the group (`attributeReplies`) and read once.
+ * - A reply is read when it is newer than the booking's cursor `(inbound_at, message id)`;
+ *   the classifier then sees the last 10 replies since the reminder, not only the new ones.
+ * - yes on a `pending` booking that has not started -> `accepted`. A confident negation opens a
+ *   reconfirmation case and changes nothing else: no cancel, no stock release, no package
+ *   hand-back, no message to the client.
  * - Below `CONFIDENCE_MIN` a verdict is logged as given and acted on as unclear.
  */
 export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<ConfirmScanResult> {
@@ -348,13 +398,11 @@ export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<
     tx.execute(sql`
       select b.id, b.start_time, b.status, b.attendee_name, b.crm_contact_id,
              b.metadata->>'groupId' as group_id, et.title as service_title, r.timezone,
-             rem.channel, rem.recipient, rem.content as reminder_text,
-             (select min(x.sent_at) from sched_reminders x
-               where x.booking_id = b.id and x.org_id = b.org_id and x.status = 'sent'
-                 and x.recipient_role = 'client' and x.sent_at > now() - interval '7 days') as since
+             rem.channel, rem.recipient, rem.content as reminder_text, rem.stage,
+             rem.sent_at as rem_at, rem.account_id
       from sched_bookings b
       join lateral (
-        select channel, recipient, content from sched_reminders
+        select channel, recipient, content, stage, sent_at, account_id from sched_reminders
         where booking_id = b.id and org_id = b.org_id and status = 'sent'
           and recipient_role = 'client' and channel = 'whatsapp' and recipient is not null
           and sent_at > now() - interval '7 days'
@@ -374,111 +422,208 @@ export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<
     ctx,
     candidates.map((c) => c.id),
   );
-  // The reminder row keeps no account; the config's channel entry is the one it was sent with.
-  const accountId =
+  // TODO(handoff): spec 139 - a reminder row without `account_id` (legacy rows, or sent on the gateway
+  // default account) falls back to the config's channel account. Drop the fallback once old rows age out.
+  const configAccount =
     effectiveChannels(config).find((c) => c.channel === 'whatsapp')?.accountId ?? null;
 
+  const groups = new Map<string, { p9: string; accountId: string | null; rows: ScanRow[] }>();
   for (const b of candidates) {
     const p9 = phone9(b.recipient);
     if (p9.length < 8) continue;
-    const after = cursor.get(b.id) ?? new Date(b.since);
-    const msgs = (await withOrgCore(ctx, (tx) =>
-      tx.execute(sql`
-        select content, occurred_at from messages
-        where org_id = ${ctx.tenantId} and direction = 'inbound' and channel = ${b.channel}
-          and right(regexp_replace(coalesce(sender_id,''),'\\D','','g'), 9) = ${p9}
-          and occurred_at > ${after.toISOString()}::timestamptz
-          ${accountId ? sql`and account_id = ${accountId}` : sql``}
-        order by occurred_at asc
-        limit 20
-      `),
-    )) as unknown as Array<{ content: string | null; occurred_at: string }>;
-    const texts = msgs.map((m) => m.content?.trim()).filter((t): t is string => !!t);
-    if (!texts.length) continue;
-    const inboundAt = new Date(msgs[msgs.length - 1]!.occurred_at);
+    const accountId = b.account_id ?? configAccount;
+    const key = `${b.channel}|${p9}|${accountId ?? ''}`;
+    const g = groups.get(key) ?? { p9, accountId, rows: [] };
+    g.rows.push(b);
+    groups.set(key, g);
+  }
 
-    let classified: Classified<ReplyVerdict>;
-    if (config.inferConfirmation) {
-      classified = await inferConfirmationReply(texts, {
-        serviceTitle: b.service_title,
-        whenText: formatWhen(b.start_time, b.timezone, config.locale),
-        locale: config.locale,
-        reminderText: b.reminder_text,
-      });
-    } else {
-      // Keyword path: the most recent decisive reply wins (final intent).
-      classified = { verdict: 'unclear', confidence: 0, via: 'keyword' };
-      for (const t of texts) {
-        const k = keywordVerdict(t);
-        if (k.verdict !== 'unclear') classified = k;
-      }
+  for (const g of groups.values()) {
+    try {
+      await scanGroup(ctx, now, config, g, cursor, result);
+    } catch (e) {
+      // One group failing must not stop the org's scan. Names only: no phones, no message text.
+      console.error(
+        '[reminders] reply scan failed for a booking group',
+        g.rows.map((r) => r.id),
+        errName(e),
+      );
     }
-    const verdict = acted(classified);
-    const log = { bookingId: b.id, verdict: classified, texts, inboundAt };
+  }
 
-    if (verdict === 'yes') {
-      if (b.status === 'pending') {
-        try {
-          await setBookingStatus(ctx, b.id, 'accepted');
-        } catch (e) {
-          // Closed after the scan selected it (staff acted while we read replies): the closed
-          // status stands, so nothing is counted or logged on the contact.
-          if (!(e instanceof BookingTransitionError)) throw e;
-          console.warn('[reminders] reply ignored, booking already closed', b.id, e.message);
-          await logVerdict(ctx, log);
-          continue;
-        }
-        result.confirmed += 1;
-        await logContactActivity(
-          ctx,
-          b,
-          'booking_confirmed',
-          'Appointment confirmed by reply',
-          classified,
-        );
-      }
-      await logVerdict(ctx, log);
-    } else if (verdict === 'negation') {
+  // An unclear answer nobody clarified within the wait time goes to staff (spec section 4),
+  // but only when the reminder actually asked the client for an answer.
+  const asked = candidates.filter((c) => reminderAsksForAnswer(c.stage, c.reminder_text));
+  const aged = await agedUnclearVerdicts(
+    ctx,
+    asked.map((c) => c.id),
+    new Date(now.getTime() - config.negationWaitHours * 3_600_000),
+    CONFIDENCE_MIN,
+  );
+  const byId = new Map(asked.map((c) => [c.id, c]));
+  for (const a of aged) {
+    const b = byId.get(a.bookingId);
+    if (!b) continue;
+    try {
       const opened = await openCase(ctx, {
         bookingId: b.id,
         subjectKey: b.group_id ?? b.id,
         contactId: b.crm_contact_id,
         channel: b.channel,
-        accountId,
+        accountId: b.account_id ?? configAccount,
         recipient: b.recipient,
-        bookingStartAt: new Date(b.start_time),
-        result: inboundAt.getTime() >= new Date(b.start_time).getTime() ? 'late_reply' : null,
-        verdict: classified,
-        texts,
-        inboundAt,
+        result: 'unclear',
+        verdict: a.verdict,
+        texts: a.texts,
+        inboundAt: a.inboundAt,
       });
-      if (opened.created) {
-        result.opened += 1;
-        await logContactActivity(
-          ctx,
-          b,
-          'booking_reconfirm',
-          'Dijo que no puede asistir; en seguimiento',
-          classified,
-        );
-      }
-    } else {
-      await logVerdict(ctx, log);
-      result.unclear += 1;
+      if (opened.created) result.opened += 1;
+    } catch (e) {
+      console.error('[reminders] unclear escalation failed for booking', b.id, errName(e));
     }
   }
+  return result;
+}
 
-  // An unclear answer nobody clarified within the wait time goes to staff (spec section 4).
-  const aged = await agedUnclearVerdicts(
-    ctx,
-    candidates.map((c) => c.id),
-    new Date(now.getTime() - config.negationWaitHours * 3_600_000),
-    CONFIDENCE_MIN,
+/** Error name and driver code only: a message can carry query params (phones, text). */
+const errName = (e: unknown) => {
+  if (!(e instanceof Error)) return 'unknown';
+  const code = (e.cause as { code?: string } | undefined)?.code;
+  return code ? `${e.name} ${code}` : e.name;
+};
+
+async function scanGroup(
+  ctx: CoreCtx,
+  now: Date,
+  config: Awaited<ReturnType<typeof getReminderConfig>>,
+  g: { p9: string; accountId: string | null; rows: ScanRow[] },
+  cursor: Map<string, { at: Date; id: string | null }>,
+  result: ConfirmScanResult,
+): Promise<void> {
+  const channel = g.rows[0]!.channel;
+  const since = new Date(
+    Math.min(...g.rows.map((r) => new Date(r.rem_at).getTime())),
+  ).toISOString();
+  const acct = g.accountId ? sql`and account_id = ${g.accountId}` : sql``;
+  const ids = sql.join(
+    g.rows.map((r) => sql`${r.id}::uuid`),
+    sql`, `,
   );
-  const byId = new Map(candidates.map((c) => [c.id, c]));
-  for (const a of aged) {
-    const b = byId.get(a.bookingId);
-    if (!b) continue;
+  // One-to-one client messages only (groups are never a reminder reply).
+  const inbound = (
+    (await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        select id, content, occurred_at from messages
+        where org_id = ${ctx.tenantId} and direction = 'inbound' and channel = ${channel}
+          and coalesce(is_group, false) = false
+          and right(regexp_replace(coalesce(sender_id,''),'\\D','','g'), 9) = ${g.p9}
+          and occurred_at > ${since}::timestamptz
+          ${acct}
+        order by occurred_at asc, id asc
+        limit 50
+      `),
+    )) as unknown as Array<{ id: string; content: string | null; occurred_at: string | Date }>
+  ).map((m) => ({
+    id: String(m.id),
+    content: m.content?.trim() || null,
+    at: new Date(m.occurred_at).getTime(),
+  }));
+  if (!inbound.length) return;
+
+  // Outbound messages in the same chat that are not our own reminders. The ledger cannot yet tell a
+  // bot reply from staff (see TODO), so ANY such message ends the reminder-reply window.
+  // TODO(handoff): spec 139 - `messages.is_bot` is not set reliably on gateway outbound rows. Narrow this
+  // to non-bot outbound (so an agent's own reply does not close the window) once the gateway marks them.
+  const outbound = (
+    (await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        select o.occurred_at from messages o
+        where o.org_id = ${ctx.tenantId} and o.direction = 'outbound' and o.channel = ${channel}
+          and coalesce(o.is_group, false) = false
+          and (right(regexp_replace(coalesce(o.chat_id,''),'\\D','','g'), 9) = ${g.p9}
+            or right(regexp_replace(coalesce(o.sender_id,''),'\\D','','g'), 9) = ${g.p9})
+          and o.occurred_at > ${since}::timestamptz
+          and coalesce(o.metadata->>'kind','') <> 'reminder' and coalesce(o.agent_id,'') <> 'reminders-agent'
+          and not exists (
+            select 1 from sched_reminders x
+            where x.org_id = o.org_id and x.recipient_role = 'client' and x.booking_id in (${ids})
+              and ((x.message_id is not null and x.message_id = o.message_id) or x.content = o.content))
+          ${g.accountId ? sql`and o.account_id = ${g.accountId}` : sql``}
+        order by o.occurred_at asc
+        limit 50
+      `),
+    )) as unknown as Array<{ occurred_at: string | Date }>
+  ).map((o) => new Date(o.occurred_at).getTime());
+
+  const attributed = attributeReplies(g.rows, inbound, outbound, now.getTime());
+  for (const b of g.rows) {
+    const mine = attributed.get(b.id);
+    const seen = cursor.get(b.id);
+    if (!mine?.length || (seen && !mine.some((m) => msgAfter(m, seen)))) continue;
+    const texts = mine
+      .slice(-10)
+      .map((m) => m.content)
+      .filter((t): t is string => !!t);
+    if (!texts.length) continue;
+    const last = mine[mine.length - 1]!;
+    await actOnReplies(ctx, now, config, b, g.accountId, texts, new Date(last.at), last.id, result);
+  }
+}
+
+async function actOnReplies(
+  ctx: CoreCtx,
+  now: Date,
+  config: Awaited<ReturnType<typeof getReminderConfig>>,
+  b: ScanRow,
+  accountId: string | null,
+  texts: string[],
+  inboundAt: Date,
+  inboundMessageId: string,
+  result: ConfirmScanResult,
+): Promise<void> {
+  let classified: Classified<ReplyVerdict>;
+  if (config.inferConfirmation) {
+    classified = await inferConfirmationReply(texts, {
+      serviceTitle: b.service_title,
+      whenText: formatWhen(b.start_time, b.timezone, config.locale),
+      locale: config.locale,
+      reminderText: b.reminder_text,
+    });
+  } else {
+    // Keyword path: the most recent decisive reply wins (final intent).
+    classified = { verdict: 'unclear', confidence: 0, via: 'keyword' };
+    for (const t of texts) {
+      const k = keywordVerdict(t);
+      if (k.verdict !== 'unclear') classified = k;
+    }
+  }
+  const verdict = acted(classified);
+  const log = { bookingId: b.id, verdict: classified, texts, inboundAt, inboundMessageId };
+
+  if (verdict === 'yes') {
+    // A started appointment is never confirmed after the fact (master's rule); the yes is only logged.
+    if (b.status === 'pending' && new Date(b.start_time).getTime() > now.getTime()) {
+      try {
+        await setBookingStatus(ctx, b.id, 'accepted');
+      } catch (e) {
+        // Closed after the scan selected it (staff acted while we read replies): the closed
+        // status stands, so nothing is counted or logged on the contact.
+        if (!(e instanceof BookingTransitionError)) throw e;
+        console.warn('[reminders] reply ignored, booking already closed', b.id, e.name);
+        await logVerdict(ctx, log);
+        return;
+      }
+      result.confirmed += 1;
+      await logContactActivity(
+        ctx,
+        b,
+        'booking_confirmed',
+        'Appointment confirmed by reply',
+        classified,
+      );
+    }
+    await logVerdict(ctx, log);
+  } else if (verdict === 'negation') {
     const opened = await openCase(ctx, {
       bookingId: b.id,
       subjectKey: b.group_id ?? b.id,
@@ -486,15 +631,27 @@ export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<
       channel: b.channel,
       accountId,
       recipient: b.recipient,
-      bookingStartAt: new Date(b.start_time),
-      result: 'unclear',
-      verdict: a.verdict,
-      texts: a.texts,
-      inboundAt: a.inboundAt,
+      // A reply after the start is still opened (staff should know) but marked as late.
+      result: inboundAt.getTime() >= new Date(b.start_time).getTime() ? 'late_reply' : null,
+      verdict: classified,
+      texts,
+      inboundAt,
+      inboundMessageId,
     });
-    if (opened.created) result.opened += 1;
+    if (opened.created) {
+      result.opened += 1;
+      await logContactActivity(
+        ctx,
+        b,
+        'booking_reconfirm',
+        'Dijo que no puede asistir; en seguimiento',
+        classified,
+      );
+    }
+  } else {
+    await logVerdict(ctx, log);
+    result.unclear += 1;
   }
-  return result;
 }
 
 /** Log to the contact timeline (best-effort). */
@@ -515,7 +672,7 @@ async function logContactActivity(
       `),
     );
   } catch (e) {
-    console.error('[reminders] reply activity log failed', b.id, e);
+    console.error('[reminders] reply activity log failed', b.id, errName(e));
   }
 }
 
