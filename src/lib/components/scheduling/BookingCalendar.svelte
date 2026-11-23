@@ -5411,15 +5411,23 @@
     );
     border-left: 3px solid var(--color-danger-border);
     pointer-events: none;
+    /* The label must never spill into the neighbouring day (seen on prod 2026-11-23). */
+    overflow: hidden;
   }
   .closure :global(.closure-label) {
     pointer-events: auto;
+    display: flex;
+    justify-content: flex-start;
+    overflow: hidden;
     max-width: 100%;
     height: auto;
     min-height: 0;
     padding: 0 var(--space-1);
     color: var(--color-danger-fg);
     font-weight: 600;
+  }
+  .closure :global(.closure-label > .truncate) {
+    min-width: 0;
   }
   .ag-list :global(.ag-closed) {
     border-left-color: var(--color-danger-border);
