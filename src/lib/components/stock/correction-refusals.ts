@@ -16,6 +16,7 @@ const BY_CODE: Record<string, () => string> = {
   dependent_history: m.stock_corr_err_dependent_history,
   policy_unverified: m.stock_corr_err_policy_unverified,
   period_locked: m.stock_corr_err_period_locked,
+  record_locked: m.stock_corr_err_record_locked,
   stock_scope_required: m.stock_corr_err_stock_scope_required,
   owner_evidence_required: m.stock_corr_err_owner_evidence_required,
   duplicate_source: m.stock_corr_err_duplicate_source,

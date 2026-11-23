@@ -7639,6 +7639,7 @@
   "stock_corr_err_dependent_history": "Later movements depend on this record, so it cannot be corrected here. Ask the owner to review it.",
   "stock_corr_err_policy_unverified": "Accounting settings are missing. Set them up in Finances and try again.",
   "stock_corr_err_period_locked": "Accounting closed this period. Ask for it to be reopened to correct this record.",
+  "stock_corr_err_record_locked": "This record is locked by the organization's policy. Ask an owner to unlock it before correcting it.",
   "stock_corr_err_stock_scope_required": "This correction moves stock. Ask someone with stock access to make it.",
   "stock_corr_err_owner_evidence_required": "Only an owner can make this correction, with evidence. Ask the owner to review it.",
   "stock_corr_err_duplicate_source": "A stock movement for this record already exists. Reload the page and check Stock.",

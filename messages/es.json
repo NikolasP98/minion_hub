@@ -7639,6 +7639,7 @@
   "stock_corr_err_dependent_history": "Hay movimientos posteriores que dependen de este registro, así que no se puede corregir aquí. Pide al propietario que lo revise.",
   "stock_corr_err_policy_unverified": "Faltan los ajustes contables. Configúralos en Finanzas e inténtalo de nuevo.",
   "stock_corr_err_period_locked": "Contabilidad cerró este periodo. Pide que lo reabran para corregir este registro.",
+  "stock_corr_err_record_locked": "Este registro está bloqueado por la política de la organización. Pide a un propietario que lo desbloquee para corregirlo.",
   "stock_corr_err_stock_scope_required": "Esta corrección mueve stock. Pídesela a alguien con acceso a stock.",
   "stock_corr_err_owner_evidence_required": "Solo un propietario puede hacer esta corrección, con evidencia. Pide al propietario que la revise.",
   "stock_corr_err_duplicate_source": "Ya existe un movimiento de stock para este registro. Recarga la página y revisa Stock.",

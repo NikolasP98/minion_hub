@@ -21,8 +21,7 @@ import {
   stkBins,
   stkItems,
 } from '$server/db/pg-schema/stock';
-import { finSettings } from '$server/db/pg-finance-schema';
-import { posPeriodLocks, posTicketLines } from '$server/db/pg-pos-schema';
+import { posTicketLines } from '$server/db/pg-pos-schema';
 import { SENSITIVE_FIELD_LEVEL } from '$lib/permissions';
 import {
   resolveFreshCapabilitiesReadOnlyInTransaction,
@@ -34,6 +33,7 @@ import {
   sqlStateOf as sqlState,
 } from '$server/auth/active-operator-principal';
 import { recordAuditInTx } from './activity.service';
+import { recordLockFor } from './record-locks.service';
 import {
   StockError,
   assertStockModulesEnabledInTx,
@@ -53,7 +53,6 @@ import {
 } from './pos.service';
 import {
   CorrectionError,
-  evaluateReceiptPeriod,
   parsePreviewRequest,
   parseReason,
   payloadHashOf,
@@ -293,7 +292,14 @@ function mapPos(e: unknown): never {
   }
   if (e instanceof PosError) {
     // Legacy POS codes keep their meaning; the closed list folds the rest into dependent_history.
-    const direct = ['not_found', 'price_differs', 'stock_drift', 'negative_stock', 'period_locked'];
+    const direct = [
+      'not_found',
+      'price_differs',
+      'stock_drift',
+      'negative_stock',
+      'period_locked',
+      'record_locked',
+    ];
     throw new CorrectionError(
       e.message,
       (direct.includes(e.code) ? e.code : 'dependent_history') as CorrectionError['code'],
@@ -444,20 +450,23 @@ async function plan(
   if ((later?.n ?? 0) > 0)
     throw new CorrectionError('later stock movements depend on this receipt', 'dependent_history');
 
-  const [settings] = await tx
-    .select({ timezone: finSettings.timezone })
-    .from(finSettings)
-    .where(eq(finSettings.orgId, ctx.tenantId));
-  const locks = await tx
-    .select({ period: posPeriodLocks.period })
-    .from(posPeriodLocks)
-    .where(eq(posPeriodLocks.orgId, ctx.tenantId));
-  const period = evaluateReceiptPeriod({
-    settingsTimezone: settings?.timezone ?? null,
-    originalPostedAt: original.postedAt,
-    now: opts.now,
-    lockedPeriods: new Set(locks.map((l) => l.period)),
-  });
+  const lock = await recordLockFor(
+    tx,
+    ctx.tenantId,
+    { type: 'stock_receipt', id: original.id, postedAt: original.postedAt },
+    { now: opts.now },
+  );
+  if (lock.locked) {
+    const monthOnly = lock.rules.every((h) => h.rule === 'month');
+    // Month-only refusals keep today's code, text and (empty) detail so the wire stays byte-identical.
+    if (monthOnly)
+      throw new CorrectionError(
+        `period ${lock.rules.map((h) => h.period as string).sort()[0]} is locked`,
+        'period_locked',
+      );
+    throw new CorrectionError('record is locked', 'record_locked', { locks: lock.rules });
+  }
+  const period = lock.period;
   return {
     domain: 'receipt_replace',
     original,
@@ -468,7 +477,14 @@ async function plan(
     sourceId: original.id,
     movesStock: true,
     valueChange: changesValue(deltas),
-    policyExtra: { receiptPeriodPolicy: period, locks: locks.map((l) => l.period).sort() },
+    // Without a policy row the extra is exactly what it was before spec 140 (open previews stay valid).
+    policyExtra: {
+      receiptPeriodPolicy: period,
+      locks: [...lock.lockedPeriods].sort(),
+      ...(lock.hasPolicyRow
+        ? { lockPolicy: { rules: lock.policy, externalLockIds: lock.externalLockIds } }
+        : {}),
+    },
     sourceSnapshot: {
       entry: {
         id: original.id,

@@ -270,6 +270,27 @@ export async function seed(ctx: SeedContext): Promise<void> {
     where: { id: correctionId },
   });
 
+  // Spec 140 S1 (pairs with 20261124100000_record_lock_policy.sql): one explicit default policy row
+  // (month close only, what an org without a row gets) and one refused-correction audit event.
+  await sql`
+    insert into org_lock_policy (org_id, month_enabled, days_enabled, days, sunat_enabled, webhook_enabled)
+    values (${ORG_BUSINESS}, true, false, null, false, false)
+    on conflict (org_id) do nothing
+  `;
+  register('stock.lock-policy.default', {
+    table: 'org_lock_policy',
+    where: { org_id: ORG_BUSINESS },
+  });
+  const lockEventId = matrixUuid('stock.lock-event.refused');
+  await sql`
+    insert into org_lock_events (id, org_id, action, record_type, record_id, rules, actor_kind, actor_id, actor_name, detail)
+    values (${lockEventId}, ${ORG_BUSINESS}, 'refused', 'stock_receipt', ${ENTRY_RECEIPT},
+      ${sql.json([{ rule: 'month', kind: 'month', unlockable: true, period: '2026-09' }])},
+      'person', ${createdBy}, 'QA fixture', ${sql.json({ fixture: true })})
+    on conflict (id) do nothing
+  `;
+  register('stock.lock-event.refused', { table: 'org_lock_events', where: { id: lockEventId } });
+
   // ── Accruals — soft refs to bookings scheduling.ts creates (no FK, order-independent).
   const bookingOpen = matrixUuid('sched.booking.accepted');
   const bookingRealized = matrixUuid('sched.booking.completed');

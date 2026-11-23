@@ -125,6 +125,66 @@ afterAll(async () => {
 });
 
 describe('stock corrections against PostgreSQL', () => {
+  it('refuses a purchase correction under the organization lock policy (spec 140)', async () => {
+    // TODO(handoff): written without running the native lane (S1 skipped it); run it before S1 merges.
+    const wd = await world();
+    const item = randomUUID();
+    await owner.unsafe(
+      `insert into public.stk_items(id,org_id,code,name) values ('${item}','${wd.org}','LK','LK')`,
+    );
+    const e = await createEntry(
+      wd.ownerCtx,
+      { type: 'receipt', lines: [{ itemId: item, qty: 10, rate: 2, toWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    await submitEntry(wd.ownerCtx, e.id, actorOf(wd.boss));
+    const [line] = await owner`select id from public.stk_entry_lines where entry_id=${e.id}`;
+    const req = {
+      mode: 'receipt_replace' as const,
+      sourceType: 'stock_receipt' as const,
+      sourceId: e.id,
+      replacement: {
+        lines: [
+          {
+            originalLineId: line.id as string,
+            itemId: item,
+            qty: '9',
+            rate: '2',
+            uom: 'unit',
+            toWarehouseId: wd.wh,
+          },
+        ],
+      },
+    };
+    await owner.unsafe(
+      `update public.stk_entries set posted_at = now() - interval '2 days' where id='${e.id}'`,
+    );
+    // No policy row: the receipt is correctable (default = month close only), previewed here, not applied.
+    expect((await previewStockCorrection(wd.ownerCtx, req, 'typo')).blockers).not.toContain(
+      'record_locked',
+    );
+    await owner.unsafe(
+      `insert into public.org_lock_policy(org_id,days_enabled,days) values ('${wd.org}', true, 1)`,
+    );
+    expect(await refusal(previewStockCorrection(wd.ownerCtx, req, 'typo'))).toBe('record_locked');
+    expect(
+      await refusal(
+        applyStockCorrection(
+          wd.ownerCtx,
+          {
+            request: req,
+            operationKey: randomUUID(),
+            previewHash: 'a'.repeat(64),
+            payloadHash: 'b'.repeat(64),
+            reason: 'typo',
+          },
+          actorOf(wd.boss),
+        ),
+      ),
+    ).toBe('record_locked');
+    expect(await bin(wd.org, item)).toBe('10');
+  });
+
   it('enforces tenant scoped five kind schema immutable grants and private source ownership', async () => {
     const a = await seedEntry(ORG);
     const b = await seedEntry(ORG);
