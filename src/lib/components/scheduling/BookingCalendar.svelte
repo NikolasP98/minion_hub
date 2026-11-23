@@ -4600,7 +4600,8 @@
     gap: var(--space-0-5);
     width: 100%;
   }
-  .m-cell.is-outside :global(.m-day) {
+  /* Today stays at full strength even in a neighbouring month (dimmed, its pill misses AA). */
+  .m-cell.is-outside:not(.is-today) :global(.m-day) {
     opacity: 0.6;
   }
   .m-day-num {
@@ -4609,9 +4610,9 @@
     font-variant-numeric: tabular-nums;
   }
   .m-cell.is-today .m-day-num {
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+    background: var(--color-accent);
     border-radius: var(--radius-full);
-    color: var(--color-accent);
+    color: var(--color-on-accent);
     font-weight: 700;
   }
   .m-count {
