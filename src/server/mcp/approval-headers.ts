@@ -10,7 +10,10 @@ export const APPROVAL_PATH = '/oauth/authorize';
 export const APPROVAL_HEADERS = {
   'content-security-policy': "frame-ancestors 'none'",
   'x-frame-options': 'DENY',
-  'referrer-policy': 'no-referrer',
+  // Not `no-referrer`: with it a browser sends `Origin: null` on the approve/deny form post, and
+  // the cross-site check refuses it. `same-origin` keeps the Origin on the hub's own post and
+  // still sends no referrer to the app's return address.
+  'referrer-policy': 'same-origin',
   'cache-control': 'no-store',
 } as const;
 
