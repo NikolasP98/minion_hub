@@ -28,6 +28,7 @@
     line-height: var(--line-height-compact);
   }
   .hub-prefix {
+    text-transform: none;
     min-width: 0;
     overflow-wrap: anywhere;
     white-space: normal;
@@ -35,6 +36,7 @@
     font-weight: var(--font-weight-bold);
   }
   .hub-suffix {
+    text-transform: none;
     flex: 0 0 auto;
     color: var(--color-text-primary);
     font-weight: var(--font-weight-semibold);
