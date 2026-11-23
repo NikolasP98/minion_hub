@@ -21,6 +21,13 @@ describe('approval page headers (the document response, not load)', () => {
     for (const [k, v] of Object.entries(APPROVAL_HEADERS)) expect(res.headers.get(k), k).toBe(v);
   });
 
+  // 2026-11-23: with `no-referrer` a browser sends `Origin: null` on a same-origin form POST
+  // (Fetch: the Origin header follows the referrer policy), so Approve was refused in production
+  // with "Cross-site POST form submissions are forbidden". curl-based checks never saw it.
+  it('keeps the Origin header on the approve and deny form posts', () => {
+    expect(APPROVAL_HEADERS['referrer-policy']).toBe('same-origin');
+  });
+
   it('leaves every other path alone', async () => {
     for (const path of ['/login', '/oauth/authorized', '/en/oauth', '/api/oauth/token']) {
       const res = await run(path, html());
