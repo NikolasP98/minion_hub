@@ -6,6 +6,7 @@ import {
   getBins,
   itemOnHandInfo,
   getStockDailyFlow,
+  ledgerValueGaps,
 } from '$server/services/stock.service';
 import {
   listRecentMovementRows,
@@ -23,7 +24,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
   depends('stock:overview');
 
   const admission = await resolveMovementAdmission(locals, ctx);
-  const [items, warehouses, bins, recentMovements, onHand, flow] = await Promise.all([
+  const [items, warehouses, bins, recentMovements, onHand, flow, gaps] = await Promise.all([
     listItems(ctx, { includeArchived: false }),
     listWarehouses(ctx),
     getBins(ctx),
@@ -41,6 +42,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     }),
     itemOnHandInfo(ctx),
     getStockDailyFlow(ctx, SERIES_DAYS),
+    // Spec 144: items whose movements don't add up to their stock value.
+    ledgerValueGaps(ctx),
   ]);
 
   const totalValuation = bins.reduce((sum, b) => sum + Number(b.qty) * Number(b.valuationRate), 0);
@@ -63,6 +66,7 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
       warehouseCount: warehouses.length,
       lowStock,
       recentMovements,
+      gaps,
       hasData: items.length > 0 || warehouses.length > 0,
     },
   };

@@ -7776,5 +7776,19 @@
   "cal_touch_summary_title": "Cita",
   "cal_agenda_day_empty": "Sin citas",
   "cal_month_count_one": "1 cita",
-  "cal_month_count_other": "{n} citas"
+  "cal_month_count_other": "{n} citas",
+  "stock_gaps_title": "{count} productos no cuadran entre sus movimientos y su valor en stock.",
+  "stock_gaps_title_one": "1 producto no cuadra entre sus movimientos y su valor en stock.",
+  "stock_gaps_body": "La suma de los movimientos debe ser igual al valor en stock. Revisa desde qué movimiento se separan.",
+  "stock_gaps_view": "Ver",
+  "stock_gaps_hide": "Ocultar",
+  "stock_gaps_list_title": "Productos que no cuadran",
+  "stock_gaps_list_hint": "Movimientos vs valor en stock (cantidad × costo promedio)",
+  "stock_gaps_col_gap": "Diferencia",
+  "stock_gaps_col_since": "Desde",
+  "stock_mv_kind_residual": "Ajuste de valor (residuo)",
+  "stock_cost_warn_high": "{rate} c/u es {times} veces el costo promedio ({avg}).",
+  "stock_cost_warn_low": "{rate} c/u es {times} veces menor que el costo promedio ({avg}).",
+  "stock_cost_warn_total_hint": "¿Es el total de la línea? Con {qty} unidades serían {unit} c/u.",
+  "stock_cost_warn_is_total": "Es el total"
 }

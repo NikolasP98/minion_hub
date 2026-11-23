@@ -7776,5 +7776,19 @@
   "cal_touch_summary_title": "Appointment",
   "cal_agenda_day_empty": "No appointments",
   "cal_month_count_one": "1 appointment",
-  "cal_month_count_other": "{n} appointments"
+  "cal_month_count_other": "{n} appointments",
+  "stock_gaps_title": "{count} items don't add up between their movements and their stock value.",
+  "stock_gaps_title_one": "1 item doesn't add up between its movements and its stock value.",
+  "stock_gaps_body": "The movements should sum to the stock value. Check the movement where they start to differ.",
+  "stock_gaps_view": "View",
+  "stock_gaps_hide": "Hide",
+  "stock_gaps_list_title": "Items that don't add up",
+  "stock_gaps_list_hint": "Movements vs stock value (quantity × average cost)",
+  "stock_gaps_col_gap": "Difference",
+  "stock_gaps_col_since": "Since",
+  "stock_mv_kind_residual": "Value adjustment (residual)",
+  "stock_cost_warn_high": "{rate} per unit is {times} times the average cost ({avg}).",
+  "stock_cost_warn_low": "{rate} per unit is {times} times lower than the average cost ({avg}).",
+  "stock_cost_warn_total_hint": "Is it the line total? With {qty} units it would be {unit} per unit.",
+  "stock_cost_warn_is_total": "It's the total"
 }

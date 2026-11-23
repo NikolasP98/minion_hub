@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import type { ComponentProps } from 'svelte';
 import PageBody from './PageBody.svelte';
 import * as m from '$lib/paraglide/messages';
@@ -45,8 +45,9 @@ const row = (id: string, qtyDelta: string, name: string) => ({
     historicalState: 'not_recorded',
   },
 });
-const base = (recentMovements: unknown) =>
+const base = (recentMovements: unknown, gaps: unknown[] = []) =>
   ({
+    gaps,
     series: [],
     seriesDays: 90,
     totalValuation: 0,
@@ -113,4 +114,53 @@ it('identity_only shows unavailable and disables value rendering', () => {
   expect(
     screen.getAllByText(new RegExp(m.stock_mv_unavailable().slice(0, 20))).length,
   ).toBeGreaterThan(0);
+});
+
+const EMPTY_RECENT = {
+  surface: 'recent',
+  projection: 'full',
+  nextCursor: null,
+  enrichmentAvailability: 'available',
+  reason: null,
+  rows: [],
+};
+const gap = (itemId: string, itemName: string, amount: number) => ({
+  itemId,
+  itemName,
+  warehouseId: 'w1',
+  gap: amount,
+  since: {
+    entryId: `e-${itemId}`,
+    type: 'adjustment',
+    humanId: 'STE-1',
+    postedAt: '2026-06-30T12:00:00.000Z',
+  },
+});
+
+it('spec 144: no gap warning when every item adds up', () => {
+  render(PageBody, { data: base(EMPTY_RECENT) });
+  expect(screen.queryByText(m.stock_gaps_body())).toBeNull();
+  expect(screen.queryByRole('button', { name: m.stock_gaps_view() })).toBeNull();
+});
+
+it('spec 144: two gaps show one warning; "Ver" lists item, amount and the first diverging movement', async () => {
+  render(PageBody, {
+    data: base(EMPTY_RECENT, [
+      gap('i-opera', 'HA Opera I', 3512.68),
+      gap('i-vol', 'HA Saypha Volume', 1673.91),
+    ]),
+  });
+  expect(screen.getByText(m.stock_gaps_title({ count: 2 }))).toBeTruthy();
+  expect(screen.queryByText('HA Opera I')).toBeNull();
+  const view = screen.getByRole('button', { name: m.stock_gaps_view() });
+  expect(view.getAttribute('aria-expanded')).toBe('false');
+  await fireEvent.click(view);
+  expect(screen.getAllByText('HA Opera I')[0].closest('a')!.getAttribute('href')).toBe(
+    '/stock/items/i-opera',
+  );
+  expect(screen.getAllByText(/3,512\.68/).length).toBeGreaterThan(0);
+  // "Desde": the first diverging movement's kind and date, linking to the item's history.
+  const since = screen.getAllByText(new RegExp(`${m.stock_type_adjustment()} · .*2026`));
+  expect(since.length).toBe(2);
+  expect(since[0].closest('a')!.getAttribute('href')).toBe('/stock/items/i-opera');
 });
