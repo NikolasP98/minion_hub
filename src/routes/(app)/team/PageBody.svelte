@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   // /team — the HR system of record (spec 2026-09-02-hub-team-hr-module-spec):
   // People (roster · availability · access) · Time off (calendar · requests ·
   // balances) · Rooms & equipment · Settings (holidays · weekly off · leave
@@ -42,7 +43,7 @@
 </script>
 
 <svelte:head>
-  <title>{TITLES[tab]()} · {m.team_title()} · Minion</title>
+  <title>{TITLES[tab]()} · {m.team_title()} · {getBranding().name}</title>
 </svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="team-title">

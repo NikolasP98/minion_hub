@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { page } from '$app/state';
   import { logout } from '$lib/state/features/user.svelte';
   import { iconSizes, Button } from '$lib/components/ui';
@@ -31,7 +32,7 @@
   );
 </script>
 
-<svelte:head><title>{title} — Minion Hub</title></svelte:head>
+<svelte:head><title>{title} — {getBranding().fullName}</title></svelte:head>
 
 {#snippet taskIcon()}
   {#if status === 403}<ShieldAlert size={iconSizes.lg} />{:else if status === 404}<SearchX

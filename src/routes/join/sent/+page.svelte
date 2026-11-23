@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { page } from '$app/state';
   import { checkedRefresh } from '$lib/services/actions/refresh';
   import { invalidateAll } from '$app/navigation';
@@ -8,7 +9,7 @@
   let { data }: { data: PageData } = $props();
 </script>
 
-<svelte:head><title>{m.join_pendingEyebrow()} — Minion Hub</title></svelte:head>
+<svelte:head><title>{m.join_pendingEyebrow()} — {getBranding().fullName}</title></svelte:head>
 <JoinPendingState
   pending={data.pending}
   onrefresh={() => checkedRefresh(invalidateAll, () => page)}

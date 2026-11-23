@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import PromptShell from '$lib/components/prompt/PromptShell.svelte';
   import { PageHeader } from '$lib/components/ui';
   import PageBody from '$lib/components/ui/foundations/PageBody.svelte';
@@ -7,7 +8,7 @@
 </script>
 
 <svelte:head>
-  <title>Prompt Engineering · Minion Hub</title>
+  <title>Prompt Engineering · {getBranding().fullName}</title>
 </svelte:head>
 
 <PageShell archetype="workspace" scroll="none">

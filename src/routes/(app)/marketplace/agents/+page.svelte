@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { onDestroy } from 'svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import { createDebouncer } from '$lib/pacer/index.svelte';
@@ -264,7 +265,7 @@
                   <div class="clip-base"></div>
                   <div class="clip-ring"></div>
                 </div>
-                <div class="list-card">
+                <div class="list-card" data-brand-watermark={`${getBranding().name}  `.repeat(100)}>
                   <!-- Holo layers -->
                   <div class="lc-glare" aria-hidden="true"></div>
                   <div class="lc-sheen" aria-hidden="true"></div>
@@ -278,7 +279,7 @@
                     />
                   </div>
                   <div class="list-card-footer">
-                    <span class="list-brand">MINION</span>
+                    <span class="list-brand">{getBranding().name}</span>
                   </div>
                 </div>
                 <!-- end list-card -->
@@ -477,6 +478,9 @@
 
   /* List-brand text — dark with pink fading underline */
   .list-brand {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 800;
     font-size: var(--font-size-caption, 12px);
@@ -697,9 +701,9 @@
       rotateY(calc((var(--mx, 0.5) - 0.5) * 8deg));
   }
 
-  /* "MINION" watermark — behind card content, above card background */
+  /* Organization identity watermark — behind card content, above card background */
   .list-card::before {
-    content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
+    content: attr(data-brand-watermark);
     position: absolute;
     inset: 0;
     font-family: 'JetBrains Mono NF', monospace;

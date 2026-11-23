@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { iconSizes } from '$lib/components/ui';
   import { appLocale } from '$lib/utils/format';
   import { page } from '$app/state';
@@ -49,7 +50,7 @@
   }
 </script>
 
-<svelte:head><title>{m.cloud_overview_title()} · Minion hub</title></svelte:head>
+<svelte:head><title>{m.cloud_overview_title()} · {getBranding().name} hub</title></svelte:head>
 
 <PageShell archetype="dashboard" scroll="none" labelledBy="cloud-overview-title">
   <h1 id="cloud-overview-title" class="sr-only">{m.cloud_overview_title()}</h1>

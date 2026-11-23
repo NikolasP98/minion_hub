@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { iconSizes, Button, Toggle } from '$lib/components/ui';
   import { AsyncBoundary, PageBody, PageShell } from '$lib/components/ui/foundations';
   import { page } from '$app/state';
@@ -84,7 +85,7 @@
 </script>
 
 <svelte:head>
-  <title>Debug · {sessionKey} · Minion Hub</title>
+  <title>Debug · {sessionKey} · {getBranding().fullName}</title>
 </svelte:head>
 
 <PageShell archetype="workspace" scroll="page" labelledBy="session-debug-title">

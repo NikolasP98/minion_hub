@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { observePreparation } from '$lib/assistant/decision-events';
   import {
     createAcceptedSurface,
@@ -929,7 +930,7 @@
 </script>
 
 <svelte:head>
-  <title>My Agent · Minion</title>
+  <title>My Agent · {getBranding().name}</title>
 </svelte:head>
 
 <PageShell

@@ -53,6 +53,8 @@ const unitTest = {
     // `$lib/navigation` (locale-aware `goto`) and `$lib/records/peek.svelte`
     // (record open-mode shallow routing) transitively import this.
     '$app/navigation': path.resolve('src/server/test-utils/env-stubs/app-navigation.ts'),
+    // Actual public-page renders use enhance; submission belongs to the SvelteKit QA lane.
+    '$app/forms': path.resolve('src/server/test-utils/env-stubs/app-forms.ts'),
   },
 };
 

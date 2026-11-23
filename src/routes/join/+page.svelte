@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
   import * as m from '$lib/paraglide/messages';
@@ -28,7 +29,7 @@
 </script>
 
 <svelte:head>
-  <title>Request Access — Minion Hub</title>
+  <title>Request Access — {getBranding().fullName}</title>
 </svelte:head>
 
 {#snippet taskIcon()}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { RefreshCw } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
   import { iconSizes, Button } from '$lib/components/ui';
@@ -10,7 +11,7 @@
 </script>
 
 <div class="id-footer">
-  <div class="company-brand">MINION</div>
+  <div class="company-brand">{getBranding().name}</div>
   <Button
     type="button"
     variant="ghost"
@@ -37,6 +38,9 @@
   }
 
   .company-brand {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 800;
     font-size: var(--font-size-section-title, 16px);

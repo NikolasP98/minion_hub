@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import {
     Power,
     CircleCheck,
@@ -101,7 +102,7 @@
   });
 </script>
 
-<svelte:head><title>Kill Switches · Minion hub</title></svelte:head>
+<svelte:head><title>Kill Switches · {getBranding().name} hub</title></svelte:head>
 
 <PageShell archetype="collection" scroll="page" labelledBy="killswitches-title">
   <PageHeader

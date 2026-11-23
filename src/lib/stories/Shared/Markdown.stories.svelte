@@ -3,9 +3,7 @@
   import MarkdownView from '$lib/components/prompt/MarkdownView.svelte';
 
   // What a typical .md file on disk looks like once the hub renders it.
-  const KITCHEN_SINK = `# Minion hub
-
-A short intro paragraph with **bold**, *italic*, ~~struck~~ and \`inline code\`. A [link to the docs](https://example.com/docs) and an autolink https://example.com.
+  const KITCHEN_SINK = `A short intro paragraph with **bold**, *italic*, ~~struck~~ and \`inline code\`. A [link to the docs](https://example.com/docs) and an autolink https://example.com.
 
 ## Headings and text
 
@@ -109,14 +107,22 @@ You are a support agent for a small clinic.
   });
 </script>
 
+<script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
+</script>
+
 <Story name="Kitchen sink">
   {#snippet template(args)}
-    <div class="max-w-3xl"><MarkdownView {...args} /></div>
+    <div class="max-w-3xl">
+      <h1 class="t-heading">{getBranding().name} hub</h1>
+      <MarkdownView {...args} />
+    </div>
   {/snippet}
 </Story>
 
 <Story name="Kitchen sink · Phone" globals={{ viewport: { value: 'phone', isRotated: false } }}>
   {#snippet template(args)}
+    <h1 class="t-heading">{getBranding().name} hub</h1>
     <MarkdownView {...args} />
   {/snippet}
 </Story>
