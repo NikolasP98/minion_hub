@@ -396,7 +396,8 @@
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 800;
     font-size: var(--font-size-section-title, 16px);
-    color: var(--color-surface-2);
+    /* Fixed light-card illustration: use the same print ink as IdFooter. */
+    color: #18181b;
     letter-spacing: 0.05em;
     position: relative;
   }

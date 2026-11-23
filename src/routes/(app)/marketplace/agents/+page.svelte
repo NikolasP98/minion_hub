@@ -485,7 +485,8 @@
     font-weight: 800;
     font-size: var(--font-size-caption, 12px);
     letter-spacing: 0.05em;
-    color: var(--color-surface-2);
+    /* Fixed light-card illustration: use the same print ink as IdFooter. */
+    color: #18181b;
     display: inline-block;
     position: relative;
   }
