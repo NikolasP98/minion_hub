@@ -14,5 +14,8 @@ if (!import.meta.env.VITE_DESKTOP) {
   })();
 }
 
+// TODO(handoff): First-document branding needs an SSR compatibility audit; this app
+// currently initializes in the browser. See minion-meta proposal
+// proposals/2026-11-22-hub-first-document-ssr.md and spec 145 implementation evidence.
 export const ssr = false;
 export const prerender = false;
