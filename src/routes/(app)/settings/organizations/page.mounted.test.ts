@@ -3,6 +3,11 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 vi.mock('$lib/access/can.svelte', () => ({ canViewPath: () => false }));
 import Page from './+page.svelte';
+import type { PageData } from './$types';
+
+// The component reads only organizations here; authority is mocked above.
+// This deliberately partial fixture does not qualify the server load contract.
+const pageFixture = () => ({ organizations: [] }) as unknown as PageData;
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -12,7 +17,7 @@ it('suggests a bounded name then preserves an edited prefix across full-name cha
     async () => new Response(JSON.stringify({ ok: false, organization: null, steps: [] })),
   );
   vi.stubGlobal('fetch', fetcher);
-  render(Page, { data: { organizations: [] } });
+  render(Page, { data: pageFixture() });
   await fireEvent.input(screen.getByRole('textbox', { name: /^Organization name/ }), {
     target: { value: 'Faces' },
   });
@@ -41,7 +46,7 @@ it('suggests a bounded name then preserves an edited prefix across full-name cha
 it('rejects over-bound manual prefixes before provisioning effects', async () => {
   const fetcher = vi.fn();
   vi.stubGlobal('fetch', fetcher);
-  render(Page, { data: { organizations: [] } });
+  render(Page, { data: pageFixture() });
   await fireEvent.input(screen.getByRole('textbox', { name: /^Organization name/ }), {
     target: { value: 'Faces' },
   });
@@ -57,7 +62,7 @@ it('requires an explicit shorter Hub name for a long untouched organization name
     async () => new Response(JSON.stringify({ ok: true, organization: null, steps: [] })),
   );
   vi.stubGlobal('fetch', fetcher);
-  render(Page, { data: { organizations: [] } });
+  render(Page, { data: pageFixture() });
   const fullName = 'A'.repeat(80);
   const organizationInput = screen.getByRole('textbox', { name: /^Organization name/ });
   await fireEvent.input(organizationInput, { target: { value: fullName } });
@@ -77,11 +82,20 @@ it('requires an explicit shorter Hub name for a long untouched organization name
 });
 
 it('explains name complexity before any creation side effect', async () => {
-  const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
-  render(Page, { data: { organizations: [] } });
-  await fireEvent.input(screen.getByRole('textbox', { name: /^Organization name/ }), { target: { value: 'Faces' } });
-  await fireEvent.input(screen.getByLabelText('Hub name'), { target: { value: 'a' + '\u0301'.repeat(130) } });
-  expect(screen.getByText('This name is too complex. Use fewer accents or simpler characters.')).toBeTruthy();
-  await fireEvent.submit(screen.getByRole('textbox', { name: /^Organization name/ }).closest('form')!);
+  const fetcher = vi.fn();
+  vi.stubGlobal('fetch', fetcher);
+  render(Page, { data: pageFixture() });
+  await fireEvent.input(screen.getByRole('textbox', { name: /^Organization name/ }), {
+    target: { value: 'Faces' },
+  });
+  await fireEvent.input(screen.getByLabelText('Hub name'), {
+    target: { value: 'a' + '\u0301'.repeat(130) },
+  });
+  expect(
+    screen.getByText('This name is too complex. Use fewer accents or simpler characters.'),
+  ).toBeTruthy();
+  await fireEvent.submit(
+    screen.getByRole('textbox', { name: /^Organization name/ }).closest('form')!,
+  );
   expect(fetcher).not.toHaveBeenCalled();
 });

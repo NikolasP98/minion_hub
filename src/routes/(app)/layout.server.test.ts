@@ -367,7 +367,7 @@ describe('branding request projection', () => {
     const ev = makeEvent({
       user: { id: 'u-1', role: 'admin', onboardedAt: '2026-01-01' },
       orgKind: 'personal',
-    }) as Parameters<typeof load>[0];
+    }) as unknown as Parameters<typeof load>[0];
     const out = await load(ev);
     expect(out).toHaveProperty('branding', {
       orgId: 'org-1',
@@ -388,9 +388,9 @@ describe('branding request projection', () => {
       hub_name: 'Faces',
     } as never);
     const out = await load(
-      makeEvent({ user: { id: 'u-1', role: 'admin', onboardedAt: '2026-01-01' } }) as Parameters<
-        typeof load
-      >[0],
+      makeEvent({
+        user: { id: 'u-1', role: 'admin', onboardedAt: '2026-01-01' },
+      }) as unknown as Parameters<typeof load>[0],
     );
     expect(out).toHaveProperty('branding.fullName', 'Faces Hub');
   });
