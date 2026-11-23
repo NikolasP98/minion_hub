@@ -21,9 +21,8 @@ export async function listIdentities(ctx: TenantContext, userId: string) {
   // return nothing; read Supabase first and only fall back to the legacy Turso
   // vault when Supabase yields nothing (bake-in / self-host). Never worse than
   // the pre-cutover behavior.
-  const { listOAuthIdentitiesFromSupabase, listChannelIdentitiesFromSupabase } = await import(
-    './supabase-credential'
-  );
+  const { listOAuthIdentitiesFromSupabase, listChannelIdentitiesFromSupabase } =
+    await import('./supabase-credential');
   const [oauth, channel] = await Promise.all([
     listOAuthIdentitiesFromSupabase(userId),
     listChannelIdentitiesFromSupabase(userId),
@@ -53,10 +52,7 @@ export async function listIdentities(ctx: TenantContext, userId: string) {
   if (supa.length > 0) return supa;
 
   // Legacy fallback: Turso user_identities (keyed by legacy userId).
-  const rows = await ctx.db
-    .select()
-    .from(userIdentities)
-    .where(eq(userIdentities.userId, userId));
+  const rows = await ctx.db.select().from(userIdentities).where(eq(userIdentities.userId, userId));
   // Back-compat aliases (channel/channelUserId) so existing consumers keep
   // working alongside the native provider/kind/externalId fields.
   return rows.map((r) => ({ ...r, channel: r.provider, channelUserId: r.externalId }));
@@ -184,10 +180,7 @@ export async function syncGoogleIdentityFromAccount(
   const acct = accountRows[0];
   if (!acct || !acct.refreshToken) return null;
 
-  const userRows = await ctx.db
-    .select({ email: user.email })
-    .from(user)
-    .where(eq(user.id, userId));
+  const userRows = await ctx.db.select({ email: user.email }).from(user).where(eq(user.id, userId));
   const email = userRows[0]?.email ?? acct.accountId;
 
   await attachGoogleIdentity(ctx, userId, {
@@ -199,7 +192,9 @@ export async function syncGoogleIdentityFromAccount(
       type: 'authorized_user',
     },
     scope: acct.scope ?? undefined,
-    expiresAt: acct.refreshTokenExpiresAt ? new Date(acct.refreshTokenExpiresAt).getTime() : undefined,
+    expiresAt: acct.refreshTokenExpiresAt
+      ? new Date(acct.refreshTokenExpiresAt).getTime()
+      : undefined,
   });
 
   return { email };
