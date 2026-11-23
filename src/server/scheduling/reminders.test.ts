@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient, parseYesNo, keywordVerdict, reminderAsksForAnswer } from './reminders';
+import {
+  dueStages,
+  maxLeadMinutes,
+  expandRoles,
+  resolveRecipient,
+  parseYesNo,
+  keywordVerdict,
+  reminderAsksForAnswer,
+} from './reminders';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
 
 const STAGES: ReminderStage[] = [
@@ -19,15 +27,30 @@ const booking = (over: Partial<{ start: string; created: string; status: string 
 
 describe('dueStages', () => {
   it('fires confirmation as soon as the booking exists (far from appointment)', () => {
-    const due = dueStages({ booking: booking(), stages: STAGES, now: iso('2026-06-10T00:01:00Z'), sentStageKeys: [] });
+    const due = dueStages({
+      booking: booking(),
+      stages: STAGES,
+      now: iso('2026-06-10T00:01:00Z'),
+      sentStageKeys: [],
+    });
     expect(keys(due)).toEqual(['confirmation']);
   });
 
   it('opens the 24h window exactly 1440 min before start', () => {
     // 24h before 15:00 on Jun20 = 15:00 on Jun19.
-    const before = dueStages({ booking: booking(), stages: STAGES, now: iso('2026-06-19T14:59:00Z'), sentStageKeys: ['confirmation'] });
+    const before = dueStages({
+      booking: booking(),
+      stages: STAGES,
+      now: iso('2026-06-19T14:59:00Z'),
+      sentStageKeys: ['confirmation'],
+    });
     expect(keys(before)).toEqual([]);
-    const at = dueStages({ booking: booking(), stages: STAGES, now: iso('2026-06-19T15:00:00Z'), sentStageKeys: ['confirmation'] });
+    const at = dueStages({
+      booking: booking(),
+      stages: STAGES,
+      now: iso('2026-06-19T15:00:00Z'),
+      sentStageKeys: ['confirmation'],
+    });
     expect(keys(at)).toEqual(['24h']);
   });
 
@@ -52,13 +75,23 @@ describe('dueStages', () => {
   });
 
   it('skips everything once the appointment has started/passed', () => {
-    const due = dueStages({ booking: booking(), stages: STAGES, now: iso('2026-06-20T15:00:00Z'), sentStageKeys: [] });
+    const due = dueStages({
+      booking: booking(),
+      stages: STAGES,
+      now: iso('2026-06-20T15:00:00Z'),
+      sentStageKeys: [],
+    });
     expect(due).toHaveLength(0);
   });
 
   it('skips reminders for non-active bookings (cancelled/completed/no_show)', () => {
     for (const status of ['cancelled', 'completed', 'no_show', 'rejected']) {
-      const due = dueStages({ booking: booking({ status }), stages: STAGES, now: iso('2026-06-19T16:00:00Z'), sentStageKeys: [] });
+      const due = dueStages({
+        booking: booking({ status }),
+        stages: STAGES,
+        now: iso('2026-06-19T16:00:00Z'),
+        sentStageKeys: [],
+      });
       expect(due).toHaveLength(0);
     }
   });
@@ -124,7 +157,12 @@ describe('parseYesNo', () => {
 });
 
 describe('resolveRecipient', () => {
-  const c = { attendeePhone: '+51999', attendeeEmail: 'a@x.com', staffPhone: null, staffEmail: 's@x.com' };
+  const c = {
+    attendeePhone: '+51999',
+    attendeeEmail: 'a@x.com',
+    staffPhone: null,
+    staffEmail: 's@x.com',
+  };
   it('routes by channel identity and role', () => {
     expect(resolveRecipient('whatsapp', 'client', c)).toBe('+51999');
     expect(resolveRecipient('email', 'client', c)).toBe('a@x.com');
@@ -160,7 +198,10 @@ describe('keywordVerdict', () => {
     }
   });
   it('a bare no inside a longer sentence stays ambiguous (0.5)', () => {
-    expect(keywordVerdict('no sé a qué hora es')).toMatchObject({ verdict: 'negation', confidence: 0.5 });
+    expect(keywordVerdict('no sé a qué hora es')).toMatchObject({
+      verdict: 'negation',
+      confidence: 0.5,
+    });
   });
   it('is unclear with confidence 0 when nothing or both match', () => {
     expect(keywordVerdict('hola')).toEqual({ verdict: 'unclear', confidence: 0, via: 'keyword' });
@@ -173,7 +214,9 @@ describe('keywordVerdict', () => {
 describe('reminderAsksForAnswer', () => {
   it('counts the confirmation stage and any text that asks to confirm', () => {
     expect(reminderAsksForAnswer('confirmation', 'Tu cita quedó agendada')).toBe(true);
-    expect(reminderAsksForAnswer('24h', 'Te recordamos tu cita. ¿Confirmas tu asistencia?')).toBe(true);
+    expect(reminderAsksForAnswer('24h', 'Te recordamos tu cita. ¿Confirmas tu asistencia?')).toBe(
+      true,
+    );
     expect(reminderAsksForAnswer('2h', 'Reply YES to confirm or NO to cancel.')).toBe(true);
     expect(reminderAsksForAnswer('24h', 'Te esperamos mañana a las 10.')).toBe(false);
   });

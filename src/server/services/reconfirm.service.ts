@@ -134,14 +134,16 @@ export async function logVerdict(
 export async function lastInboundAt(
   ctx: CoreCtx,
   bookingIds: string[],
-): Promise<Map<string, { at: Date; id: string | null }>> {
-  const out = new Map<string, { at: Date; id: string | null }>();
+): Promise<Map<string, { at: Date; id: string | null; closedAt: Date | null }>> {
+  const out = new Map<string, { at: Date; id: string | null; closedAt: Date | null }>();
   if (!bookingIds.length) return out;
   const found = rows(
     await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
-        select distinct on (booking_id) booking_id, inbound_at as last_at, inbound_message_id as last_id
-        from sched_reconfirm_events
+        select distinct on (booking_id) booking_id, inbound_at as last_at, inbound_message_id as last_id,
+          (select max(c.closed_at) from sched_reconfirm_cases c
+            where c.org_id = e.org_id and c.booking_id = e.booking_id) as closed_at
+        from sched_reconfirm_events e
         where org_id = ${ctx.tenantId} and kind = 'verdict' and inbound_at is not null
           and booking_id in (${sql.join(
             bookingIds.map((id) => sql`${id}::uuid`),
@@ -156,6 +158,7 @@ export async function lastInboundAt(
       out.set(String(r.booking_id), {
         at: new Date(String(r.last_at)),
         id: r.last_id == null ? null : String(r.last_id),
+        closedAt: r.closed_at ? new Date(String(r.closed_at)) : null,
       });
   return out;
 }

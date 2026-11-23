@@ -157,6 +157,8 @@ describe('deleteBooking', () => {
       [], // pos_ticket_lines lookup — none
       [], // sales_orders lookup — none
       [], // stk_accruals (realized) lookup — none
+      [], // sched_reconfirm_cases lookup — none
+      [], // sched_reconfirm_events lookup — none
       [], // delete tag_links
       [], // delete sched_reminders
       [], // insert doc_audit_log
@@ -177,11 +179,30 @@ describe('deleteBooking', () => {
       [{ bookingId: 'b1' }], // pos_ticket_lines lookup — a hit
       [], // sales_orders lookup — none
       [], // stk_accruals lookup — none
+      [], // sched_reconfirm_cases lookup — none
+      [], // sched_reconfirm_events lookup — none
     ]);
 
     const err = await deleteBooking(ctx(db), 'b1').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(BookingReferencedError);
     expect((err as InstanceType<typeof BookingReferencedError>).references).toEqual(['ticket']);
     expect(mocks.releaseAccruals).not.toHaveBeenCalled();
+  });
+
+  it('refuses a booking that has a reconfirmation case (no raw FK error)', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([
+      [{ id: 'b1', status: 'accepted' }], // existing
+      [], // pos_ticket_lines
+      [], // sales_orders
+      [], // stk_accruals
+      [{ bookingId: 'b1' }], // sched_reconfirm_cases — a case exists
+      [], // sched_reconfirm_events
+    ]);
+
+    const err = await deleteBooking(ctx(db), 'b1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(BookingReferencedError);
+    expect((err as InstanceType<typeof BookingReferencedError>).references).toEqual(['reconfirm']);
+    expect(db.delete).not.toHaveBeenCalled();
   });
 });

@@ -96,7 +96,8 @@ end $$;
 
 -- Append-only events: revoke the write paths and raise on any UPDATE, DELETE or TRUNCATE.
 -- The booking and case foreign keys are `on delete restrict`, so no cascade ever reaches this
--- trigger: a booking that has a case cannot be deleted (the app never deletes bookings).
+-- trigger: a booking that has a case cannot be deleted. The app refuses first: the booking
+-- delete and remove-service paths count cases/events as references ("cancel instead").
 revoke update, delete, truncate on public.sched_reconfirm_events from public, anon, authenticated, service_role, app_ledger;
 create or replace function public.sched_reconfirm_events_append_only() returns trigger
   language plpgsql as $$

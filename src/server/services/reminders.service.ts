@@ -286,12 +286,19 @@ export async function processOrgReminders(
                 },
               ]);
             } catch (e) {
-              console.error('[reminders] ledger insert failed', b.id, stage.key, e);
+              console.error('[reminders] ledger insert failed', b.id, stage.key, errName(e));
             }
             result.sent += 1;
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            console.error('[reminders] send failed', b.id, stage.key, chan.channel, role, msg);
+            console.error(
+              '[reminders] send failed',
+              b.id,
+              stage.key,
+              chan.channel,
+              role,
+              errName(e),
+            );
             await finalize('failed', {
               error: msg.slice(0, 500),
               ...(text ? { content: text } : {}),
@@ -497,7 +504,7 @@ async function scanGroup(
   now: Date,
   config: Awaited<ReturnType<typeof getReminderConfig>>,
   g: { p9: string; accountId: string | null; rows: ScanRow[] },
-  cursor: Map<string, { at: Date; id: string | null }>,
+  cursor: Map<string, { at: Date; id: string | null; closedAt?: Date | null }>,
   result: ConfirmScanResult,
 ): Promise<void> {
   const channel = g.rows[0]!.channel;
@@ -505,10 +512,14 @@ async function scanGroup(
     Math.min(...g.rows.map((r) => new Date(r.rem_at).getTime())),
   ).toISOString();
   const acct = g.accountId ? sql`and account_id = ${g.accountId}` : sql``;
-  const ids = sql.join(
-    g.rows.map((r) => sql`${r.id}::uuid`),
-    sql`, `,
-  );
+  // Lower bound from the cursors: every booking of the group has been read up to here, so older
+  // messages are never needed (a booking without a cursor needs everything since its reminder).
+  const cursors = g.rows.map((r) => cursor.get(r.id)?.at.getTime());
+  const from = cursors.every((c) => c !== undefined)
+    ? new Date(
+        Math.max(new Date(since).getTime(), Math.min(...(cursors as number[]))),
+      ).toISOString()
+    : since;
   // One-to-one client messages only (groups are never a reminder reply).
   const inbound = (
     (await withOrgCore(ctx, (tx) =>
@@ -517,17 +528,19 @@ async function scanGroup(
         where org_id = ${ctx.tenantId} and direction = 'inbound' and channel = ${channel}
           and coalesce(is_group, false) = false
           and right(regexp_replace(coalesce(sender_id,''),'\\D','','g'), 9) = ${g.p9}
-          and occurred_at > ${since}::timestamptz
+          and occurred_at > ${since}::timestamptz and occurred_at >= ${from}::timestamptz
           ${acct}
-        order by occurred_at asc, id asc
+        order by occurred_at desc, id desc
         limit 50
       `),
     )) as unknown as Array<{ id: string; content: string | null; occurred_at: string | Date }>
-  ).map((m) => ({
-    id: String(m.id),
-    content: m.content?.trim() || null,
-    at: new Date(m.occurred_at).getTime(),
-  }));
+  )
+    .map((m) => ({
+      id: String(m.id),
+      content: m.content?.trim() || null,
+      at: new Date(m.occurred_at).getTime(),
+    }))
+    .reverse(); // newest 50, back to oldest first
   if (!inbound.length) return;
 
   // Outbound messages in the same chat that are not our own reminders. The ledger cannot yet tell a
@@ -546,7 +559,7 @@ async function scanGroup(
           and coalesce(o.metadata->>'kind','') <> 'reminder' and coalesce(o.agent_id,'') <> 'reminders-agent'
           and not exists (
             select 1 from sched_reminders x
-            where x.org_id = o.org_id and x.recipient_role = 'client' and x.booking_id in (${ids})
+            where x.org_id = o.org_id and x.recipient_role = 'client'
               and ((x.message_id is not null and x.message_id = o.message_id) or x.content = o.content))
           ${g.accountId ? sql`and o.account_id = ${g.accountId}` : sql``}
         order by o.occurred_at asc
@@ -559,14 +572,27 @@ async function scanGroup(
   for (const b of g.rows) {
     const mine = attributed.get(b.id);
     const seen = cursor.get(b.id);
-    if (!mine?.length || (seen && !mine.some((m) => msgAfter(m, seen)))) continue;
-    const texts = mine
-      .slice(-10)
-      .map((m) => m.content)
-      .filter((t): t is string => !!t);
-    if (!texts.length) continue;
+    if (!mine?.length) continue;
+    // Only a NEW message can decide: newer than the cursor and than the last case's close. The
+    // last 10 messages stay as context for the classifier.
+    const closedAt = seen?.closedAt?.getTime() ?? 0;
+    const isNew = (m: ScanMsg) => m.at > closedAt && (!seen || msgAfter(m, seen));
+    const window = mine.slice(-10).filter((m) => m.content);
+    const fresh = window.filter(isNew);
+    if (!fresh.length) continue;
     const last = mine[mine.length - 1]!;
-    await actOnReplies(ctx, now, config, b, g.accountId, texts, new Date(last.at), last.id, result);
+    await actOnReplies(
+      ctx,
+      now,
+      config,
+      b,
+      g.accountId,
+      window.map((m) => m.content!),
+      fresh.map((m) => m.content!),
+      new Date(last.at),
+      last.id,
+      result,
+    );
   }
 }
 
@@ -577,6 +603,7 @@ async function actOnReplies(
   b: ScanRow,
   accountId: string | null,
   texts: string[],
+  newTexts: string[],
   inboundAt: Date,
   inboundMessageId: string,
   result: ConfirmScanResult,
@@ -588,11 +615,12 @@ async function actOnReplies(
       whenText: formatWhen(b.start_time, b.timezone, config.locale),
       locale: config.locale,
       reminderText: b.reminder_text,
+      newCount: newTexts.length,
     });
   } else {
-    // Keyword path: the most recent decisive reply wins (final intent).
+    // Keyword path: the most recent decisive NEW reply wins (final intent); context never decides.
     classified = { verdict: 'unclear', confidence: 0, via: 'keyword' };
-    for (const t of texts) {
+    for (const t of newTexts) {
       const k = keywordVerdict(t);
       if (k.verdict !== 'unclear') classified = k;
     }

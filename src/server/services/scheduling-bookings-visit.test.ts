@@ -406,9 +406,9 @@ const vm = (
   ...patch,
 });
 
-/** `collectBookingReferences` + `deleteBookingRowInTx` slots: three reference
+/** `collectBookingReferences` + `deleteBookingRowInTx` slots: five reference
  *  lookups, then tag links, reminders, the audit row and the booking row. */
-const noReferences = [[], [], []];
+const noReferences = [[], [], [], [], []];
 const rowDeletes = [[], [], [], []];
 
 describe('removeServiceFromVisit', () => {
@@ -536,12 +536,14 @@ const line = (bookingId: string, ticketId: string, total: string, currency = 'PE
   currency,
 });
 
-/** `collectBookingReferences` reads tickets, then orders, then accruals. */
-const refSlots = (tickets: unknown[] = [], orders: unknown[] = [], accruals: unknown[] = []) => [
-  tickets,
-  orders,
-  accruals,
-];
+/** `collectBookingReferences` reads tickets, orders, accruals, reconfirm cases, reconfirm events. */
+const refSlots = (
+  tickets: unknown[] = [],
+  orders: unknown[] = [],
+  accruals: unknown[] = [],
+  cases: unknown[] = [],
+  events: unknown[] = [],
+) => [tickets, orders, accruals, cases, events];
 
 describe('getBookingDetail().visit', () => {
   it('is null for a single-service event', async () => {

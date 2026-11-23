@@ -9,7 +9,7 @@
  */
 import { isInactiveMemberStatus } from './booking-groups';
 
-export type VisitReference = 'ticket' | 'order' | 'accrual';
+export type VisitReference = 'ticket' | 'order' | 'accrual' | 'reconfirm';
 
 export interface VisitMember {
   id: string;

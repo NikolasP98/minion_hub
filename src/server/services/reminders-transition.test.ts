@@ -49,7 +49,7 @@ vi.mock('$server/db/with-org-core', () => ({
         h.executed.push({ text, params });
         if (text.includes('insert into crm_activities')) h.activity += 1;
         if (text.includes('from sched_bookings b')) return h.candidates;
-        if (text.includes("direction = 'inbound'")) return h.inbound;
+        if (text.includes("direction = 'inbound'")) return [...h.inbound].reverse(); // SQL is newest first
         if (text.includes("direction = 'outbound'")) return h.outbound;
         return [];
       },

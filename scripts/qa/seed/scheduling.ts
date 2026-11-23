@@ -364,10 +364,16 @@ export async function seed(ctx: SeedContext): Promise<void> {
   const reconfirmBooking = matrixUuid('sched.booking.pending');
   const reconfirmCase = matrixUuid('sched.reconfirm.open-case');
   await sql`
-    insert into sched_reminders (org_id, booking_id, stage, channel, recipient_role, recipient, content, status, sent_at)
+    insert into sched_reminders (org_id, booking_id, stage, channel, recipient_role, recipient, content, status)
     values (${ORG_BUSINESS}, ${reconfirmBooking}::uuid, 'confirmation', 'whatsapp', 'client', '+51999000111',
-            'QA: te recordamos tu cita. ¿Confirmas?', 'sent', ${now.toISOString()})
+            'QA: te recordamos tu cita. ¿Confirmas?', 'sending')
     on conflict (org_id, booking_id, stage, channel, recipient_role) do nothing
+  `;
+  // The transition trigger only admits 'sending' on insert; 'sent' is a second step.
+  await sql`
+    update sched_reminders set status = 'sent', sent_at = ${now.toISOString()}
+    where org_id = ${ORG_BUSINESS} and booking_id = ${reconfirmBooking}::uuid and stage = 'confirmation'
+      and channel = 'whatsapp' and recipient_role = 'client' and status = 'sending'
   `;
   // The events log is append-only (trigger), so a re-seed never deletes: it reopens the case row
   // and adds the verdict event only when the case has none.

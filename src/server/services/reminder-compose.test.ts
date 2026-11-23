@@ -89,6 +89,8 @@ describe('inferConfirmationReply (spec 139)', () => {
     await inferConfirmationReply(['no voy'], about);
     expect(usage.record).toHaveBeenCalledTimes(1);
     expect(usage.record.mock.calls[0]![0]).toMatchObject({ model: '~typesafe/jev-latest' });
+    // The provider cost is stored from the raw usage payload.
+    expect(usage.record.mock.calls[0]![0].usage.raw).toEqual({ cost: 0.001, prompt_tokens: 300 });
     fetchMock.mockResolvedValue(new Response('nope', { status: 500 }));
     await inferConfirmationReply(['no voy'], about);
     expect(usage.record).toHaveBeenCalledTimes(1); // a failed call is not billed

@@ -526,6 +526,7 @@ export const finalColumnNames = {
     'updated_at',
     'channels',
     'infer_confirmation',
+    'negation_wait_hours',
   ],
   sched_reminders: [
     'id',
@@ -541,6 +542,7 @@ export const finalColumnNames = {
     'sent_at',
     'created_at',
     'recipient_role',
+    'account_id',
   ],
 } as const;
 
@@ -613,6 +615,7 @@ export async function assertCanonicalCatalog(db: Sql) {
     'notif_log_pkey',
     'notif_log_status_check',
     'notif_rules_pkey',
+    'sched_reminder_config_negation_wait_hours_check',
     'sched_reminder_config_pkey',
     'sched_reminders_booking_id_fkey',
     'sched_reminders_pkey',
