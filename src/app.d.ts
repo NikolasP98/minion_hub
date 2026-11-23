@@ -19,6 +19,10 @@ declare global {
        *  (and any other route that wants a client-distinguishable 409/4xx
        *  without string-matching `message`). */
       code?: string;
+      /** Same sentence as `message`; legacy readers of `error` (errorBody, spec 138 H6). */
+      error?: string;
+      /** Extras a mapper may pass (doors `issues`, sandbox `field`). */
+      [extra: string]: unknown;
       /** Entitlement feature key on a `premium_required` 403 (spec 043). */
       feature?: string;
     }

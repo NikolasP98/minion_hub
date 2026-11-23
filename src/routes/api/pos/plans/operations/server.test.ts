@@ -69,6 +69,7 @@ describe('plan operation HTTP boundaries', () => {
     const response = await cancel(event());
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
+      message: 'Operation identity conflicts with an existing request.',
       error: 'Operation identity conflicts with an existing request.',
       code: 'operation_conflict',
     });

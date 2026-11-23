@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit';
+import { errorBody } from '$server/http/error-body';
 import { PosError } from '$server/services/pos.service';
 import { reportStoredMoneyFailure } from '$server/services/pos/telemetry';
 
@@ -80,10 +81,9 @@ const STATUS_BY_CODE: Record<string, number> = {
 export function handlePosError(e: unknown): Response {
   if (e instanceof PosError) {
     reportStoredMoneyFailure(e);
-    return json(
-      { error: e.message, code: e.code, ...(e.items ? { items: e.items } : {}) },
-      { status: STATUS_BY_CODE[e.code] ?? 400 },
-    );
+    return json(errorBody(e.message, e.code, e.items ? { items: e.items } : undefined), {
+      status: STATUS_BY_CODE[e.code] ?? 400,
+    });
   }
   throw e;
 }

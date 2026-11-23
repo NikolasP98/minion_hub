@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { errorBody } from '$server/http/error-body';
 import { StockError } from '$server/services/stock.service';
 
 // Leading underscore = not a SvelteKit route module, just a shared helper for
@@ -26,6 +27,6 @@ const STATUS_BY_CODE: Record<string, number> = {
  *  the message. */
 export function handleStockError(e: unknown): never {
   if (e instanceof StockError)
-    throw error(STATUS_BY_CODE[e.code] ?? 400, { message: e.message, code: e.code });
+    throw error(STATUS_BY_CODE[e.code] ?? 400, errorBody(e.message, e.code));
   throw e;
 }

@@ -92,7 +92,9 @@ describe('POST /api/sandbox/query', () => {
     const response = await queryPost(post(MEMBER, { dataset: 'crm.contacts' }));
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({
+      message: "Your role does not permit 'view' on crm.",
       error: "Your role does not permit 'view' on crm.",
+      code: 'sandbox_invalid',
       field: 'dataset',
     });
     expect(mocks.execute).not.toHaveBeenCalled();
@@ -102,7 +104,9 @@ describe('POST /api/sandbox/query', () => {
     const response = await queryPost(post(MEMBER, { dataset: 'crm.contacts', select: ['salary'] }));
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
+      message: 'unknown column "salary" for dataset "crm.contacts"',
       error: 'unknown column "salary" for dataset "crm.contacts"',
+      code: 'sandbox_invalid',
       field: 'select',
     });
     expect(mocks.execute).not.toHaveBeenCalled();
@@ -112,7 +116,9 @@ describe('POST /api/sandbox/query', () => {
     const response = await queryPost(post(MEMBER, { dataset: 'crm.salaries' }));
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
+      message: 'unknown dataset',
       error: 'unknown dataset',
+      code: 'sandbox_invalid',
       field: 'dataset',
     });
   });
@@ -129,7 +135,12 @@ describe('POST /api/sandbox/query', () => {
   it('400s on a malformed JSON body', async () => {
     const response = await queryPost(post(MEMBER, 'not json'));
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: 'invalid JSON body', field: 'body' });
+    await expect(response.json()).resolves.toEqual({
+      message: 'invalid JSON body',
+      error: 'invalid JSON body',
+      code: 'sandbox_invalid',
+      field: 'body',
+    });
   });
 
   it('clamps an over-large limit to 1000 in the SQL it binds', async () => {
@@ -350,7 +361,12 @@ describe('element writes are admin-only', () => {
       post(ADMIN, { title: 'x' }, '/api/sandbox/elements/nope', { id: 'nope' }),
     );
     expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({ error: 'invalid element id', field: 'id' });
+    await expect(response.json()).resolves.toEqual({
+      message: 'invalid element id',
+      error: 'invalid element id',
+      code: 'sandbox_invalid',
+      field: 'id',
+    });
     expect(mocks.execute).not.toHaveBeenCalled();
   });
 
@@ -416,7 +432,9 @@ describe('element writes are admin-only', () => {
     );
     expect(bad.status).toBe(400);
     await expect(bad.json()).resolves.toEqual({
+      message: 'unknown column "totl" on pos.tickets',
       error: 'unknown column "totl" on pos.tickets',
+      code: 'sandbox_invalid',
       field: 'spec.source.metric.col',
     });
     const typed = await elementsPost(

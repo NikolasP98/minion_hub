@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { errorBody } from '$server/http/error-body';
 import { PosError } from '$server/services/pos.service';
 
 // Leading underscore = not a SvelteKit route module, just a shared helper for
@@ -19,6 +20,7 @@ const STATUS_BY_CODE: Record<string, number> = {
 /** Re-throws a PosError as a SvelteKit HttpError; anything else passes through
  *  untouched (the caller's `catch` must rethrow). */
 export function rethrowPosError(e: unknown): never {
-  if (e instanceof PosError) throw error(STATUS_BY_CODE[e.code] ?? 400, e.code);
+  if (e instanceof PosError)
+    throw error(STATUS_BY_CODE[e.code] ?? 400, errorBody(e.message, e.code));
   throw e;
 }
