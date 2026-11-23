@@ -115,6 +115,24 @@ export async function deleteGroup(ctx: CoreCtx, userId: string, groupId: string)
   ]);
 }
 
+/** True when the group is this user's own (same predicate setGroupMembers uses). */
+export async function userOwnsGroup(ctx: CoreCtx, userId: string, groupId: string) {
+  const [group] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: agentGroups.id })
+      .from(agentGroups)
+      .where(
+        and(
+          eq(agentGroups.id, groupId),
+          eq(agentGroups.profileId, userId),
+          eq(agentGroups.tenantId, ctx.tenantId),
+        ),
+      )
+      .limit(1),
+  );
+  return !!group;
+}
+
 export async function setGroupMembers(
   ctx: CoreCtx,
   userId: string,
