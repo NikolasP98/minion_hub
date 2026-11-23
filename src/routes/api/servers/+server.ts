@@ -27,7 +27,9 @@ export const POST: RequestHandler = async ({ locals, request, route }) => {
   // person who added it on next session).
   const user = requireAuth(locals);
   // The upsert overwrites the stored token on a (tenant, url) match: org-config write.
-  await requireOrgCapability(locals, 'settings', 'manage');
+  // A user with no organization yet is adding their first gateway: `getOrCreateTenantCtx`
+  // below creates their own organization, so there is nothing to gate.
+  if (locals.tenantCtx) await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await getOrCreateTenantCtx(locals);
   try {
     const body = await request.json();
