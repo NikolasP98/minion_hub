@@ -5,6 +5,10 @@ The default is `false`. Apply both `20261112010000_organization_role_templates.s
 and `20261112020000_notification_role_model_sources.sql` before enabling it.
 The latter retains the notification worker's column privileges and live source fence.
 
+The current organization creation and identity APIs also require
+`20261122000000_organization_hub_name.sql` before deploying their readers/writers,
+regardless of the role-template flag. See [Organization identity](#organization-identity).
+
 When enabled, provisioning creates an organization with `role_model='organization'`,
 one local Administrator role, explicit permissions, and an explicit assignment to its
 creator. Ownership remains a separate organization membership attribute. The initial
@@ -56,6 +60,48 @@ restart incompatible code as an automatic rollback. On failure, keep provisionin
 disabled, preserve evidence, and use a compatible forward repair. Turning the
 provisioning flag off does not remove organization-model rows or permit reverting
 their readers.
+
+## Organization identity
+
+White-label slice 1 supplies storage and guarded services. Creation UI, the owner
+Appearance editor, request-owned branding delivery and remaining UI consumers are
+sequenced in later slices; this slice does not make the visible Hub white-labelable.
+
+`POST /api/organizations/provision` retains its platform-admin gate and accepts an
+optional `hubName` prefix. When omitted, the provisioner must derive a valid short
+prefix from the full organization name. If it cannot, callers must supply `hubName`;
+an explicit `null` is invalid during creation. Validation happens before provisioning
+effects. Both legacy creation and organization-role bootstrap store the normalized
+prefix only on the initial insert. Retries and insert-race recovery preserve the
+existing full name and stored prefix. This does not convert an existing role model.
+
+The nullable `organizations.hub_name` is separate from the public full organization
+name and ID. The migration does not backfill existing rows. The shared text contract
+and limits are owned by [`src/lib/branding.ts`](../src/lib/branding.ts), with exact
+Unicode, emoji and suffix examples in
+[`branding-fixtures.json`](../src/lib/branding-fixtures.json). A valid custom prefix
+takes precedence over a normalized organization-name suggestion, then `MINION`.
+The `Hub` suffix stays fixed. Stored `MINION` is an explicit override; `NULL` follows
+the automatic suggestion/fallback. Reads never repair persisted values. An
+unavailable read or unsupported Unicode-validation runtime resolves to the default
+with unavailable status; identity writes fail closed when validation is unavailable.
+
+`PATCH /api/organizations/branding` accepts only a `hubName` field, for example
+`{ "hubName": "Faces" }`; `{ "hubName": null }` resets to automatic mode.
+`PATCH /api/tenants/me` accepts a
+nonempty object containing only `name` and/or `slug`; it preserves the stored prefix.
+Both require JSON bodies bounded to 2 KiB and return `Cache-Control: private, no-store`.
+The branding response includes the committed `hubName` and resolved `branding`;
+the metadata response remains `{ "ok": true }`. Body and metadata validation live in
+[`organization-branding.service.ts`](../src/server/services/organization-branding.service.ts).
+
+Both PATCH writers require `settings:manage` admission and fresh, locked canonical
+authority: an active profile and organization, current organization membership, and
+either owner membership with `settings:manage` or platform-admin status. An assigned
+role's name alone does not establish ownership. Role simulation cannot write, and
+ordinary authenticated SQL writers, including owners, cannot update `hub_name`.
+The native regression cases live in
+[`organization-branding.sql.integration.test.ts`](../src/server/services/organization-branding.sql.integration.test.ts).
 
 ## Create and manage roles
 
