@@ -1478,4 +1478,41 @@ describe('stock corrections against PostgreSQL', () => {
     await flag;
     expect(await refusal(attempt())).toBe('forbidden');
   });
+
+  it('keeps sales documents undeletable and stock ledger rows final for every API role', async () => {
+    const docs = ['pos_tickets', 'pos_ticket_lines', 'pos_payments'];
+    for (const role of ['app_ledger', 'anon', 'authenticated', 'service_role']) {
+      for (const t of docs) {
+        const [r] =
+          await owner`select has_table_privilege(${role}, ${`public.${t}`}, 'DELETE') as del,
+          has_table_privilege(${role}, ${`public.${t}`}, 'TRUNCATE') as trunc`;
+        expect(r, `${role} ${t}`).toEqual({ del: false, trunc: false });
+      }
+    }
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      const [r] =
+        await owner`select has_table_privilege(${role}, 'public.stk_ledger', 'UPDATE') as upd,
+        has_table_privilege(${role}, 'public.stk_ledger', 'DELETE') as del`;
+      expect(r, `${role} stk_ledger`).toEqual({ upd: false, del: false });
+    }
+    const [app] = await owner`select
+      has_table_privilege('app_ledger', 'public.stk_ledger', 'SELECT') as ledger_sel,
+      has_table_privilege('app_ledger', 'public.stk_ledger', 'INSERT') as ledger_ins,
+      has_table_privilege('app_ledger', 'public.stk_ledger', 'UPDATE') as ledger_upd,
+      has_table_privilege('app_ledger', 'public.pos_tickets', 'SELECT') as t_sel,
+      has_table_privilege('app_ledger', 'public.pos_tickets', 'INSERT') as t_ins,
+      has_table_privilege('app_ledger', 'public.pos_tickets', 'UPDATE') as t_upd,
+      has_table_privilege('app_ledger', 'public.pos_ticket_lines', 'UPDATE') as l_upd,
+      has_table_privilege('app_ledger', 'public.pos_payments', 'UPDATE') as p_upd`;
+    expect(app).toEqual({
+      ledger_sel: true,
+      ledger_ins: true,
+      ledger_upd: false,
+      t_sel: true,
+      t_ins: true,
+      t_upd: true,
+      l_upd: true,
+      p_upd: true,
+    });
+  });
 });

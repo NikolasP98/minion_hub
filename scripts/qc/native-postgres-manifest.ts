@@ -1189,7 +1189,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/stock-corrections.sql.integration.test.ts',
-      minimumAssertions: 13,
+      minimumAssertions: 14,
       exactAssertions: true,
       requiredBehaviors: [
         'stock corrections against PostgreSQL preserves POS only no stock swap and rejects unauthorized stock effects',
@@ -1205,6 +1205,7 @@ export const NATIVE_POSTGRES_MANIFEST = {
         'stock corrections against PostgreSQL absent permission deny insertion serializes with correction in both authority lock orders',
         'stock corrections against PostgreSQL serializes warehouse timezone and bundle eligibility writers in both arrival orders',
         'stock corrections against PostgreSQL rejects deleting principals and inactive organizations before correction admission',
+        'stock corrections against PostgreSQL keeps sales documents undeletable and stock ledger rows final for every API role',
       ],
     },
     {
