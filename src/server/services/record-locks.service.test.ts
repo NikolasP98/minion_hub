@@ -143,15 +143,25 @@ describe('recordLockFor', () => {
       id: `r${i}`,
       posted_at: '2026-11-19T15:00:00Z',
     }));
-    const f = fakeTx([[], TZ, []], [rows]);
+    const f = fakeTx([[policyRow({ daysEnabled: true, days: 3650 })], TZ, []], [rows]);
     const r = await recordLockFor(f.tx, 'org', rec, { now });
     expect(r.locked).toBe(true);
     expect(r.rules).toMatchObject([{ kind: 'chain_unverified' }]);
   });
 
+  it("keeps today's answer for an org without days or webhook rules, even at the cap", async () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ({
+      id: `r${i}`,
+      posted_at: '2026-11-19T15:00:00Z',
+    }));
+    const f = fakeTx([[], TZ, []], [rows]);
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.rules.map((h) => h.kind)).not.toContain('chain_unverified');
+  });
+
   it('fails closed when the oldest receipt has no posted_at', async () => {
     const f = fakeTx(
-      [[], TZ, []],
+      [[policyRow({ daysEnabled: true, days: 3650 })], TZ, []],
       [
         [
           { id: 'r2', posted_at: '2026-11-19T15:00:00Z' },

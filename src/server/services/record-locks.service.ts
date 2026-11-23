@@ -90,7 +90,11 @@ export async function recordLockFor(
   const firstPostedAt = firstRaw ? new Date(firstRaw) : record.postedAt;
   // The walk is capped (one row past the cap means it may have stopped early) and the oldest receipt
   // must have a date: otherwise the age cannot be verified, so fail closed instead of judging a partial chain.
-  const chainUnverified = chain.length > CHAIN_CAP || (chain.length > 0 && !firstRaw);
+  // Only the days and webhook rules read the first receipt's date, so only they can be misled by a
+  // partial chain; with neither on (every org without a policy row) the answer stays exactly today's.
+  const chainUnverified =
+    (policy.days !== null || policy.webhook) &&
+    (chain.length > CHAIN_CAP || (chain.length > 0 && !firstRaw));
 
   // External locks are only read while the webhook rule is on: with it off they cannot change the answer.
   const externalRows = policy.webhook

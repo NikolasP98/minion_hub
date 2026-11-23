@@ -110,6 +110,8 @@ grant select, insert, update on public.org_record_locks to app_ledger;
 grant select, insert on public.org_lock_events to app_ledger;  -- append-only: no update, no delete
 
 -- Triggers are the only guard against the BYPASSRLS `postgres` login (grants and RLS do not bind it).
+-- They stop accidents, not a deliberate owner: `postgres` can still set session_replication_role = replica or
+-- disable the trigger. That is the limit of what a table can enforce against its owner.
 create or replace function public.org_lock_events_append_only() returns trigger
   language plpgsql as $$
 begin
