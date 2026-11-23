@@ -46,6 +46,21 @@ export function requireTenantCtx(locals: App.Locals): TenantContext {
   return locals.tenantCtx;
 }
 
+/**
+ * Require a gateway's own server token (the hook's Bearer path sets BOTH
+ * tenantCtx and serverId; a browser session only has tenantCtx). 401 otherwise.
+ */
+export function requireServerToken(locals: App.Locals): {
+  tenantCtx: TenantContext;
+  serverId: string;
+} {
+  const { tenantCtx, serverId } = locals;
+  if (!tenantCtx || typeof serverId !== 'string' || !serverId) {
+    throw error(401, 'Gateway server token required');
+  }
+  return { tenantCtx, serverId };
+}
+
 const PROFILE_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**

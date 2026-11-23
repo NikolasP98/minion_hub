@@ -1,5 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
+import { requireServerToken } from '$server/auth/authorize';
 import { deleteMemoriesBySource } from '$server/services/agent-memories.service';
 
 /**
@@ -10,8 +11,7 @@ import { deleteMemoriesBySource } from '$server/services/agent-memories.service'
  * that was `forget`-ten) so the corpus doesn't accumulate orphaned vectors.
  */
 export const POST: RequestHandler = async ({ locals, request }) => {
-  if (!locals.tenantCtx) throw error(401, 'Unauthorized');
-  const orgId = locals.tenantCtx.tenantId;
+  const orgId = requireServerToken(locals).tenantCtx.tenantId;
 
   const body = (await request.json().catch(() => ({}))) as {
     agentId?: string;

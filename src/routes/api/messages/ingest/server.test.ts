@@ -55,6 +55,20 @@ describe('POST /api/messages/ingest', () => {
     expect(advanceBrainCorpusJobNow).not.toHaveBeenCalled();
   });
 
+  it('rejects a session-only caller (tenantCtx without serverId) with 401', async () => {
+    await expect(
+      POST!({
+        locals: { tenantCtx: { tenantId: 'org-1' } },
+        request: new Request('http://localhost/api/messages/ingest', {
+          method: 'POST',
+          body: JSON.stringify({ rows: [{ clientId: 'c' }], patches: [{ clientId: 'p' }] }),
+        }),
+      } as never),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(insertMessagesDetailed).not.toHaveBeenCalled();
+    expect(applyRoutingPatches).not.toHaveBeenCalled();
+  });
+
   it('starts queued brain work through Vercel waitUntil without awaiting it', async () => {
     process.env.VERCEL = '1';
     const response = (await POST!({
