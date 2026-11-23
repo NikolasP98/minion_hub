@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { page } from '$app/state';
   import RemoteTerminal from '$lib/components/cloud/RemoteTerminal.svelte';
   import { cloudShell, cloudState, refreshCloud } from '$lib/state/features/cloud.svelte';
@@ -32,7 +33,7 @@
   });
 </script>
 
-<svelte:head><title>{m.cloud_terminal_title()} · Minion hub</title></svelte:head>
+<svelte:head><title>{m.cloud_terminal_title()} · {getBranding().name} hub</title></svelte:head>
 
 <PageShell archetype="terminal" scroll="none" variant="terminal" labelledBy="cloud-terminal-title">
   <h1 id="cloud-terminal-title" class="sr-only">{m.cloud_terminal_title()}</h1>

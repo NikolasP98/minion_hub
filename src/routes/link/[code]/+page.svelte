@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
+  import * as m from '$lib/paraglide/messages';
   import { enhance } from '$app/forms';
   import type { SubmitFunction } from '@sveltejs/kit';
   import { iconSizes, Button } from '$lib/components/ui';
@@ -23,7 +25,7 @@
 </script>
 
 <svelte:head>
-  <title>Link Your Channel — Minion Hub</title>
+  <title>Link Your Channel — {getBranding().fullName}</title>
 </svelte:head>
 
 {#snippet taskIcon()}
@@ -34,7 +36,10 @@
   eyebrow={`${data.channelLabel} identity`}
   title={form?.success ? 'Channel linked' : 'Link your channel'}
   description={form?.success
-    ? `${data.channelLabel} can now recognize your Minion Hub account.`
+    ? m.link_accountRecognizedDescription({
+        channel: data.channelLabel,
+        hubFullName: getBranding().fullName,
+      })
     : `Confirm the identity that ${data.channelLabel} should use for this channel.`}
   tone={form?.success ? 'success' : 'default'}
   icon={taskIcon}

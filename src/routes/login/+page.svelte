@@ -5,6 +5,7 @@
 </script>
 
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import * as m from '$lib/paraglide/messages';
@@ -245,7 +246,7 @@
 </script>
 
 <svelte:head>
-  <title>{mode === 'signup' ? 'Create account' : 'Sign in'} — Minion Hub</title>
+  <title>{mode === 'signup' ? 'Create account' : 'Sign in'} — {getBranding().fullName}</title>
 </svelte:head>
 
 {#snippet taskIcon()}<LogIn size={iconSizes.lg} />{/snippet}
@@ -255,7 +256,7 @@
   eyebrow={m.login_title()}
   title={mode === 'signup' ? 'Create your account' : m.login_subtitle()}
   description={mode === 'signup'
-    ? 'Set up the identity you will use across Minion Hub.'
+    ? m.login_signupIdentityDescription({ hubFullName: getBranding().fullName })
     : 'Use your email, username, or connected Google account.'}
   icon={taskIcon}
   {footer}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { page } from '$app/state';
   import { invalidate } from '$app/navigation';
   import { onDestroy, onMount } from 'svelte';
@@ -104,7 +105,7 @@
   }
 </script>
 
-<svelte:head><title>{m.nav_personalHome()} · MINION hub</title></svelte:head>
+<svelte:head><title>{m.nav_personalHome()} · {getBranding().name} hub</title></svelte:head>
 <PageShell archetype="form" labelledBy="personal-home-title">
   <PageHeader
     titleId="personal-home-title"

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import type { MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
@@ -132,7 +133,7 @@
 
       <!-- Footer -->
       <div class="badge-footer">
-        <span class="company-brand">MINION</span>
+        <span class="company-brand">{getBranding().name}</span>
         <span class="agent-id">ID: {agent.id.slice(0, 8)}</span>
       </div>
     </div>
@@ -381,16 +382,22 @@
   }
 
   .badge-footer {
+    flex-wrap: wrap;
+    gap: var(--space-2);
     display: flex;
     align-items: center;
     justify-content: space-between;
   }
 
   .company-brand {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
     font-family: 'JetBrains Mono NF', monospace;
     font-weight: 800;
     font-size: var(--font-size-section-title, 16px);
-    color: var(--color-surface-2);
+    /* Fixed light-card illustration: use the same print ink as IdFooter. */
+    color: #18181b;
     letter-spacing: 0.05em;
     position: relative;
   }

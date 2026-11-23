@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { goto } from '$lib/navigation';
   import type { PageData } from './$types';
   import * as m from '$lib/paraglide/messages';
@@ -54,7 +55,7 @@
   }
 </script>
 
-<svelte:head><title>{m.reset_title()} — Minion Hub</title></svelte:head>
+<svelte:head><title>{m.reset_title()} — {getBranding().fullName}</title></svelte:head>
 
 {#snippet taskIcon()}
   {#if !data.ok}<ShieldAlert size={iconSizes.lg} />{:else if done}<CircleCheck

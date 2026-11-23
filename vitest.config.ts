@@ -53,6 +53,8 @@ const unitTest = {
     // `$lib/navigation` (locale-aware `goto`) and `$lib/records/peek.svelte`
     // (record open-mode shallow routing) transitively import this.
     '$app/navigation': path.resolve('src/server/test-utils/env-stubs/app-navigation.ts'),
+    // Actual public-page renders use enhance; submission belongs to the SvelteKit QA lane.
+    '$app/forms': path.resolve('src/server/test-utils/env-stubs/app-forms.ts'),
   },
 };
 
@@ -61,6 +63,9 @@ const unitTest = {
 const storybookProject = () => ({
   extends: true,
   plugins: [
+    // TODO(handoff): This lane omits Tailwind processing; align its CSS producer
+    // and qualify the broad styled-story regressions before enabling it. See meta
+    // proposals/2026-11-23-storybook-vitest-css-producer-parity.md.
     // The plugin will run tests for the stories defined in your Storybook config
     // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
     storybookTest({

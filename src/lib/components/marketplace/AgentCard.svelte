@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { goto } from '$lib/navigation';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import type { MarketplaceAgent } from '$lib/state/features/marketplace.svelte';
@@ -68,7 +69,7 @@
       <IdBadgeClip />
 
       <!-- ID Card -->
-      <div class="id-card">
+      <div class="id-card" data-brand-watermark={`${getBranding().name}  `.repeat(100)}>
         <!-- Holo layers (pointer-driven, CSS-only) -->
         <div class="holo-sheen" aria-hidden="true"></div>
         <div class="holo-glare" aria-hidden="true"></div>
@@ -209,9 +210,9 @@
 
   /* ── Holographic effect ──────────────────────────────────────── */
 
-  /* "MINION" repeated watermark — behind card content, above card background */
+  /* Organization identity repeated watermark — behind card content, above card background */
   .id-card::before {
-    content: 'MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  MINION  ';
+    content: attr(data-brand-watermark);
     position: absolute;
     inset: 0;
     font-family: 'JetBrains Mono NF', monospace;

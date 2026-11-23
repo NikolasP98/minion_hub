@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   // Capabilities (formerly /tools): a tabbed home for the agent's Tools, Skills
   // and MCP servers. Skills were relocated here from /flow-editor so all reusable
   // agent capabilities live in one place. The active tab is URL-driven
@@ -38,7 +39,7 @@
 </script>
 
 <svelte:head>
-  <title>Capabilities · Minion</title>
+  <title>Capabilities · {getBranding().name}</title>
 </svelte:head>
 
 <SectionShell>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
+  import { untrack } from 'svelte';
   import { Button, Toggle } from '$lib/components/ui';
   import { Dialog } from '$lib/components/ui/foundations';
   import { crtConfig, type CRTConfig } from '$lib/state/ui/crt-config.svelte';
@@ -36,7 +38,7 @@
   // Reset local to stored state whenever modal opens
   $effect(() => {
     if (open) {
-      local = { ...localDefaults };
+      local = untrack(() => ({ ...localDefaults }));
     }
   });
 
@@ -46,8 +48,11 @@
   // Pure presentation (policy L): every change applies live — no Apply button.
   $effect(() => {
     if (!open) return;
-    crtConfig.set($state.snapshot(local));
-    crtConfig.apply();
+    const snapshot = $state.snapshot(local);
+    untrack(() => {
+      crtConfig.set(snapshot);
+      crtConfig.apply();
+    });
   });
 
   // Preview computed styles
@@ -239,10 +244,10 @@
           >
             <!-- Topbar -->
             <div
-              style="height:18px; background:rgba(8,5,0,.95); border-bottom: 1px solid #4a3008; display:flex; align-items:center; padding:0 8px; gap:6px;"
+              style="min-height:18px; background:rgba(8,5,0,.95); border-bottom: 1px solid #4a3008; display:flex; align-items:center; padding:0 8px; gap:6px;"
             >
               <span style="font-size:8px; font-weight:bold; letter-spacing:.2em; color:#ffbe40;"
-                >[MINION]</span
+                >[{getBranding().name}]</span
               >
               <div
                 style="width:4px; height:4px; background:#40c840; box-shadow: 0 0 4px #40c840; margin-left:auto; animation: crt-led-pulse 2s ease-in-out infinite;"

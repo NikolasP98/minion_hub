@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import BuilderHub from '$lib/components/builder/BuilderHub.svelte';
   import { Bot } from 'lucide-svelte';
   import { iconSizes, PageHeader } from '$lib/components/ui';
@@ -8,7 +9,7 @@
 </script>
 
 <svelte:head>
-  <title>Agent Builder · Minion</title>
+  <title>Agent Builder · {getBranding().name}</title>
 </svelte:head>
 
 <PageShell archetype="collection" scroll="none">

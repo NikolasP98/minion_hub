@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import { goto } from '$lib/navigation';
   import { page } from '$app/state';
   import { Archive, CloudCog, DatabaseBackup, RefreshCw, ShieldCheck, Trash2 } from 'lucide-svelte';
@@ -73,7 +74,7 @@
   }
 </script>
 
-<svelte:head><title>{m.cloud_settings_title()} · Minion hub</title></svelte:head>
+<svelte:head><title>{m.cloud_settings_title()} · {getBranding().name} hub</title></svelte:head>
 
 <PageShell archetype="form" scroll="none" labelledBy="cloud-settings-title">
   <PageHeader

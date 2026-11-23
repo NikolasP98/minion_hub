@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { getBranding } from '$lib/branding.svelte';
   import * as m from '$lib/paraglide/messages';
   import { iconSizes, Button, Input } from '$lib/components/ui';
   import { PublicTaskShell } from '$lib/components/ui/foundations';
@@ -27,7 +28,7 @@
   }
 </script>
 
-<svelte:head><title>{m.login_forgot_title()} — Minion Hub</title></svelte:head>
+<svelte:head><title>{m.login_forgot_title()} — {getBranding().fullName}</title></svelte:head>
 
 {#snippet taskIcon()}
   {#if sent}<CircleCheck size={iconSizes.lg} />{:else}<KeyRound size={iconSizes.lg} />{/if}
