@@ -1,4 +1,5 @@
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
+import type { Classified } from '$server/services/reminder-compose';
 
 /**
  * Pure reminder-scheduling engine. Given a booking, the org's configured stages,
@@ -105,6 +106,8 @@ export function resolveRecipient(channel: string, role: RecipientRole, c: Recipi
 
 /** The "reply SÍ/NO" call-to-action appended to a pending booking's confirmation
  *  when AI inference is OFF (so the keyword scan has something deterministic). */
+// TODO(handoff): spec 139 - a "NO" no longer cancels (it opens a reconfirmation case), but this text still says
+// "NO para cancelar". Reword it together with the S2 question the agent sends, so the client is not promised a cancel.
 export function confirmCta(locale: string): string {
   return locale === 'en'
     ? 'Reply YES to confirm or NO to cancel.'
@@ -137,4 +140,16 @@ export function parseYesNo(text: string | null | undefined): 'yes' | 'no' | null
   if (yes && !no) return 'yes';
   if (no && !yes) return 'no';
   return null;
+}
+
+/**
+ * Spec 139: `parseYesNo` as a classified verdict (the keyword path, no model). A reply of at
+ * most three words ("no", "no gracias", "sí confirmo") is decisive (1); a longer sentence that
+ * merely contains a token ("no sé a qué hora es") is a weak signal (0.5) and so is acted on as unclear.
+ */
+export function keywordVerdict(text: string | null | undefined): Classified<'yes' | 'negation' | 'unclear'> {
+  const r = parseYesNo(text);
+  if (!r) return { verdict: 'unclear', confidence: 0, via: 'keyword' };
+  const words = norm(text ?? '').split(/\s+/).filter(Boolean).length;
+  return { verdict: r === 'yes' ? 'yes' : 'negation', confidence: words <= 3 ? 1 : 0.5, via: 'keyword' };
 }

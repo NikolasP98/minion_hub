@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import {
   pgTable,
   uuid,
@@ -7,6 +8,8 @@ import {
   timestamp,
   index,
   uniqueIndex,
+  integer,
+  numeric,
 } from 'drizzle-orm/pg-core';
 
 /**
@@ -47,6 +50,8 @@ export const schedReminderConfig = pgTable('sched_reminder_config', {
   inferConfirmation: boolean('infer_confirmation').notNull().default(false),
   locale: text('locale').notNull().default('es'),
   fromName: text('from_name'),
+  /** Spec 139: hours the agent waits for a client's answer after a "no" (1-168). */
+  negationWaitHours: integer('negation_wait_hours').notNull().default(24),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -85,6 +90,71 @@ export const schedReminders = pgTable(
     bookingIdx: index('sched_reminders_booking_idx').on(t.bookingId),
   }),
 );
+
+/** Spec 139: a client's "no" to a reminder opens one case per appointment (per visit when merged). */
+export const schedReconfirmCases = pgTable(
+  'sched_reconfirm_cases',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    bookingId: uuid('booking_id').notNull(),
+    subjectKey: text('subject_key').notNull(),
+    contactId: uuid('contact_id'),
+    channel: text('channel').notNull(),
+    accountId: text('account_id'),
+    recipient: text('recipient').notNull(),
+    bookingStartAt: timestamp('booking_start_at', { withTimezone: true }).notNull(),
+    agentState: text('agent_state').notNull().default('none'), // none | asking | offered | done
+    result: text('result'),
+    summary: text('summary'),
+    offeredSlots: jsonb('offered_slots').notNull().default([]),
+    offerBookingUpdatedAt: timestamp('offer_booking_updated_at', { withTimezone: true }),
+    waitUntil: timestamp('wait_until', { withTimezone: true }),
+    lastInboundAt: timestamp('last_inbound_at', { withTimezone: true }),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedBy: uuid('closed_by'),
+    closeAction: text('close_action'),
+    closeNote: text('close_note'),
+  },
+  (t) => ({
+    openUniq: uniqueIndex('sched_reconfirm_cases_open_uniq')
+      .on(t.orgId, t.subjectKey)
+      .where(sql`${t.closedAt} is null`),
+    bookingIdx: index('sched_reconfirm_cases_booking_idx').on(t.orgId, t.bookingId),
+  }),
+);
+
+/** Append-only log: classifier verdicts (also the scan's cursor), agent messages, staff actions. */
+export const schedReconfirmEvents = pgTable(
+  'sched_reconfirm_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: text('org_id').notNull(),
+    bookingId: uuid('booking_id').notNull(),
+    caseId: uuid('case_id'),
+    kind: text('kind').notNull(), // verdict | agent_message | client_message | staff_action | system
+    verdict: text('verdict'),
+    confidence: numeric('confidence', { precision: 4, scale: 3 }),
+    via: text('via'), // keyword | jev
+    content: text('content'),
+    sendStatus: text('send_status'), // sending | sent | failed (agent_message only)
+    step: text('step'),
+    messageId: text('message_id'),
+    inboundAt: timestamp('inbound_at', { withTimezone: true }),
+    data: jsonb('data').notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    bookingIdx: index('sched_reconfirm_events_booking_idx').on(t.orgId, t.bookingId, t.createdAt),
+    caseStepUniq: uniqueIndex('sched_reconfirm_events_case_step_uniq')
+      .on(t.caseId, t.step)
+      .where(sql`${t.kind} = 'agent_message'`),
+  }),
+);
+
+export type SchedReconfirmCase = typeof schedReconfirmCases.$inferSelect;
+export type SchedReconfirmEvent = typeof schedReconfirmEvents.$inferSelect;
 
 export type SchedReminderConfig = typeof schedReminderConfig.$inferSelect;
 export type SchedReminder = typeof schedReminders.$inferSelect;

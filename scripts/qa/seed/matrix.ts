@@ -635,6 +635,11 @@ export const MATRIX: readonly MatrixEntry[] = [
     why: 'kind_id null — resolves via event type/org default',
   },
   { id: 'sched.booking.public-link-source', domain: 'scheduling', why: "source='public_link'" },
+  {
+    id: 'sched.reconfirm.open-case',
+    domain: 'scheduling',
+    why: "open sched_reconfirm_cases row (closed_at null, agent_state 'none') on sched.booking.pending with a sent client reminder and a logged negation verdict — pairs 20261123120000_reconfirm_cases.sql, spec 139 'Por reconfirmar'",
+  },
   { id: 'sched.link.expired', domain: 'scheduling', why: 'expires_at in the past' },
   { id: 'hr.employee.active', domain: 'scheduling', why: "status='active', linked resource" },
   { id: 'hr.employee.left', domain: 'scheduling', why: "status='left', left_on set" },

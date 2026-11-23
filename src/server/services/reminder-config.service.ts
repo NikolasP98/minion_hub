@@ -37,6 +37,7 @@ export async function getReminderConfig(ctx: CoreCtx): Promise<SchedReminderConf
     inferConfirmation: false,
     locale: 'es',
     fromName: null,
+    negationWaitHours: 24,
     updatedAt: new Date(),
   };
 }

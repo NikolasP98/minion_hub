@@ -359,6 +359,38 @@ export async function seed(ctx: SeedContext): Promise<void> {
   await booking('sched.booking.kind-null', { kindId: null });
   await booking('sched.booking.public-link-source', { source: 'public_link' });
 
+  // Spec 139 (pairs 20261123120000_reconfirm_cases.sql): a client reminder SENT for the pending
+  // booking, a negation logged, and an open reconfirmation case — the "Por reconfirmar" state.
+  const reconfirmBooking = matrixUuid('sched.booking.pending');
+  const reconfirmCase = matrixUuid('sched.reconfirm.open-case');
+  const [{ start_time: reconfirmStart }] = await sql<{ start_time: Date }[]>`
+    select start_time from sched_bookings where id = ${reconfirmBooking}::uuid
+  `;
+  await sql`
+    insert into sched_reminders (org_id, booking_id, stage, channel, recipient_role, recipient, content, status, sent_at)
+    values (${ORG_BUSINESS}, ${reconfirmBooking}::uuid, 'confirmation', 'whatsapp', 'client', '+51999000111',
+            'QA: te recordamos tu cita. ¿Confirmas?', 'sent', ${now.toISOString()})
+    on conflict (org_id, booking_id, stage, channel, recipient_role) do nothing
+  `;
+  await sql`
+    insert into sched_reconfirm_cases (id, org_id, booking_id, subject_key, channel, account_id, recipient, booking_start_at, last_inbound_at)
+    values (${reconfirmCase}::uuid, ${ORG_BUSINESS}, ${reconfirmBooking}::uuid, ${reconfirmBooking}, 'whatsapp', null,
+            '+51999000111', ${reconfirmStart.toISOString()}, ${now.toISOString()})
+    on conflict (id) do update set booking_start_at = excluded.booking_start_at
+  `;
+  await sql`
+    delete from sched_reconfirm_events where org_id = ${ORG_BUSINESS} and case_id = ${reconfirmCase}::uuid
+  `;
+  await sql`
+    insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, verdict, confidence, via, content, inbound_at)
+    values (${ORG_BUSINESS}, ${reconfirmBooking}::uuid, ${reconfirmCase}::uuid, 'verdict', 'negation', 0.95, 'jev',
+            'QA: no voy a poder', ${now.toISOString()})
+  `;
+  register('sched.reconfirm.open-case', {
+    table: 'sched_reconfirm_cases',
+    where: { id: reconfirmCase },
+  });
+
   const linkExpiredId = matrixUuid('sched.link.expired');
   await sql`
     insert into sched_links (id, org_id, slug, title, event_type_ids, active, expires_at)

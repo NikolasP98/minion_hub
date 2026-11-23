@@ -7,7 +7,7 @@ import {
   dueStages,
   expandRoles,
   resolveRecipient,
-  parseYesNo,
+  keywordVerdict,
   confirmCta,
 } from '$server/scheduling/reminders';
 import type { RecipientRole } from '$server/scheduling/reminders';
@@ -28,7 +28,9 @@ async function getReminderConfig(ctx: CoreCtx) {
   return { ...config, personalize: false, inferConfirmation: false };
 }
 import { composeReminder, inferConfirmationReply } from './reminder-compose';
-import type { ReminderContext } from './reminder-compose';
+import type { Classified, ReminderContext, ReplyVerdict } from './reminder-compose';
+import { CONFIDENCE_MIN, acted } from '$server/scheduling/reconfirm';
+import { agedUnclearVerdicts, lastInboundAt, logVerdict, openCase } from './reconfirm.service';
 import { BookingTransitionError, setBookingStatus } from './scheduling-bookings.service';
 import { gatewayCall } from '$lib/server/gateway-rpc';
 import { insertMessages } from './messages.service';
@@ -302,116 +304,219 @@ export async function processOrgReminders(
 }
 
 export interface ConfirmScanResult {
+  /** A `pending` booking the client confirmed (now `accepted`). */
   confirmed: number;
-  declined: number;
+  /** Reconfirmation cases opened (a negation, or an unclear answer nobody clarified). */
+  opened: number;
+  /** Replies logged as unclear (including a negation below the confidence floor). */
+  unclear: number;
 }
 
-interface PendingRow {
+interface ScanRow {
   id: string;
   start_time: string;
-  attendee_phone: string | null;
+  status: string;
   attendee_name: string | null;
   crm_contact_id: string | null;
+  group_id: string | null;
   service_title: string;
   timezone: string;
-  confirm_sent_at: string;
+  channel: string;
+  recipient: string;
+  reminder_text: string | null;
+  since: string;
 }
 
 const phone9 = (raw: string): string => raw.replace(/\D/g, '').slice(-9);
 
 /**
- * Scan inbound replies for PENDING bookings whose confirmation was sent, and flip
- * the booking to accepted/cancelled. Agent OFF → keyword SÍ/NO match; ON → LLM
- * infers intent from the contact's recent messages (not just the next one).
- * Idempotent: only acts on still-pending bookings, so a re-scan is a no-op.
+ * Spec 139: read client replies to a sent reminder and act on what they mean.
+ *
+ * - Scope: `pending` or `accepted` bookings that got ANY client reminder in the last 7 days.
+ * - Only messages newer than the last logged verdict are classified, so a reply is read once.
+ * - Replies are matched on the phone AND the account the reminder used.
+ * - yes on `pending` -> `accepted`. A confident negation opens a reconfirmation case and changes
+ *   nothing else: no cancel, no stock release, no package hand-back, no message to the client.
+ * - Below `CONFIDENCE_MIN` a verdict is logged as given and acted on as unclear.
  */
 export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<ConfirmScanResult> {
   const config = await getReminderConfig(ctx);
-  const result: ConfirmScanResult = { confirmed: 0, declined: 0 };
+  const result: ConfirmScanResult = { confirmed: 0, opened: 0, unclear: 0 };
   if (!config.enabled) return result;
 
-  const pending = (await withOrgCore(ctx, (tx) =>
+  const candidates = (await withOrgCore(ctx, (tx) =>
     tx.execute(sql`
-      select b.id, b.start_time, b.attendee_phone, b.attendee_name, b.crm_contact_id,
-             et.title as service_title, r.timezone, min(rem.sent_at) as confirm_sent_at
+      select b.id, b.start_time, b.status, b.attendee_name, b.crm_contact_id,
+             b.metadata->>'groupId' as group_id, et.title as service_title, r.timezone,
+             rem.channel, rem.recipient, rem.content as reminder_text,
+             (select min(x.sent_at) from sched_reminders x
+               where x.booking_id = b.id and x.org_id = b.org_id and x.status = 'sent'
+                 and x.recipient_role = 'client' and x.sent_at > now() - interval '7 days') as since
       from sched_bookings b
-      join sched_reminders rem on rem.booking_id = b.id and rem.org_id = b.org_id
-        and rem.stage = 'confirmation' and rem.status = 'sent' and rem.recipient_role = 'client'
+      join lateral (
+        select channel, recipient, content from sched_reminders
+        where booking_id = b.id and org_id = b.org_id and status = 'sent'
+          and recipient_role = 'client' and channel = 'whatsapp' and recipient is not null
+          and sent_at > now() - interval '7 days'
+        order by sent_at desc limit 1
+      ) rem on true
       join sched_event_types et on et.id = b.event_type_id and et.org_id = b.org_id
       join sched_resources r on r.id = b.resource_id and r.org_id = b.org_id
-      where b.org_id = ${ctx.tenantId} and b.status = 'pending' and b.start_time > now()
-        and b.attendee_phone is not null
-      group by b.id, b.start_time, b.attendee_phone, b.attendee_name, b.crm_contact_id, et.title, r.timezone
-      having min(rem.sent_at) > now() - interval '7 days'
+      where b.org_id = ${ctx.tenantId} and b.status in ('pending','accepted')
+        and b.start_time > now() - interval '1 day'
       order by b.start_time asc
       limit 100
     `),
-  )) as unknown as PendingRow[];
-  if (!pending.length) return result;
+  )) as unknown as ScanRow[];
+  if (!candidates.length) return result;
 
-  for (const b of pending) {
-    const p9 = b.attendee_phone ? phone9(b.attendee_phone) : '';
+  const cursor = await lastInboundAt(
+    ctx,
+    candidates.map((c) => c.id),
+  );
+  // The reminder row keeps no account; the config's channel entry is the one it was sent with.
+  const accountId =
+    effectiveChannels(config).find((c) => c.channel === 'whatsapp')?.accountId ?? null;
+
+  for (const b of candidates) {
+    const p9 = phone9(b.recipient);
     if (p9.length < 8) continue;
-    // Inbound replies from this contact since their confirmation went out.
+    const after = cursor.get(b.id) ?? new Date(b.since);
     const msgs = (await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
-        select content from messages
-        where org_id = ${ctx.tenantId} and direction = 'inbound' and channel = 'whatsapp'
+        select content, occurred_at from messages
+        where org_id = ${ctx.tenantId} and direction = 'inbound' and channel = ${b.channel}
           and right(regexp_replace(coalesce(sender_id,''),'\\D','','g'), 9) = ${p9}
-          and occurred_at >= ${b.confirm_sent_at}::timestamptz
+          and occurred_at > ${after.toISOString()}::timestamptz
+          ${accountId ? sql`and account_id = ${accountId}` : sql``}
         order by occurred_at asc
         limit 20
       `),
-    )) as unknown as Array<{ content: string | null }>;
+    )) as unknown as Array<{ content: string | null; occurred_at: string }>;
     const texts = msgs.map((m) => m.content?.trim()).filter((t): t is string => !!t);
     if (!texts.length) continue;
+    const inboundAt = new Date(msgs[msgs.length - 1]!.occurred_at);
 
-    let verdict: 'yes' | 'no' | null = null;
+    let classified: Classified<ReplyVerdict>;
     if (config.inferConfirmation) {
-      const v = await inferConfirmationReply(texts, {
+      classified = await inferConfirmationReply(texts, {
         serviceTitle: b.service_title,
         whenText: formatWhen(b.start_time, b.timezone, config.locale),
         locale: config.locale,
+        reminderText: b.reminder_text,
       });
-      verdict = v === 'unclear' ? null : v;
     } else {
       // Keyword path: the most recent decisive reply wins (final intent).
+      classified = { verdict: 'unclear', confidence: 0, via: 'keyword' };
       for (const t of texts) {
-        const r = parseYesNo(t);
-        if (r) verdict = r;
+        const k = keywordVerdict(t);
+        if (k.verdict !== 'unclear') classified = k;
       }
     }
-    if (!verdict) continue;
+    const verdict = acted(classified);
+    const log = { bookingId: b.id, verdict: classified, texts, inboundAt };
 
-    try {
-      await setBookingStatus(ctx, b.id, verdict === 'yes' ? 'accepted' : 'cancelled');
-    } catch (e) {
-      // Closed after the scan selected it (staff acted while we read replies):
-      // the closed status stands, so nothing is counted or logged on the contact.
-      if (!(e instanceof BookingTransitionError)) throw e;
-      console.warn('[reminders] reply ignored, booking already closed', b.id, e.message);
-      continue;
-    }
-    if (verdict === 'yes') result.confirmed += 1;
-    else result.declined += 1;
-
-    // Log to the contact timeline (best-effort).
-    if (b.crm_contact_id) {
-      try {
-        await withOrgCore(ctx, (tx) =>
-          tx.execute(sql`
-            insert into crm_activities (org_id, contact_id, kind, body, data)
-            values (${ctx.tenantId}, ${b.crm_contact_id}, ${verdict === 'yes' ? 'booking_confirmed' : 'booking_declined'},
-              ${`Appointment ${verdict === 'yes' ? 'confirmed' : 'declined'} by reply`},
-              ${JSON.stringify({ bookingId: b.id, via: config.inferConfirmation ? 'ai_inference' : 'keyword' })}::jsonb)
-          `),
+    if (verdict === 'yes') {
+      if (b.status === 'pending') {
+        try {
+          await setBookingStatus(ctx, b.id, 'accepted');
+        } catch (e) {
+          // Closed after the scan selected it (staff acted while we read replies): the closed
+          // status stands, so nothing is counted or logged on the contact.
+          if (!(e instanceof BookingTransitionError)) throw e;
+          console.warn('[reminders] reply ignored, booking already closed', b.id, e.message);
+          await logVerdict(ctx, log);
+          continue;
+        }
+        result.confirmed += 1;
+        await logContactActivity(
+          ctx,
+          b,
+          'booking_confirmed',
+          'Appointment confirmed by reply',
+          classified,
         );
-      } catch (e) {
-        console.error('[reminders] confirm activity log failed', b.id, e);
       }
+      await logVerdict(ctx, log);
+    } else if (verdict === 'negation') {
+      const opened = await openCase(ctx, {
+        bookingId: b.id,
+        subjectKey: b.group_id ?? b.id,
+        contactId: b.crm_contact_id,
+        channel: b.channel,
+        accountId,
+        recipient: b.recipient,
+        bookingStartAt: new Date(b.start_time),
+        result: inboundAt.getTime() >= new Date(b.start_time).getTime() ? 'late_reply' : null,
+        verdict: classified,
+        texts,
+        inboundAt,
+      });
+      if (opened.created) {
+        result.opened += 1;
+        await logContactActivity(
+          ctx,
+          b,
+          'booking_reconfirm',
+          'Dijo que no puede asistir; en seguimiento',
+          classified,
+        );
+      }
+    } else {
+      await logVerdict(ctx, log);
+      result.unclear += 1;
     }
   }
+
+  // An unclear answer nobody clarified within the wait time goes to staff (spec section 4).
+  const aged = await agedUnclearVerdicts(
+    ctx,
+    candidates.map((c) => c.id),
+    new Date(now.getTime() - config.negationWaitHours * 3_600_000),
+    CONFIDENCE_MIN,
+  );
+  const byId = new Map(candidates.map((c) => [c.id, c]));
+  for (const a of aged) {
+    const b = byId.get(a.bookingId);
+    if (!b) continue;
+    const opened = await openCase(ctx, {
+      bookingId: b.id,
+      subjectKey: b.group_id ?? b.id,
+      contactId: b.crm_contact_id,
+      channel: b.channel,
+      accountId,
+      recipient: b.recipient,
+      bookingStartAt: new Date(b.start_time),
+      result: 'unclear',
+      verdict: a.verdict,
+      texts: a.texts,
+      inboundAt: a.inboundAt,
+    });
+    if (opened.created) result.opened += 1;
+  }
   return result;
+}
+
+/** Log to the contact timeline (best-effort). */
+async function logContactActivity(
+  ctx: CoreCtx,
+  b: Pick<ScanRow, 'id' | 'crm_contact_id'>,
+  kind: 'booking_confirmed' | 'booking_reconfirm',
+  body: string,
+  classified: Classified<ReplyVerdict>,
+): Promise<void> {
+  if (!b.crm_contact_id) return;
+  try {
+    await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        insert into crm_activities (org_id, contact_id, kind, body, data)
+        values (${ctx.tenantId}, ${b.crm_contact_id}, ${kind}, ${body},
+          ${JSON.stringify({ bookingId: b.id, via: classified.via === 'jev' ? 'ai_inference' : 'keyword' })}::jsonb)
+      `),
+    );
+  } catch (e) {
+    console.error('[reminders] reply activity log failed', b.id, e);
+  }
 }
 
 export interface ReminderActivityItem {

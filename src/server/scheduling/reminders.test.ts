@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient, parseYesNo } from './reminders';
+import { dueStages, maxLeadMinutes, expandRoles, resolveRecipient, parseYesNo, keywordVerdict } from './reminders';
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
 
 const STAGES: ReminderStage[] = [
@@ -131,5 +131,21 @@ describe('resolveRecipient', () => {
     expect(resolveRecipient('email', 'team', c)).toBe('s@x.com');
     // Staff has no phone → unreachable on phone channels → null (graceful skip).
     expect(resolveRecipient('whatsapp', 'team', c)).toBeNull();
+  });
+});
+
+describe('keywordVerdict', () => {
+  it('maps no to negation, with full confidence for a short reply', () => {
+    expect(keywordVerdict('no')).toEqual({ verdict: 'negation', confidence: 1, via: 'keyword' });
+    expect(keywordVerdict('No, gracias')).toMatchObject({ verdict: 'negation', confidence: 1 });
+    expect(keywordVerdict('sí confirmo')).toMatchObject({ verdict: 'yes', confidence: 1 });
+  });
+  it('gives a long sentence that merely contains the token a weak 0.5', () => {
+    expect(keywordVerdict('no sé a qué hora es')).toMatchObject({ verdict: 'negation', confidence: 0.5 });
+  });
+  it('is unclear with confidence 0 when nothing or both match', () => {
+    expect(keywordVerdict('hola')).toEqual({ verdict: 'unclear', confidence: 0, via: 'keyword' });
+    expect(keywordVerdict('si no')).toMatchObject({ verdict: 'unclear', confidence: 0 });
+    expect(keywordVerdict(null)).toMatchObject({ verdict: 'unclear', confidence: 0 });
   });
 });
