@@ -1172,7 +1172,11 @@ export async function postTicketStockInTx(
   actor: Actor,
 ): Promise<{ entryId: string | null; stockWarning: StockWarning | null }> {
   assertStockWriteGuard(tx, ctx, guard);
-  const ticket = await loadTicketRowInTx(tx, ctx, ticketId);
+  // TODO(handoff): no two-backend native test of poster-vs-void (job-stock fixture has no POS tables);
+  // see meta proposals/2026-11-14-hub-till-corrections-followups.md.
+  // Row lock (after the stock gate, the same order as the correction path): a concurrent void either
+  // waits for this post to commit (and then cancels the entry) or commits first and is seen here.
+  const ticket = await loadTicketRowInTx(tx, ctx, ticketId, { forUpdate: true });
   if (!ticket) throw new PosError('ticket not found', 'not_found');
   if (ticket.status === 'void') throw new PosError('ticket is void', 'already_void');
 
@@ -2845,12 +2849,9 @@ export async function voidTicket(
     );
     return updated;
   });
-  // A rebuild (spec 120) that raced this void may have posted a new movement
-  // after the cancel above. The void is committed: this never fails it.
-  // TODO(handoff): a rebuild that read the sale before the void committed and
-  // posts after this lookup still leaves a live movement on a void sale. The
-  // close is a one-live-movement-per-sale constraint; see meta
-  // proposals/2026-11-14-hub-till-corrections-followups.md.
+  // The poster locks the ticket row, so a post either committed before the void's lock (found here)
+  // or sees `void` and refuses. This lookup still catches a post that committed between the first
+  // read of the ticket above and the money transaction. The void is committed: this never fails it.
   try {
     const live = await findEntryBySource(ctx, 'pos', id);
     const alreadyFailed = stockWarning && live?.id === ticket.stockEntryId;

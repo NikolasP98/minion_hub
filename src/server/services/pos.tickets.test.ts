@@ -95,7 +95,7 @@ import {
   type SubmitTicketInput,
 } from './pos.service';
 import { paymentPolicyRevision } from './pos/credit-method-policy';
-import { posShifts } from '$server/db/pg-pos-schema';
+import { posShifts, posTickets } from '$server/db/pg-pos-schema';
 
 const DEFAULT_POLICY_REVISION = paymentPolicyRevision(DEFAULT_POS_SETTINGS);
 
@@ -655,6 +655,29 @@ describe('postTicketStock — line resolution', () => {
 
     expect(out).toEqual({ entryId: 'entry-1', stockWarning: null });
     expect(createSourcedIssueMock).not.toHaveBeenCalled();
+  });
+
+  it('reads the ticket FOR UPDATE, so a concurrent void cannot interleave with the post', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const locks = captureLocks(db);
+    getEntryMock.mockResolvedValue({ entry: { id: 'entry-1', status: 'submitted' }, lines: [] });
+    resolveSequence([[ticketRow({ id: 'ticket-lk', stockEntryId: 'entry-1' })]]);
+
+    await postTicketStock(ctx(db), 'ticket-lk', actor);
+
+    expect(locks).toContainEqual({ table: posTickets, mode: 'update' });
+  });
+
+  it('refuses a void ticket with already_void and posts nothing', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[ticketRow({ id: 'ticket-v', status: 'void' })]]);
+
+    await expect(postTicketStock(ctx(db), 'ticket-v', actor)).rejects.toMatchObject({
+      code: 'already_void',
+    });
+    expect(createSourcedIssueMock).not.toHaveBeenCalled();
+    expect(submitEntryMock).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
   });
 
   it('a 0-qty usage mapping beside a real one issues only the real line (spec 033)', async () => {
