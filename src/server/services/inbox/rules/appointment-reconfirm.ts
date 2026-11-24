@@ -6,6 +6,7 @@ import { casePhase, caseTitle } from '$server/scheduling/reconfirm';
 import { closeStaleCases } from '$server/services/reconfirm.service';
 import type { Draft } from '$server/services/inbox/inbox.service';
 import type { Rule, RuleResult } from './types';
+import { dateKeyWeekday, instantDateKey, instantParts } from '$lib/time/zoned';
 
 const KIND = 'appointment.reconfirm';
 const PHASES = ['agent', 'staff', 'done'] as const;
@@ -24,19 +25,33 @@ export interface ReconfirmCaseRow {
   attendeeName: string | null;
 }
 
-// shortcut: fixed Spanish like the other rules (a cron tick has no request locale).
+// shortcut: fixed Spanish like the other rules (a cron tick has no request locale). Built from the
+// zoned helpers rather than Intl so no locale-dependent formatter bypass is added (content contract).
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+const MONTHS = [
+  'enero',
+  'febrero',
+  'marzo',
+  'abril',
+  'mayo',
+  'junio',
+  'julio',
+  'agosto',
+  'septiembre',
+  'octubre',
+  'noviembre',
+  'diciembre',
+];
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
 function when(start: Date, timezone: string): { text: string; day: string } {
   try {
+    const p = instantParts(start, timezone);
+    const day = instantDateKey(start, timezone); // YYYY-MM-DD in the org's zone
+    const weekday = WEEKDAYS[dateKeyWeekday(day) ?? 0];
     return {
-      text: new Intl.DateTimeFormat('es-PE', {
-        timeZone: timezone,
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-        hour: '2-digit',
-        minute: '2-digit',
-      }).format(start),
-      day: new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(start), // YYYY-MM-DD
+      text: `${weekday} ${p.day} de ${MONTHS[p.month - 1]}, ${pad2(p.hour)}:${pad2(p.minute)}`,
+      day,
     };
   } catch {
     return { text: start.toISOString(), day: start.toISOString().slice(0, 10) };
