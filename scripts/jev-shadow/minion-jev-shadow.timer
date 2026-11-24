@@ -1,0 +1,10 @@
+[Unit]
+Description=Sample FACES shadow evidence every 15 minutes
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/15
+Persistent=true
+RandomizedDelaySec=30
+Unit=minion-jev-shadow.service
+[Install]
+WantedBy=timers.target
