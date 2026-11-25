@@ -524,6 +524,28 @@ export async function sendAgentMessage(
   now: Date,
   onSent?: (tx: Parameters<Parameters<typeof withOrgCore>[1]>[0]) => Promise<void>,
 ): Promise<'sent' | 'claimed' | 'failed'> {
+  // Staff may have written since the caller last looked (the classifier and the slot search take
+  // seconds): re-check right before the message goes out. Nothing is claimed or sent. For the ask and
+  // the offer this reads as 'claimed' and the next tick ends the agent's part as `staff_handling`; a
+  // confirm/closing reports an outcome already committed, so staff get the "client not told" warning.
+  const opened = rows(
+    await withOrgCore(ctx, (tx) =>
+      tx.execute(
+        sql`select opened_at::text as opened_at from sched_reconfirm_cases where id = ${c.id}::uuid and org_id = ${ctx.tenantId}`,
+      ),
+    ),
+  )[0];
+  if (opened && (await humanWroteSince(ctx, { ...c, opened_at: String(opened.opened_at) }))) {
+    if (step !== 'confirm' && step !== 'closing') return 'claimed';
+    await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, data)
+        values (${ctx.tenantId}, ${c.booking_id}::uuid, ${c.id}::uuid, 'system', ${step},
+          ${JSON.stringify({ step, error: 'send', reason: 'staff_took_over' })}::jsonb)
+      `),
+    );
+    return 'failed';
+  }
   const claimed = rows(
     await withOrgCore(ctx, (tx) =>
       tx.execute(sql`

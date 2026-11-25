@@ -225,13 +225,16 @@ describe('sendAgentMessage', () => {
     expect(h.gateway).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['confirm', 'closing'] as const)('a failed %s send records a system event', async (step) => {
-    h.gateway.mockRejectedValue(new Error('gateway down'));
-    expect(await sendAgentMessage(ctx, target, step, 'hola', NOW)).toBe('failed');
-    const ev = log.filter((s) => s.params.some((p) => String(p).includes('"error":"send"')));
-    expect(ev).toHaveLength(1);
-    expect(ev[0]!.params).toContain(step);
-  });
+  it.each(['confirm', 'closing'] as const)(
+    'a failed %s send records a system event',
+    async (step) => {
+      h.gateway.mockRejectedValue(new Error('gateway down'));
+      expect(await sendAgentMessage(ctx, target, step, 'hola', NOW)).toBe('failed');
+      const ev = log.filter((s) => s.params.some((p) => String(p).includes('"error":"send"')));
+      expect(ev).toHaveLength(1);
+      expect(ev[0]!.params).toContain(step);
+    },
+  );
 
   it('a failed ask send writes no event of its own (the caller ends the case)', async () => {
     h.gateway.mockRejectedValue(new Error('gateway down'));

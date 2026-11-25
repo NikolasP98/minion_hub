@@ -58,11 +58,16 @@ interface CaseShape {
   agentState: string;
   result: string | null;
   closedAt: Date | null;
+  /** The client answered, then the appointment changed under the agent: staff must read it. */
+  bookingChanged?: boolean;
 }
 
 /** Which inbox notification a case currently owns; null = nothing to show. */
 export function casePhase(c: CaseShape): 'agent' | 'staff' | 'done' | null {
-  if (c.closedAt) return c.result === 'rescheduled' || c.result === 'will_come' ? 'done' : null;
+  if (c.closedAt) {
+    if (c.bookingChanged) return 'staff'; // closed as stale, but the client's answer was never seen
+    return c.result === 'rescheduled' || c.result === 'will_come' ? 'done' : null;
+  }
   if (c.result === null && (c.agentState === 'asking' || c.agentState === 'offered'))
     return 'agent';
   return 'staff';
@@ -81,7 +86,15 @@ const RESULT_TITLES: Readonly<Record<CaseResult, string>> = {
   staff_handling: 'El equipo ya está conversando con el cliente',
 };
 
-export function caseTitle(c: { agentState: string; result: string | null }): string {
+export const BOOKING_CHANGED_TITLE =
+  'La clienta dijo que sí asistirá, pero la cita cambió: revisa con ella';
+
+export function caseTitle(c: {
+  agentState: string;
+  result: string | null;
+  bookingChanged?: boolean;
+}): string {
+  if (c.bookingChanged) return BOOKING_CHANGED_TITLE;
   if (c.result && c.result in RESULT_TITLES) return RESULT_TITLES[c.result as CaseResult];
   return c.agentState === 'asking' || c.agentState === 'offered'
     ? 'El agente está consultando al cliente'
@@ -233,7 +246,10 @@ export function answerSummary(
   const when = [day ? SUMMARY_DAY[day] : null, partOfDay ? SUMMARY_PART[partOfDay] : null].filter(
     Boolean,
   );
-  return [SUMMARY_INTENT[intent] ?? SUMMARY_INTENT.unclear, intent === 'other_date' ? when.join(' ') : '']
+  return [
+    SUMMARY_INTENT[intent] ?? SUMMARY_INTENT.unclear,
+    intent === 'other_date' ? when.join(' ') : '',
+  ]
     .filter(Boolean)
     .join(': ');
 }

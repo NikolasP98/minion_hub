@@ -249,6 +249,10 @@ export async function advanceAnswers(ctx: CoreCtx, now: Date, cap = 25): Promise
         continue;
       }
       out.answered += 1;
+      // TODO(handoff): two overlapping runs (ingest trigger + tick) both classify this message: 2 paid
+      // calls, though only one offer goes out (the (case_id, step) claim). Claim the reply first with
+      // `update ... set last_inbound_at = newest where last_inbound_at is not distinct from <read value>`
+      // and skip on 0 rows; then a classifier error must release the claim, or the reply is never read.
       await handleAnswer(ctx, now, config, c, texts, newest, out);
     } catch (e) {
       // One case failing must not stop the others. Names only: no phones, no message text.
@@ -382,7 +386,7 @@ async function handleAnswer(
     const deadline = waitUntil(now, start, config.negationWaitHours);
     if (!picked.length || !deadline) {
       if (await settle(ctx, c, 'wants_other_date', newest, { summary }))
-      await close('wants_other_date');
+        await close('wants_other_date');
       return;
     }
     const slots = picked.map((s) => ({ start: s.start.toISOString(), resourceId: c.resource_id }));

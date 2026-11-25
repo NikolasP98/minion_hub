@@ -288,7 +288,9 @@ describe('advanceAnswers: the other outcomes', () => {
     await advanceAnswers(ctx, NOW);
     const order = log.map((s) => s.text);
     const settle = order.findIndex((t) => t.includes('set result ='));
-    const lock = order.findIndex((t) => t.includes('from sched_bookings') && t.includes('for update'));
+    const lock = order.findIndex(
+      (t) => t.includes('from sched_bookings') && t.includes('for update'),
+    );
     expect(lock).toBeGreaterThan(settle); // lock order: case, then booking
     expect(h.setStatus.mock.calls[0]![0]).toBe(h.tx);
     expect(closings()).toHaveLength(1);

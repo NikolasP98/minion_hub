@@ -9,7 +9,7 @@ import type { Rule, RuleResult } from './types';
 import { dateKeyWeekday, instantDateKey, instantParts } from '$lib/time/zoned';
 
 const KIND = 'appointment.reconfirm';
-const PHASES = ['agent', 'staff', 'done'] as const;
+const PHASES = ['agent', 'staff', 'done', 'done-warn'] as const;
 const DONE_TTL_MS = 48 * 60 * 60 * 1000;
 
 export interface ReconfirmCaseRow {
@@ -25,6 +25,10 @@ export interface ReconfirmCaseRow {
   attendeeName: string | null;
   /** The confirmation of a move the agent made could not be sent to the client. */
   confirmFailed?: boolean;
+  /** The agent's part ended because the appointment changed after the client's answer. */
+  bookingChanged?: boolean;
+  /** The closing message ("sí voy" / "no") could not be sent. */
+  closingFailed?: boolean;
 }
 
 // shortcut: fixed Spanish like the other rules (a cron tick has no request locale). Built from the
@@ -66,6 +70,7 @@ export function reconfirmDraft(orgId: string, c: ReconfirmCaseRow): Draft | null
   if (!phase) return null;
   const w = when(c.startTime, c.timezone);
   const notified = c.result === 'rescheduled' && c.confirmFailed ? false : true;
+  const closingFailed = c.closingFailed === true && phase === 'done';
   const body = [`${c.serviceTitle} · ${c.attendeeName ?? '—'} · ${w.text}`, c.summary]
     .filter(Boolean)
     .join('\n');
@@ -74,15 +79,22 @@ export function reconfirmDraft(orgId: string, c: ReconfirmCaseRow): Draft | null
     orgId,
     capability: 'scheduling:manage',
     kind: KIND,
-    severity: phase === 'staff' || notified === false ? 'warning' : 'info',
-    title: notified === false ? 'Reprogramada, pero no se pudo avisar al cliente' : caseTitle(c),
+    severity: phase === 'staff' || notified === false || closingFailed ? 'warning' : 'info',
+    title:
+      notified === false
+        ? 'Reprogramada, pero no se pudo avisar al cliente'
+        : closingFailed
+          ? `${caseTitle(c)}, pero no se pudo avisar al cliente`
+          : caseTitle(c),
     body,
     // The calendar lands on the right day; `booking` opens the drawer once spec 139 S3 wires it.
     href: `/scheduling/calendar?date=${w.day}&booking=${c.bookingId}`,
     subjectType: 'sched_booking',
     subjectId: c.bookingId,
-    dedupeKey: `reconfirm:${orgId}:${c.caseId}:${phase}`,
-    expiresAt: phase === 'done' && c.closedAt ? new Date(c.closedAt.getTime() + DONE_TTL_MS) : null,
+    // A warning about a failed send gets its own key: the inbox only inserts per key, so it cannot lose
+    // to the info row written earlier (the rule can run while the message is still being sent).
+    dedupeKey: `reconfirm:${orgId}:${c.caseId}:${phase}${notified === false || closingFailed ? '-warn' : ''}`,
+    expiresAt: c.closedAt ? new Date(c.closedAt.getTime() + DONE_TTL_MS) : null,
   };
 }
 
@@ -102,14 +114,21 @@ export const appointmentReconfirmRule: Rule = {
                b.start_time, r.timezone, et.title as service_title, b.attendee_name,
                exists (select 1 from sched_reconfirm_events e
                  where e.case_id = c.id and e.kind = 'system' and e.step = 'confirm'
-                   and e.data->>'error' = 'send') as confirm_failed
+                   and e.data->>'error' = 'send') as confirm_failed,
+               exists (select 1 from sched_reconfirm_events e
+                 where e.case_id = c.id and e.kind = 'system' and e.step = 'closing'
+                   and e.data->>'error' = 'send') as closing_failed,
+               (c.close_action in ('booking_closed','moved_by_staff') and exists (
+                 select 1 from sched_reconfirm_events e
+                 where e.case_id = c.id and e.kind = 'system' and e.data->>'reason' = 'booking_changed')) as booking_changed
         from sched_reconfirm_cases c
         join sched_bookings b on b.id = c.booking_id and b.org_id = c.org_id
         join sched_resources r on r.id = b.resource_id and r.org_id = b.org_id
         join sched_event_types et on et.id = b.event_type_id and et.org_id = b.org_id
         where c.org_id = ${ctx.tenantId}
           and (c.closed_at is null
-               or (c.close_action = 'agent' and c.closed_at > ${new Date(now.getTime() - DONE_TTL_MS).toISOString()}::timestamptz))
+               or (c.close_action in ('agent','booking_closed','moved_by_staff')
+                   and c.closed_at > ${new Date(now.getTime() - DONE_TTL_MS).toISOString()}::timestamptz))
       `),
     )) as unknown as Array<Record<string, unknown>>;
 
@@ -127,6 +146,8 @@ export const appointmentReconfirmRule: Rule = {
           serviceTitle: String(r.service_title),
           attendeeName: r.attendee_name == null ? null : String(r.attendee_name),
           confirmFailed: r.confirm_failed === true,
+          closingFailed: r.closing_failed === true,
+          bookingChanged: r.booking_changed === true,
         }),
       )
       .filter((d): d is Draft => d !== null);

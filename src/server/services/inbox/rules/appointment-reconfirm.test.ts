@@ -61,7 +61,14 @@ describe('rescheduled with a failed confirmation', () => {
     const d = reconfirmDraft('org-1', { ...done, confirmFailed: true })!;
     expect(d.severity).toBe('warning');
     expect(d.title).toBe('Reprogramada, pero no se pudo avisar al cliente');
-    expect(d.dedupeKey).toBe('reconfirm:org-1:c1:done');
+    expect(d.dedupeKey).toBe('reconfirm:org-1:c1:done-warn'); // its own key: never loses to the info row
+  });
+
+  it('a failed closing message warns too, on its own key', () => {
+    const d = reconfirmDraft('org-1', { ...done, result: 'will_come', closingFailed: true })!;
+    expect(d.severity).toBe('warning');
+    expect(d.title).toBe('Confirmó que asistirá, pero no se pudo avisar al cliente');
+    expect(d.dedupeKey).toBe('reconfirm:org-1:c1:done-warn');
   });
 
   it('stays informational when the confirmation went out', () => {

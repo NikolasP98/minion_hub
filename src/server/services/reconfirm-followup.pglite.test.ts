@@ -19,13 +19,26 @@ const h = vi.hoisted(() => ({
   slots: vi.fn(),
 }));
 
+// The tx keeps its query builder (the inbox rule uses `select`); `execute` returns rows like postgres.js.
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-    h.db.transaction(async (tx: unknown) => {
-      const t = tx as { execute: (q: unknown) => Promise<{ rows: unknown[] }> };
-      // postgres.js returns an array; the code under test relies on that.
-      return fn({ ...t, execute: async (q: unknown) => (await t.execute(q)).rows });
-    }),
+    h.db.transaction(async (tx: unknown) =>
+      fn(
+        new Proxy(tx as Record<string | symbol, unknown>, {
+          get(t, p) {
+            if (p === 'execute')
+              return async (q: unknown) =>
+                (
+                  (await (t.execute as (q: unknown) => Promise<{ rows: unknown[] }>)(q)) as {
+                    rows: unknown[];
+                  }
+                ).rows;
+            const v = t[p];
+            return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(t) : v;
+          },
+        }),
+      ),
+    ),
 }));
 vi.mock('./reminder-config.service', async (orig) => ({
   ...(await orig<object>()),
@@ -66,6 +79,8 @@ import { reapStaleSends } from './stale-sends.service';
 import { caseTitle } from '$server/scheduling/reconfirm';
 import { advanceAnswers } from './reconfirm-answer.service';
 import { handleInboundForReminders } from './reminder-reply-trigger.service';
+import { appointmentReconfirmRule } from './inbox/rules/appointment-reconfirm';
+import { BOOKING_CHANGED_TITLE } from '$server/scheduling/reconfirm';
 
 const pg = new PGlite();
 const ORG = 'org-1';
@@ -88,6 +103,7 @@ beforeAll(async () => {
     create table sched_reminders (id uuid default gen_random_uuid(), org_id text, booking_id uuid, status text,
       recipient_role text, channel text, recipient text, content text, stage text, sent_at timestamptz,
       account_id text, message_id text, error text, created_at timestamptz default now());
+    create table app_notifications (id uuid default gen_random_uuid(), org_id text, kind text, dedupe_key text, resolved_at timestamptz);
     create table crm_door_followups (id uuid default gen_random_uuid(), status text, error text, created_at timestamptz);
     create table pos_emissions (id uuid default gen_random_uuid(), status text, response_description text, updated_at timestamptz);
     create table messages (id uuid primary key default gen_random_uuid(), org_id text, direction text,
@@ -115,7 +131,7 @@ const at = (ms: number) => new Date(Date.now() + ms).toISOString();
 async function seed() {
   await pg.exec(`
     truncate sched_bookings, sched_event_types, sched_resources, sched_reminders, messages,
-      sched_reconfirm_cases, sched_reconfirm_events, crm_activities;`);
+      sched_reconfirm_cases, sched_reconfirm_events, crm_activities, app_notifications;`);
   await pg.query(
     `insert into sched_bookings values ($1,$2,'pending',$3,$4,'Ana',null,'{}',$5,$6,now())`,
     [B1, ORG, at(48 * H), at(49 * H), ET, RES],
@@ -162,10 +178,21 @@ beforeEach(async () => {
   h.send.mockResolvedValue({ messageId: 'wa-1' });
   h.inferReply.mockResolvedValue({ verdict: 'negation', confidence: 0.95, via: 'jev' });
   h.inferAnswer.mockResolvedValue({
-    verdict: 'other_date', confidence: 0.95, via: 'jev', pick: null, day: 'mon', partOfDay: 'afternoon',
+    verdict: 'other_date',
+    confidence: 0.95,
+    via: 'jev',
+    pick: null,
+    day: 'mon',
+    partOfDay: 'afternoon',
   });
   h.slots.mockResolvedValue({
-    slots: [{ start: new Date(Date.now() + 120 * H), end: new Date(Date.now() + 121 * H), resourceIds: [RES] }],
+    slots: [
+      {
+        start: new Date(Date.now() + 120 * H),
+        end: new Date(Date.now() + 121 * H),
+        resourceIds: [RES],
+      },
+    ],
   });
   await seed();
 });
@@ -210,7 +237,12 @@ describe('P3 no action after the appointment started', () => {
     await pg.query(`update sched_reconfirm_cases set booking_start_at = $1`, [past]);
     await inbound('perdón, sí voy a ir', 60_000);
     h.inferAnswer.mockResolvedValue({
-      verdict: 'will_come', confidence: 0.95, via: 'jev', pick: null, day: null, partOfDay: null,
+      verdict: 'will_come',
+      confidence: 0.95,
+      via: 'jev',
+      pick: null,
+      day: null,
+      partOfDay: null,
     });
     await advanceAnswers(ctx, new Date());
     expect(sentTexts()).toHaveLength(1);
@@ -221,7 +253,12 @@ describe('P3 no action after the appointment started', () => {
 
 describe('will_come accepts the booking inside the settle transaction', () => {
   const willCome = {
-    verdict: 'will_come', confidence: 0.95, via: 'jev', pick: null, day: null, partOfDay: null,
+    verdict: 'will_come',
+    confidence: 0.95,
+    via: 'jev',
+    pick: null,
+    day: null,
+    partOfDay: null,
   };
 
   it('control: an unchanged pending booking is accepted and the client is told', async () => {
@@ -389,5 +426,120 @@ describe('a question that was delivered is never reported as failed (R6a)', () =
     ).rows[0]!;
     expect(ev.data).toMatchObject({ error: 'stale_claim', delivery: 'unknown' });
     expect(caseTitle({ agentState: 'done', result: 'send_failed' })).toMatch(/No se confirmó/);
+  });
+});
+
+const answer = (verdict: string) => ({
+  verdict,
+  confidence: 0.95,
+  via: 'jev',
+  pick: null,
+  day: null,
+  partOfDay: null,
+});
+const inbox = () => appointmentReconfirmRule.evaluate(ctx as never, new Date());
+
+describe('a booking change during "sí voy" reaches staff (R8)', () => {
+  it('staff CANCELLED while the answer was read: the inbox warns, even though the case is closed as stale', async () => {
+    await openAndAsk();
+    await inbound('ah no, sí voy a ir', 60_000);
+    h.inferAnswer.mockImplementation(async () => {
+      await pg.query(`update sched_bookings set status = 'cancelled'`);
+      return answer('will_come');
+    });
+    await advanceAnswers(ctx, new Date());
+    expect(h.setStatusInTx).not.toHaveBeenCalled();
+    const first = await inbox();
+    expect((await caseRow()).close_action).toBe('booking_closed');
+    expect(first.upserts).toHaveLength(1);
+    expect(first.upserts[0]).toMatchObject({ severity: 'warning', title: BOOKING_CHANGED_TITLE });
+    expect(first.upserts[0]!.dedupeKey).toMatch(/:staff$/);
+    // The next tick keeps showing it (nothing resolves it while it is current).
+    expect((await inbox()).upserts).toHaveLength(1);
+  });
+  it('staff MOVED the booking while the answer was read: same warning', async () => {
+    await openAndAsk();
+    await inbound('sí voy a ir', 60_000);
+    h.inferAnswer.mockImplementation(async () => {
+      await pg.query(`update sched_bookings set start_time = start_time + interval '1 day'`);
+      return answer('will_come');
+    });
+    await advanceAnswers(ctx, new Date());
+    const r = await inbox();
+    expect((await caseRow()).close_action).toBe('moved_by_staff');
+    expect(r.upserts.map((d) => [d.severity, d.title])).toEqual([
+      ['warning', BOOKING_CHANGED_TITLE],
+    ]);
+  });
+  it('control: staff moving the booking with no answer pending shows nothing', async () => {
+    await openAndAsk();
+    await pg.query(`update sched_bookings set start_time = start_time + interval '1 day'`);
+    expect((await inbox()).upserts).toHaveLength(0);
+    expect((await caseRow()).close_action).toBe('moved_by_staff');
+  });
+});
+
+describe('staff takeover is re-checked right before each send (R2d)', () => {
+  it('staff writes while the answer is being read: no offer goes out, the next tick hands over', async () => {
+    await openAndAsk();
+    await inbound('el lunes en la tarde', 60_000);
+    h.inferAnswer.mockImplementation(async () => {
+      await staffOutbound('Hola Ana, soy recepción', 120_000);
+      return { ...answer('other_date'), day: 'mon' };
+    });
+    await advanceAnswers(ctx, new Date());
+    expect(sentTexts()).toHaveLength(1); // only the question
+    await advanceAnswers(ctx, new Date());
+    expect((await caseRow()).result).toBe('staff_handling');
+  });
+  it('staff writes while the answer is read: the closing "mantenemos tu cita" is not sent and staff are warned', async () => {
+    await openAndAsk();
+    await inbound('sí voy', 60_000);
+    h.inferAnswer.mockImplementation(async () => {
+      await staffOutbound('Hola Ana, soy recepción', 120_000);
+      return answer('will_come');
+    });
+    await advanceAnswers(ctx, new Date());
+    expect(sentTexts()).toHaveLength(1);
+    const r = await inbox();
+    expect(r.upserts.map((d) => [d.severity, d.dedupeKey.split(':').at(-1)])).toEqual([
+      ['warning', 'done-warn'],
+    ]);
+  });
+});
+
+describe('failed sends warn staff, and the warning is not lost to the info row (R6b, R6c)', () => {
+  it('"sí voy" accepted but the closing message fails: warning on its own key', async () => {
+    await openAndAsk();
+    await inbound('sí voy', 60_000);
+    h.inferAnswer.mockResolvedValue(answer('will_come'));
+    h.send.mockRejectedValueOnce(new Error('gateway down'));
+    await advanceAnswers(ctx, new Date());
+    const r = await inbox();
+    expect(r.upserts).toHaveLength(1);
+    expect(r.upserts[0]).toMatchObject({ severity: 'warning' });
+    expect(r.upserts[0]!.title).toMatch(/no se pudo avisar al cliente/);
+    expect(r.upserts[0]!.dedupeKey).toMatch(/:done-warn$/);
+  });
+  it('an info row written while the send was in flight is resolved when the warning appears', async () => {
+    await openAndAsk();
+    await inbound('sí voy', 60_000);
+    h.inferAnswer.mockResolvedValue(answer('will_come'));
+    await advanceAnswers(ctx, new Date());
+    const info = await inbox(); // the send succeeded: info row
+    expect(info.upserts[0]).toMatchObject({ severity: 'info' });
+    await pg.query(
+      `insert into app_notifications (org_id, kind, dedupe_key) values ($1, 'appointment.reconfirm', $2)`,
+      [ORG, info.upserts[0]!.dedupeKey],
+    );
+    const c = await caseRow();
+    await pg.query(
+      `insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, data)
+       values ($1, $2, $3, 'system', 'closing', '{"error":"send"}')`,
+      [ORG, B1, c.id],
+    );
+    const warn = await inbox();
+    expect(warn.upserts[0]!.dedupeKey).toMatch(/:done-warn$/);
+    expect(warn.resolve).toEqual([info.upserts[0]!.dedupeKey]);
   });
 });
