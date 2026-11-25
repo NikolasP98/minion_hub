@@ -10,6 +10,7 @@ vi.mock('$server/db/with-org-core', () => ({
 }));
 
 import {
+  getCaseForBooking,
   closeCase,
   closeStaleCases,
   lastInboundAt,
@@ -171,6 +172,54 @@ describe('lookups', () => {
     const m = await lastInboundAt(ctx, ['b1']);
     expect(m.get('b1')?.at.toISOString()).toBe('2026-11-23T12:00:00.000Z');
     expect(m.get('b1')?.id).toBe('m-9');
+  });
+});
+
+describe('getCaseForBooking masking (spec 139 S3)', () => {
+  const caseRow = {
+    id: 'case-1',
+    agent_state: 'done',
+    result: 'declined',
+    summary: null,
+    opened_at: '2026-11-25T14:00:00Z',
+    wait_until: null,
+    contact_id: 'c1',
+    recipient: '+51999000111',
+    closed_at: null,
+    close_action: null,
+  };
+  const events = [
+    {
+      kind: 'verdict',
+      verdict: 'negation',
+      confidence: '0.950',
+      content: 'no voy a poder',
+      step: null,
+      created_at: '2026-11-25T14:00:00Z',
+    },
+  ];
+  const fake = () => ({
+    execute: async (q: SQL) => {
+      const { sql: text } = dialect.sqlToQuery(q);
+      return text.includes('from sched_reconfirm_events') ? events : [caseRow];
+    },
+  });
+
+  it('masks the recipient and drops message text for a viewer without PII access', async () => {
+    h.tx = fake();
+    const v = await getCaseForBooking(ctx, ['b1', 'b2'], { maskPii: true });
+    expect(v?.masked).toBe(true);
+    expect(v?.recipient).not.toContain('999000');
+    expect(v?.recipient.endsWith('0111')).toBe(true);
+    expect(v?.events[0]).toMatchObject({ verdict: 'negation', confidence: 0.95, content: null });
+  });
+
+  it('returns the real values otherwise, and null for no ids', async () => {
+    h.tx = fake();
+    const v = await getCaseForBooking(ctx, 'b1');
+    expect(v).toMatchObject({ masked: false, recipient: '+51999000111' });
+    expect(v?.events[0]?.content).toBe('no voy a poder');
+    expect(await getCaseForBooking(ctx, [])).toBeNull();
   });
 });
 

@@ -11,6 +11,8 @@
     Trash2,
     RefreshCw,
     Sparkles,
+    BellOff,
+    WifiOff,
   } from 'lucide-svelte';
   import { invalidate } from '$app/navigation';
   import {
@@ -108,6 +110,39 @@
     status: saveStatus,
     keepDraftOnError: true,
   });
+  // Wait time the agent gives a client who said "no" (spec 139): 1-168 whole hours. An invalid
+  // draft is never sent; the range message shows until it is fixed.
+  const WAIT_MIN = 1;
+  const WAIT_MAX = 168;
+  const waitHours = createAutosave<number>({
+    committed: () => data.config?.negationWaitHours ?? 24,
+    scope: () => 'scheduling-reminders',
+    prepare: (v, current) => () => put({ negationWaitHours: v }, current),
+    status: saveStatus,
+    keepDraftOnError: true,
+  });
+  let waitDraft = $state<string | null>(null);
+  const waitText = $derived(waitDraft ?? String(waitHours.value));
+  const waitInvalid = $derived(
+    waitDraft !== null &&
+      !(
+        Number.isInteger(Number(waitDraft)) &&
+        waitDraft.trim() !== '' &&
+        Number(waitDraft) >= WAIT_MIN &&
+        Number(waitDraft) <= WAIT_MAX
+      ),
+  );
+  function onWaitInput(e: Event) {
+    waitDraft = (e.currentTarget as HTMLInputElement).value;
+    if (!waitInvalid) waitHours.value = Number(waitDraft);
+  }
+  function onWaitBlur() {
+    if (!waitInvalid) {
+      void waitHours.flush();
+      waitDraft = null;
+    }
+  }
+
   // svelte-ignore state_referenced_locally
   let stages = $state<Stage[]>(seedStages());
   // svelte-ignore state_referenced_locally
@@ -124,6 +159,17 @@
   const counts = $derived(data.activity?.counts ?? { sent: 0, failed: 0, skipped: 0 });
   const recent = $derived(data.activity?.recent ?? []);
   const catalog = $derived(data.channels ?? []);
+
+  // Notices (spec 139): why nothing is being sent, each with its next step. Both only matter for an
+  // org that chose a WhatsApp account; `channelsChecked === null` = this viewer has no channels access.
+  const chosenWhatsApp = $derived(channels.filter((c) => c.channel === 'whatsapp'));
+  const unlinkedNames = $derived(
+    chosenWhatsApp
+      .map((c) => catalog.find((a) => a.channel === c.channel && a.accountId === c.accountId))
+      .filter((a): a is NonNullable<typeof a> => !!a && a.linked === false)
+      .map((a) => a.name ?? a.phone ?? a.accountId),
+  );
+  const gatewayUnchecked = $derived(chosenWhatsApp.length > 0 && data.channelsChecked === false);
 
   const STAGE_LABEL: Record<string, () => string> = {
     confirmation: () => m.sched_rem_stage_confirmation(),
@@ -244,6 +290,26 @@
       {/if}
     </Card>
 
+    <!-- Why nothing would be sent right now, each with its next step (spec 139). -->
+    {#if !enabled.value}
+      <p class="notice notice-warning" role="status">
+        <BellOff size={iconSizes.md} />
+        <span>{m.sched_rem_notice_off()}</span>
+      </p>
+    {/if}
+    {#if unlinkedNames.length}
+      <p class="notice notice-danger" role="status">
+        <WifiOff size={iconSizes.md} />
+        <span>{m.sched_rem_notice_wa({ name: unlinkedNames.join(', ') })}</span>
+      </p>
+    {/if}
+    {#if gatewayUnchecked}
+      <p class="notice notice-warning" role="status">
+        <WifiOff size={iconSizes.md} />
+        <span>{m.sched_rem_notice_unchecked()}</span>
+      </p>
+    {/if}
+
     <!-- Channels -->
     <Card padding="lg">
       <div class="t-label">{m.sched_rem_channels()}</div>
@@ -321,6 +387,32 @@
       <Button variant="ghost" size="sm" class="add" onclick={addStage}
         ><Plus size={iconSizes.sm} /> {m.sched_rem_add_stage()}</Button
       >
+    </Card>
+
+    <!-- How long the agent waits for a client who said "no" (spec 139). -->
+    <Card padding="lg">
+      <label class="field max-w-xs">
+        <span class="t-label">{m.sched_rem_wait_label()}</span>
+        <span class="flex items-center gap-2">
+          <input
+            class="num"
+            type="number"
+            inputmode="numeric"
+            min={WAIT_MIN}
+            max={WAIT_MAX}
+            step="1"
+            value={waitText}
+            aria-invalid={waitInvalid}
+            aria-describedby="sched-rem-wait-help"
+            oninput={onWaitInput}
+            onblur={onWaitBlur}
+          />
+          <span class="t-caption">{m.sched_rem_wait_unit()}</span>
+        </span>
+      </label>
+      <p class="t-caption mt-2" id="sched-rem-wait-help" role={waitInvalid ? 'alert' : undefined}>
+        {waitInvalid ? m.sched_rem_wait_range() : m.sched_rem_wait_help()}
+      </p>
     </Card>
 
     {#if aiProactive}
@@ -429,6 +521,32 @@
 </PageShell>
 
 <style>
+  .notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--notice-border);
+    border-radius: var(--radius-lg);
+    background: var(--notice-surface);
+    color: var(--notice-fg);
+    font-size: var(--font-size-body, 14px);
+  }
+  .notice-warning {
+    --notice-surface: var(--color-warning-surface);
+    --notice-border: var(--color-warning-border);
+    --notice-fg: var(--color-warning-fg);
+  }
+  .notice-danger {
+    --notice-surface: var(--color-danger-surface);
+    --notice-border: var(--color-danger-border);
+    --notice-fg: var(--color-danger-fg);
+  }
+  .notice :global(svg) {
+    flex-shrink: 0;
+    margin-top: var(--space-0-5);
+  }
   .field {
     display: flex;
     flex-direction: column;

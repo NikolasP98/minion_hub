@@ -3105,6 +3105,9 @@
             <Badge size="sm">{statusLabel(sel.status)}</Badge>
           {/if}
         {/if}
+        {#if sel.reconfirm}
+          <Badge variant="semantic" value="warning" size="sm">{m.sched_reconfirm_badge()}</Badge>
+        {/if}
       </span>
     </div>
     {#each hoverRows as f (f)}
@@ -3203,6 +3206,9 @@
           {:else}
             <Badge size="sm">{statusLabel(b.status)}</Badge>
           {/if}
+        {/if}
+        {#if box.members.some((x) => x.reconfirm)}
+          <Badge variant="semantic" value="warning" size="sm">{m.sched_reconfirm_badge()}</Badge>
         {/if}
       </span>
     </div>

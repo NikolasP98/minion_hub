@@ -52,6 +52,9 @@ vi.mock('$server/services/scheduling.service', () => ({
   listEventKinds: async () => [],
   getResourceSchedule: (ctx: unknown, id: unknown) => mocks.getResourceSchedule(ctx, id),
 }));
+vi.mock('$server/services/reconfirm.service', () => ({
+  openCaseBookingIds: async () => new Set<string>(),
+}));
 vi.mock('$server/services/finance-products.service', () => ({
   // Product-category colour source (`categoryColor`); no products in this fixture.
   categoryColorsForProducts: async () => new Map<string, string>(),
@@ -381,6 +384,7 @@ describe('/pos/appointments load — pinned key set', () => {
         productId: null,
         notes: 'Color + cut',
         checkup: false,
+        reconfirm: false,
         // Merged-visit id (`metadata.groupId`) — null for an ordinary booking.
         groupId: null,
         // Merged-visit order (`metadata.groupSeq`) — null for an ordinary booking.
@@ -691,6 +695,7 @@ describe('/scheduling/calendar load — pinned key set', () => {
         productId: null,
         notes: 'Color + cut',
         checkup: false,
+        reconfirm: false,
         groupId: null,
         groupSeq: null,
         groupLength: null,
