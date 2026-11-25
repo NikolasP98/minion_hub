@@ -333,7 +333,8 @@ describe('only real replies count', () => {
   it('the outbound read leaves out the reminders themselves', async () => {
     await scan([row('b1')], [reply('no')]);
     const out = h.executed.find((e) => e.text.includes("direction = 'outbound'"))!;
-    expect(out.text).toContain("<> 'reminder'");
+    expect(out.text).toContain("not in ('reminder','reconfirm')");
+    expect(out.text).toContain('from sched_reconfirm_events e');
     expect(out.text).toContain('from sched_reminders x');
   });
 

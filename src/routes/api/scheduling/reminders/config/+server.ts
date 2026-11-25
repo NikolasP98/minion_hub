@@ -21,6 +21,7 @@ const putSchema = z.object({
   inferConfirmation: z.boolean().optional(),
   locale: z.string().max(20).optional(),
   fromName: z.string().max(200).nullable().optional(),
+  negationWaitHours: z.number().int().min(1).max(168).optional(),
 });
 
 export const GET: RequestHandler = async ({ locals }) => {
@@ -70,6 +71,7 @@ export const PUT: RequestHandler = async ({ locals, request }) => {
       : {}),
     ...(b.locale !== undefined ? { locale: String(b.locale) } : {}),
     ...(b.fromName !== undefined ? { fromName: b.fromName ? String(b.fromName) : null } : {}),
+    ...(b.negationWaitHours !== undefined ? { negationWaitHours: b.negationWaitHours } : {}),
   });
   return json({ ok: true });
 };

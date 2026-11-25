@@ -119,12 +119,11 @@ export function resolveRecipient(
 
 /** The "reply SÍ/NO" call-to-action appended to a pending booking's confirmation
  *  when AI inference is OFF (so the keyword scan has something deterministic). */
-// TODO(handoff): spec 139 - a "NO" no longer cancels (it opens a reconfirmation case), but this text still says
-// "NO para cancelar". Reword it together with the S2 question the agent sends, so the client is not promised a cancel.
+// Spec 139: a "NO" never cancels (it opens a follow-up), so the text must not promise a cancel.
 export function confirmCta(locale: string): string {
   return locale === 'en'
-    ? 'Reply YES to confirm or NO to cancel.'
-    : 'Responde SÍ para confirmar o NO para cancelar.';
+    ? "Reply YES to confirm or NO if you can't make it."
+    : 'Responde SÍ para confirmar o NO si no puedes asistir.';
 }
 
 const norm = (s: string) =>

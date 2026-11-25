@@ -6,7 +6,12 @@ vi.mock('$server/ai-usage', async (orig) => ({
   recordAiUsage: (...a: unknown[]) => usage.record(...a),
 }));
 
-import { reminderTemplate, composeReminder, inferConfirmationReply } from './reminder-compose';
+import {
+  reminderTemplate,
+  composeReminder,
+  inferConfirmationReply,
+  reconfirmAskTemplate,
+} from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
 
 const base: ReminderContext = {
@@ -153,5 +158,34 @@ describe('inferConfirmationReply (spec 139)', () => {
     fetchMock.mockClear();
     expect(await inferConfirmationReply(['no'], about)).toEqual(unclear);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('reconfirmAskTemplate (spec 139)', () => {
+  const ctx: ReminderContext = {
+    ...base,
+    stage: 'reconfirm',
+    attendeeName: 'Ana',
+    serviceTitle: 'Afinamiento Facial',
+    whenText: 'jueves 27/11 a las 17:15',
+    fromName: 'FACES',
+  };
+  it('names the client, service, date and business, asks the open question, leaves no placeholder', () => {
+    const t = reconfirmAskTemplate(ctx);
+    expect(t).toBe(
+      'Hola Ana. Entiendo que no podrás venir el jueves 27/11 a las 17:15 a tu cita de Afinamiento Facial en FACES. ¿Prefieres que te busquemos otra fecha (dime qué día y a qué hora te acomoda), o no deseas continuar con la cita?',
+    );
+    expect(t).not.toMatch(/undefined|null|\{|\}/);
+    expect(t.length).toBeLessThan(600);
+  });
+  it('promises nothing: no cancel wording', () => {
+    expect(reconfirmAskTemplate(ctx)).not.toMatch(/cancel/i);
+    expect(reconfirmAskTemplate({ ...ctx, locale: 'en' })).not.toMatch(/cancel/i);
+  });
+  it('has an English version and copes with a missing name', () => {
+    const t = reconfirmAskTemplate({ ...ctx, locale: 'en', attendeeName: null });
+    expect(t.startsWith('Hi. I understand')).toBe(true);
+    expect(t).toContain('Afinamiento Facial');
+    expect(t).toContain('FACES');
   });
 });

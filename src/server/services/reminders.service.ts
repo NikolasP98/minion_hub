@@ -396,7 +396,12 @@ export function attributeReplies(
  *   hand-back, no message to the client.
  * - Below `CONFIDENCE_MIN` a verdict is logged as given and acted on as unclear.
  */
-export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<ConfirmScanResult> {
+export async function scanConfirmationReplies(
+  ctx: CoreCtx,
+  now: Date,
+  /** Only the groups with these phones (last 9 digits): the reply-driven scan from message ingest. */
+  only?: { phones9: string[] },
+): Promise<ConfirmScanResult> {
   const config = await getReminderConfig(ctx);
   const result: ConfirmScanResult = { confirmed: 0, opened: 0, unclear: 0 };
   if (!config.enabled) return result;
@@ -438,6 +443,7 @@ export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<
   for (const b of candidates) {
     const p9 = phone9(b.recipient);
     if (p9.length < 8) continue;
+    if (only && !only.phones9.includes(p9)) continue;
     const accountId = b.account_id ?? configAccount;
     const key = `${b.channel}|${p9}|${accountId ?? ''}`;
     const g = groups.get(key) ?? { p9, accountId, rows: [] };
@@ -460,7 +466,11 @@ export async function scanConfirmationReplies(ctx: CoreCtx, now: Date): Promise<
 
   // An unclear answer nobody clarified within the wait time goes to staff (spec section 4),
   // but only when the reminder actually asked the client for an answer.
-  const asked = candidates.filter((c) => reminderAsksForAnswer(c.stage, c.reminder_text));
+  const asked = candidates.filter(
+    (c) =>
+      (!only || only.phones9.includes(phone9(c.recipient))) &&
+      reminderAsksForAnswer(c.stage, c.reminder_text),
+  );
   const aged = await agedUnclearVerdicts(
     ctx,
     asked.map((c) => c.id),
@@ -556,11 +566,15 @@ async function scanGroup(
           and (right(regexp_replace(coalesce(o.chat_id,''),'\\D','','g'), 9) = ${g.p9}
             or right(regexp_replace(coalesce(o.sender_id,''),'\\D','','g'), 9) = ${g.p9})
           and o.occurred_at > ${since}::timestamptz
-          and coalesce(o.metadata->>'kind','') <> 'reminder' and coalesce(o.agent_id,'') <> 'reminders-agent'
+          and coalesce(o.metadata->>'kind','') not in ('reminder','reconfirm')
+          and coalesce(o.agent_id,'') <> 'reminders-agent'
           and not exists (
             select 1 from sched_reminders x
             where x.org_id = o.org_id and x.recipient_role = 'client'
               and ((x.message_id is not null and x.message_id = o.message_id) or x.content = o.content))
+          and not exists (
+            select 1 from sched_reconfirm_events e
+            where e.org_id = o.org_id and e.kind = 'agent_message' and e.content = o.content)
           ${g.accountId ? sql`and o.account_id = ${g.accountId}` : sql``}
         order by o.occurred_at asc
         limit 50

@@ -217,7 +217,9 @@ describe('reminderAsksForAnswer', () => {
     expect(reminderAsksForAnswer('24h', 'Te recordamos tu cita. ¿Confirmas tu asistencia?')).toBe(
       true,
     );
-    expect(reminderAsksForAnswer('2h', 'Reply YES to confirm or NO to cancel.')).toBe(true);
+    expect(reminderAsksForAnswer('2h', "Reply YES to confirm or NO if you can't make it.")).toBe(
+      true,
+    );
     expect(reminderAsksForAnswer('24h', 'Te esperamos mañana a las 10.')).toBe(false);
   });
 });

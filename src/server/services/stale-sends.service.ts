@@ -8,7 +8,9 @@ import { getCoreDb } from '$server/db/pg-client';
 export const STALE_SEND_MINUTES = 15;
 
 /**
- * Fails every reminder and door follow-up still `sending`, and every tax
+ * Fails every reminder and door follow-up still `sending`, ends the agent's part of a
+ * reconfirmation case whose question was claimed but never confirmed (spec 139: the events log is
+ * append-only, so the case gets result `send_failed` and a `system` event), and every tax
  * emission still `pending`, past the limit — across all organisations and
  * whether or not the feature is switched on, so nothing stays hidden forever.
  * Reaped sends are never re-sent ("a failed send is never retried"); a reaped
@@ -20,6 +22,7 @@ export async function reapStaleSends(): Promise<{
   reminders: number;
   followups: number;
   emissions: number;
+  reconfirms: number;
 }> {
   const db = getCoreDb();
   const limit = sql`now() - make_interval(mins => ${STALE_SEND_MINUTES})`;
@@ -38,5 +41,26 @@ export async function reapStaleSends(): Promise<{
     where status = 'pending' and updated_at < ${limit}
     returning id
   `)) as unknown as unknown[];
-  return { reminders: reminders.length, followups: followups.length, emissions: emissions.length };
+  // A case still in `none` whose `ask` claim is old: the send never finished. Never re-sent.
+  const reconfirms = (await db.execute(sql`
+    with ended as (
+      update sched_reconfirm_cases c
+      set result = 'send_failed', agent_state = 'done', wait_until = null
+      where c.closed_at is null and c.result is null and c.agent_state = 'none'
+        and exists (
+          select 1 from sched_reconfirm_events e
+          where e.case_id = c.id and e.kind = 'agent_message' and e.send_status = 'sending'
+            and e.created_at < ${limit})
+      returning c.id, c.org_id, c.booking_id
+    )
+    insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, data)
+    select org_id, booking_id, id, 'system', 'ask', '{"result":"send_failed","error":"stale_claim"}'::jsonb from ended
+    returning id
+  `)) as unknown as unknown[];
+  return {
+    reminders: reminders.length,
+    followups: followups.length,
+    emissions: emissions.length,
+    reconfirms: reconfirms.length,
+  };
 }
