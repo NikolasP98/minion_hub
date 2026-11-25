@@ -173,6 +173,26 @@ describe('logLockEvent', () => {
   });
 });
 
+describe('logLockEvent dedupe', () => {
+  const refused = {
+    action: 'refused' as const,
+    recordType: 'stock_receipt',
+    recordId: 'r1',
+    actor,
+    detail: { code: 'record_locked' },
+  };
+  it('skips the row when the same actor, record and code was logged inside the window', async () => {
+    h.selects = [[{ id: 'earlier' }]];
+    await logLockEvent(ctx, refused, { dedupeMs: 600_000 });
+    expect(h.inserts).toHaveLength(0);
+  });
+  it('writes the row when nothing matched', async () => {
+    h.selects = [[]];
+    await logLockEvent(ctx, refused, { dedupeMs: 600_000 });
+    expect(h.inserts).toHaveLength(1);
+  });
+});
+
 describe('listLockEvents', () => {
   it('maps rows with the record label and ISO dates', async () => {
     h.selects = [

@@ -248,8 +248,33 @@ export async function logLockEventInTx(tx: CoreTx, orgId: string, e: LockEventIn
 }
 
 /** One audit row in its own short transaction (refusals: the refused transaction cannot hold it). */
-export async function logLockEvent(ctx: CoreCtx, e: LockEventInput): Promise<void> {
-  await withOrgCore(ctx, (tx) => logLockEventInTx(tx, ctx.tenantId, e));
+export async function logLockEvent(
+  ctx: CoreCtx,
+  e: LockEventInput,
+  /** Skip the row when the same actor, action, record and `detail.code` was logged within this many ms. */
+  opts: { dedupeMs?: number } = {},
+): Promise<void> {
+  await withOrgCore(ctx, async (tx) => {
+    if (opts.dedupeMs) {
+      const [dup] = await tx
+        .select({ id: orgLockEvents.id })
+        .from(orgLockEvents)
+        .where(
+          and(
+            eq(orgLockEvents.orgId, ctx.tenantId),
+            eq(orgLockEvents.action, e.action),
+            e.recordId ? eq(orgLockEvents.recordId, e.recordId) : isNull(orgLockEvents.recordId),
+            eq(orgLockEvents.actorKind, e.actor.kind),
+            e.actor.id ? eq(orgLockEvents.actorId, e.actor.id) : isNull(orgLockEvents.actorId),
+            sql`${orgLockEvents.detail}->>'code' is not distinct from ${String(e.detail?.code ?? '')}`,
+            sql`${orgLockEvents.occurredAt} > now() - make_interval(secs => ${opts.dedupeMs / 1000})`,
+          ),
+        )
+        .limit(1);
+      if (dup) return;
+    }
+    await logLockEventInTx(tx, ctx.tenantId, e);
+  });
 }
 
 /** Owner only. Saving the same values writes nothing; a change writes one `policy_changed` event with before and after. */

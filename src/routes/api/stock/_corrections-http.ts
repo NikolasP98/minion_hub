@@ -47,14 +47,19 @@ export async function logLockRefusal(
   try {
     const request = parsePreviewRequest(rawRequest);
     if (request.mode !== 'receipt_replace') return;
-    await logLockEvent(ctx, {
-      action: 'refused',
-      recordType: 'stock_receipt',
-      recordId: request.sourceId,
-      rules: locks,
-      actor: personActor(ctx, actorName),
-      detail: { code: e.code },
-    });
+    await logLockEvent(
+      ctx,
+      {
+        action: 'refused',
+        recordType: 'stock_receipt',
+        recordId: request.sourceId,
+        rules: locks,
+        actor: personActor(ctx, actorName),
+        detail: { code: e.code },
+      },
+      // Preview and apply are callable in a loop: one refusal row per actor, record and code per 10 minutes.
+      { dedupeMs: 10 * 60_000 },
+    );
   } catch (err) {
     console.error('[record-locks] could not log a refused correction', (err as Error).name);
   }

@@ -163,6 +163,8 @@ describe('lock refusals (spec 140 S2)', () => {
         actor: { kind: 'person', id: 'me' },
         detail: { code },
       });
+      // Looped previews must not fill the append-only table.
+      expect(mocks.log.mock.calls[0]![2]).toEqual({ dedupeMs: 600_000 });
     },
   );
 

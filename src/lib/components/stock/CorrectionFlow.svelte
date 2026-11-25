@@ -94,10 +94,13 @@
 
   // A lock refusal names every rule that applies (spec 140), then the next step.
   const message = (code: string | undefined, locks?: unknown) => {
-    const base = (code ? refusal?.(code) : undefined) ?? correctionRefusal(code);
-    return Array.isArray(locks) && locks.length
-      ? `${(locks as LockHit[]).map(lockReason).join('. ')}. ${base}`
-      : base;
+    const hits = Array.isArray(locks) ? (locks as LockHit[]) : [];
+    // A closed current month cannot be unlocked per record: only reopening the month helps, never "ask an owner".
+    const stuck = hits.some((h) => !h.unlockable);
+    const base =
+      (code ? refusal?.(stuck ? 'period_locked' : code) : undefined) ??
+      correctionRefusal(stuck ? 'period_locked' : code);
+    return hits.length ? `${hits.map(lockReason).join('. ')}. ${base}` : base;
   };
   const intent = $derived(JSON.stringify(previewBody(reason.trim())));
   const hasIntent = $derived(previewBody(reason.trim()) !== null && reason.trim().length > 0);

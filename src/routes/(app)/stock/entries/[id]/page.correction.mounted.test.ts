@@ -328,3 +328,27 @@ it('a refusal that names the locks shows each rule before the next step', async 
   );
   expect(screen.getByText((t) => t.includes(m.stock_corr_err_record_locked()))).toBeTruthy();
 });
+
+it('a refusal that includes a closed current month says to reopen it, not to ask an owner', async () => {
+  preview = () =>
+    Response.json(
+      {
+        code: 'record_locked',
+        outcome: 'not_applied',
+        locks: [
+          { rule: 'days', kind: 'days', unlockable: true, days: 60 },
+          { rule: 'month', kind: 'month_current', unlockable: false, period: '2026-11' },
+        ],
+        unlockBy: 'owner',
+      },
+      { status: 422 },
+    );
+  await open();
+  await type(m.stock_corr_receipt_qty(), 0, '8');
+  await fireEvent.input(screen.getByLabelText(new RegExp(m.stock_corr_reason_label())), {
+    target: { value: 'counted 8' },
+  });
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_preview() }));
+  await waitFor(() => screen.getByText((t) => t.includes(m.stock_corr_err_period_locked())));
+  expect(screen.queryByText((t) => t.includes(m.stock_corr_err_record_locked()))).toBeNull();
+});
