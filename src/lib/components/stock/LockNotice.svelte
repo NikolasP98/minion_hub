@@ -8,8 +8,7 @@
   import { ApiError } from '$lib/api/fetch-json';
   import { formatDate } from '$lib/utils/format';
   import type { RecordLockResult } from '$lib/types/record-locks';
-  import { correctionRefusal } from './correction-refusals';
-  import { lockReason } from './lock-reasons';
+  import { lockReason, lockRefusal } from './lock-reasons';
 
   let {
     lock,
@@ -58,7 +57,7 @@
     } catch (e) {
       const code =
         e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
-      error = correctionRefusal(code);
+      error = lockRefusal(code);
     } finally {
       busy = false;
     }

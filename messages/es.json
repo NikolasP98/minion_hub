@@ -7822,6 +7822,7 @@
   "record_locks_save": "Guardar",
   "record_locks_saved": "Reglas guardadas",
   "record_locks_readonly_note": "Solo un propietario puede cambiar esto. Pídeselo a un propietario de la organización.",
+  "record_locks_err_owner_required": "Solo un propietario puede cambiar esto. Pídeselo a un propietario de la organización.",
   "record_locks_audit_title": "Historial",
   "record_locks_audit_empty": "Todavía no hay movimientos. Aquí quedan registrados los bloqueos, desbloqueos y correcciones rechazadas.",
   "record_locks_audit_more": "Cargar más",

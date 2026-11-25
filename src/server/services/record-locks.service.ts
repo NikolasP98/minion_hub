@@ -3,7 +3,7 @@
  * record is locked and returns every rule that applies; it never throws for a locked record (the
  * caller decides the refusal). It runs in the caller's transaction and takes no lock of its own.
  */
-import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
 import { getOrgTransactionDb } from '$server/db/pg-client';
@@ -94,11 +94,11 @@ async function receiptChain(tx: CoreTx, orgId: string, id: string) {
   return res;
 }
 
-/** The newest unused, unexpired owner unlock for the record or any receipt it replaced (data-model "Active unlock"). */
+/** The newest unused, unexpired owner unlock granted on this very receipt: a replacement needs its own (data-model "Active unlock"). */
 async function activeUnlock(
   tx: CoreTx,
   orgId: string,
-  chainIds: readonly string[],
+  recordId: string,
   now: Date,
 ): Promise<{
   unlock: NonNullable<RecordLockResult['unlock']>;
@@ -117,7 +117,7 @@ async function activeUnlock(
         eq(orgLockEvents.orgId, orgId),
         eq(orgLockEvents.action, 'unlock'),
         eq(orgLockEvents.recordType, 'stock_receipt'),
-        inArray(orgLockEvents.recordId, [...chainIds]),
+        eq(orgLockEvents.recordId, recordId),
         gt(orgLockEvents.expiresAt, now),
         sql`not exists (select 1 from org_lock_events u
           where u.org_id = ${orgLockEvents.orgId} and u.action = 'unlock_used' and u.ref_event_id = ${orgLockEvents.id})`,
@@ -209,7 +209,7 @@ export async function recordLockFor(
   // The unlock is read only for a record some rule locks, so an unlocked record costs no extra read.
   // An unlock is bound to the hits it was granted for: a hit that appeared after the grant (a new
   // webhook lock) or was never shown to the owner keeps the record locked until a new unlock.
-  const found = rules.length ? await activeUnlock(tx, orgId, chainIds, now) : null;
+  const found = rules.length ? await activeUnlock(tx, orgId, record.id, now) : null;
   const grantedKeys = new Set((found?.granted ?? []).map(hitKey));
   const covers = found !== null && rules.every((h) => grantedKeys.has(hitKey(h)));
   const unlock = covers ? found.unlock : null;

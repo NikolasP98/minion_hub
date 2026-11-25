@@ -74,6 +74,23 @@ describe('default policy equals receipt_period_v1', () => {
     ]);
     expect(isLocked(hits, true)).toBe(true);
   });
+  it("a replacement dated today is still locked by the month of the chain's first receipt", () => {
+    const hits = evaluateRecordLock(
+      base({
+        postedAt: at('2026-11-19T15:00:00Z'),
+        firstPostedAt: at('2026-10-20T15:00:00Z'),
+        lockedPeriods: new Set(['2026-10']),
+      }),
+    );
+    expect(hits).toEqual([{ rule: 'month', kind: 'month', unlockable: true, period: '2026-10' }]);
+    expect(isLocked(hits, false)).toBe(true);
+  });
+  it("the first receipt month is not reported twice when it is also the record's month", () => {
+    const hits = evaluateRecordLock(
+      base({ firstPostedAt: base().postedAt, lockedPeriods: new Set(['2026-10']) }),
+    );
+    expect(hits.filter((h) => h.period === '2026-10')).toHaveLength(1);
+  });
   it('a locked original month alone is unlockable', () => {
     const hits = evaluateRecordLock(base({ lockedPeriods: new Set(['2026-10']) }));
     expect(isLocked(hits, false)).toBe(true);

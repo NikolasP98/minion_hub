@@ -185,8 +185,6 @@ describe('stock corrections against PostgreSQL', () => {
     expect(await bin(wd.org, item)).toBe('10');
   });
 
-  // TODO(handoff): (spec 140 S3, T034) written on a machine with no PostgreSQL, so this case has NOT been executed;
-  // run the qa-native lane once and fix any fixture detail before relying on it.
   it('lets an owner unlock one locked purchase for exactly one correction (spec 140)', async () => {
     const wd = await world();
     const item = randomUUID();
@@ -297,6 +295,49 @@ describe('stock corrections against PostgreSQL', () => {
     expect(
       (await events('unlock_used')).filter((e) => e.ref_event_id === again.eventId),
     ).toHaveLength(0);
+
+    // Month rule (audit P8): one unlock opens a closed-month purchase for one correction only. The
+    // replacement is dated today but is judged by the month of the chain's first receipt.
+    await owner.unsafe(
+      `update public.org_lock_policy set days_enabled=false where org_id='${wd.org}'`,
+    );
+    const pastMonth = async (qty: number) => {
+      const id = await receipt(qty);
+      await owner.unsafe(
+        `update public.stk_entries set posted_at = date_trunc('month', now()) - interval '10 days' where id='${id}'`,
+      );
+      return id;
+    };
+    const lockMonthOf = (id: string) =>
+      owner.unsafe(
+        `insert into public.pos_period_locks(org_id,period) select '${wd.org}', to_char(posted_at at time zone 'America/Lima','YYYY-MM') from public.stk_entries where id='${id}' on conflict do nothing`,
+      );
+    const a0 = await pastMonth(7);
+    await lockMonthOf(a0);
+    expect(await refusal(run(await request(a0, '6')))).toBe('period_locked');
+    await grant(a0);
+    const fixed = await run(await request(a0, '6'));
+    expect(fixed.outcome).toBe('applied');
+    const a1 = fixed.outcome === 'applied' ? fixed.receipt.replacementEntryId! : '';
+    expect(await refusal(previewStockCorrection(wd.ownerCtx, await request(a1, '5'), 'typo'))).toBe(
+      'period_locked',
+    );
+
+    // Audit P5: an unused unlock dies when its receipt is replaced; it never carries to the replacement.
+    const b0 = await pastMonth(4);
+    const unused = await grant(b0);
+    expect(unused.created).toBe(true);
+    await owner.unsafe(`delete from public.pos_period_locks where org_id='${wd.org}'`);
+    const fixedB = await run(await request(b0, '3'));
+    expect(fixedB.outcome).toBe('applied');
+    expect((await events('unlock_used')).some((e) => e.ref_event_id === unused.eventId)).toBe(
+      false,
+    );
+    await lockMonthOf(b0);
+    const b1 = fixedB.outcome === 'applied' ? fixedB.receipt.replacementEntryId! : '';
+    expect(await refusal(previewStockCorrection(wd.ownerCtx, await request(b1, '2'), 'typo'))).toBe(
+      'period_locked',
+    );
   });
 
   it('enforces tenant scoped five kind schema immutable grants and private source ownership', async () => {

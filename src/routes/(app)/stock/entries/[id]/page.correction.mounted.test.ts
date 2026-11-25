@@ -429,6 +429,23 @@ describe('owner unlock (spec 140 S3)', () => {
     expect(invalidate).not.toHaveBeenCalled();
   });
 
+  it('an unlock refused for the role says only an owner can change this, not the stock-value text', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url) === '/api/settings/record-locks/unlocks'
+        ? Response.json(
+            { error: 'x', code: 'owner_required', outcome: 'not_applied' },
+            { status: 403 },
+          )
+        : defaultFetch(url, init),
+    );
+    render(Entry, { data: lockedFor(true, [days]) });
+    await fireEvent.click(unlockButton()!);
+    await fireEvent.input(screen.getByLabelText(unlockReasonLabel), { target: { value: 'x' } });
+    await fireEvent.click(screen.getByRole('button', { name: m.record_locks_unlock_confirm() }));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByRole('alert').textContent).toBe(m.record_locks_err_owner_required());
+  });
+
   it('an active unlock shows who and until when, hides the lock notice and enables the correction', () => {
     const unlocked = {
       ...base,

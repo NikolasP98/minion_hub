@@ -1,5 +1,6 @@
 import * as m from '$lib/paraglide/messages';
 import { formatDate } from '$lib/utils/format';
+import { correctionRefusal } from './correction-refusals';
 import type { LockHit } from '$lib/types/record-locks';
 
 const dayMonth = (value: string | Date, timeZone?: string) =>
@@ -31,3 +32,7 @@ export function lockReason(h: LockHit): string {
       return m.record_locks_reason_chain();
   }
 }
+
+/** A refusal on the lock settings and unlock surfaces: `owner_required` has its own text, not spec 124's stock-value one. */
+export const lockRefusal = (code: string | undefined): string =>
+  code === 'owner_required' ? m.record_locks_err_owner_required() : correctionRefusal(code);

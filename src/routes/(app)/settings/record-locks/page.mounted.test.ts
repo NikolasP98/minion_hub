@@ -113,7 +113,7 @@ describe('Settings → Record locks', () => {
     await fireEvent.click(screen.getByRole('switch', { name: m.record_locks_rule_month() }));
     await fireEvent.click(screen.getByRole('button', { name: m.record_locks_save() }));
     await vi.waitFor(() => expect(toast.error).toHaveBeenCalled());
-    expect(String(toast.error.mock.calls[0]![0])).toMatch(/propietario|owner/i);
+    expect(String(toast.error.mock.calls[0]![0])).toBe(m.record_locks_err_owner_required());
   });
 
   it('lists the audit rows newest first with the action, record link, rule and actor', () => {

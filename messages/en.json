@@ -7822,6 +7822,7 @@
   "record_locks_save": "Save",
   "record_locks_saved": "Rules saved",
   "record_locks_readonly_note": "Only an owner can change this. Ask an owner of the organization.",
+  "record_locks_err_owner_required": "Only an owner can change this. Ask an owner of the organization.",
   "record_locks_audit_title": "History",
   "record_locks_audit_empty": "Nothing yet. Locks, unlocks and refused corrections are recorded here.",
   "record_locks_audit_more": "Load more",
