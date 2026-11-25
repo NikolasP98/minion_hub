@@ -309,7 +309,14 @@ describe('grantUnlock (spec 140 S3)', () => {
       days,
       TZ,
       [],
-      [{ id: 'evt-0', expiresAt: new Date('2026-11-25T01:00:00Z'), actorName: 'Ada' }],
+      [
+        {
+          id: 'evt-0',
+          expiresAt: new Date('2026-11-25T01:00:00Z'),
+          actorName: 'Ada',
+          rules: [{ rule: 'days', kind: 'days', unlockable: true, days: 1 }],
+        },
+      ],
     ];
     expect(await grantUnlock(ctx, input, actor, { now })).toEqual({
       eventId: 'evt-0',

@@ -16,7 +16,7 @@
     recordId,
     isOwner = false,
   }: {
-    lock: Pick<RecordLockResult, 'locked' | 'rules' | 'unlock'>;
+    lock: Pick<RecordLockResult, 'locked' | 'rules' | 'unlock' | 'unlockOutdated'>;
     /** The receipt this notice is about (the unlock is granted for it). */
     recordId: string;
     isOwner?: boolean;
@@ -83,6 +83,9 @@
         {#each lock.rules as hit (hit.kind + (hit.lockId ?? ''))}
           <p class="t-body">{lockReason(hit)}</p>
         {/each}
+        {#if lock.unlockOutdated}
+          <p class="t-body">{m.record_locks_unlock_outdated()}</p>
+        {/if}
         {#if !isOwner}
           <p class="t-body">
             {ownerCanUnlock

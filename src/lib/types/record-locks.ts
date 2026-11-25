@@ -44,6 +44,8 @@ export interface RecordLockResult {
   /** Every rule that applies, unlock or not. */
   rules: LockHit[];
   unlock: { eventId: string; expiresAt: string; grantedByName: string | null } | null;
+  /** An unlock exists but a rule it was not granted for now applies: a new unlock is needed. */
+  unlockOutdated?: boolean;
 }
 
 export type LockEventAction =

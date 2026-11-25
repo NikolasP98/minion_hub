@@ -100,12 +100,16 @@ async function activeUnlock(
   orgId: string,
   chainIds: readonly string[],
   now: Date,
-): Promise<RecordLockResult['unlock']> {
+): Promise<{
+  unlock: NonNullable<RecordLockResult['unlock']>;
+  granted: LockHit[];
+} | null> {
   const [row] = await tx
     .select({
       id: orgLockEvents.id,
       expiresAt: orgLockEvents.expiresAt,
       actorName: orgLockEvents.actorName,
+      rules: orgLockEvents.rules,
     })
     .from(orgLockEvents)
     .where(
@@ -122,9 +126,19 @@ async function activeUnlock(
     .orderBy(desc(orgLockEvents.occurredAt))
     .limit(1);
   return row?.expiresAt
-    ? { eventId: row.id, expiresAt: row.expiresAt.toISOString(), grantedByName: row.actorName }
+    ? {
+        unlock: {
+          eventId: row.id,
+          expiresAt: row.expiresAt.toISOString(),
+          grantedByName: row.actorName,
+        },
+        granted: (row.rules ?? []) as LockHit[],
+      }
     : null;
 }
+
+/** Identity of a hit for matching an unlock to what the owner saw: rule kind, the webhook lock, the month. */
+const hitKey = (h: LockHit) => `${h.kind}|${h.lockId ?? ''}|${h.period ?? ''}`;
 
 export async function recordLockFor(
   tx: CoreTx,
@@ -193,9 +207,15 @@ export async function recordLockFor(
     lockedPeriods: new Set(),
   });
   // The unlock is read only for a record some rule locks, so an unlocked record costs no extra read.
-  const unlock = rules.length ? await activeUnlock(tx, orgId, chainIds, now) : null;
+  // An unlock is bound to the hits it was granted for: a hit that appeared after the grant (a new
+  // webhook lock) or was never shown to the owner keeps the record locked until a new unlock.
+  const found = rules.length ? await activeUnlock(tx, orgId, chainIds, now) : null;
+  const grantedKeys = new Set((found?.granted ?? []).map(hitKey));
+  const covers = found !== null && rules.every((h) => grantedKeys.has(hitKey(h)));
+  const unlock = covers ? found.unlock : null;
   return {
-    locked: isLocked(rules, unlock !== null),
+    locked: isLocked(rules, covers),
+    unlockOutdated: found !== null && !covers,
     rules,
     unlock,
     period,

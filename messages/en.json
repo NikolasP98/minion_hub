@@ -7858,5 +7858,6 @@
   "record_locks_unlock_reason": "Reason (required)",
   "record_locks_unlock_confirm": "Unlock",
   "record_locks_unlocked_state": "Unlocked until {until} for one correction (by {name}).",
-  "record_locks_unlocked_by_owner": "the owner"
+  "record_locks_unlocked_by_owner": "the owner",
+  "record_locks_unlock_outdated": "There was an unlock, but a new rule now applies that it did not cover. A new unlock is needed."
 }

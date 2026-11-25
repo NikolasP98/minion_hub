@@ -38,7 +38,12 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
           id: result.entry.id,
           postedAt: result.entry.postedAt as Date,
         })
-          .then(({ locked, rules, unlock }) => ({ locked, rules, unlock }))
+          .then(({ locked, rules, unlock, unlockOutdated }) => ({
+            locked,
+            rules,
+            unlock,
+            unlockOutdated,
+          }))
           .catch(() => null)
       : null;
 

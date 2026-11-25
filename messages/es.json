@@ -7858,5 +7858,6 @@
   "record_locks_unlock_reason": "Motivo (obligatorio)",
   "record_locks_unlock_confirm": "Desbloquear",
   "record_locks_unlocked_state": "Desbloqueado hasta {until} para una corrección (por {name}).",
-  "record_locks_unlocked_by_owner": "el propietario"
+  "record_locks_unlocked_by_owner": "el propietario",
+  "record_locks_unlock_outdated": "Había un desbloqueo, pero ahora se aplica una regla nueva que no cubría. Hace falta un desbloqueo nuevo."
 }
