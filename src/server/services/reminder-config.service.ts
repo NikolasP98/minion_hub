@@ -63,6 +63,8 @@ export interface ReminderConfigPatch {
   inferConfirmation?: boolean;
   locale?: string;
   fromName?: string | null;
+  /** Hours the agent waits for a client's answer (1-168). */
+  negationWaitHours?: number;
 }
 
 export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatch): Promise<void> {
@@ -80,6 +82,7 @@ export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatc
         inferConfirmation: patch.inferConfirmation ?? false,
         locale: patch.locale ?? 'es',
         fromName: patch.fromName ?? null,
+        negationWaitHours: patch.negationWaitHours ?? 24,
         updatedAt: new Date(),
       })
       .onConflictDoUpdate({
@@ -96,6 +99,9 @@ export async function saveReminderConfig(ctx: CoreCtx, patch: ReminderConfigPatc
             : {}),
           ...(patch.locale !== undefined ? { locale: patch.locale } : {}),
           ...(patch.fromName !== undefined ? { fromName: patch.fromName } : {}),
+          ...(patch.negationWaitHours !== undefined
+            ? { negationWaitHours: patch.negationWaitHours }
+            : {}),
           updatedAt: new Date(),
         },
       }),

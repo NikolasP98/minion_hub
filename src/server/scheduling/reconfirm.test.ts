@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIDENCE_MIN, acted, caseTitle, casePhase, waitUntil } from './reconfirm';
+import { CONFIDENCE_MIN, acted, caseTitle, casePhase, waitUntil, whenText } from './reconfirm';
 
 const v = (verdict: 'yes' | 'negation' | 'unclear', confidence: number) => ({
   verdict,
@@ -57,7 +57,7 @@ describe('casePhase and caseTitle', () => {
     ['no_answer', 'Sin respuesta'],
     ['unclear', 'Respuesta poco clara'],
     ['late_reply', 'Respondió cerca de la hora de la cita'],
-    ['send_failed', 'No se pudo escribir al cliente'],
+    ['send_failed', 'No se confirmó el mensaje al cliente: revisa el chat'],
     ['staff_handling', 'El equipo ya está conversando con el cliente'],
   ])('open result %s is phase staff', (result, title) => {
     expect(casePhase(open('done', result))).toBe('staff');
@@ -70,5 +70,22 @@ describe('casePhase and caseTitle', () => {
     expect(caseTitle(closed('will_come'))).toBe('Confirmó que asistirá');
     expect(casePhase(closed('declined'))).toBeNull();
     expect(casePhase({ agentState: 'none', result: null, closedAt: new Date() })).toBeNull();
+  });
+});
+
+describe('whenText', () => {
+  const at = new Date('2026-11-27T22:15:00Z'); // Friday 17:15 in Lima
+  it('reads the weekday, date and 24 h time in the resource timezone', () => {
+    expect(whenText(at, 'America/Lima', 'es')).toBe('viernes 27/11 a las 17:15');
+    expect(whenText(at, 'America/Lima', 'en')).toBe('Friday 11/27 at 17:15');
+    expect(whenText(at, 'America/Lima', 'es', true)).toBe('vie 27/11 17:15');
+  });
+  it('crosses midnight with the timezone, not UTC', () => {
+    expect(whenText(new Date('2026-11-28T03:30:00Z'), 'America/Lima', 'es')).toBe(
+      'viernes 27/11 a las 22:30',
+    );
+  });
+  it('falls back to the ISO instant for a bad timezone', () => {
+    expect(whenText(at, 'Nope/Zone', 'es')).toBe(at.toISOString());
   });
 });

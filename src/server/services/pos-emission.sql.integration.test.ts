@@ -71,6 +71,11 @@ beforeAll(async () => {
     -- Only so the cross-organisation sweep's other two statements have a target.
     CREATE TABLE sched_reminders (id uuid PRIMARY KEY, status text, error text, created_at timestamptz);
     CREATE TABLE crm_door_followups (id uuid PRIMARY KEY, status text, error text, created_at timestamptz);
+    CREATE TABLE sched_reconfirm_cases (id uuid PRIMARY KEY, org_id text, booking_id uuid, result text,
+      agent_state text, wait_until timestamptz, closed_at timestamptz);
+    CREATE TABLE sched_reconfirm_events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text,
+      booking_id uuid, case_id uuid, kind text, step text, send_status text, data jsonb,
+      created_at timestamptz DEFAULT now());
   `);
   // The real tables, grants and RLS policies, then the index under test.
   await owner.unsafe(migration('20260814040000_pos_shadow_emission.sql'));

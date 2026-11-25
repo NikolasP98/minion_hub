@@ -4,6 +4,7 @@ import { env } from '$env/dynamic/private';
 import { getCoreDb } from '$server/db/pg-client';
 import { listEnabledReminderOrgs } from '$server/services/reminder-config.service';
 import { processOrgReminders, scanConfirmationReplies } from '$server/services/reminders.service';
+import { advanceCases } from '$server/services/reconfirm.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { withAiUsageOrg } from '$server/ai-usage';
 
@@ -26,6 +27,7 @@ export const GET: RequestHandler = async ({ request }) => {
   let confirmed = 0;
   let opened = 0;
   let unclear = 0;
+  const cases = { opened: 0, asked: 0, timedOut: 0, failed: 0, offered: 0, rescheduled: 0 };
   for (const orgId of orgIds) {
     // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
     // the reminder composer's tokens record against no organization at all.
@@ -42,6 +44,14 @@ export const GET: RequestHandler = async ({ request }) => {
         confirmed += c.confirmed;
         opened += c.opened;
         unclear += c.unclear;
+        cases.opened += c.opened;
+        // Third pass (spec 139): the agent asks the client who said no, and hands silent cases to staff.
+        const a = await advanceCases(ctx, now);
+        cases.asked += a.asked;
+        cases.timedOut += a.timedOut;
+        cases.failed += a.failed;
+        cases.offered += a.offered;
+        cases.rescheduled += a.rescheduled;
       } catch (e) {
         // Name and driver code only: a driver message can carry query params (phones, message text).
         const code =
@@ -65,5 +75,6 @@ export const GET: RequestHandler = async ({ request }) => {
     declined: 0,
     opened,
     unclear,
+    cases,
   });
 };

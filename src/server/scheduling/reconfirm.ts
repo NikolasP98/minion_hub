@@ -2,6 +2,7 @@
  * Spec 139: pure helpers for the reminder-negation follow-up. No I/O, no booking writes.
  */
 import type { Classified } from '$server/services/reminder-compose';
+import { dateKeyFromParts, dateKeyWeekday, instantParts } from '$lib/time/zoned';
 
 /** Below this a verdict is logged as given but acted on as unclear (one constant, no setting). */
 export const CONFIDENCE_MIN = 0.75;
@@ -68,7 +69,7 @@ const RESULT_TITLES: Readonly<Record<CaseResult, string>> = {
   no_answer: 'Sin respuesta',
   unclear: 'Respuesta poco clara',
   late_reply: 'Respondió cerca de la hora de la cita',
-  send_failed: 'No se pudo escribir al cliente',
+  send_failed: 'No se confirmó el mensaje al cliente: revisa el chat',
   staff_handling: 'El equipo ya está conversando con el cliente',
 };
 
@@ -77,4 +78,31 @@ export function caseTitle(c: { agentState: string; result: string | null }): str
   return c.agentState === 'asking' || c.agentState === 'offered'
     ? 'El agente está consultando al cliente'
     : 'Dijo que no puede asistir';
+}
+
+const WEEKDAYS: Record<'es' | 'en', string[]> = {
+  es: ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'],
+  en: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+};
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * Appointment time as the client reads it in the agent's messages, in the resource's timezone:
+ * "jueves 27/11 a las 17:15" (en: "Thursday 11/27 at 17:15"). `short` gives "jue 27/11 17:15".
+ * Built from `instantParts` (no raw Intl); falls back to the ISO instant for a bad timezone.
+ */
+export function whenText(instant: Date, timezone: string, locale: string, short = false): string {
+  const lang = locale === 'en' ? 'en' : 'es';
+  try {
+    const p = instantParts(instant, timezone);
+    const key = dateKeyFromParts({ year: p.year, month: p.month, day: p.day });
+    const wd = key ? dateKeyWeekday(key) : null;
+    const name = wd === null ? '' : WEEKDAYS[lang][wd]!;
+    const day = lang === 'en' ? `${pad(p.month)}/${pad(p.day)}` : `${pad(p.day)}/${pad(p.month)}`;
+    const time = `${pad(p.hour)}:${pad(p.minute)}`;
+    if (short) return `${name.slice(0, 3)} ${day} ${time}`.trim();
+    return `${name} ${day} ${lang === 'en' ? 'at' : 'a las'} ${time}`.trim();
+  } catch {
+    return instant.toISOString();
+  }
 }

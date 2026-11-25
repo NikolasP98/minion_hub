@@ -203,6 +203,18 @@ export function reminderTemplate(c: ReminderContext): string {
   }
 }
 
+/**
+ * Spec 139: the agent's question to a client who said they cannot come. Deterministic text built
+ * from the reminder context (facts are never rewritten by a model); `whenText` is "jueves 27/11 a las 17:15".
+ */
+export function reconfirmAskTemplate(c: ReminderContext): string {
+  const en = c.locale === 'en';
+  const hi = c.attendeeName ? `${en ? 'Hi' : 'Hola'} ${c.attendeeName}.` : en ? 'Hi.' : 'Hola.';
+  return en
+    ? `${hi} I understand you can't make it on ${c.whenText} to your ${c.serviceTitle} appointment at ${c.fromName}. Would you like us to find you another date (tell me which day and time suits you), or would you rather not continue with the appointment?`
+    : `${hi} Entiendo que no podrás venir el ${c.whenText} a tu cita de ${c.serviceTitle} en ${c.fromName}. ¿Prefieres que te busquemos otra fecha (dime qué día y a qué hora te acomoda), o no deseas continuar con la cita?`;
+}
+
 /** Compose the message — template, optionally LLM-personalized (template fallback). */
 export async function composeReminder(c: ReminderContext, personalize: boolean): Promise<string> {
   const base = reminderTemplate(c);

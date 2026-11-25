@@ -181,6 +181,9 @@ describe('invariant: the module cannot cancel, release or redeem', () => {
     expect(imports.join('\n')).not.toMatch(
       /cancel|release|redeem|redemption|setBookingStatus|scheduling-bookings|pos-/i,
     );
-    expect(src).not.toMatch(/console\./);
+    // S2 logs failures, but only the case id and the error name: never a phone or message text.
+    expect(src).not.toMatch(/console\.(log|warn|info|debug)/);
+    for (const line of src.split('\n').filter((l) => l.includes('console.error')))
+      expect(line).toMatch(/c\.id, errName\(e\)\);$/);
   });
 });
