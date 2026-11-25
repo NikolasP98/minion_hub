@@ -8,11 +8,10 @@ import { isModuleEnabled } from '$server/services/modules.service';
 import { withAiUsageOrg } from '$server/ai-usage';
 
 /**
- * GET /api/scheduling/reminders/tick — Vercel Cron entrypoint (every minute).
+ * GET /api/scheduling/reminders/tick — cron entrypoint (netcup `health-gated-tick reminders`, every 5 minutes).
  * The autonomous reminders agent's heartbeat: for each org that has reminders
  * enabled (and the scheduling module on), send any due booking reminders in a
- * bounded chunk. Vercel sends `Authorization: Bearer $CRON_SECRET` automatically;
- * reject anything else.
+ * bounded chunk. The caller sends `Authorization: Bearer $CRON_SECRET`; reject anything else.
  */
 export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;

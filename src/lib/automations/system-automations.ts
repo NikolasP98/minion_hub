@@ -49,6 +49,13 @@ export interface SystemAutomation {
 export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   // ── Scheduled on netcup — cadence verified against `crontab -l` ──────────
   { path: '/api/meta/sync/tick', key: 'meta_sync', cadence: 'ten_minutes', wiring: 'netcup' },
+  // Scheduled 2026-11-25 (owner OK): `health-gated-tick reminders` at 1-59/5 on the global lock.
+  {
+    path: '/api/scheduling/reminders/tick',
+    key: 'reminders',
+    cadence: 'five_minutes',
+    wiring: 'netcup',
+  },
   // SUSII is decommissioned; this is a no-op safety net, so hourly is plenty.
   { path: '/api/finances/sync/tick', key: 'finance_sync', cadence: 'hourly', wiring: 'netcup' },
   {
@@ -127,12 +134,6 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     path: '/api/brains/reconcile/tick',
     key: 'brains_reconcile',
     cadence: 'daily',
-    wiring: 'unscheduled',
-  },
-  {
-    path: '/api/scheduling/reminders/tick',
-    key: 'reminders',
-    cadence: 'minute',
     wiring: 'unscheduled',
   },
   {
