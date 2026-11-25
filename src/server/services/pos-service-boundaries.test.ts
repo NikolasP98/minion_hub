@@ -180,6 +180,7 @@ const posRuntimeExports = [
   'listShifts',
   'listTicketRefs',
   'listTickets',
+  'lockedOpenShiftInTx',
   'loadComponentGraph',
   'loadIssueResolutionInTx',
   'missingRequirements',

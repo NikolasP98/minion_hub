@@ -7802,5 +7802,10 @@
   "cal_closure_reason_hint": "The whole team sees it, e.g. \"Doctor travelling\"",
   "cal_closure_submit": "Close agenda",
   "cal_closure_created": "Agenda closed ({n} days)",
-  "cal_closure_warning": "The agenda is closed: {reason}. You can still book."
+  "cal_closure_warning": "The agenda is closed: {reason}. You can still book.",
+  "pos_shift_auto_waiting": "Automatic register: opens with the first sale",
+  "pos_shift_auto_today": "Automatic register · today",
+  "pos_settings_shift_card": "Register",
+  "pos_settings_shift_auto": "Automatic register",
+  "pos_settings_shift_auto_hint": "The register opens with the first sale of the day and closes itself at midnight."
 }

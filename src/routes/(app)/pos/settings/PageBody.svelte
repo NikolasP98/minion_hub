@@ -125,6 +125,7 @@
     if (scope !== saveActions?.scopeVersion) return;
     settingsUpdatedAt = data.settings.updatedAt;
     requirements = normalizeRequirements(data.settings.requirements);
+    autoShift = data.settings.shiftMode === 'auto';
   }
   const requirementAutosaves = Object.fromEntries(
     REQUIREMENT_KINDS.map((kind) => [
@@ -154,6 +155,28 @@
       }),
     ]),
   ) as Record<RequirementKind, ReturnType<typeof createAutosave<PosRequirements[RequirementKind]>>>;
+
+  // Spec 148 "Caja automática": autosaved on its own, like the requirements.
+  // svelte-ignore state_referenced_locally -- same seed-once pattern as `rows`.
+  let autoShift = $state(data.settings.shiftMode === 'auto');
+  const shiftModeStatus = createSaveStatus();
+  const shiftModeAutosave = createAutosave({
+    committed: () => autoShift,
+    scope: () => 'pos-settings',
+    prepare: (value, isCurrent) => async () => {
+      const expectedUpdatedAt = settingsUpdatedAt;
+      const result = await fetchJson<{ settings: PageData['settings'] }>('/api/pos/settings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ shiftMode: value ? 'auto' : 'manual', expectedUpdatedAt }),
+      });
+      if (!isCurrent()) return;
+      settingsUpdatedAt = result.settings.updatedAt;
+      autoShift = result.settings.shiftMode === 'auto';
+    },
+    status: shiftModeStatus,
+    debounceMs: 0,
+  });
 
   const canManage = $derived(canAct('pos', 'manage'));
 
@@ -457,6 +480,24 @@
           {m.pos_settings_save()}
         </Button>
       </div>
+    </section>
+
+    <section class="card max-w-4xl req-card">
+      <header class="card-h">
+        <span>{m.pos_settings_shift_card()}</span>
+        <SaveIndicator
+          status={shiftModeStatus.status}
+          message={shiftModeStatus.message}
+          onRetry={shiftModeStatus.retry}
+          onReview={reviewSettings}
+        />
+      </header>
+      <Toggle
+        bind:checked={shiftModeAutosave.value}
+        disabled={!canManage}
+        label={m.pos_settings_shift_auto()}
+        description={m.pos_settings_shift_auto_hint()}
+      />
     </section>
 
     <section class="card max-w-4xl req-card">

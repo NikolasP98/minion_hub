@@ -46,6 +46,7 @@ const putSchema = z.object({
   allowPriceOverride: z.boolean().optional(),
   emission: emissionSchema.optional(),
   requirements: requirementsSchema.optional(),
+  shiftMode: z.enum(['manual', 'auto']).optional(),
   expectedUpdatedAt: z.coerce.date().optional(),
 });
 

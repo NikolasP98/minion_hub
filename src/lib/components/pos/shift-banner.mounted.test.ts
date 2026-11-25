@@ -150,3 +150,29 @@ describe('mounted shift close dialog', () => {
     expect(JSON.parse(String(closes[0][1]?.body))).toEqual({ counted: { cash: 0 }, note: null });
   });
 });
+
+describe('Caja automática (spec 148)', () => {
+  it('never asks to open the register and labels the live shift as automatic', async () => {
+    const data = context.page.data as Record<string, unknown>;
+    const saved = { posSettings: data.posSettings, openShift: data.openShift };
+    data.posSettings = { ...(saved.posSettings as object), shiftMode: 'auto' };
+    try {
+      data.openShift = null;
+      render(ShiftBanner);
+      expect(screen.getAllByText(m.pos_shift_auto_waiting()).length).toBeGreaterThan(0);
+      expect(screen.queryByRole('button', { name: m.pos_shift_open_cta() })).toBeNull();
+      cleanup();
+
+      data.openShift = saved.openShift;
+      render(ShiftBanner);
+      expect(screen.getAllByText(m.pos_shift_auto_today()).length).toBeGreaterThan(0);
+      // A manual count stays possible.
+      expect(
+        screen.getAllByRole('button', { name: m.pos_shift_close_cta() }).length,
+      ).toBeGreaterThan(0);
+    } finally {
+      data.posSettings = saved.posSettings;
+      data.openShift = saved.openShift;
+    }
+  });
+});

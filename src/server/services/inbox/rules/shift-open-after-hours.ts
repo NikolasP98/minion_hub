@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, max, or, sql } from 'drizzle-orm';
 import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
-import { posShifts, posTickets, posPayments } from '$server/db/pg-pos-schema';
+import { posSettings, posShifts, posTickets, posPayments } from '$server/db/pg-pos-schema';
 import { schedResources, schedSchedules, schedAvailability } from '$server/db/pg-scheduling-schema';
 import { appNotifications } from '$server/db/pg-inbox-schema';
 import { resolveOrgTimezone } from '$server/services/inbox/daily-feed.service';
@@ -153,6 +153,13 @@ export const shiftOpenAfterHoursRule: Rule = {
         })
         .from(posShifts)
         .where(and(eq(posShifts.orgId, ctx.tenantId), eq(posShifts.status, 'open')));
+      // Spec 148 "Caja automática": the midnight job closes shifts, so an open one
+      // is never forgotten — treat it as none (the run below resolves old alerts).
+      const [mode] = await tx
+        .select({ shiftMode: posSettings.shiftMode })
+        .from(posSettings)
+        .where(eq(posSettings.orgId, ctx.tenantId));
+      if (mode?.shiftMode === 'auto') open.length = 0;
 
       const upserts: RuleResult['upserts'] = [];
       for (const shift of open) {

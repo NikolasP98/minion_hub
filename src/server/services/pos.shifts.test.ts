@@ -22,6 +22,7 @@ import {
   closeShift,
   shiftSummary,
   computeExpected,
+  lockedOpenShiftInTx,
 } from './pos.service';
 import { paymentPolicyRevision } from './pos/credit-method-policy';
 
@@ -620,5 +621,56 @@ describe('emissionAllowedByMethods', () => {
   });
   it('treats a method no longer in settings as admissible', () => {
     expect(emissionAllowedByMethods(methods, [{ method: 'card' }])).toBe(true);
+  });
+});
+
+describe('Caja automática (spec 148)', () => {
+  it('defaults to manual and saves auto', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]);
+    expect((await getPosSettings(ctx(db))).shiftMode).toBe('manual');
+
+    const second = createMockDb();
+    second.resolveSequence([[], [{ orgId: 'org-1', currency: 'PEN', shiftMode: 'auto' }]]);
+    const saved = await updatePosSettings(ctx(second.db), { shiftMode: 'auto' });
+    expect(saved.shiftMode).toBe('auto');
+  });
+
+  it('rejects an unknown shift mode before writing', async () => {
+    const { db, resolveSequence } = createMockDb();
+    resolveSequence([[]]);
+    await expect(
+      updatePosSettings(ctx(db), { shiftMode: 'nightly' as never }),
+    ).rejects.toMatchObject({ code: 'invalid_shift_mode' });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
+  it('auto mode opens the missing shift in the caller transaction; manual mode does not', async () => {
+    const auto = createMockDb();
+    auto.resolveSequence([[], [], [{ id: 's-new', orgId: 'org-1', status: 'open' }]]);
+    const opened = await lockedOpenShiftInTx(auto.db as never, 'org-1', 'u1', 'auto');
+    expect(opened?.id).toBe('s-new');
+    expect(auto.db.insert).toHaveBeenCalledTimes(1);
+
+    const manual = createMockDb();
+    manual.resolveSequence([[]]);
+    expect(await lockedOpenShiftInTx(manual.db as never, 'org-1', 'u1', 'manual')).toBeUndefined();
+    expect(manual.db.insert).not.toHaveBeenCalled();
+  });
+
+  it('an automatic close counts every method at the register total, cash included', async () => {
+    const { db, resolveSequence } = createMockDb();
+    const sets = captureUpdates(db);
+    resolveSequence([
+      [],
+      [{ id: 's1', orgId: 'org-1', status: 'open', openingFloat: { cash: 50 } }],
+      [
+        { method: 'cash', amount: '10.00' },
+        { method: 'card', amount: '30.00' },
+      ],
+      [{ id: 's1', orgId: 'org-1', status: 'closed', openingFloat: {}, expected: {}, counted: {} }],
+    ]);
+    await closeShift(ctx(db), { counted: {}, countedFromExpected: true, shiftId: 's1', actor });
+    expect(sets[0].counted).toEqual({ cash: 60, card: 30, yape: 0, plin: 0, transfer: 0 });
   });
 });
