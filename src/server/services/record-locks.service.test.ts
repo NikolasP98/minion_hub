@@ -149,12 +149,24 @@ describe('recordLockFor', () => {
     expect(r.rules).toMatchObject([{ kind: 'chain_unverified' }]);
   });
 
-  it("keeps today's answer for an org without days or webhook rules, even at the cap", async () => {
+  it('fails closed past the cap under the default policy: the month rule reads the chain too (probe R3c)', async () => {
+    // 21 corrections made while the month was open, then the month closed: the chain tip cannot be proven young.
     const rows = Array.from({ length: 21 }, (_, i) => ({
       id: `r${i}`,
       posted_at: '2026-11-19T15:00:00Z',
     }));
     const f = fakeTx([[], TZ, []], [rows]);
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(true);
+    expect(r.rules.map((h) => h.kind)).toContain('chain_unverified');
+  });
+
+  it('trusts a long chain only when no rule reads the first receipt (month, days and webhook all off)', async () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ({
+      id: `r${i}`,
+      posted_at: '2026-11-19T15:00:00Z',
+    }));
+    const f = fakeTx([[policyRow({ monthEnabled: false })], TZ, []], [rows]);
     const r = await recordLockFor(f.tx, 'org', rec, { now });
     expect(r.rules.map((h) => h.kind)).not.toContain('chain_unverified');
   });

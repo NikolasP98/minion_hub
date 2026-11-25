@@ -8,7 +8,13 @@ import { nextSerialId } from './naming-series';
 import { recordAudit } from './activity.service';
 import { lockNavigationPolicy } from './nav-policy-lock';
 import { registerNotifCandidateSource } from './notif.service';
-import { hasLockPolicyRow, lockRefusalError, recordLockFor } from './record-locks.service';
+import {
+  consumeUnlockInTx,
+  hasLockPolicyRow,
+  lockRefusalError,
+  personActor,
+  recordLockFor,
+} from './record-locks.service';
 import { CorrectionError } from './stock-corrections.logic';
 import { emitHubEvent } from '$server/events/emit';
 import {
@@ -1232,7 +1238,7 @@ export async function cancelEntryInTx(
   ctx: CoreCtx,
   guard: StockWriteGuard,
   id: string,
-  _actor: Actor,
+  actor: Actor,
   options: StockPostingOptions = {},
 ): Promise<StkEntry> {
   assertStockWriteGuard(tx, ctx, guard);
@@ -1262,6 +1268,19 @@ export async function cancelEntryInTx(
       throw e;
     });
     if (lock?.locked) throw lockRefusalError(lock);
+    // An active owner unlock for this receipt lets the cancel through and is used up in the same commit.
+    if (lock?.unlock)
+      await consumeUnlockInTx(
+        tx,
+        orgId,
+        {
+          eventId: lock.unlock.eventId,
+          recordId: id,
+          rules: lock.rules,
+          detail: { cancelled: true },
+        },
+        personActor(ctx, actor.name ?? null),
+      );
   }
 
   const origRows = await tx

@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   authority: null as Error | null,
   selects: [] as unknown[][],
   executes: [] as unknown[][],
+  wheres: [] as unknown[],
   inserts: [] as Array<{ values: Record<string, unknown>; conflict?: Record<string, unknown> }>,
   insertError: null as unknown,
   tx: null as unknown,
@@ -63,6 +64,7 @@ beforeEach(() => {
   h.selects = [];
   h.executes = [];
   h.inserts = [];
+  h.wheres = [];
   h.insertError = null;
   const chain = (): unknown =>
     new Proxy(() => {}, {
@@ -71,6 +73,7 @@ beforeEach(() => {
           const v = h.selects.shift() ?? [];
           return (ok: (x: unknown) => unknown) => Promise.resolve(v).then(ok);
         }
+        if (prop === 'where') return (w: unknown) => (h.wheres.push(w), chain());
         return () => chain();
       },
     });
@@ -212,6 +215,17 @@ describe('logLockEvent dedupe', () => {
     h.selects = [[{ id: 'earlier' }]];
     await logLockEvent(ctx, refused, { dedupeMs: 600_000 });
     expect(h.inserts).toHaveLength(0);
+  });
+  it('matches on the rule kinds, so a rule that newly applies still logs a row', async () => {
+    const render = async (rules: Array<{ kind: string }>) => {
+      h.wheres = [];
+      h.selects = [[]];
+      await logLockEvent(ctx, { ...refused, rules: rules as never }, { dedupeMs: 600_000 });
+      const { PgDialect } = await import('drizzle-orm/pg-core');
+      return new PgDialect().sqlToQuery(h.wheres[0] as never).params;
+    };
+    expect(await render([{ kind: 'month' }])).toContain('month');
+    expect(await render([{ kind: 'month' }, { kind: 'days' }])).toContain('days,month');
   });
   it('writes the row when nothing matched', async () => {
     h.selects = [[]];

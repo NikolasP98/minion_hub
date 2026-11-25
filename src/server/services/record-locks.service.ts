@@ -164,10 +164,11 @@ export async function recordLockFor(
   const firstPostedAt = firstRaw ? new Date(firstRaw) : record.postedAt;
   // The walk is capped (one row past the cap means it may have stopped early) and the oldest receipt
   // must have a date: otherwise the age cannot be verified, so fail closed instead of judging a partial chain.
-  // Only the days and webhook rules read the first receipt's date, so only they can be misled by a
-  // partial chain; with neither on (every org without a policy row) the answer stays exactly today's.
+  // Every rule reads the first receipt's date or the chain's posting history (the month rule included: a
+  // chain longer than the cap would otherwise escape a month closed after the corrections), so a partial
+  // chain is refused whichever rule is on.
   const chainUnverified =
-    (policy.days !== null || policy.webhook) &&
+    (policy.month || policy.days !== null || policy.webhook) &&
     (chain.length > CHAIN_CAP || (chain.length > 0 && !firstRaw));
 
   // External locks are only read while the webhook rule is on: with it off they cannot change the answer.
@@ -351,11 +352,17 @@ export async function logLockEventInTx(tx: CoreTx, orgId: string, e: LockEventIn
   return row!.id;
 }
 
+const ruleKinds = (rules: LockEventInput['rules']) =>
+  ((rules ?? []) as Array<{ kind?: string }>)
+    .map((h) => h.kind ?? '')
+    .sort()
+    .join(',');
+
 /** One audit row in its own short transaction (refusals: the refused transaction cannot hold it). */
 export async function logLockEvent(
   ctx: CoreCtx,
   e: LockEventInput,
-  /** Skip the row when the same actor, action, record and `detail.code` was logged within this many ms. */
+  /** Skip the row when the same actor, action, record, `detail.code` and rule kinds were logged within this many ms. */
   opts: { dedupeMs?: number } = {},
 ): Promise<void> {
   await withOrgCore(ctx, async (tx) => {
@@ -371,6 +378,9 @@ export async function logLockEvent(
             eq(orgLockEvents.actorKind, e.actor.kind),
             e.actor.id ? eq(orgLockEvents.actorId, e.actor.id) : isNull(orgLockEvents.actorId),
             sql`${orgLockEvents.detail}->>'code' is not distinct from ${String(e.detail?.code ?? '')}`,
+            // A rule that newly applies within the window is a different refusal and gets its own row.
+            sql`(select coalesce(string_agg(r->>'kind', ',' order by r->>'kind'), '')
+              from jsonb_array_elements(${orgLockEvents.rules}) r) = ${ruleKinds(e.rules)}`,
             sql`${orgLockEvents.occurredAt} > now() - make_interval(secs => ${opts.dedupeMs / 1000})`,
           ),
         )
@@ -557,7 +567,13 @@ export async function grantUnlock(
 export async function consumeUnlockInTx(
   tx: CoreTx,
   orgId: string,
-  use: { eventId: string; recordId: string; correctionId: string; rules: LockHit[] },
+  use: {
+    eventId: string;
+    recordId: string;
+    correctionId?: string;
+    rules: LockHit[];
+    detail?: Record<string, unknown>;
+  },
   actor: LockActor,
 ): Promise<void> {
   try {
@@ -568,7 +584,7 @@ export async function consumeUnlockInTx(
       rules: use.rules,
       actor,
       refEventId: use.eventId,
-      detail: { correctionId: use.correctionId },
+      detail: use.detail ?? { correctionId: use.correctionId },
     });
   } catch (e) {
     const cause = (e as { cause?: unknown } | null)?.cause;

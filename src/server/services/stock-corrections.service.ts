@@ -34,7 +34,12 @@ import {
   sqlStateOf as sqlState,
 } from '$server/auth/active-operator-principal';
 import { recordAuditInTx } from './activity.service';
-import { consumeUnlockInTx, lockRefusalError, personActor, recordLockFor } from './record-locks.service';
+import {
+  consumeUnlockInTx,
+  lockRefusalError,
+  personActor,
+  recordLockFor,
+} from './record-locks.service';
 import {
   StockError,
   assertStockModulesEnabledInTx,
