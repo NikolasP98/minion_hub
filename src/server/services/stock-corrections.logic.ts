@@ -25,6 +25,8 @@ export type CorrectionRefusalCode =
   | 'dependent_history'
   | 'policy_unverified'
   | 'period_locked'
+  | 'record_locked'
+  | 'invalid_policy'
   | 'stock_scope_required'
   | 'owner_evidence_required'
   | 'duplicate_source'
@@ -49,6 +51,8 @@ export const CORRECTION_STATUS: Record<CorrectionRefusalCode, number> = {
   dependent_history: 422,
   policy_unverified: 422,
   period_locked: 422,
+  record_locked: 422,
+  invalid_policy: 400,
   stock_scope_required: 422,
   owner_evidence_required: 422,
   duplicate_source: 422,

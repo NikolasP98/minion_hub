@@ -89,7 +89,7 @@ async function ensureRole(owner: postgres.Sql, role: string, attrs: string) {
 
 /** Only the POS / scheduling / stock / authority shape this suite exercises; notification/pulse/crm migrations need a production-faithful auth boundary the fixture does not model. */
 const WANTED_MIGRATIONS =
-  /_(pos_|fin_product|fin_products_kind|sched_booking_products|stk_|retire_sellable|event_types_follow|operator_authority|stock_corrections)/;
+  /_(pos_|fin_product|fin_products_kind|sched_booking_products|stk_|retire_sellable|event_types_follow|operator_authority|stock_corrections|record_lock_policy)/;
 
 /** Files strictly newer than the baseline ledger version, ascending (includes the F7 bridge and F3 migrations). */
 async function applyMigrationsAfterBaseline(owner: postgres.Sql): Promise<void> {

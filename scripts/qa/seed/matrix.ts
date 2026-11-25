@@ -680,6 +680,16 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'stock',
     why: 'immutable stk_corrections row linking a cancelled receipt to its replacement',
   },
+  {
+    id: 'stock.lock-policy.default',
+    domain: 'stock',
+    why: 'explicit org_lock_policy row equal to the default (month close only, spec 140 S1): the settings page is not empty on a fresh stack',
+  },
+  {
+    id: 'stock.lock-event.refused',
+    domain: 'stock',
+    why: "org_lock_events 'refused' row for a receipt correction (spec 140 S1): the audit list has one entry on a fresh stack",
+  },
   { id: 'stock.bin.zero', domain: 'stock', why: 'qty=0 after the chain nets out' },
   { id: 'stock.accrual.open', domain: 'stock', why: "status='open'" },
   {
