@@ -44,7 +44,8 @@
       });
       toastSuccess(m.record_locks_saved());
     } catch (e) {
-      const code = e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
+      const code =
+        e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
       toastError(correctionRefusal(code));
     } finally {
       saving = false;

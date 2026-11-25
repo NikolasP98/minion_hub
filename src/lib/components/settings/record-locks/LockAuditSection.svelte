@@ -127,7 +127,9 @@
   </Card>
   {#if hasMore}
     <div class="more">
-      <Button variant="outline" size="sm" onclick={more} {loading}>{m.record_locks_audit_more()}</Button>
+      <Button variant="outline" size="sm" onclick={more} {loading}
+        >{m.record_locks_audit_more()}</Button
+      >
     </div>
   {/if}
 </section>

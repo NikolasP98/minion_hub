@@ -1,8 +1,11 @@
 import type { PageServerLoad } from './$types';
 import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireDataset } from '$server/auth/dataset-ctx';
-import { getLockPolicy, isOrgOwner, listLockEvents } from '$server/services/record-locks.service';
-import { withOrgCore } from '$server/db/with-org-core';
+import {
+  getLockPolicyFor,
+  isOrgOwner,
+  listLockEvents,
+} from '$server/services/record-locks.service';
 
 /** Settings → Record locks (spec 140): the organization's lock rules and the audit list. */
 export const load: PageServerLoad = async ({ locals, depends, url }) => {
@@ -13,7 +16,7 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   const asked = Number(url.searchParams.get('events'));
   const eventsLimit = Number.isInteger(asked) && asked >= 100 ? Math.min(asked, 500) : 100;
   const [policy, isOwner, events] = await Promise.all([
-    withOrgCore(ctx, (tx) => getLockPolicy(tx, ctx.tenantId)),
+    getLockPolicyFor(ctx),
     isOrgOwner(ctx),
     listLockEvents(ctx, { limit: eventsLimit }),
   ]);

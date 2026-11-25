@@ -10,6 +10,7 @@
   import { page } from '$app/state';
   import CorrectionFlow from '$lib/components/stock/CorrectionFlow.svelte';
   import LockNotice from '$lib/components/stock/LockNotice.svelte';
+  import { lockReason } from '$lib/components/stock/lock-reasons';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import { stockRefusal } from '$lib/components/stock/exchange';
@@ -98,7 +99,10 @@
   async function errMessage(res: Response): Promise<string> {
     try {
       const body = await res.json();
-      return body?.message ?? m.stock_submit_failed();
+      // Lock refusals (spec 140) name every rule that applies.
+      if (Array.isArray(body?.locks) && body.locks.length)
+        return `${body.error}: ${body.locks.map(lockReason).join(' · ')}`;
+      return body?.message ?? body?.error ?? m.stock_submit_failed();
     } catch {
       return m.stock_submit_failed();
     }

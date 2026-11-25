@@ -10,13 +10,20 @@ const h = vi.hoisted(() => ({
 
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(h.tx),
+  withOrgCoreTransaction: (_ctx: unknown, tx: unknown, fn: (tx: unknown) => unknown) => fn(tx),
+}));
+// isOrgOwner reads authority in a READ ONLY snapshot (the bridge's nonlocking mode requires it).
+vi.mock('$server/db/pg-client', () => ({
+  getOrgTransactionDb: () => ({
+    transaction: (fn: (tx: unknown) => unknown) => fn({ execute: async () => [] }),
+  }),
 }));
 vi.mock('./rbac.service', () => ({
   resolveFreshOperatorCapabilitiesForWriteInTransaction: async () => {
     if (h.authority) throw h.authority;
     return { membershipRole: h.role };
   },
-  resolveFreshCapabilitiesInTransaction: async () => ({ membershipRole: h.role }),
+  resolveFreshCapabilitiesReadOnlyInTransaction: async () => ({ membershipRole: h.role }),
 }));
 
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';

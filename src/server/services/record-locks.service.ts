@@ -9,7 +9,8 @@
 import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
-import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { getOrgTransactionDb } from '$server/db/pg-client';
+import { withOrgCore, withOrgCoreTransaction, type CoreTx } from '$server/db/with-org-core';
 import { stkEntries } from '$server/db/pg-schema/stock';
 import { finSettings } from '$server/db/pg-finance-schema';
 import { posPeriodLocks } from '$server/db/pg-pos-schema';
@@ -41,7 +42,7 @@ import {
   type ReceiptPeriodEvaluation,
 } from './stock-corrections.logic';
 import {
-  resolveFreshCapabilitiesInTransaction,
+  resolveFreshCapabilitiesReadOnlyInTransaction,
   resolveFreshOperatorCapabilitiesForWriteInTransaction,
 } from './rbac.service';
 
@@ -168,6 +169,24 @@ export async function recordLockFor(
   };
 }
 
+/** The refusal a locked receipt gets (corrections and cancel share it); the hits ride along so the route can name the rules. */
+export function lockRefusalError(lock: RecordLockResult): CorrectionError {
+  // Month-only refusals keep today's code and text.
+  if (lock.rules.every((h) => h.rule === 'month'))
+    return new CorrectionError(
+      `period ${lock.rules.map((h) => h.period as string).sort()[0]} is locked`,
+      'period_locked',
+      { locks: lock.rules },
+    );
+  return new CorrectionError(
+    lock.rules.some((h) => h.kind === 'chain_unverified')
+      ? 'record is locked: its replacement history could not be verified; ask an owner'
+      : 'record is locked',
+    'record_locked',
+    { locks: lock.rules },
+  );
+}
+
 // ── S2: policy, audit ────────────────────────────────────────────────────────────────────
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -202,15 +221,31 @@ export async function assertOwnerInTx(tx: CoreTx, ctx: CoreCtx): Promise<string>
   return ctx.profileId;
 }
 
+/** Page-load wrappers: keep the tenant transaction inside the service (dataset-read ratchet, spec 039). */
+export const getLockPolicyFor = (ctx: CoreCtx) =>
+  withOrgCore(ctx, (tx) => getLockPolicy(tx, ctx.tenantId));
+export const recordLockForCtx = (ctx: CoreCtx, record: LockableRecord) =>
+  withOrgCore(ctx, (tx) => recordLockFor(tx, ctx.tenantId, record));
+
 /** Page hint only (the writes check again): is the signed-in person an owner of the organization? */
 export async function isOrgOwner(ctx: CoreCtx): Promise<boolean> {
   if (!ctx.profileId || !UUID_RE.test(ctx.profileId)) return false;
-  return withOrgCore(
-    ctx,
-    async (tx) =>
-      (await resolveFreshCapabilitiesInTransaction(tx, ctx.tenantId, ctx.profileId as string))
-        .membershipRole === 'owner',
-  );
+  // The nonlocking authority bridge requires a READ ONLY REPEATABLE READ snapshot.
+  return getOrgTransactionDb(ctx.db).transaction(async (tx) => {
+    await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`);
+    return withOrgCoreTransaction(
+      ctx,
+      tx as unknown as CoreTx,
+      async (t) =>
+        (
+          await resolveFreshCapabilitiesReadOnlyInTransaction(
+            t,
+            ctx.tenantId,
+            ctx.profileId as string,
+          )
+        ).membershipRole === 'owner',
+    );
+  });
 }
 
 export interface LockEventInput {

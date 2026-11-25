@@ -41,18 +41,32 @@ export async function logLockRefusal(
   e: unknown,
   rawRequest: unknown,
 ): Promise<void> {
+  try {
+    const request = parsePreviewRequest(rawRequest);
+    if (request.mode !== 'receipt_replace') return;
+    await logReceiptLockRefusal(ctx, actorName, e, request.sourceId);
+  } catch (err) {
+    console.error('[record-locks] could not log a refused correction', (err as Error).name);
+  }
+}
+
+/** Audit a refused change to a locked receipt (correction or cancel); best effort like `logLockRefusal`. */
+export async function logReceiptLockRefusal(
+  ctx: CoreCtx,
+  actorName: string | null,
+  e: unknown,
+  receiptId: string,
+): Promise<void> {
   if (!(e instanceof CorrectionError)) return;
   const locks = lockHits(e);
   if (!locks) return;
   try {
-    const request = parsePreviewRequest(rawRequest);
-    if (request.mode !== 'receipt_replace') return;
     await logLockEvent(
       ctx,
       {
         action: 'refused',
         recordType: 'stock_receipt',
-        recordId: request.sourceId,
+        recordId: receiptId,
         rules: locks,
         actor: personActor(ctx, actorName),
         detail: { code: e.code },

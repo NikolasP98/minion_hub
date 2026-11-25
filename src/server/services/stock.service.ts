@@ -8,6 +8,7 @@ import { nextSerialId } from './naming-series';
 import { recordAudit } from './activity.service';
 import { lockNavigationPolicy } from './nav-policy-lock';
 import { registerNotifCandidateSource } from './notif.service';
+import { lockRefusalError, recordLockFor } from './record-locks.service';
 import { emitHubEvent } from '$server/events/emit';
 import {
   stkItems,
@@ -709,6 +710,8 @@ export interface StockPostingOptions {
   /** Server/approved manifest only; normal callers use now. */
   readonly postedAt?: Date;
   readonly bins?: LockedBins;
+  /** Spec 140: refuse when the organization's lock policy holds this receipt (the public cancel sets it; corrections check their own). */
+  readonly checkRecordLock?: boolean;
 }
 export interface SubmitEntryOptions extends StockPostingOptions {
   /** Default false: a non-draft entry refuses `not_draft`. */
@@ -1207,9 +1210,11 @@ export async function submitEntryInTx(
  *  same locking discipline as submit. Exact by construction — see
  *  applyLedgerDelta's doc comment on invertibility. */
 export async function cancelEntry(ctx: CoreCtx, id: string, actor: Actor): Promise<StkEntry> {
-  const result = await withOrgCore(ctx, async (tx) =>
-    cancelEntryInTx(tx, ctx, await lockStockWrite(tx, ctx), id, actor),
-  );
+  const result = await withOrgCore(ctx, async (tx) => {
+    return cancelEntryInTx(tx, ctx, await lockStockWrite(tx, ctx), id, actor, {
+      checkRecordLock: true,
+    });
+  });
   await recordAudit(ctx, {
     refType: 'stk_entry',
     refId: id,
@@ -1239,6 +1244,14 @@ export async function cancelEntryInTx(
   if (!entry) throw new StockError('entry not found', 'not_found');
   if (entry.status !== 'submitted')
     throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
+  if (options.checkRecordLock && entry.type === 'receipt' && entry.postedAt) {
+    const lock = await recordLockFor(tx, orgId, {
+      type: 'stock_receipt',
+      id,
+      postedAt: entry.postedAt,
+    });
+    if (lock.locked) throw lockRefusalError(lock);
+  }
 
   const origRows = await tx
     .select()
