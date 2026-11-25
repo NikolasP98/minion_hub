@@ -688,5 +688,15 @@
     "file": "src/server/mcp/oauth.service.ts",
     "calls": ["getCoreDb"],
     "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/routes/api/pos/shifts/auto-close/+server.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/services/pos-auto-close.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
   }
 ]
