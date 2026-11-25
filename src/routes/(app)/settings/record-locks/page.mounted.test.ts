@@ -4,9 +4,16 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import type { ComponentProps } from 'svelte';
 import * as m from '$lib/paraglide/messages';
 
-vi.mock('$app/state', async () => ({
-  page: (await import('$lib/state/ui/__fixtures__/preference-owner.svelte')).testPage,
-}));
+vi.mock('$app/state', async () => {
+  const { testPage } = await import('$lib/state/ui/__fixtures__/preference-owner.svelte');
+  // The curl example reads the page origin.
+  return {
+    page: new Proxy(testPage, {
+      get: (t, k) =>
+        k === 'url' ? new URL('http://hub.test/settings/record-locks') : Reflect.get(t, k),
+    }),
+  };
+});
 const invalidate = vi.hoisted(() => vi.fn(async () => {}));
 const goto = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('$lib/navigation', () => ({ invalidate, goto }));
@@ -38,7 +45,24 @@ const event = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 const data = (over: Record<string, unknown> = {}) =>
-  ({ policy, isOwner: true, events: [], eventsLimit: 100, ...over }) as unknown as Data;
+  ({
+    policy,
+    isOwner: true,
+    events: [],
+    eventsLimit: 100,
+    externalLocks: [],
+    ...over,
+  }) as unknown as Data;
+const external = (over: Record<string, unknown> = {}) => ({
+  id: 'l1',
+  label: 'Contabilidad',
+  upTo: '2026-10-31',
+  recordId: null,
+  recordLabel: null,
+  actorName: 'contador-externo',
+  createdAt: '2026-11-05T14:00:00.000Z',
+  ...over,
+});
 
 const fetcher = vi.fn();
 beforeEach(() => {
@@ -155,5 +179,73 @@ describe('Settings → Record locks', () => {
     });
     await fireEvent.click(screen.getByRole('button', { name: m.record_locks_audit_more() }));
     expect(goto).toHaveBeenCalledWith('?events=102', expect.any(Object));
+  });
+});
+
+describe('Settings → Record locks: webhook (spec 140 S4)', () => {
+  it('an owner turns on "Por webhook" and the save sends webhook:true', async () => {
+    render(Page, { data: data() });
+    await fireEvent.click(screen.getByRole('switch', { name: m.record_locks_rule_webhook() }));
+    await fireEvent.click(screen.getByRole('button', { name: m.record_locks_save() }));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ month: true, days: null, webhook: true });
+  });
+
+  it('"Tras SUNAT" is shown off and cannot be switched yet', () => {
+    render(Page, { data: data() });
+    const sw = screen.getByRole('switch', { name: m.record_locks_rule_sunat() });
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    expect(sw.getAttribute('aria-disabled') === 'true' || (sw as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+  });
+
+  it('lists the external locks with label, scope and key, and shows the curl example when empty', () => {
+    const { unmount } = render(Page, { data: data() });
+    expect(screen.getByText(m.record_locks_external_empty())).toBeTruthy();
+    expect(screen.getByText(/\/api\/hooks\/record-locks/, { selector: 'pre' })).toBeTruthy();
+    unmount();
+    render(Page, {
+      data: data({
+        externalLocks: [
+          external(),
+          external({
+            id: 'l2',
+            label: 'Auditoría',
+            upTo: null,
+            recordId: 'r-9',
+            recordLabel: 'STE-2026-00559',
+            actorName: 'auditor',
+          }),
+        ],
+      }),
+    });
+    expect(screen.getByText('Contabilidad')).toBeTruthy();
+    expect(screen.getByText('contador-externo')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'STE-2026-00559' }).getAttribute('href')).toBe(
+      '/stock/entries/r-9',
+    );
+  });
+
+  it('an owner lifts a lock with a reason; an admin sees no lift button', async () => {
+    render(Page, { data: data({ externalLocks: [external()] }) });
+    await fireEvent.click(screen.getByRole('button', { name: m.record_locks_external_lift() }));
+    const confirm = screen.getByRole('button', {
+      name: m.record_locks_external_lift_confirm(),
+    }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    await fireEvent.input(screen.getByLabelText(/Reason|Motivo/), {
+      target: { value: 'ya corregido' },
+    });
+    await fireEvent.click(confirm);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/settings/record-locks/locks/l1/lift');
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'ya corregido' });
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledWith('settings:record-locks'));
+    cleanup();
+    render(Page, { data: data({ isOwner: false, externalLocks: [external()] }) });
+    expect(screen.queryByRole('button', { name: m.record_locks_external_lift() })).toBeNull();
   });
 });

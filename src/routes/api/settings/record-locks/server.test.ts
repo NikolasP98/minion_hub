@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   requireCoreCtx: vi.fn(),
   setLockPolicy: vi.fn(),
   grantUnlock: vi.fn(),
+  liftLock: vi.fn(),
 }));
 vi.mock('$server/services/rbac.service', () => ({
   requireOrgCapability: mocks.requireOrgCapability,
@@ -14,6 +15,7 @@ vi.mock('$server/auth/core-ctx', () => ({ requireCoreCtx: mocks.requireCoreCtx }
 vi.mock('$server/services/record-locks.service', () => ({
   setLockPolicy: mocks.setLockPolicy,
   grantUnlock: mocks.grantUnlock,
+  liftLock: mocks.liftLock,
   logLockEvent: vi.fn(),
   personActor: (c: { profileId?: string }, name: string | null) => ({
     kind: 'person',
@@ -24,6 +26,7 @@ vi.mock('$server/services/record-locks.service', () => ({
 
 import { PUT } from './policy/+server';
 import { POST as UNLOCK } from './unlocks/+server';
+import { POST as LIFT } from './locks/[id]/lift/+server';
 
 const ctx = { tenantId: 'org-1', profileId: 'p1' };
 const locals = { user: { id: 'u1', displayName: 'Ada', email: 'a@x.test' } };
@@ -136,5 +139,51 @@ describe('POST /api/settings/record-locks/unlocks', () => {
     mocks.requireOrgCapability.mockRejectedValue({ status: 403 });
     await expect(post(JSON.stringify(body))).rejects.toMatchObject({ status: 403 });
     expect(mocks.grantUnlock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/settings/record-locks/locks/[id]/lift', () => {
+  const LOCK = '11111111-1111-4111-8111-111111111111';
+  const post = (raw: string) =>
+    LIFT({
+      locals,
+      params: { id: LOCK },
+      request: new Request('http://hub.test/x', { method: 'POST', body: raw }),
+    } as never) as Promise<Response>;
+
+  it('an owner lifts with a reason; the actor is the signed-in person', async () => {
+    mocks.liftLock.mockResolvedValue({ lifted: true });
+    const res = await post(JSON.stringify({ reason: 'ya corregido' }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ lifted: true });
+    expect(mocks.requireOrgCapability).toHaveBeenCalledWith(locals, 'settings', 'manage');
+    expect(mocks.liftLock).toHaveBeenCalledWith(ctx, LOCK, 'ya corregido', {
+      kind: 'person',
+      id: 'p1',
+      name: 'Ada',
+    });
+  });
+
+  it('an already lifted lock answers 200 lifted:false', async () => {
+    mocks.liftLock.mockResolvedValue({ lifted: false });
+    expect(await (await post(JSON.stringify({ reason: 'x' }))).json()).toEqual({ lifted: false });
+  });
+
+  it.each([
+    ['owner_required', 403],
+    ['not_found', 404],
+    ['invalid_request', 400],
+  ] as const)('maps %s to %i', async (code, status) => {
+    mocks.liftLock.mockRejectedValue(new CorrectionError('nope', code));
+    const res = await post(JSON.stringify({ reason: 'x' }));
+    expect(res.status).toBe(status);
+    expect(await res.json()).toMatchObject({ code });
+  });
+
+  it('a body that is not an object is 400, and settings:manage is required first', async () => {
+    await expect(post('[]')).rejects.toMatchObject({ status: 400 });
+    mocks.requireOrgCapability.mockRejectedValue({ status: 403 });
+    await expect(post('{}')).rejects.toMatchObject({ status: 403 });
+    expect(mocks.liftLock).not.toHaveBeenCalled();
   });
 });

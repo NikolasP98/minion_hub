@@ -122,15 +122,20 @@ export async function revokeKey(ctx: CoreCtx, id: string): Promise<void> {
  * The active key whose text this is, or null. Malformed text returns null without a
  * query; the hash comparison is constant-time.
  */
-export async function verifyKey(
-  text: string,
-): Promise<{ id: string; orgId: string; lastUsedAt: Date | null; scopes: string[] } | null> {
+export async function verifyKey(text: string): Promise<{
+  id: string;
+  orgId: string;
+  name: string;
+  lastUsedAt: Date | null;
+  scopes: string[];
+} | null> {
   const match = KEY_RE.exec(text);
   if (!match) return null;
   const [hit] = await getCoreDb()
     .select({
       id: orgApiKeys.id,
       orgId: orgApiKeys.orgId,
+      name: orgApiKeys.name,
       keyHash: orgApiKeys.keyHash,
       lastUsedAt: orgApiKeys.lastUsedAt,
       revokedAt: orgApiKeys.revokedAt,
@@ -143,7 +148,13 @@ export async function verifyKey(
   const a = Buffer.from(hashKey(text), 'hex');
   const b = Buffer.from(hit.keyHash, 'hex');
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { id: hit.id, orgId: hit.orgId, lastUsedAt: hit.lastUsedAt, scopes: hit.scopes };
+  return {
+    id: hit.id,
+    orgId: hit.orgId,
+    name: hit.name,
+    lastUsedAt: hit.lastUsedAt,
+    scopes: hit.scopes,
+  };
 }
 
 /** Record a use; the condition keeps it to at most one write per key and minute. */

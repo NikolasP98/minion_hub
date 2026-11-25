@@ -10,9 +10,9 @@ export interface ApiKeyRow {
   lastUsedAt: string | null;
   revokedAt: string | null;
   revokedByName: string | null;
-  /** Abilities beyond doors; `sandbox` = the MCP endpoint (spec 136). Empty for older keys. */
+  /** Abilities beyond doors; `sandbox` = the MCP endpoint (spec 136), `locks` = the record-lock webhook (spec 140). Empty for older keys. */
   scopes: ApiKeyScope[];
 }
 
-export const API_KEY_SCOPES = ['sandbox'] as const;
+export const API_KEY_SCOPES = ['sandbox', 'locks'] as const;
 export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];

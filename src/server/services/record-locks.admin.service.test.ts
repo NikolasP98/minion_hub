@@ -8,6 +8,9 @@ const h = vi.hoisted(() => ({
   wheres: [] as unknown[],
   inserts: [] as Array<{ values: Record<string, unknown>; conflict?: Record<string, unknown> }>,
   insertError: null as unknown,
+  returns: [] as unknown[][],
+  updates: [] as Array<{ set: Record<string, unknown>; rows: unknown[] }>,
+  updateRows: [] as unknown[][],
   tx: null as unknown,
 }));
 
@@ -34,10 +37,13 @@ vi.mock('./rbac.service', () => ({
 
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
 import { CorrectionError } from './stock-corrections.logic';
+import { HookError, parseHookBody } from './record-locks.logic';
 import {
   consumeUnlockInTx,
+  applyExternalLock,
   grantUnlock,
   isOrgOwner,
+  liftLock,
   listLockEvents,
   logLockEvent,
   parseUnlockInput,
@@ -66,6 +72,9 @@ beforeEach(() => {
   h.inserts = [];
   h.wheres = [];
   h.insertError = null;
+  h.returns = [];
+  h.updates = [];
+  h.updateRows = [];
   const chain = (): unknown =>
     new Proxy(() => {}, {
       get(_t, prop: string) {
@@ -92,10 +101,30 @@ beforeEach(() => {
           rec.conflict = c.set;
           return Promise.resolve();
         },
+        onConflictDoNothing() {
+          return api;
+        },
         returning: async () => {
           if (h.insertError) throw h.insertError;
-          return [{ id: 'evt-1' }];
+          return h.returns.shift() ?? [{ id: 'evt-1' }];
         },
+        // `await insert().values(...)` without returning
+        then: (ok: (x: unknown) => unknown) => Promise.resolve(undefined).then(ok),
+      };
+      return api;
+    },
+    update: () => {
+      const rec = { set: {} as Record<string, unknown>, rows: [] as unknown[] };
+      h.updates.push(rec);
+      const api = {
+        set(v: Record<string, unknown>) {
+          rec.set = v;
+          return api;
+        },
+        where() {
+          return api;
+        },
+        returning: async () => (rec.rows = h.updateRows.shift() ?? []),
       };
       return api;
     },
@@ -422,5 +451,199 @@ describe('consumeUnlockInTx', () => {
     });
     h.insertError = new Error('boom');
     await expect(consumeUnlockInTx(h.tx as never, ORG, use, actor)).rejects.toThrow('boom');
+  });
+});
+
+describe('applyExternalLock (spec 140 S4)', () => {
+  const KEY = { id: '0d0d0d0d-0d0d-4d0d-8d0d-0d0d0d0d0d0d', name: 'Contador' };
+  const now = new Date('2026-11-24T15:00:00Z');
+  const body = (o: Record<string, unknown>) =>
+    parseHookBody({ action: 'lock', label: 'Contabilidad', ...o });
+  const on = [policyRow({ webhookEnabled: true })];
+  const R1 = '0e0e0e0e-0e0e-4e0e-8e0e-0e0e0e0e0e0e';
+  const R2 = '0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f';
+
+  it('refuses while "Por webhook" is off and writes nothing', async () => {
+    h.selects = [[]];
+    await expect(
+      applyExternalLock(ctx, KEY, body({ upTo: '2026-10-31' }), { now }),
+    ).rejects.toMatchObject({ code: 'webhook_rule_off', status: 409 });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('locks up to a date: one row for the key, one lock event with the key name', async () => {
+    h.selects = [on, [{ timezone: 'America/Lima' }]];
+    h.returns = [[{ id: 'lock-1' }]];
+    const out = await applyExternalLock(ctx, KEY, body({ upTo: '2026-10-31' }), { now });
+    expect(out).toEqual({
+      action: 'lock',
+      created: 1,
+      existing: 0,
+      unknown: [],
+      locks: [{ id: 'lock-1', label: 'Contabilidad', upTo: '2026-10-31' }],
+    });
+    expect(h.inserts[0]!.values).toMatchObject({
+      orgId: ORG,
+      source: 'webhook',
+      label: 'Contabilidad',
+      upTo: '2026-10-31',
+      apiKeyId: KEY.id,
+      actorName: 'Contador',
+      recordType: null,
+    });
+    expect(h.inserts[1]!.values).toMatchObject({
+      action: 'lock',
+      actorKind: 'api_key',
+      actorId: KEY.id,
+      actorName: 'Contador',
+      detail: { lockId: 'lock-1', label: 'Contabilidad', upTo: '2026-10-31' },
+    });
+  });
+
+  it('the same call again is idempotent: created 0, existing 1, no second event', async () => {
+    h.selects = [on, [{ timezone: 'America/Lima' }], [{ id: 'lock-1' }]];
+    h.returns = [[]];
+    const out = await applyExternalLock(ctx, KEY, body({ upTo: '2026-10-31' }), { now });
+    expect(out).toMatchObject({ created: 0, existing: 1, locks: [{ id: 'lock-1' }] });
+    expect(h.inserts).toHaveLength(1); // only the (ignored) lock insert
+  });
+
+  it('a date in the future (in the org timezone) is refused', async () => {
+    h.selects = [on, [{ timezone: 'America/Lima' }]];
+    await expect(
+      applyExternalLock(ctx, KEY, body({ upTo: '2026-11-25' }), { now }),
+    ).rejects.toMatchObject({ code: 'invalid_request' });
+    expect(h.inserts).toHaveLength(0);
+    // 15:00Z on the 24th is the 24th in Lima: today is allowed.
+    h.selects = [on, [{ timezone: 'America/Lima' }]];
+    h.returns = [[{ id: 'l' }]];
+    await expect(
+      applyExternalLock(ctx, KEY, body({ upTo: '2026-11-24' }), { now }),
+    ).resolves.toMatchObject({ created: 1 });
+  });
+
+  it('locks by ids: skips existing, reports unknown ids, one event per new lock', async () => {
+    const unknown = '10101010-1010-4010-8010-101010101010';
+    h.selects = [on, [{ id: R1 }, { id: R2 }], [{ id: 'a' }, { id: 'b' }]];
+    h.returns = [[{ id: 'a', recordId: R1 }]]; // R2 was already locked
+    const out = await applyExternalLock(
+      ctx,
+      KEY,
+      body({ recordType: 'stock_receipt', ids: [R1, R2, unknown] }),
+      { now },
+    );
+    expect(out).toMatchObject({ created: 1, existing: 1, unknown: [unknown] });
+    expect(h.inserts[0]!.values).toEqual([
+      expect.objectContaining({ recordId: R1, recordType: 'stock_receipt', apiKeyId: KEY.id }),
+      expect.objectContaining({ recordId: R2 }),
+    ]);
+    expect(h.inserts[1]!.values).toEqual([
+      expect.objectContaining({ action: 'lock', recordId: R1, actorKind: 'api_key' }),
+    ]);
+  });
+
+  it('only unknown ids: nothing is stored', async () => {
+    h.selects = [on, []];
+    const out = await applyExternalLock(
+      ctx,
+      KEY,
+      body({ recordType: 'stock_receipt', ids: [R1] }),
+      { now },
+    );
+    expect(out).toMatchObject({ created: 0, existing: 0, unknown: [R1], locks: [] });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('lifts by date and by ids, one lift event per lock, 0 when nothing matches', async () => {
+    h.selects = [on];
+    h.updateRows = [
+      [
+        {
+          id: 'lock-1',
+          label: 'Contabilidad',
+          upTo: '2026-10-31',
+          recordType: null,
+          recordId: null,
+        },
+      ],
+    ];
+    const lift = parseHookBody({ action: 'lift', label: 'Contabilidad', upTo: '2026-10-31' });
+    expect(await applyExternalLock(ctx, KEY, lift, { now })).toEqual({ action: 'lift', lifted: 1 });
+    expect(h.updates[0]!.set).toMatchObject({ liftedByKind: 'api_key', liftedBy: KEY.id });
+    expect(h.inserts[0]!.values).toEqual([
+      expect.objectContaining({
+        action: 'lift',
+        actorName: 'Contador',
+        detail: expect.objectContaining({ lockId: 'lock-1' }),
+      }),
+    ]);
+
+    h.inserts = [];
+    h.selects = [on];
+    h.updateRows = [[]];
+    const none = parseHookBody({ action: 'lift', recordType: 'stock_receipt', ids: [R1] });
+    expect(await applyExternalLock(ctx, KEY, none, { now })).toEqual({ action: 'lift', lifted: 0 });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('a lift is also refused while the rule is off (HookError)', async () => {
+    h.selects = [[]];
+    await expect(
+      applyExternalLock(
+        ctx,
+        KEY,
+        parseHookBody({ action: 'lift', label: 'x', upTo: '2026-10-31' }),
+        { now },
+      ),
+    ).rejects.toBeInstanceOf(HookError);
+  });
+});
+
+describe('liftLock (owner)', () => {
+  const LOCK = '11111111-1111-4111-8111-111111111111';
+  const row = {
+    id: LOCK,
+    label: 'Contabilidad',
+    upTo: '2026-10-31',
+    recordType: null,
+    recordId: null,
+    liftedAt: null,
+  };
+
+  it('an owner lifts with a reason: the lock row and one lift event record who and why', async () => {
+    h.selects = [[row]];
+    h.updateRows = [[{ id: LOCK }]];
+    expect(await liftLock(ctx, LOCK, '  ya corregido  ', actor)).toEqual({ lifted: true });
+    expect(h.updates[0]!.set).toMatchObject({
+      liftedByKind: 'person',
+      liftedBy: ME,
+      liftReason: 'ya corregido',
+    });
+    expect(h.inserts[0]!.values).toMatchObject({
+      action: 'lift',
+      reason: 'ya corregido',
+      actorKind: 'person',
+      detail: { lockId: LOCK, label: 'Contabilidad', upTo: '2026-10-31' },
+    });
+  });
+
+  it('an already lifted lock answers lifted:false and writes nothing', async () => {
+    h.selects = [[{ ...row, liftedAt: new Date() }]];
+    expect(await liftLock(ctx, LOCK, 'x', actor)).toEqual({ lifted: false });
+    expect(h.updates).toHaveLength(0);
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('refuses non-owners, a missing reason, an unknown or foreign lock', async () => {
+    h.role = 'admin';
+    await expect(liftLock(ctx, LOCK, 'x', actor)).rejects.toMatchObject({ code: 'owner_required' });
+    h.role = 'owner';
+    await expect(liftLock(ctx, LOCK, '  ', actor)).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+    await expect(liftLock(ctx, 'nope', 'x', actor)).rejects.toMatchObject({ code: 'not_found' });
+    h.selects = [[]];
+    await expect(liftLock(ctx, LOCK, 'x', actor)).rejects.toMatchObject({ code: 'not_found' });
+    expect(h.updates).toHaveLength(0);
   });
 });

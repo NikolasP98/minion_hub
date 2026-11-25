@@ -43,6 +43,7 @@
   let createOpen = $state(false);
   let name = $state('');
   let sandboxScope = $state(false);
+  let locksScope = $state(false);
   let creating = $state(false);
   let createError = $state<string | null>(null);
   /** The key text, held only while the reveal dialog is open. */
@@ -51,6 +52,7 @@
   function openCreate() {
     name = '';
     sandboxScope = false;
+    locksScope = false;
     createError = null;
     revealed = null;
     createOpen = true;
@@ -71,7 +73,10 @@
         init: {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), scopes: sandboxScope ? ['sandbox'] : [] }),
+          body: JSON.stringify({
+            name: name.trim(),
+            scopes: [...(sandboxScope ? ['sandbox'] : []), ...(locksScope ? ['locks'] : [])],
+          }),
         },
         onSuccess: () => invalidate('settings:developers'),
       });
@@ -174,6 +179,9 @@
   {#if r.scopes.includes('sandbox')}
     <Badge size="sm">{m.settings_developers_scope_sandbox()}</Badge>
   {/if}
+  {#if r.scopes.includes('locks')}
+    <Badge size="sm">{m.settings_developers_scope_locks()}</Badge>
+  {/if}
 {/snippet}
 {#snippet createdCell(r: ApiKeyRow)}{when(r.createdAt)}{/snippet}
 {#snippet lastUsedCell(r: ApiKeyRow)}{when(r.lastUsedAt)}{/snippet}
@@ -269,6 +277,12 @@
         bind:checked={sandboxScope}
         label={m.settings_developers_scope_sandbox()}
         description={m.settings_developers_scope_sandbox_hint()}
+        disabled={creating}
+      />
+      <Toggle
+        bind:checked={locksScope}
+        label={m.settings_developers_scope_locks()}
+        description={m.settings_developers_scope_locks_hint()}
         disabled={creating}
       />
       {#if createError}<p class="error" role="alert">{createError}</p>{/if}

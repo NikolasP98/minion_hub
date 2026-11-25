@@ -5,6 +5,7 @@
   import { iconSizes, PageHeader } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
   import LockPolicySection from '$lib/components/settings/record-locks/LockPolicySection.svelte';
+  import ExternalLocksSection from '$lib/components/settings/record-locks/ExternalLocksSection.svelte';
   import LockAuditSection from '$lib/components/settings/record-locks/LockAuditSection.svelte';
 
   let { data }: { data: PageData } = $props();
@@ -24,6 +25,7 @@
   </PageHeader>
   <PageBody width="content">
     <LockPolicySection policy={data.policy} isOwner={data.isOwner} />
+    <ExternalLocksSection locks={data.externalLocks} isOwner={data.isOwner} />
     <LockAuditSection events={data.events} pageSize={data.eventsLimit} />
   </PageBody>
 </PageShell>

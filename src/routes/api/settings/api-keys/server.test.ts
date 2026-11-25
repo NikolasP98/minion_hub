@@ -74,6 +74,12 @@ describe('/api/settings/api-keys', () => {
     expect(mocks.createKey).toHaveBeenCalledWith(ctx, 'Agent', ['sandbox']);
   });
 
+  it('POST passes the locks scope through (spec 140)', async () => {
+    mocks.createKey.mockResolvedValue({ ...KEY, scopes: ['locks'], key: 'mk_1a2b3c4d_x' });
+    await post(JSON.stringify({ name: 'Accounting', scopes: ['locks'] }));
+    expect(mocks.createKey).toHaveBeenCalledWith(ctx, 'Accounting', ['locks']);
+  });
+
   it('POST maps refusals: bad name or body → 400 invalid_name, the eleventh key → 409', async () => {
     mocks.createKey.mockImplementation(async (_c, name: string) => {
       throw new ApiKeyError(name.trim() ? 'limit_reached' : 'invalid_name');

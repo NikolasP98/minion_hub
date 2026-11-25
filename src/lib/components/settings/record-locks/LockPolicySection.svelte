@@ -13,6 +13,7 @@
 
   // Drafts follow the saved policy until the owner edits them (writable $derived, reset by `invalidate`).
   let monthOn = $derived(policy.month);
+  let webhookOn = $derived(policy.webhook);
   let daysOn = $derived(policy.days !== null);
   let daysText = $derived(policy.days !== null ? String(policy.days) : '');
   let saving = $state(false);
@@ -21,6 +22,7 @@
   const daysValid = $derived(!daysOn || (daysValue >= 1 && daysValue <= 3650));
   const dirty = $derived(
     monthOn !== policy.month ||
+      webhookOn !== policy.webhook ||
       daysOn !== (policy.days !== null) ||
       (daysOn && daysValue !== policy.days),
   );
@@ -37,7 +39,7 @@
           body: JSON.stringify({
             month: monthOn,
             days: daysOn ? daysValue : null,
-            webhook: policy.webhook,
+            webhook: webhookOn,
           }),
         },
         onSuccess: () => invalidate('settings:record-locks'),
@@ -96,6 +98,29 @@
           }}
           disabled={!isOwner || saving}
         />
+      </div>
+    </div>
+    <div class="rule">
+      <div class="text">
+        <h3 class="t-label">{m.record_locks_rule_webhook()}</h3>
+        <p class="t-caption muted">{m.record_locks_rule_webhook_hint()}</p>
+      </div>
+      <div class="control">
+        <Toggle
+          bind:checked={webhookOn}
+          ariaLabel={m.record_locks_rule_webhook()}
+          disabled={!isOwner || saving}
+        />
+      </div>
+    </div>
+    <div class="rule">
+      <div class="text">
+        <h3 class="t-label">{m.record_locks_rule_sunat()}</h3>
+        <p class="t-caption muted">{m.record_locks_rule_sunat_hint()}</p>
+      </div>
+      <div class="control">
+        <!-- TODO(handoff): (spec 140 S5) "Tras SUNAT" only governs sales; it stays off and disabled until that slice ships. -->
+        <Toggle checked={false} ariaLabel={m.record_locks_rule_sunat()} disabled />
       </div>
     </div>
   </Card>

@@ -158,3 +158,104 @@ export function parsePolicyInput(raw: unknown): LockPolicy {
     webhook: o.webhook as boolean,
   };
 }
+
+// ── S4: the webhook ──────────────────────────────────────────────────────────────────────
+
+export type HookErrorCode =
+  'unauthorized' | 'scope_required' | 'invalid_request' | 'webhook_rule_off' | 'too_many';
+
+const HOOK_STATUS: Record<HookErrorCode, number> = {
+  unauthorized: 401,
+  scope_required: 403,
+  invalid_request: 400,
+  webhook_rule_off: 409,
+  too_many: 429,
+};
+
+/** Every refusal names its next step (contracts/api.md). English only: the caller is a machine. */
+const HOOK_NEXT: Record<HookErrorCode, string> = {
+  unauthorized: 'Send "Authorization: Bearer mk_…" with a valid, active API key.',
+  scope_required: "Create an API key with the 'locks' scope in Settings → Developers.",
+  invalid_request:
+    'Send { "action": "lock" | "lift", "label", and exactly one of "upTo" (YYYY-MM-DD) or "ids" with "recordType": "stock_receipt" }.',
+  webhook_rule_off: "Enable 'Por webhook' in Settings → Record locks, then call again.",
+  too_many: 'Wait a minute and call again (60 calls per minute per key).',
+};
+
+export class HookError extends Error {
+  readonly status: number;
+  readonly next: string;
+  constructor(
+    readonly code: HookErrorCode,
+    message?: string,
+  ) {
+    super(message ?? code);
+    this.name = 'HookError';
+    this.status = HOOK_STATUS[code];
+    this.next = HOOK_NEXT[code];
+  }
+}
+
+export interface HookBody {
+  action: 'lock' | 'lift';
+  /** 1-60 characters; required for `lock` and for a `lift` by date. */
+  label: string | null;
+  recordType: 'stock_receipt' | null;
+  /** 'YYYY-MM-DD', inclusive. Exactly one of `upTo` and `ids` is set. */
+  upTo: string | null;
+  ids: string[] | null;
+}
+
+const HOOK_KEYS = ['action', 'label', 'upTo', 'recordType', 'ids'];
+const HOOK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const HOOK_LABEL_MAX = 60;
+export const HOOK_IDS_MAX = 200;
+
+/**
+ * TODO(handoff): (spec 140 tasks T050) `ids` are hub uuids of stock entries only; there is no lookup by document number (STE-…).
+ * Strict request parser for `POST /api/hooks/record-locks`; every failure is a 400 that names the rule it broke. */
+export function parseHookBody(raw: unknown): HookBody {
+  const bad = (m: string) => new HookError('invalid_request', m);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw bad('body must be an object');
+  const o = raw as Record<string, unknown>;
+  for (const k of Object.keys(o)) if (!HOOK_KEYS.includes(k)) throw bad(`unknown key ${k}`);
+  if (o.action !== 'lock' && o.action !== 'lift') throw bad('action must be "lock" or "lift"');
+  if (o.recordType !== undefined && o.recordType !== 'stock_receipt')
+    throw bad('recordType must be "stock_receipt"');
+  if ((o.upTo === undefined) === (o.ids === undefined))
+    throw bad('send exactly one of "upTo" or "ids"');
+
+  let label: string | null = null;
+  if (o.label !== undefined) {
+    const t = typeof o.label === 'string' ? o.label.trim() : '';
+    if (!t || t.length > HOOK_LABEL_MAX) throw bad(`label must be 1-${HOOK_LABEL_MAX} characters`);
+    label = t;
+  }
+  let upTo: string | null = null;
+  let ids: string[] | null = null;
+  if (o.upTo !== undefined) {
+    // parseDateKey rejects anything but a real calendar date in YYYY-MM-DD form.
+    if (typeof o.upTo !== 'string' || !parseDateKey(o.upTo))
+      throw bad('upTo must be a calendar date YYYY-MM-DD');
+    upTo = o.upTo;
+  } else {
+    if (o.recordType === undefined) throw bad('ids need "recordType": "stock_receipt"');
+    if (
+      !Array.isArray(o.ids) ||
+      o.ids.length < 1 ||
+      o.ids.length > HOOK_IDS_MAX ||
+      !o.ids.every((i) => typeof i === 'string' && HOOK_UUID_RE.test(i))
+    )
+      throw bad(`ids must hold 1-${HOOK_IDS_MAX} uuids`);
+    ids = [...new Set((o.ids as string[]).map((i) => i.toLowerCase()))];
+  }
+  // A lock always has a label; a lift by date names the lock it lifts by label.
+  if (!label && (o.action === 'lock' || upTo)) throw bad('label is required');
+  return {
+    action: o.action,
+    label,
+    recordType: o.recordType === 'stock_receipt' ? 'stock_receipt' : null,
+    upTo,
+    ids,
+  };
+}

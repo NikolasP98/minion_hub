@@ -114,6 +114,16 @@ describe('createKey', () => {
     });
   });
 
+  it('accepts the locks scope (spec 140) alone or with sandbox', async () => {
+    db.queue.push([{ n: 0 }], [row({ scopes: ['locks'] })], []);
+    const created = await createKey(ctx, 'Accounting', ['locks']);
+    expect(arg(db.calls[1]!, 'values')).toMatchObject({ scopes: ['locks'] });
+    expect(created.scopes).toEqual(['locks']);
+    db.queue.push([{ n: 0 }], [row({ scopes: ['sandbox', 'locks'] })], []);
+    await createKey(ctx, 'Both', ['sandbox', 'locks']);
+    expect(arg(db.calls.at(-2)!, 'values')).toMatchObject({ scopes: ['sandbox', 'locks'] });
+  });
+
   it('refuses an empty or over-60 name before any query', async () => {
     await expect(createKey(ctx, '   ')).rejects.toMatchObject({ code: 'invalid_name' });
     await expect(createKey(ctx, 'x'.repeat(61))).rejects.toMatchObject({ code: 'invalid_name' });
@@ -227,6 +237,7 @@ describe('verifyKey', () => {
       {
         id: 'k1',
         orgId: 'org-1',
+        name: 'Site',
         keyHash: hashKey(key),
         lastUsedAt: used,
         revokedAt: null,
@@ -236,6 +247,7 @@ describe('verifyKey', () => {
     expect(await verifyKey(key)).toEqual({
       id: 'k1',
       orgId: 'org-1',
+      name: 'Site',
       lastUsedAt: used,
       scopes: ['sandbox'],
     });

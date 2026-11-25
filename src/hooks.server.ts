@@ -529,6 +529,9 @@ const finishApp: Handle = async ({ event, resolve }) => {
     // `sandbox` scope, or a hub-issued connection credential — acts for that one org only,
     // and rate-limits per address and per key/connection.
     '/api/mcp',
+    // Record-lock webhook (spec 140 S4): authenticates itself with an org API key carrying the
+    // `locks` scope, acts for that key's organization alone and rate-limits per key.
+    '/api/hooks/record-locks',
     // OAuth registration and token endpoints for that sign-in (spec 143): called by a
     // harness with no session; each handler rate-limits and validates its own input.
     '/api/oauth',
