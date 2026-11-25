@@ -42,8 +42,8 @@ function fakeTx() {
         openBySubject.set(subject, id);
         return [{ id }];
       }
-      if (text.includes('update sched_reconfirm_cases set last_inbound_at')) {
-        const id = openBySubject.get(String(params[2]));
+      if (text.includes('select id from sched_reconfirm_cases')) {
+        const id = openBySubject.get(String(params[1]));
         return id ? [{ id }] : [];
       }
       if (text.includes('set closed_at = now()')) {
@@ -111,6 +111,8 @@ describe('openCase', () => {
       1,
     );
     expect(f.openBySubject.size).toBe(1);
+    // last_inbound_at belongs to the answer reader: a repeat negation must not move it.
+    expect(f.log.some((s) => s.text.includes('set last_inbound_at'))).toBe(false);
   });
 
   it('stores the result for a case opened as unclear or late_reply', async () => {

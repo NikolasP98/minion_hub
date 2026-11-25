@@ -164,7 +164,13 @@ export async function getSlotsForEventType(
   eventTypeId: string,
   from: Date,
   to: Date,
-  opts: { now?: Date; pinnedResourceId?: string | null; withEventTypeIds?: string[] } = {},
+  opts: {
+    now?: Date;
+    pinnedResourceId?: string | null;
+    withEventTypeIds?: string[];
+    /** A booking that must not block its own time (the reconfirmation agent offers slots for it). */
+    excludeBookingId?: string;
+  } = {},
 ): Promise<SlotsResult | null> {
   return withOrgCore(ctx, async (tx) => {
     const [et] = await tx
@@ -246,6 +252,7 @@ export async function getSlotsForEventType(
       resourceIds,
       new Date(from.getTime() - pad),
       new Date(to.getTime() + pad),
+      opts.excludeBookingId,
     );
 
     const slots = computeSlots({

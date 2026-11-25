@@ -54,6 +54,38 @@ const dbRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+describe('rescheduled with a failed confirmation', () => {
+  const done = { ...base, result: 'rescheduled', closedAt: new Date('2026-11-23T14:00:00Z') };
+
+  it('becomes a staff warning: the client was not told about the new time', () => {
+    const d = reconfirmDraft('org-1', { ...done, confirmFailed: true })!;
+    expect(d.severity).toBe('warning');
+    expect(d.title).toBe('Reprogramada, pero no se pudo avisar al cliente');
+    expect(d.dedupeKey).toBe('reconfirm:org-1:c1:done-warn'); // its own key: never loses to the info row
+  });
+
+  it('a failed closing message warns too, on its own key', () => {
+    const d = reconfirmDraft('org-1', { ...done, result: 'will_come', closingFailed: true })!;
+    expect(d.severity).toBe('warning');
+    expect(d.title).toBe('Confirmó que asistirá, pero no se pudo avisar al cliente');
+    expect(d.dedupeKey).toBe('reconfirm:org-1:c1:done-warn');
+  });
+
+  it('stays informational when the confirmation went out', () => {
+    const d = reconfirmDraft('org-1', done)!;
+    expect(d.severity).toBe('info');
+    expect(d.title).toBe('Reprogramada por el agente');
+  });
+
+  it('the rule reads the failed confirmation from the events log', async () => {
+    h.cases = [
+      dbRow({ result: 'rescheduled', closed_at: '2026-11-23T14:00:00Z', confirm_failed: true }),
+    ];
+    const r = await appointmentReconfirmRule.evaluate(ctx, NOW);
+    expect(r.upserts[0]!.title).toBe('Reprogramada, pero no se pudo avisar al cliente');
+  });
+});
+
 beforeEach(() => {
   h.cases = [];
   h.existing = [];

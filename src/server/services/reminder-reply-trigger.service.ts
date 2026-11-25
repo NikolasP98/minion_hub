@@ -5,6 +5,7 @@ import { withAiUsageOrg } from '$server/ai-usage';
 import { isModuleEnabled } from './modules.service';
 import { scanConfirmationReplies } from './reminders.service';
 import { advanceCases } from './reconfirm.service';
+import { advanceAnswers } from './reconfirm-answer.service';
 
 const phone9 = (raw: string): string => raw.replace(/\D/g, '').slice(-9);
 
@@ -40,6 +41,7 @@ export async function handleInboundForReminders(ctx: CoreCtx, senderIds: string[
       if (!(await isModuleEnabled(ctx, 'scheduling'))) return;
       const now = new Date();
       await scanConfirmationReplies(ctx, now, { phones9: matched });
+      await advanceAnswers(ctx, now);
       await advanceCases(ctx, now);
     });
   } catch (e) {

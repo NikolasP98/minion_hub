@@ -17,7 +17,7 @@ vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: h.gateway }));
 vi.mock('./messages.service', () => ({ insertMessages: h.insertMessages }));
 vi.mock('./reminder-config.service', () => ({ getReminderConfig: async () => h.config }));
 
-import { advanceCases } from './reconfirm.service';
+import { advanceCases, sendAgentMessage } from './reconfirm.service';
 
 const dialect = new PgDialect();
 const ctx = { db: {} as never, tenantId: 'org-1' };
@@ -186,6 +186,12 @@ describe('advanceCases: the wait', () => {
     expect(stmts('set result = ')[0]!.params).toContain('unclear');
   });
 
+  it('an offer nobody answered times out as wants_other_date, not no_answer', async () => {
+    open = [asking({ agent_state: 'offered' })];
+    await advanceCases(ctx, NOW);
+    expect(stmts('set result = ')[0]!.params).toContain('wants_other_date');
+  });
+
   it('still waiting before wait_until: nothing happens', async () => {
     open = [asking({ wait_until: '2026-11-26T14:00:00Z' })];
     const r = await advanceCases(ctx, NOW);
@@ -197,6 +203,43 @@ describe('advanceCases: the wait', () => {
     open = [];
     await advanceCases(ctx, NOW, 7);
     expect(stmts('from sched_reconfirm_cases c join sched_bookings')[0]!.params).toContain(7);
+  });
+});
+
+describe('sendAgentMessage', () => {
+  const target = {
+    id: 'case-1',
+    booking_id: 'b1',
+    channel: 'whatsapp',
+    account_id: 'acct',
+    recipient: '+51 999 000 111',
+    attendee_name: 'Ana',
+  };
+
+  it('a DB failure after the message went out propagates: never reported as a failed send', async () => {
+    await expect(
+      sendAgentMessage(ctx, target, 'offer', 'hola', NOW, async () => {
+        throw new Error('db down');
+      }),
+    ).rejects.toThrow('db down');
+    expect(h.gateway).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['confirm', 'closing'] as const)(
+    'a failed %s send records a system event',
+    async (step) => {
+      h.gateway.mockRejectedValue(new Error('gateway down'));
+      expect(await sendAgentMessage(ctx, target, step, 'hola', NOW)).toBe('failed');
+      const ev = log.filter((s) => s.params.some((p) => String(p).includes('"error":"send"')));
+      expect(ev).toHaveLength(1);
+      expect(ev[0]!.params).toContain(step);
+    },
+  );
+
+  it('a failed ask send writes no event of its own (the caller ends the case)', async () => {
+    h.gateway.mockRejectedValue(new Error('gateway down'));
+    expect(await sendAgentMessage(ctx, target, 'ask', 'hola', NOW)).toBe('failed');
+    expect(log.some((s) => s.params.some((p) => String(p).includes('"error":"send"')))).toBe(false);
   });
 });
 

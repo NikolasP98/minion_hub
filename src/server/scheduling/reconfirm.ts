@@ -2,7 +2,15 @@
  * Spec 139: pure helpers for the reminder-negation follow-up. No I/O, no booking writes.
  */
 import type { Classified } from '$server/services/reminder-compose';
-import { dateKeyFromParts, dateKeyWeekday, instantParts } from '$lib/time/zoned';
+import {
+  checkedZonedDayWindow,
+  dateKeyAddDays,
+  dateKeyFromParts,
+  dateKeyWeekday,
+  instantDateKey,
+  instantParts,
+} from '$lib/time/zoned';
+import type { Slot } from './slots';
 
 /** Below this a verdict is logged as given but acted on as unclear (one constant, no setting). */
 export const CONFIDENCE_MIN = 0.75;
@@ -50,11 +58,16 @@ interface CaseShape {
   agentState: string;
   result: string | null;
   closedAt: Date | null;
+  /** The client answered, then the appointment changed under the agent: staff must read it. */
+  bookingChanged?: boolean;
 }
 
 /** Which inbox notification a case currently owns; null = nothing to show. */
 export function casePhase(c: CaseShape): 'agent' | 'staff' | 'done' | null {
-  if (c.closedAt) return c.result === 'rescheduled' || c.result === 'will_come' ? 'done' : null;
+  if (c.closedAt) {
+    if (c.bookingChanged) return 'staff'; // closed as stale, but the client's answer was never seen
+    return c.result === 'rescheduled' || c.result === 'will_come' ? 'done' : null;
+  }
   if (c.result === null && (c.agentState === 'asking' || c.agentState === 'offered'))
     return 'agent';
   return 'staff';
@@ -73,7 +86,15 @@ const RESULT_TITLES: Readonly<Record<CaseResult, string>> = {
   staff_handling: 'El equipo ya está conversando con el cliente',
 };
 
-export function caseTitle(c: { agentState: string; result: string | null }): string {
+export const BOOKING_CHANGED_TITLE =
+  'La clienta dijo que sí asistirá, pero la cita cambió: revisa con ella';
+
+export function caseTitle(c: {
+  agentState: string;
+  result: string | null;
+  bookingChanged?: boolean;
+}): string {
+  if (c.bookingChanged) return BOOKING_CHANGED_TITLE;
   if (c.result && c.result in RESULT_TITLES) return RESULT_TITLES[c.result as CaseResult];
   return c.agentState === 'asking' || c.agentState === 'offered'
     ? 'El agente está consultando al cliente'
@@ -105,4 +126,130 @@ export function whenText(instant: Date, timezone: string, locale: string, short 
   } catch {
     return instant.toISOString();
   }
+}
+
+export type NamedDay =
+  'tomorrow' | 'day_after' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'next_week';
+export type PartOfDay = 'morning' | 'afternoon' | 'evening';
+
+const WEEKDAY_INDEX: Record<string, number> = {
+  sun: 0,
+  mon: 1,
+  tue: 2,
+  wed: 3,
+  thu: 4,
+  fri: 5,
+  sat: 6,
+};
+/** How far ahead a bare part of day ("en la tarde") may be offered. */
+const OFFER_HORIZON_DAYS = 14;
+
+/**
+ * The slot window a client named, as half-open instants in the resource timezone. A weekday is
+ * its next occurrence strictly after today (1-7 days ahead); `next_week` is next Monday to Sunday;
+ * only a part of day searches tomorrow through 14 days ahead. Null when nothing was named: the
+ * agent then offers nothing and staff pick the date.
+ */
+export function dateWindow(
+  day: NamedDay | null,
+  partOfDay: PartOfDay | null,
+  now: Date,
+  timezone: string,
+): { from: Date; to: Date } | null {
+  if (!day && !partOfDay) return null;
+  const today = instantDateKey(now, timezone);
+  const todayWd = dateKeyWeekday(today);
+  if (todayWd === null) return null;
+  const ahead = (wd: number) => (wd - todayWd + 7) % 7 || 7;
+  let first: number;
+  let last: number;
+  if (day === 'tomorrow') first = last = 1;
+  else if (day === 'day_after') first = last = 2;
+  else if (day === 'next_week') {
+    first = ahead(1);
+    last = first + 6;
+  } else if (day) {
+    first = last = ahead(WEEKDAY_INDEX[day]!);
+  } else {
+    first = 1;
+    last = OFFER_HORIZON_DAYS;
+  }
+  const from = dateKeyAddDays(today, first);
+  const to = dateKeyAddDays(today, last);
+  if (!from || !to) return null;
+  const w = checkedZonedDayWindow(from, to, timezone);
+  return w.ok && w.from && w.to ? { from: w.from, to: w.to } : null;
+}
+
+const inPart = (hour: number, part: PartOfDay | null) =>
+  part === null ||
+  (part === 'morning' ? hour < 12 : part === 'afternoon' ? hour >= 12 && hour < 18 : hour >= 18);
+
+/**
+ * Up to `max` slots to offer: inside the part of day, never sooner than `now + 2 h`, spread over
+ * the available ones (first, middle, last) instead of three back-to-back. Input order is kept.
+ */
+export function pickOfferSlots(
+  slots: Slot[],
+  partOfDay: PartOfDay | null,
+  timezone: string,
+  max = 3,
+  now: Date = new Date(),
+): Slot[] {
+  const earliest = now.getTime() + LATE_MS;
+  const fit = slots
+    .filter(
+      (s) =>
+        s.start.getTime() >= earliest && inPart(instantParts(s.start, timezone).hour, partOfDay),
+    )
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+  if (fit.length <= max) return fit;
+  const idx = new Set<number>();
+  for (let i = 0; i < max; i += 1) idx.add(Math.round((i * (fit.length - 1)) / (max - 1)));
+  return [...idx].sort((a, b) => a - b).map((i) => fit[i]!);
+}
+
+const SUMMARY_INTENT: Readonly<Record<string, string>> = {
+  will_come: 'Dijo que sí asistirá',
+  decline: 'Dijo que no desea continuar',
+  other_date: 'Pidió otra fecha',
+  pick: 'Eligió uno de los horarios ofrecidos',
+  unclear: 'Respuesta poco clara',
+};
+const SUMMARY_DAY: Readonly<Record<NamedDay, string>> = {
+  tomorrow: 'mañana',
+  day_after: 'pasado mañana',
+  mon: 'el lunes',
+  tue: 'el martes',
+  wed: 'el miércoles',
+  thu: 'el jueves',
+  fri: 'el viernes',
+  sat: 'el sábado',
+  sun: 'el domingo',
+  next_week: 'la próxima semana',
+};
+const SUMMARY_PART: Readonly<Record<PartOfDay, string>> = {
+  morning: 'en la mañana',
+  afternoon: 'en la tarde',
+  evening: 'en la noche',
+};
+
+/**
+ * One-line staff summary of what the client answered: intent, day and part of day only. Built from
+ * bounded fields, so it carries no phone number and none of the client's own words.
+ */
+export function answerSummary(
+  intent: string,
+  day: NamedDay | null,
+  partOfDay: PartOfDay | null,
+): string {
+  const when = [day ? SUMMARY_DAY[day] : null, partOfDay ? SUMMARY_PART[partOfDay] : null].filter(
+    Boolean,
+  );
+  return [
+    SUMMARY_INTENT[intent] ?? SUMMARY_INTENT.unclear,
+    intent === 'other_date' ? when.join(' ') : '',
+  ]
+    .filter(Boolean)
+    .join(': ');
 }

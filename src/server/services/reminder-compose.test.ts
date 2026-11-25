@@ -11,6 +11,10 @@ import {
   composeReminder,
   inferConfirmationReply,
   reconfirmAskTemplate,
+  inferReconfirmAnswer,
+  offerTemplate,
+  confirmTemplate,
+  closingTemplate,
 } from './reminder-compose';
 import type { ReminderContext } from './reminder-compose';
 
@@ -187,5 +191,133 @@ describe('reconfirmAskTemplate (spec 139)', () => {
     expect(t.startsWith('Hi. I understand')).toBe(true);
     expect(t).toContain('Afinamiento Facial');
     expect(t).toContain('FACES');
+  });
+});
+
+describe('inferReconfirmAnswer (spec 139 S4)', () => {
+  const about = {
+    serviceTitle: 'Botox',
+    whenText: 'viernes 20/06 a las 10:00',
+    locale: 'es',
+    agentText: 'Hola. ¿Prefieres otra fecha?',
+    offered: [] as string[],
+  };
+  const choice = (c: string, p = 0.95) => ({ choice: c, probabilities: { [c]: p } });
+  const body = (answers: Record<string, unknown>) =>
+    new Response(JSON.stringify({ answers, usage: { cost: 0.001, prompt_tokens: 100 } }));
+  const fetchMock = vi.fn();
+  beforeEach(() => {
+    fetchMock.mockReset();
+    usage.record.mockReset();
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.OPENROUTER_API_KEY = 'k';
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete process.env.OPENROUTER_API_KEY;
+  });
+
+  it('reads intent, day and part of day, and meters the call', async () => {
+    fetchMock.mockResolvedValue(
+      body({ intent: choice('other_date'), day: choice('mon'), part_of_day: choice('afternoon') }),
+    );
+    const r = await inferReconfirmAnswer(['el lunes en la tarde'], about);
+    expect(r).toMatchObject({
+      verdict: 'other_date',
+      day: 'mon',
+      partOfDay: 'afternoon',
+      pick: null,
+    });
+    expect(usage.record).toHaveBeenCalledTimes(1);
+    const sent = JSON.parse(String(fetchMock.mock.calls[0]![1].body));
+    expect(Object.keys(sent.questions)).toEqual(['intent', 'day', 'part_of_day']); // no pick without an offer
+  });
+
+  it('a pick is only among the offered options, and the move needs both answers to be sure', async () => {
+    fetchMock.mockResolvedValue(
+      body({
+        intent: choice('pick'),
+        day: choice('none'),
+        part_of_day: choice('none'),
+        pick: choice('2', 0.9),
+      }),
+    );
+    const r = await inferReconfirmAnswer(['la 2'], {
+      ...about,
+      offered: ['lun 01/12 16:00', 'lun 01/12 17:30'],
+    });
+    expect(r).toMatchObject({
+      verdict: 'pick',
+      pick: 1,
+      day: null,
+      partOfDay: null,
+      confidence: 0.9,
+    });
+    fetchMock.mockResolvedValue(
+      body({
+        intent: choice('pick'),
+        day: choice('none'),
+        part_of_day: choice('none'),
+        pick: choice('none'),
+      }),
+    );
+    const none = await inferReconfirmAnswer(['mmm'], { ...about, offered: ['a', 'b'] });
+    expect(none).toMatchObject({ verdict: 'pick', pick: null, confidence: 0 });
+    fetchMock.mockResolvedValue(
+      body({
+        intent: choice('pick'),
+        day: choice('none'),
+        part_of_day: choice('none'),
+        pick: choice('7'),
+      }),
+    );
+    expect((await inferReconfirmAnswer(['7'], { ...about, offered: ['a', 'b'] })).pick).toBeNull();
+  });
+
+  it('never throws: no key, failure and garbage are unclear with confidence 0', async () => {
+    delete process.env.OPENROUTER_API_KEY;
+    expect(await inferReconfirmAnswer(['x'], about)).toMatchObject({
+      verdict: 'unclear',
+      confidence: 0,
+    });
+    process.env.OPENROUTER_API_KEY = 'k';
+    fetchMock.mockResolvedValue(new Response('no', { status: 500 }));
+    expect(await inferReconfirmAnswer(['x'], about)).toMatchObject({
+      verdict: 'unclear',
+      confidence: 0,
+    });
+    fetchMock.mockResolvedValue(body({ intent: 'garbage' }));
+    expect(await inferReconfirmAnswer(['x'], about)).toMatchObject({
+      verdict: 'unclear',
+      confidence: 0,
+    });
+    expect(await inferReconfirmAnswer([], about)).toMatchObject({ confidence: 0 });
+  });
+});
+
+describe('S4 agent templates', () => {
+  it('offer, confirm and the three closings read as approved (es) and exist in en', () => {
+    expect(
+      offerTemplate({
+        locale: 'es',
+        staffName: null,
+        slots: ['lun 01/12 16:00', 'lun 01/12 17:30'],
+      }),
+    ).toBe(
+      'Tenemos estos horarios con tu especialista: 1) lun 01/12 16:00 2) lun 01/12 17:30. Responde con el número del que prefieras.',
+    );
+    expect(
+      confirmTemplate({ locale: 'es', serviceTitle: 'Botox', whenText: 'lunes 01/12 a las 17:30' }),
+    ).toBe('Listo, tu cita de Botox quedó para el lunes 01/12 a las 17:30. ¡Te esperamos!');
+    const k = { locale: 'es', fromName: 'FACES', whenText: 'jueves 27/11 a las 17:15' };
+    expect(closingTemplate({ kind: 'wants_other_date', ...k })).toBe(
+      'Gracias. El equipo de FACES te escribirá para coordinar una nueva fecha.',
+    );
+    expect(closingTemplate({ kind: 'declined', ...k })).toContain('Le avisamos al equipo de FACES');
+    expect(closingTemplate({ kind: 'will_come', ...k })).toBe(
+      'Perfecto, mantenemos tu cita del jueves 27/11 a las 17:15. ¡Te esperamos!',
+    );
+    for (const kind of ['wants_other_date', 'declined', 'will_come'] as const)
+      expect(closingTemplate({ kind, ...k, locale: 'en' })).not.toMatch(/cancel|\{|undefined/i);
   });
 });

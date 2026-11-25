@@ -15,6 +15,7 @@ vi.mock('$server/ai-usage', () => ({
 vi.mock('./modules.service', () => ({ isModuleEnabled: h.module }));
 vi.mock('./reminders.service', () => ({ scanConfirmationReplies: h.scan }));
 vi.mock('./reconfirm.service', () => ({ advanceCases: h.advance }));
+vi.mock('./reconfirm-answer.service', () => ({ advanceAnswers: vi.fn() }));
 
 import { handleInboundForReminders } from './reminder-reply-trigger.service';
 
