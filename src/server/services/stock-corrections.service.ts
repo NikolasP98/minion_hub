@@ -12,6 +12,7 @@
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
+import type { LockHit } from '$lib/types/record-locks';
 import { getOrgTransactionDb } from '$server/db/pg-client';
 import { withOrgCore, withOrgCoreTransaction, type CoreTx } from '$server/db/with-org-core';
 import {
@@ -33,7 +34,7 @@ import {
   sqlStateOf as sqlState,
 } from '$server/auth/active-operator-principal';
 import { recordAuditInTx } from './activity.service';
-import { lockRefusalError, recordLockFor } from './record-locks.service';
+import { consumeUnlockInTx, lockRefusalError, personActor, recordLockFor } from './record-locks.service';
 import {
   StockError,
   assertStockModulesEnabledInTx,
@@ -275,6 +276,8 @@ interface ReceiptPlanned {
   sourceSnapshot: unknown;
   stockSnapshot: unknown;
   policyExtra: unknown;
+  /** Spec 140 S3: the owner unlock this plan relies on (consumed by the apply), and the hits it overrides. */
+  unlock: { eventId: string; rules: LockHit[] } | null;
   movesStock: true;
   valueChange: boolean;
 }
@@ -468,13 +471,15 @@ async function plan(
     sourceId: original.id,
     movesStock: true,
     valueChange: changesValue(deltas),
-    // Without a policy row the extra is exactly what it was before spec 140 (open previews stay valid).
+    unlock: lock.unlock ? { eventId: lock.unlock.eventId, rules: lock.rules } : null,
+    // Without a policy row (or an unlock) the extra is exactly what it was before spec 140 (open previews stay valid).
     policyExtra: {
       receiptPeriodPolicy: period,
       locks: [...lock.lockedPeriods].sort(),
       ...(lock.hasPolicyRow
         ? { lockPolicy: { rules: lock.policy, externalLockIds: lock.externalLockIds } }
         : {}),
+      ...(lock.unlock ? { unlockEventId: lock.unlock.eventId } : {}),
     },
     sourceSnapshot: {
       entry: {
@@ -843,6 +848,19 @@ export async function applyStockCorrection(
           appliedAt: now,
         })
         .returning();
+      // Spec 140 S3: the unlock the plan relied on is used up by this correction, in the same commit.
+      if (p.domain === 'receipt_replace' && p.unlock)
+        await consumeUnlockInTx(
+          tx,
+          ctx.tenantId,
+          {
+            eventId: p.unlock.eventId,
+            recordId: p.original.id,
+            correctionId: row.id,
+            rules: p.unlock.rules,
+          },
+          personActor(ctx, actor.name),
+        );
       await recordAuditInTx(tx, ctx, {
         refType: p.domain === 'sale_variant' ? 'pos_ticket' : 'stk_entry',
         refId: p.domain === 'sale_variant' ? p.plan.ticket.id : p.original.id,

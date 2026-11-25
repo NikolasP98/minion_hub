@@ -4,7 +4,9 @@ const h = vi.hoisted(() => ({
   role: 'owner' as string | null,
   authority: null as Error | null,
   selects: [] as unknown[][],
+  executes: [] as unknown[][],
   inserts: [] as Array<{ values: Record<string, unknown>; conflict?: Record<string, unknown> }>,
+  insertError: null as unknown,
   tx: null as unknown,
 }));
 
@@ -31,7 +33,16 @@ vi.mock('./rbac.service', () => ({
 
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
 import { CorrectionError } from './stock-corrections.logic';
-import { isOrgOwner, listLockEvents, logLockEvent, setLockPolicy } from './record-locks.service';
+import {
+  consumeUnlockInTx,
+  grantUnlock,
+  isOrgOwner,
+  listLockEvents,
+  logLockEvent,
+  parseUnlockInput,
+  setLockPolicy,
+  UNLOCK_TTL_MS,
+} from './record-locks.service';
 
 const ORG = 'org-1';
 const ME = '0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b';
@@ -50,7 +61,9 @@ beforeEach(() => {
   h.role = 'owner';
   h.authority = null;
   h.selects = [];
+  h.executes = [];
   h.inserts = [];
+  h.insertError = null;
   const chain = (): unknown =>
     new Proxy(() => {}, {
       get(_t, prop: string) {
@@ -63,6 +76,7 @@ beforeEach(() => {
     });
   h.tx = {
     select: () => chain(),
+    execute: async () => h.executes.shift() ?? [],
     insert: () => {
       const rec: (typeof h.inserts)[number] = { values: {} };
       h.inserts.push(rec);
@@ -75,7 +89,10 @@ beforeEach(() => {
           rec.conflict = c.set;
           return Promise.resolve();
         },
-        returning: async () => [{ id: 'evt-1' }],
+        returning: async () => {
+          if (h.insertError) throw h.insertError;
+          return [{ id: 'evt-1' }];
+        },
       };
       return api;
     },
@@ -251,5 +268,138 @@ describe('isOrgOwner', () => {
     h.authority = new Error('operator_principal_inactive');
     expect(await isOrgOwner(ctx)).toBe(false);
     h.authority = null;
+  });
+});
+
+describe('grantUnlock (spec 140 S3)', () => {
+  const REC = '0c0c0c0c-0c0c-4c0c-8c0c-0c0c0c0c0c0c';
+  const now = new Date('2026-11-24T15:00:00Z');
+  const entry = [{ id: REC, postedAt: new Date('2026-11-01T15:00:00Z') }];
+  const TZ = [{ timezone: 'America/Lima' }];
+  const input = { recordType: 'stock_receipt', recordId: REC, reason: '  Cantidad mal digitada  ' };
+  // reads in order: entry, policy, settings, period locks, (unlock when something locks)
+  const days = [policyRow({ daysEnabled: true, days: 1 })];
+
+  it('an owner unlocks a locked receipt: one unlock event, 24 h, reason trimmed, rules recorded', async () => {
+    h.selects = [entry, days, TZ, [], []];
+    const out = await grantUnlock(ctx, input, actor, { now });
+    expect(out).toEqual({
+      eventId: 'evt-1',
+      expiresAt: new Date(now.getTime() + UNLOCK_TTL_MS).toISOString(),
+      created: true,
+    });
+    expect(UNLOCK_TTL_MS).toBe(24 * 3600 * 1000);
+    expect(h.inserts).toHaveLength(1);
+    expect(h.inserts[0]!.values).toMatchObject({
+      orgId: ORG,
+      action: 'unlock',
+      recordType: 'stock_receipt',
+      recordId: REC,
+      reason: 'Cantidad mal digitada',
+      actorKind: 'person',
+      actorId: ME,
+      expiresAt: new Date(now.getTime() + UNLOCK_TTL_MS),
+      rules: [expect.objectContaining({ kind: 'days', days: 1 })],
+    });
+  });
+
+  it('a second grant while one is active returns it and writes nothing', async () => {
+    h.selects = [
+      entry,
+      days,
+      TZ,
+      [],
+      [{ id: 'evt-0', expiresAt: new Date('2026-11-25T01:00:00Z'), actorName: 'Ada' }],
+    ];
+    expect(await grantUnlock(ctx, input, actor, { now })).toEqual({
+      eventId: 'evt-0',
+      expiresAt: '2026-11-25T01:00:00.000Z',
+      created: false,
+    });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it.each(['admin', 'member'])(
+    'refuses %s with owner_required and writes nothing',
+    async (role) => {
+      h.role = role;
+      await expect(grantUnlock(ctx, input, actor, { now })).rejects.toMatchObject({
+        code: 'owner_required',
+      });
+      expect(h.inserts).toHaveLength(0);
+    },
+  );
+
+  it('an unknown or non-receipt record is not_found', async () => {
+    h.selects = [[]];
+    await expect(grantUnlock(ctx, input, actor, { now })).rejects.toMatchObject({
+      code: 'not_found',
+    });
+  });
+
+  it('a record nothing locks is not_locked', async () => {
+    h.selects = [entry, [], TZ, []];
+    await expect(grantUnlock(ctx, input, actor, { now })).rejects.toMatchObject({
+      code: 'not_locked',
+      status: 409,
+    });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('a closed current month cannot be unlocked: not_unlockable', async () => {
+    h.selects = [entry, [], TZ, [{ period: '2026-11' }], []];
+    await expect(grantUnlock(ctx, input, actor, { now })).rejects.toMatchObject({
+      code: 'not_unlockable',
+      status: 409,
+    });
+    expect(h.inserts).toHaveLength(0);
+  });
+
+  it('validates the request before touching the database', () => {
+    expect(parseUnlockInput(input)).toEqual({ ...input, reason: 'Cantidad mal digitada' });
+    for (const bad of [
+      null,
+      [],
+      { ...input, reason: '   ' },
+      { ...input, reason: 'x'.repeat(1001) },
+      { ...input, recordId: 'nope' },
+      { ...input, recordType: 'pos_ticket' },
+      { ...input, extra: 1 },
+      { recordType: 'stock_receipt', recordId: REC },
+    ])
+      expect(() => parseUnlockInput(bad)).toThrow(
+        expect.objectContaining({ code: 'invalid_request' }),
+      );
+  });
+});
+
+describe('consumeUnlockInTx', () => {
+  const use = {
+    eventId: 'evt-0',
+    recordId: 'r1',
+    correctionId: 'c1',
+    rules: [{ rule: 'days', kind: 'days', unlockable: true, days: 1 }] as never,
+  };
+
+  it('writes one unlock_used event that points at the unlock and the correction', async () => {
+    await consumeUnlockInTx(h.tx as never, ORG, use, actor);
+    expect(h.inserts[0]!.values).toMatchObject({
+      orgId: ORG,
+      action: 'unlock_used',
+      recordType: 'stock_receipt',
+      recordId: 'r1',
+      refEventId: 'evt-0',
+      detail: { correctionId: 'c1' },
+      actorId: ME,
+    });
+  });
+
+  it('a second use (unique violation) refuses the correction instead of reusing the unlock', async () => {
+    h.insertError = Object.assign(new Error('dup'), { code: '23505' });
+    await expect(consumeUnlockInTx(h.tx as never, ORG, use, actor)).rejects.toMatchObject({
+      code: 'record_locked',
+    });
+    h.insertError = new Error('boom');
+    await expect(consumeUnlockInTx(h.tx as never, ORG, use, actor)).rejects.toThrow('boom');
   });
 });

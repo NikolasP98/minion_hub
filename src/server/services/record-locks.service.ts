@@ -2,16 +2,14 @@
  * Record lock policy reads (spec 140 S1). `recordLockFor` is the one function that decides whether a
  * record is locked and returns every rule that applies; it never throws for a locked record (the
  * caller decides the refusal). It runs in the caller's transaction and takes no lock of its own.
- *
- * TODO(handoff): (S3, tasks T029) the active-unlock read and `consumeUnlockInTx` are not built, so
- * `unlock` is always null here. See specs/140-record-lock-policy/tasks.md in the meta repo.
  */
-import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
 import { getOrgTransactionDb } from '$server/db/pg-client';
 import { withOrgCore, withOrgCoreTransaction, type CoreTx } from '$server/db/with-org-core';
 import { stkEntries } from '$server/db/pg-schema/stock';
+import { isUniqueViolation } from './pos/db-errors';
 import { finSettings } from '$server/db/pg-finance-schema';
 import { posPeriodLocks } from '$server/db/pg-pos-schema';
 import {
@@ -96,6 +94,38 @@ async function receiptChain(tx: CoreTx, orgId: string, id: string) {
   return res;
 }
 
+/** The newest unused, unexpired owner unlock for the record or any receipt it replaced (data-model "Active unlock"). */
+async function activeUnlock(
+  tx: CoreTx,
+  orgId: string,
+  chainIds: readonly string[],
+  now: Date,
+): Promise<RecordLockResult['unlock']> {
+  const [row] = await tx
+    .select({
+      id: orgLockEvents.id,
+      expiresAt: orgLockEvents.expiresAt,
+      actorName: orgLockEvents.actorName,
+    })
+    .from(orgLockEvents)
+    .where(
+      and(
+        eq(orgLockEvents.orgId, orgId),
+        eq(orgLockEvents.action, 'unlock'),
+        eq(orgLockEvents.recordType, 'stock_receipt'),
+        inArray(orgLockEvents.recordId, [...chainIds]),
+        gt(orgLockEvents.expiresAt, now),
+        sql`not exists (select 1 from org_lock_events u
+          where u.org_id = ${orgLockEvents.orgId} and u.action = 'unlock_used' and u.ref_event_id = ${orgLockEvents.id})`,
+      ),
+    )
+    .orderBy(desc(orgLockEvents.occurredAt))
+    .limit(1);
+  return row?.expiresAt
+    ? { eventId: row.id, expiresAt: row.expiresAt.toISOString(), grantedByName: row.actorName }
+    : null;
+}
+
 export async function recordLockFor(
   tx: CoreTx,
   orgId: string,
@@ -162,10 +192,12 @@ export async function recordLockFor(
     now,
     lockedPeriods: new Set(),
   });
+  // The unlock is read only for a record some rule locks, so an unlocked record costs no extra read.
+  const unlock = rules.length ? await activeUnlock(tx, orgId, chainIds, now) : null;
   return {
-    locked: isLocked(rules, false),
+    locked: isLocked(rules, unlock !== null),
     rules,
-    unlock: null,
+    unlock,
     period,
     lockedPeriods,
     hasPolicyRow: hasRow,
@@ -414,4 +446,116 @@ export async function listLockEvents(
     occurredAt: e.occurredAt.toISOString(),
     recordLabel: label ?? null,
   }));
+}
+
+// ── S3: owner one-shot unlock ────────────────────────────────────────────────────────────
+
+/** An unlock lasts this long unless a correction uses it first (research R5; not configurable). */
+export const UNLOCK_TTL_MS = 24 * 60 * 60 * 1000;
+const REASON_MAX = 1000;
+
+export interface UnlockInput {
+  recordType: 'stock_receipt';
+  recordId: string;
+  reason: string;
+}
+
+/** Strict request parser for the unlock route. */
+export function parseUnlockInput(raw: unknown): UnlockInput {
+  const bad = (m: string) => new CorrectionError(m, 'invalid_request');
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw bad('se esperaba un objeto');
+  const o = raw as Record<string, unknown>;
+  for (const k of Object.keys(o))
+    if (!['recordType', 'recordId', 'reason'].includes(k)) throw bad(`campo desconocido ${k}`);
+  if (o.recordType !== 'stock_receipt') throw bad('recordType debe ser stock_receipt');
+  if (typeof o.recordId !== 'string' || !UUID_RE.test(o.recordId)) throw bad('recordId inválido');
+  const reason = typeof o.reason === 'string' ? o.reason.trim() : '';
+  if (!reason || reason.length > REASON_MAX)
+    throw bad('el motivo es obligatorio (1 a 1000 caracteres)');
+  return { recordType: 'stock_receipt', recordId: o.recordId, reason };
+}
+
+/**
+ * Owner only. Unlocks one locked receipt for one correction, valid 24 hours, with a required reason.
+ * A second grant while one is active returns the active one and writes nothing.
+ */
+export async function grantUnlock(
+  ctx: CoreCtx,
+  raw: unknown,
+  actor: LockActor,
+  opts: { now?: Date } = {},
+): Promise<{ eventId: string; expiresAt: string; created: boolean }> {
+  const input = parseUnlockInput(raw);
+  const now = opts.now ?? new Date();
+  return withOrgCore(ctx, async (tx) => {
+    await assertOwnerInTx(tx, ctx);
+    const [entry] = await tx
+      .select({ id: stkEntries.id, postedAt: stkEntries.postedAt })
+      .from(stkEntries)
+      .where(
+        and(
+          eq(stkEntries.id, input.recordId),
+          eq(stkEntries.orgId, ctx.tenantId),
+          eq(stkEntries.type, 'receipt'),
+          eq(stkEntries.status, 'submitted'),
+        ),
+      );
+    if (!entry?.postedAt) throw new CorrectionError('receipt not found', 'not_found');
+    const lock = await recordLockFor(
+      tx,
+      ctx.tenantId,
+      { type: 'stock_receipt', id: entry.id, postedAt: entry.postedAt },
+      { now },
+    );
+    if (!lock.rules.length) throw new CorrectionError('record is not locked', 'not_locked');
+    // A closed current month is a property of the month: only reopening it helps (R5).
+    if (lock.rules.some((h) => !h.unlockable))
+      throw new CorrectionError('the current month is closed', 'not_unlockable', {
+        locks: lock.rules,
+      });
+    if (lock.unlock)
+      return { eventId: lock.unlock.eventId, expiresAt: lock.unlock.expiresAt, created: false };
+    const expiresAt = new Date(now.getTime() + UNLOCK_TTL_MS);
+    const eventId = await logLockEventInTx(tx, ctx.tenantId, {
+      action: 'unlock',
+      recordType: input.recordType,
+      recordId: entry.id,
+      rules: lock.rules,
+      actor,
+      reason: input.reason,
+      expiresAt,
+    });
+    return { eventId, expiresAt: expiresAt.toISOString(), created: true };
+  });
+}
+
+/**
+ * Called by `applyStockCorrection` after the correction row, in the same transaction: writes
+ * `unlock_used` for the unlock the plan relied on. The unique index makes a second use fail, which
+ * rolls the correction back (the unlock stays usable only if nothing else consumed it).
+ */
+export async function consumeUnlockInTx(
+  tx: CoreTx,
+  orgId: string,
+  use: { eventId: string; recordId: string; correctionId: string; rules: LockHit[] },
+  actor: LockActor,
+): Promise<void> {
+  try {
+    await logLockEventInTx(tx, orgId, {
+      action: 'unlock_used',
+      recordType: 'stock_receipt',
+      recordId: use.recordId,
+      rules: use.rules,
+      actor,
+      refEventId: use.eventId,
+      detail: { correctionId: use.correctionId },
+    });
+  } catch (e) {
+    const cause = (e as { cause?: unknown } | null)?.cause;
+    if (isUniqueViolation(e) || isUniqueViolation(cause))
+      throw new CorrectionError('the unlock was already used', 'record_locked', {
+        locks: use.rules,
+      });
+    throw e;
+  }
 }

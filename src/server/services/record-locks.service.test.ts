@@ -197,3 +197,58 @@ describe('recordLockFor', () => {
     expect(text).toContain('receipt_chain');
   });
 });
+
+describe('recordLockFor with an owner unlock (spec 140 S3)', () => {
+  const chain = [
+    { id: 'r2', posted_at: '2026-11-19T15:00:00Z' },
+    { id: 'r1', posted_at: '2026-08-01T15:00:00Z' },
+  ];
+  const days30 = [policyRow({ daysEnabled: true, days: 30 })];
+
+  it('an active unlock clears the verdict, keeps every rule and names the grant', async () => {
+    const f = fakeTx(
+      [
+        days30,
+        TZ,
+        [],
+        [{ id: 'u1', expiresAt: new Date('2026-11-21T10:00:00Z'), actorName: 'Ada' }],
+      ],
+      [chain],
+    );
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(false);
+    expect(r.rules).toEqual([{ rule: 'days', kind: 'days', unlockable: true, days: 30 }]);
+    expect(r.unlock).toEqual({
+      eventId: 'u1',
+      expiresAt: '2026-11-21T10:00:00.000Z',
+      grantedByName: 'Ada',
+    });
+  });
+
+  it('no unlock row -> still locked, unlock null', async () => {
+    const f = fakeTx([days30, TZ, [], []], [chain]);
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r).toMatchObject({ locked: true, unlock: null });
+  });
+
+  it('an unlocked record costs no unlock read', async () => {
+    const f = fakeTx([[], TZ, []], []);
+    expect((await recordLockFor(f.tx, 'org', rec, { now })).unlock).toBeNull();
+    expect(f.reads()).toBe(3);
+  });
+
+  it('an unlock never clears a closed current month', async () => {
+    const f = fakeTx(
+      [
+        [],
+        TZ,
+        [{ period: '2026-11' }],
+        [{ id: 'u1', expiresAt: new Date('2026-11-21T10:00:00Z'), actorName: null }],
+      ],
+      [],
+    );
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(true);
+    expect(r.rules[0]).toMatchObject({ kind: 'month_current', unlockable: false });
+  });
+});

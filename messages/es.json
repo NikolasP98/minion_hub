@@ -7638,8 +7638,8 @@
   "stock_corr_err_source_ambiguous": "Este registro está vinculado a otros documentos, así que no se puede corregir aquí. Pide al propietario que lo revise.",
   "stock_corr_err_dependent_history": "Hay movimientos posteriores que dependen de este registro, así que no se puede corregir aquí. Pide al propietario que lo revise.",
   "stock_corr_err_policy_unverified": "Faltan los ajustes contables. Configúralos en Finanzas e inténtalo de nuevo.",
-  "stock_corr_err_period_locked": "Contabilidad cerró este periodo. Pide que lo reabran para corregir este registro.",
-  "stock_corr_err_record_locked": "Este registro está bloqueado por la política de la organización. Pide a un propietario que revise la regla en Ajustes → Bloqueo de registros.",
+  "stock_corr_err_period_locked": "Contabilidad cerró este periodo. Pide a un propietario que desbloquee este registro, o que reabran el mes en Finanzas → Ajustes.",
+  "stock_corr_err_record_locked": "Este registro está bloqueado por la política de la organización. Pide a un propietario que lo desbloquee para una corrección.",
   "stock_corr_err_invalid_policy": "Los días deben ser un número entre 1 y 3650. Corrige el valor y guarda de nuevo.",
   "stock_corr_err_stock_scope_required": "Esta corrección mueve stock. Pídesela a alguien con acceso a stock.",
   "stock_corr_err_owner_evidence_required": "Solo un propietario puede hacer esta corrección, con evidencia. Pide al propietario que la revise.",
@@ -7850,5 +7850,13 @@
   "record_locks_notice_ask_owner": "Pide a un propietario que lo desbloquee para una corrección.",
   "record_locks_notice_reopen_month": "Reabre el mes en Finanzas → Ajustes → Periodos contables y vuelve a intentarlo.",
   "record_locks_notice_disabled": "Este registro está bloqueado.",
-  "finances_settings_locks_link": "Otras reglas de bloqueo (días, webhook) en Ajustes → Bloqueo de registros."
+  "finances_settings_locks_link": "Otras reglas de bloqueo (días, webhook) en Ajustes → Bloqueo de registros.",
+  "stock_corr_err_not_locked": "Este registro no está bloqueado. Puedes corregirlo directamente.",
+  "stock_corr_err_not_unlockable": "El mes actual está cerrado. Reábrelo en Finanzas → Ajustes → Periodos contables y vuelve a intentarlo.",
+  "record_locks_unlock_action": "Desbloquear para una corrección",
+  "record_locks_unlock_body": "Se permitirá una sola corrección de esta entrada durante 24 horas. Quedará en el historial.",
+  "record_locks_unlock_reason": "Motivo (obligatorio)",
+  "record_locks_unlock_confirm": "Desbloquear",
+  "record_locks_unlocked_state": "Desbloqueado hasta {until} para una corrección (por {name}).",
+  "record_locks_unlocked_by_owner": "el propietario"
 }
