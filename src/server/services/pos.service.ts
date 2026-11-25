@@ -333,7 +333,8 @@ export async function lockedOpenShiftInTx(
   const select = () =>
     tx.select().from(posShifts).where(openShiftOf(orgId, actorId)).limit(1).for('share');
   const [open] = await select();
-  if (open || shiftMode !== 'auto') return open;
+  // A NULL opener never conflicts on the per-user unique index, so it could open duplicates.
+  if (open || shiftMode !== 'auto' || !actorId) return open;
   await tx
     .insert(posShifts)
     .values({ orgId, openedBy: actorId, openingFloat: {} })

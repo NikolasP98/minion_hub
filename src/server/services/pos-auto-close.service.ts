@@ -22,9 +22,11 @@ export async function listAutoShiftOrgs(): Promise<string[]> {
  * exactly as on a manual close), with counted = expected. A shift opened after
  * midnight is today's and stays open; a re-run finds nothing left to close.
  *
- * TODO(handoff): a missed run (Vercel cron outage) leaves yesterday's shift open
- * until the next midnight — a sale does not close it first. Follow-up in spec 148
- * (minion-meta specs/148-caja-automatica) if it ever bites.
+ * Runs hourly, so a missed or failed close is retried within the hour.
+ * TODO(handoff): sales between local midnight and that hour's run still land in
+ * yesterday's shift; and if `emitShiftTickets` throws AFTER the close committed, the
+ * shift is closed but its tickets wait for the history page's "Reintentar" — the
+ * cron never revisits a closed shift. Ledger: minion-meta specs/148-caja-automatica.
  */
 export async function autoCloseOrgShifts(
   ctx: CoreCtx,

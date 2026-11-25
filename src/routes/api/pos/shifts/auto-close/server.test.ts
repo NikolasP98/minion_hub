@@ -30,4 +30,11 @@ describe('GET /api/pos/shifts/auto-close', () => {
     expect(await res.json()).toEqual({ ok: true, orgs: 2, closed: 2, failed: 0 });
     expect(close).toHaveBeenCalledTimes(2);
   });
+
+  it('answers 500 when a close failed, so the hourly retry shows in the cron log', async () => {
+    close.mockResolvedValueOnce({ closed: 0, failed: 1 });
+    const res = (await call('Bearer sekret')) as Response;
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ ok: false, failed: 1 });
+  });
 });

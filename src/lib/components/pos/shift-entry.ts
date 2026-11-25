@@ -19,8 +19,13 @@ interface OpenShiftLike {
 }
 
 /** What the phone calendar's "…" menu shows about the register, from `page.data.openShift`. */
-export function shiftEntry(openShift: OpenShiftLike | null | undefined, now: number): ShiftEntry {
-  if (!openShift) return { open: false, stale: false, attention: true, income: 0 };
+export function shiftEntry(
+  openShift: OpenShiftLike | null | undefined,
+  now: number,
+  /** "Caja automática" (spec 148): no shift yet is normal, the first sale opens it. */
+  auto = false,
+): ShiftEntry {
+  if (!openShift) return { open: false, stale: false, attention: !auto, income: 0 };
   const stale = now - new Date(openShift.shift.openedAt).getTime() > SHIFT_STALE_MS;
   return {
     open: true,

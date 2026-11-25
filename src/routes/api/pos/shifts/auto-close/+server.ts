@@ -5,10 +5,12 @@ import { getCoreDb } from '$server/db/pg-client';
 import { autoCloseOrgShifts, listAutoShiftOrgs } from '$server/services/pos-auto-close.service';
 
 /**
- * GET /api/pos/shifts/auto-close — spec 148 "Caja automática". Vercel cron
- * (`vercel.json`, 00:00 America/Lima) with Bearer $CRON_SECRET, like every tick:
- * fan out over automatic orgs and close their shifts opened before local midnight.
- * One org's failure never stops the others.
+ * GET /api/pos/shifts/auto-close — spec 148 "Caja automática". Vercel cron, HOURLY
+ * (`vercel.json`), with Bearer $CRON_SECRET, like every tick: fan out over automatic
+ * orgs and close their shifts opened before THEIR local midnight. Hourly, so every
+ * timezone closes within the hour after its midnight and a failed close (lock timeout,
+ * SUNAT slowness) is retried next hour. One org's failure never stops the others;
+ * any failure answers 500 so it shows in the cron log.
  */
 export const GET: RequestHandler = async ({ request }) => {
   const secret = env.CRON_SECRET;
@@ -28,5 +30,8 @@ export const GET: RequestHandler = async ({ request }) => {
       console.error('[pos] auto-close failed for org', orgId, e);
     }
   }
-  return json({ ok: true, orgs: orgIds.length, closed, failed });
+  return json(
+    { ok: failed === 0, orgs: orgIds.length, closed, failed },
+    { status: failed ? 500 : 200 },
+  );
 };

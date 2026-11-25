@@ -426,11 +426,21 @@
     const id = setInterval(() => (now = Date.now()), 60_000);
     return () => clearInterval(id);
   });
-  const shift = $derived(shiftEntry(page.data.openShift as Parameters<typeof shiftEntry>[0], now));
-  const shiftLabel = $derived(
-    shift.open ? m.pos_shift_income({ amount: formatMoney(shift.income) }) : m.pos_no_open_shift(),
+  const autoShift = $derived(
+    (page.data.posSettings as { shiftMode?: string } | undefined)?.shiftMode === 'auto',
   );
-  const canShift = $derived(!!dialogs && canAct('pos', 'edit'));
+  const shift = $derived(
+    shiftEntry(page.data.openShift as Parameters<typeof shiftEntry>[0], now, autoShift),
+  );
+  const shiftLabel = $derived(
+    shift.open
+      ? m.pos_shift_income({ amount: formatMoney(shift.income) })
+      : autoShift
+        ? m.pos_shift_auto_waiting()
+        : m.pos_no_open_shift(),
+  );
+  // Auto mode never offers "open": the first sale opens the shift (spec 148).
+  const canShift = $derived(!!dialogs && canAct('pos', 'edit') && (shift.open || !autoShift));
   // Same list and link resolution as `PosNav` (module registry, access-filtered).
   const gotoItems = $derived(
     getAreaItems('pos', {
