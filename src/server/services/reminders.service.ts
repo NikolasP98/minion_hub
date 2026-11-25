@@ -424,6 +424,12 @@ export async function scanConfirmationReplies(
       join sched_resources r on r.id = b.resource_id and r.org_id = b.org_id
       where b.org_id = ${ctx.tenantId} and b.status in ('pending','accepted')
         and b.start_time > now() - interval '1 day'
+        -- A booking with an open follow-up case: the client's messages are answers to the agent (read by
+        -- advanceAnswers) or staff's to handle, never a reply to the reminder. No yes-confirm, no paid read.
+        and not exists (
+          select 1 from sched_reconfirm_cases oc
+          where oc.org_id = b.org_id and oc.closed_at is null
+            and (oc.booking_id = b.id or oc.subject_key = coalesce(b.metadata->>'groupId', b.id::text)))
       order by b.start_time asc
       limit 100
     `),

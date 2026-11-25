@@ -5,7 +5,10 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 
 const h = vi.hoisted(() => ({
-  db: null as unknown as { transaction: (fn: (tx: unknown) => unknown) => Promise<unknown> },
+  db: null as unknown as {
+    transaction: (fn: (tx: unknown) => unknown) => Promise<unknown>;
+    execute: (q: unknown) => Promise<unknown>;
+  },
   config: {} as Record<string, unknown>,
   inferReply: vi.fn(),
   send: vi.fn(),
@@ -43,12 +46,19 @@ vi.mock('./scheduling-bookings.service', () => ({
   setBookingStatusInTx: h.setStatusInTx,
   rescheduleAssistantBookingInTx: vi.fn(),
 }));
+vi.mock('$server/db/pg-client', () => ({
+  getCoreDb: () => ({
+    execute: async (q: unknown) => ((await h.db.execute(q)) as { rows: unknown[] }).rows,
+  }),
+}));
 vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: h.send }));
 vi.mock('./messages.service', () => ({ insertMessages: async () => {} }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
 
 import { scanConfirmationReplies } from './reminders.service';
 import { advanceCases } from './reconfirm.service';
+import { reapStaleSends } from './stale-sends.service';
+import { caseTitle } from '$server/scheduling/reconfirm';
 import { handleInboundForReminders } from './reminder-reply-trigger.service';
 
 const pg = new PGlite();
@@ -71,7 +81,9 @@ beforeAll(async () => {
     create table crm_activities (org_id text, contact_id uuid, kind text, body text, data jsonb);
     create table sched_reminders (id uuid default gen_random_uuid(), org_id text, booking_id uuid, status text,
       recipient_role text, channel text, recipient text, content text, stage text, sent_at timestamptz,
-      account_id text, message_id text);
+      account_id text, message_id text, error text, created_at timestamptz default now());
+    create table crm_door_followups (id uuid default gen_random_uuid(), status text, error text, created_at timestamptz);
+    create table pos_emissions (id uuid default gen_random_uuid(), status text, response_description text, updated_at timestamptz);
     create table messages (id uuid primary key default gen_random_uuid(), org_id text, direction text,
       channel text, account_id text, sender_id text, chat_id text, is_group boolean, content text,
       occurred_at timestamptz, metadata jsonb default '{}', agent_id text, message_id text);
@@ -103,7 +115,10 @@ async function seed() {
     [B1, ORG, at(48 * H), at(49 * H), ET, RES],
   );
   await pg.query(`insert into sched_event_types values ($1,$2,'Botox')`, [ET, ORG]);
-  await pg.query(`insert into sched_resources values ($1,$2,'Dra. Renzo','America/Lima')`, [RES, ORG]);
+  await pg.query(`insert into sched_resources values ($1,$2,'Dra. Renzo','America/Lima')`, [
+    RES,
+    ORG,
+  ]);
   await pg.query(
     `insert into sched_reminders (org_id,booking_id,status,recipient_role,channel,recipient,content,stage,sent_at,account_id)
      values ($1,$2,'sent','client','whatsapp',$3,'Recordatorio... Responde SÍ o NO','confirmation',$4,'acct')`,
@@ -114,6 +129,12 @@ const inbound = (content: string, ms: number) =>
   pg.query(
     `insert into messages (org_id,direction,channel,account_id,sender_id,is_group,content,occurred_at)
      values ($1,'inbound','whatsapp','acct',$2,false,$3,$4)`,
+    [ORG, PHONE, content, at(ms)],
+  );
+const outbound = (content: string, ms: number) =>
+  pg.query(
+    `insert into messages (org_id,direction,channel,account_id,sender_id,chat_id,is_group,content,occurred_at)
+     values ($1,'outbound','whatsapp','acct',$2,$2,false,$3,$4)`,
     [ORG, PHONE, content, at(ms)],
   );
 const caseRow = async () =>
@@ -162,6 +183,77 @@ describe('concurrent ingest + tick: one question per case', () => {
       })(),
     ]);
     expect(h.send).toHaveBeenCalledTimes(1);
-    expect((await pg.query(`select count(*)::int n from sched_reconfirm_cases`)).rows[0]).toEqual({ n: 1 });
+    expect((await pg.query(`select count(*)::int n from sched_reconfirm_cases`)).rows[0]).toEqual({
+      n: 1,
+    });
+  });
+});
+
+describe('the old reply scan leaves a booking with an open case to the agent (R5a-R5c)', () => {
+  it('an AI org: the answer to the agent is not read by the reminder classifier, nothing is confirmed', async () => {
+    await inbound('no voy a poder', -2 * H);
+    await scanConfirmationReplies(ctx, new Date());
+    await advanceCases(ctx, new Date()); // the agent asks
+    expect((await caseRow()).agent_state).toBe('asking');
+    h.inferReply.mockClear();
+    h.inferReply.mockResolvedValue({ verdict: 'yes', confidence: 0.95, via: 'jev' });
+    await inbound('Sí, otra fecha porfa', 60_000);
+    const r = await scanConfirmationReplies(ctx, new Date());
+    expect(h.inferReply).not.toHaveBeenCalled();
+    expect(h.setStatus).not.toHaveBeenCalled();
+    expect(r).toEqual({ confirmed: 0, opened: 0, unclear: 0 });
+  });
+  it('a keyword org: "Sí" to the agent question does not accept the booking', async () => {
+    h.config = { ...h.config, inferConfirmation: false };
+    await inbound('NO', -2 * H);
+    await scanConfirmationReplies(ctx, new Date());
+    await advanceCases(ctx, new Date());
+    await inbound('Sí', 60_000);
+    await scanConfirmationReplies(ctx, new Date());
+    expect(h.setStatus).not.toHaveBeenCalled();
+  });
+  it('control: with no open case a "Sí" still confirms the booking', async () => {
+    h.config = { ...h.config, inferConfirmation: false };
+    await inbound('Sí', -2 * H);
+    await scanConfirmationReplies(ctx, new Date());
+    expect(h.setStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('staff takeover window starts at the first "no" (R2e)', () => {
+  it('staff answered the "no" before the case was opened: the agent does not ask', async () => {
+    await inbound('no voy a poder', -2 * H);
+    await outbound('Hola Ana, ¿quieres que te reprogramemos?', -2 * H + 60_000);
+    await scanConfirmationReplies(ctx, new Date());
+    await advanceCases(ctx, new Date());
+    expect(sentTexts()).toHaveLength(0);
+    expect((await caseRow()).result).toBe('staff_handling');
+  });
+});
+
+describe('a question that was delivered is never reported as failed (R6a)', () => {
+  it('delivered, then the DB write fails: no send_failed now; the reaper says "not confirmed"', async () => {
+    await inbound('no voy a poder', -2 * H);
+    await scanConfirmationReplies(ctx, new Date());
+    await pg.exec(`
+      create function boom() returns trigger language plpgsql as $$
+      begin if new.agent_state = 'asking' then raise exception 'db down'; end if; return new; end $$;
+      create trigger boom before update on sched_reconfirm_cases for each row execute function boom();`);
+    const r = await advanceCases(ctx, new Date());
+    await pg.exec(`drop trigger boom on sched_reconfirm_cases; drop function boom();`);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    expect(r.failed).toBe(0);
+    expect((await caseRow()).result).toBeNull(); // not marked failed while the outcome is unknown
+    await pg.query(`update sched_reconfirm_events set created_at = now() - interval '20 minutes'`);
+    expect((await reapStaleSends()).reconfirms).toBe(1);
+    const c = await caseRow();
+    expect(c.result).toBe('send_failed');
+    const ev = (
+      await pg.query<{ data: Record<string, unknown> }>(
+        `select data from sched_reconfirm_events where kind = 'system' and step = 'ask'`,
+      )
+    ).rows[0]!;
+    expect(ev.data).toMatchObject({ error: 'stale_claim', delivery: 'unknown' });
+    expect(caseTitle({ agentState: 'done', result: 'send_failed' })).toMatch(/No se confirmó/);
   });
 });

@@ -57,7 +57,7 @@ describe('casePhase and caseTitle', () => {
     ['no_answer', 'Sin respuesta'],
     ['unclear', 'Respuesta poco clara'],
     ['late_reply', 'Respondió cerca de la hora de la cita'],
-    ['send_failed', 'No se pudo escribir al cliente'],
+    ['send_failed', 'No se confirmó el mensaje al cliente: revisa el chat'],
     ['staff_handling', 'El equipo ya está conversando con el cliente'],
   ])('open result %s is phase staff', (result, title) => {
     expect(casePhase(open('done', result))).toBe('staff');

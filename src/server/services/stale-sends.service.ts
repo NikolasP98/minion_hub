@@ -41,7 +41,9 @@ export async function reapStaleSends(): Promise<{
     where status = 'pending' and updated_at < ${limit}
     returning id
   `)) as unknown as unknown[];
-  // A case still in `none` whose `ask` claim is old: the send never finished. Never re-sent.
+  // A case still in `none` whose `ask` claim is old: the send did not finish, but the gateway may have
+  // delivered it (the claim also stays `sending` when only the DB write after delivery failed). The case
+  // reads "send not confirmed, check the chat", not "failed". Never re-sent.
   const reconfirms = (await db.execute(sql`
     with ended as (
       update sched_reconfirm_cases c
@@ -54,7 +56,7 @@ export async function reapStaleSends(): Promise<{
       returning c.id, c.org_id, c.booking_id
     )
     insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, data)
-    select org_id, booking_id, id, 'system', 'ask', '{"result":"send_failed","error":"stale_claim"}'::jsonb from ended
+    select org_id, booking_id, id, 'system', 'ask', '{"result":"send_failed","error":"stale_claim","delivery":"unknown"}'::jsonb from ended
     returning id
   `)) as unknown as unknown[];
   return {
