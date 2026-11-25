@@ -3,7 +3,7 @@
  * record is locked and returns every rule that applies; it never throws for a locked record (the
  * caller decides the refusal). It runs in the caller's transaction and takes no lock of its own.
  */
-import { and, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { instantDateKey } from '$lib/time/zoned';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
@@ -15,6 +15,7 @@ import { finSettings } from '$server/db/pg-finance-schema';
 import { posPeriodLocks } from '$server/db/pg-pos-schema';
 import {
   orgLockEvents,
+  orgApiKeys,
   orgLockPolicy,
   orgRecordLocks,
 } from '$server/db/pg-org-integrations-schema';
@@ -703,7 +704,9 @@ async function lockExternal(
   const known = await tx
     .select({ id: stkEntries.id })
     .from(stkEntries)
-    .where(and(eq(stkEntries.orgId, orgId), inArray(stkEntries.id, ids)));
+    .where(
+      and(eq(stkEntries.orgId, orgId), eq(stkEntries.type, 'receipt'), inArray(stkEntries.id, ids)),
+    );
   const knownIds = new Set(known.map((k) => k.id));
   const unknown = ids.filter((i) => !knownIds.has(i));
   const wanted = ids.filter((i) => knownIds.has(i));
@@ -776,6 +779,8 @@ async function liftExternal(
       and(
         eq(orgRecordLocks.orgId, orgId),
         eq(orgRecordLocks.source, 'webhook'),
+        // A key lifts only its own locks; an owner lifts any through the settings route.
+        eq(orgRecordLocks.apiKeyId, key.id),
         isNull(orgRecordLocks.liftedAt),
         target,
       ),
@@ -813,6 +818,8 @@ export interface ExternalLockRow {
   recordId: string | null;
   recordLabel: string | null;
   actorName: string | null;
+  /** The webhook key that set it: locks of one call share it (and `createdAt`). */
+  apiKeyId: string | null;
   createdAt: string;
 }
 
@@ -836,8 +843,27 @@ export async function listExternalLocks(ctx: CoreCtx): Promise<ExternalLockRow[]
     recordId: l.recordId,
     recordLabel: recordLabel ?? null,
     actorName: l.actorName,
+    apiKeyId: l.apiKeyId,
     createdAt: l.createdAt.toISOString(),
   }));
+}
+
+/** Page hint: does the organization have an active API key that may call the lock webhook? */
+export async function hasLocksKey(ctx: CoreCtx): Promise<boolean> {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: orgApiKeys.id })
+      .from(orgApiKeys)
+      .where(
+        and(
+          eq(orgApiKeys.orgId, ctx.tenantId),
+          isNull(orgApiKeys.revokedAt),
+          sql`'locks' = any(${orgApiKeys.scopes})`,
+        ),
+      )
+      .limit(1),
+  );
+  return !!row;
 }
 
 /** Owner only. Lifts one external lock with a required reason; an already lifted lock answers `lifted: false`. */

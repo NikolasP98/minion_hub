@@ -25,7 +25,11 @@
   </PageHeader>
   <PageBody width="content">
     <LockPolicySection policy={data.policy} isOwner={data.isOwner} />
-    <ExternalLocksSection locks={data.externalLocks} isOwner={data.isOwner} />
+    <ExternalLocksSection
+      locks={data.externalLocks}
+      isOwner={data.isOwner}
+      hasLocksKey={data.hasLocksKey}
+    />
     <LockAuditSection events={data.events} pageSize={data.eventsLimit} />
   </PageBody>
 </PageShell>

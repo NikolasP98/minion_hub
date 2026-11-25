@@ -21,7 +21,7 @@
   import { toastSuccess } from '$lib/state/ui/toast.svelte';
   import type { ApiKeyRow } from '$lib/types/api-keys';
 
-  let { keys }: { keys: ApiKeyRow[] } = $props();
+  let { keys, isOwner = false }: { keys: ApiKeyRow[]; isOwner?: boolean } = $props();
 
   const NAME_MAX = 60;
   const when = (iso: string | null) =>
@@ -32,6 +32,7 @@
   // A 403 always names the role; other refusals name their own fix.
   function failure(e: unknown, fallback: string): string {
     if (!(e instanceof ApiError)) return fallback;
+    if (e.message === 'owner_required') return m.settings_developers_locks_owner_required();
     if (e.status === 403) return m.settings_developers_forbidden();
     if (e.message === 'invalid_name') return m.settings_developers_invalid_name();
     if (e.message === 'invalid_scope') return m.settings_developers_create_failed();
@@ -282,8 +283,10 @@
       <Toggle
         bind:checked={locksScope}
         label={m.settings_developers_scope_locks()}
-        description={m.settings_developers_scope_locks_hint()}
-        disabled={creating}
+        description={isOwner
+          ? m.settings_developers_scope_locks_hint()
+          : m.settings_developers_locks_owner_required()}
+        disabled={creating || !isOwner}
       />
       {#if createError}<p class="error" role="alert">{createError}</p>{/if}
     </div>

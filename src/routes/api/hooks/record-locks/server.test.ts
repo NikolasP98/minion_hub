@@ -83,6 +83,13 @@ describe('POST /api/hooks/record-locks', () => {
     expect(m.apply).not.toHaveBeenCalled();
   });
 
+  it('a body over 64 KB is 413 before any parsing', async () => {
+    const res = await post(JSON.stringify({ action: 'lock', label: 'x'.repeat(70_000) }));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toMatchObject({ code: 'too_large' });
+    expect(m.apply).not.toHaveBeenCalled();
+  });
+
   it('more than 200 ids is 400', async () => {
     const ids = Array.from(
       { length: 201 },

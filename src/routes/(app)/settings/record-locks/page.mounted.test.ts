@@ -51,6 +51,7 @@ const data = (over: Record<string, unknown> = {}) =>
     events: [],
     eventsLimit: 100,
     externalLocks: [],
+    hasLocksKey: false,
     ...over,
   }) as unknown as Data;
 const external = (over: Record<string, unknown> = {}) => ({
@@ -201,11 +202,46 @@ describe('Settings → Record locks: webhook (spec 140 S4)', () => {
     );
   });
 
-  it('lists the external locks with label, scope and key, and shows the curl example when empty', () => {
+  it('with no external locks it shows the empty state, and the curl example only once a locks key exists', () => {
     const { unmount } = render(Page, { data: data() });
     expect(screen.getByText(m.record_locks_external_empty())).toBeTruthy();
-    expect(screen.getByText(/\/api\/hooks\/record-locks/, { selector: 'pre' })).toBeTruthy();
+    expect(screen.getByText(m.record_locks_external_empty_hint())).toBeTruthy();
+    expect(screen.queryByText(/\/api\/hooks\/record-locks/, { selector: 'pre' })).toBeNull();
     unmount();
+    render(Page, { data: data({ hasLocksKey: true }) });
+    expect(screen.getByText(/\/api\/hooks\/record-locks/, { selector: 'pre' })).toBeTruthy();
+  });
+
+  it('locks set by ids in one call are one row, "N registros", and lifting it lifts each lock', async () => {
+    const byIds = (id: string, recordId: string) =>
+      external({
+        id,
+        label: 'Auditoría',
+        upTo: null,
+        recordId,
+        recordLabel: `STE-${id}`,
+        apiKeyId: 'k1',
+        createdAt: '2026-11-12T10:00:00.000Z',
+      });
+    render(Page, {
+      data: data({ externalLocks: [byIds('a', 'r1'), byIds('b', 'r2'), byIds('c', 'r3')] }),
+    });
+    expect(screen.getAllByText('Auditoría')).toHaveLength(1);
+    expect(screen.getByText(m.record_locks_external_scope_records({ n: 3 }))).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: m.record_locks_external_lift() }));
+    await fireEvent.input(screen.getByLabelText(/Reason|Motivo/), { target: { value: 'ok' } });
+    await fireEvent.click(
+      screen.getByRole('button', { name: m.record_locks_external_lift_confirm() }),
+    );
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
+    expect(fetcher.mock.calls.map((c) => c[0])).toEqual([
+      '/api/settings/record-locks/locks/a/lift',
+      '/api/settings/record-locks/locks/b/lift',
+      '/api/settings/record-locks/locks/c/lift',
+    ]);
+  });
+
+  it('lists the external locks with label, scope and key', () => {
     render(Page, {
       data: data({
         externalLocks: [

@@ -22,6 +22,7 @@ vi.mock('$server/services/org-api-keys.service', async (orig) => {
 });
 
 import { ApiKeyError } from '$server/services/org-api-keys.service';
+import { CorrectionError } from '$server/services/stock-corrections.logic';
 import { GET, POST } from './+server';
 import { DELETE } from './[id]/+server';
 
@@ -72,6 +73,13 @@ describe('/api/settings/api-keys', () => {
     mocks.createKey.mockResolvedValue({ ...KEY, scopes: ['sandbox'], key: 'mk_1a2b3c4d_x' });
     await post(JSON.stringify({ name: 'Agent', scopes: ['sandbox'] }));
     expect(mocks.createKey).toHaveBeenCalledWith(ctx, 'Agent', ['sandbox']);
+  });
+
+  it('POST answers 403 owner_required when an admin asks for the locks scope (spec 140)', async () => {
+    mocks.createKey.mockRejectedValue(new CorrectionError('owner only', 'owner_required'));
+    const res = await post(JSON.stringify({ name: 'Accounting', scopes: ['locks'] }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'owner_required' });
   });
 
   it('POST passes the locks scope through (spec 140)', async () => {

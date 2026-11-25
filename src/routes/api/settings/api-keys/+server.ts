@@ -2,6 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { requireOrgCapability } from '$server/services/rbac.service';
+import { CorrectionError } from '$server/services/stock-corrections.logic';
 import { ApiKeyError, createKey, listKeys } from '$server/services/org-api-keys.service';
 
 // Organization API keys (spec 121). A 403 comes from `requireOrgCapability` / the central
@@ -34,6 +35,9 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     });
   } catch (e) {
     if (e instanceof ApiKeyError) return json({ error: e.code }, { status: STATUS[e.code] });
+    // The `locks` scope is owner-only: 403 says the role cannot, never a generic failure.
+    if (e instanceof CorrectionError && (e.code === 'owner_required' || e.code === 'forbidden'))
+      return json({ error: 'owner_required' }, { status: 403 });
     throw e;
   }
 };

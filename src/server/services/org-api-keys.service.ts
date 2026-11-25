@@ -6,6 +6,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { orgApiKeys } from '$server/db/pg-org-integrations-schema';
 import { isUniqueViolation } from './pos/db-errors';
+import { assertOwnerInTx } from './record-locks.service';
 import { API_KEY_SCOPES, type ApiKeyRow, type ApiKeyScope } from '$lib/types/api-keys';
 
 export type { ApiKeyRow };
@@ -45,7 +46,7 @@ export function generateKey(): { key: string; prefix: string } {
 
 export const hashKey = (key: string) => createHash('sha256').update(key).digest('hex');
 
-/** Create a key; the returned `key` is the only time its text leaves the server. */
+/** Create a key; the returned `key` is the only time its text leaves the server. The `locks` scope needs an owner (throws `owner_required`). */
 export async function createKey(
   ctx: CoreCtx,
   rawName: string,
@@ -60,6 +61,8 @@ export async function createKey(
     const { key, prefix } = generateKey();
     try {
       const created = await withOrgCore(ctx, async (tx) => {
+        // A `locks` key can lift the accounting system's locks, so only an owner may mint one (spec 140).
+        if (scopes.includes('locks')) await assertOwnerInTx(tx, ctx);
         // shortcut: count then insert, so two admins at the same instant may reach 11 (FR-004 accepts it).
         const [active] = await tx
           .select({ n: count() })

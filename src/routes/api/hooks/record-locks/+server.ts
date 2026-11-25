@@ -10,13 +10,29 @@ import { applyExternalLock } from '$server/services/record-locks.service';
  * the `locks` scope (`/api/hooks` is in `API_HANDLER_AUTH_PATHS`: no session, no tenant). The key
  * can only lock and lift webhook locks; it cannot read data or unlock records.
  */
+// 200 ids is about 8 KB; the cap is read as text (as /api/mcp does) before any JSON parsing.
+const MAX_BODY_CHARS = 64 * 1024;
+
 export const POST: RequestHandler = async (event) => {
   const caller = await resolveLocksCaller(event);
   if (caller instanceof Response) return caller;
+  const text = await event.request.text();
+  if (text.length > MAX_BODY_CHARS)
+    return json(
+      {
+        error: 'The request body is too large.',
+        code: 'too_large',
+        next: 'Send at most 200 ids per call.',
+      },
+      { status: 413, headers: { 'cache-control': 'no-store' } },
+    );
   try {
-    const raw = await event.request.json().catch(() => {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(text);
+    } catch {
       throw new HookError('invalid_request', 'body must be JSON');
-    });
+    }
     const result = await applyExternalLock(caller.ctx, caller.key, parseHookBody(raw));
     return json(result, { headers: { 'cache-control': 'no-store' } });
   } catch (e) {

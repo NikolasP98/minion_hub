@@ -10,26 +10,50 @@
   import { ApiError } from '$lib/api/fetch-json';
   import { formatDate } from '$lib/utils/format';
   import { toastSuccess } from '$lib/state/ui/toast.svelte';
-  import { correctionRefusal } from '$lib/components/stock/correction-refusals';
+  import { lockRefusal } from '$lib/components/stock/lock-reasons';
   import type { ExternalLockRow } from '$server/services/record-locks.service';
 
-  let { locks, isOwner }: { locks: ExternalLockRow[]; isOwner: boolean } = $props();
+  let {
+    locks,
+    isOwner,
+    hasLocksKey = false,
+  }: { locks: ExternalLockRow[]; isOwner: boolean; hasLocksKey?: boolean } = $props();
+
+  /** One row per call: locks set by ids in one request share label, key and instant. */
+  type LockGroup = ExternalLockRow & { ids: string[] };
+  const groups = $derived.by(() => {
+    const out: LockGroup[] = [];
+    const byCall = new Map<string, LockGroup>();
+    for (const l of locks) {
+      const call = l.recordId ? `${l.label}|${l.apiKeyId ?? ''}|${l.createdAt}` : null;
+      const hit = call ? byCall.get(call) : undefined;
+      if (hit) hit.ids.push(l.id);
+      else {
+        const g = { ...l, ids: [l.id] };
+        out.push(g);
+        if (call) byCall.set(call, g);
+      }
+    }
+    return out;
+  });
 
   const dayMonth = (value: string, timeZone?: string) =>
     formatDate(value, { day: '2-digit', month: '2-digit', ...(timeZone ? { timeZone } : {}) });
-  const scope = (l: ExternalLockRow) =>
+  const scope = (l: LockGroup) =>
     l.upTo
       ? m.record_locks_external_scope_date({ upTo: dayMonth(`${l.upTo}T00:00:00Z`, 'UTC') })
-      : m.record_locks_external_scope_record();
+      : l.ids.length > 1
+        ? m.record_locks_external_scope_records({ n: l.ids.length })
+        : m.record_locks_external_scope_record();
 
   // ── Lift (owner) ─────────────────────────────────────────────────────────
-  let lifting = $state<ExternalLockRow | null>(null);
+  let lifting = $state<LockGroup | null>(null);
   let open = $state(false);
   let reason = $state('');
   let busy = $state(false);
   let error = $state<string | null>(null);
 
-  function ask(l: ExternalLockRow) {
+  function ask(l: LockGroup) {
     lifting = l;
     reason = '';
     error = null;
@@ -41,27 +65,31 @@
     busy = true;
     error = null;
     try {
-      await jsonMutation({
-        input: `/api/settings/record-locks/locks/${encodeURIComponent(lifting.id)}/lift`,
-        init: {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ reason: reason.trim() }),
-        },
-        onSuccess: () => invalidate('settings:record-locks'),
-      });
+      // TODO(handoff): a grouped row lifts its locks one request each and stops at the first refusal, so a
+      // mid-way failure leaves part of the call lifted; a batch lift route (ids in one transaction) would make it atomic.
+      // A grouped row lifts every lock of its call, one request each (the route lifts one lock).
+      for (const id of lifting.ids)
+        await jsonMutation({
+          input: `/api/settings/record-locks/locks/${encodeURIComponent(id)}/lift`,
+          init: {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ reason: reason.trim() }),
+          },
+          onSuccess: () => invalidate('settings:record-locks'),
+        });
       toastSuccess(m.record_locks_external_lifted());
       open = false;
     } catch (e) {
       const code =
         e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
-      error = correctionRefusal(code);
+      error = lockRefusal(code);
     } finally {
       busy = false;
     }
   }
 
-  const columns: DataColumn<ExternalLockRow>[] = [
+  const columns: DataColumn<LockGroup>[] = [
     { key: 'label', label: m.record_locks_external_col_label(), accessor: (r) => r.label, fill: true },
     {
       key: 'scope',
@@ -96,13 +124,13 @@
   );
 </script>
 
-{#snippet scopeCell(r: ExternalLockRow)}
-  {#if r.recordId && r.recordLabel}
+{#snippet scopeCell(r: LockGroup)}
+  {#if r.ids.length === 1 && r.recordId && r.recordLabel}
     <a class="card-link" href={`/stock/entries/${r.recordId}`}>{r.recordLabel}</a>
   {:else}{scope(r)}{/if}
 {/snippet}
-{#snippet dateCell(r: ExternalLockRow)}<span class="muted">{dayMonth(r.createdAt)}</span>{/snippet}
-{#snippet actionsCell(r: ExternalLockRow)}
+{#snippet dateCell(r: LockGroup)}<span class="muted">{dayMonth(r.createdAt)}</span>{/snippet}
+{#snippet actionsCell(r: LockGroup)}
   {#if isOwner}
     <Button variant="ghost" size="xs" onclick={() => ask(r)}>{m.record_locks_external_lift()}</Button>
   {/if}
@@ -121,15 +149,17 @@
   <Card padding="none">
     <DataTable
       variant="plain"
-      data={locks}
+      data={groups}
       {columns}
       getRowId={(r) => r.id}
       empty={tableEmpty}
       cells={{ scope: scopeCell, createdAt: dateCell, actions: actionsCell }}
     />
   </Card>
-  <h3 class="t-label">{m.record_locks_external_howto_title()}</h3>
-  <pre class="code">{example}</pre>
+  {#if hasLocksKey}
+    <h3 class="t-label">{m.record_locks_external_howto_title()}</h3>
+    <pre class="code">{example}</pre>
+  {/if}
 </section>
 
 <Dialog {open} labelledBy="record-locks-lift-title" size="sm" dirty={!busy && !!reason.trim()} onclose={() => (open = false)}>

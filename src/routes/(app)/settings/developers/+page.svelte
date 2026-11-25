@@ -21,7 +21,7 @@
     {#snippet leading()}<Code size={iconSizes.md} class="shrink-0 text-accent" />{/snippet}
   </PageHeader>
   <PageBody width="content">
-    <ApiKeysSection keys={data.keys} />
+    <ApiKeysSection keys={data.keys} isOwner={data.isOwner} />
     <McpConnectionsSection connections={data.connections} />
   </PageBody>
 </PageShell>

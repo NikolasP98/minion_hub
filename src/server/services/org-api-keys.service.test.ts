@@ -29,6 +29,8 @@ const db = vi.hoisted(() => {
   return { queue, calls, handle };
 });
 
+const owner = vi.hoisted(() => ({ assertOwnerInTx: vi.fn() }));
+vi.mock('./record-locks.service', () => owner);
 vi.mock('$server/db/pg-client', () => ({ getCoreDb: () => db.handle }));
 vi.mock('$server/db/with-org-core', () => ({
   withOrgCore: (ctx: { db: unknown }, fn: (tx: unknown) => unknown) => fn(ctx.db),
@@ -115,6 +117,7 @@ describe('createKey', () => {
   });
 
   it('accepts the locks scope (spec 140) alone or with sandbox', async () => {
+    owner.assertOwnerInTx.mockResolvedValue('p-owner');
     db.queue.push([{ n: 0 }], [row({ scopes: ['locks'] })], []);
     const created = await createKey(ctx, 'Accounting', ['locks']);
     expect(arg(db.calls[1]!, 'values')).toMatchObject({ scopes: ['locks'] });
@@ -122,6 +125,28 @@ describe('createKey', () => {
     db.queue.push([{ n: 0 }], [row({ scopes: ['sandbox', 'locks'] })], []);
     await createKey(ctx, 'Both', ['sandbox', 'locks']);
     expect(arg(db.calls.at(-2)!, 'values')).toMatchObject({ scopes: ['sandbox', 'locks'] });
+  });
+
+  it('an admin cannot mint a locks key: owner_required, nothing inserted; an owner can', async () => {
+    const { CorrectionError } = await import('./stock-corrections.logic');
+    owner.assertOwnerInTx.mockRejectedValueOnce(
+      new CorrectionError('owner only', 'owner_required'),
+    );
+    const callsBefore = db.calls.length;
+    await expect(createKey(ctx, 'Accounting', ['locks'])).rejects.toMatchObject({
+      code: 'owner_required',
+    });
+    expect(db.calls.length).toBe(callsBefore);
+    owner.assertOwnerInTx.mockResolvedValueOnce('p-owner');
+    db.queue.push([{ n: 0 }], [row({ scopes: ['locks'] })], []);
+    expect((await createKey(ctx, 'Accounting', ['locks'])).scopes).toEqual(['locks']);
+  });
+
+  it('keys without the locks scope never need an owner', async () => {
+    owner.assertOwnerInTx.mockClear();
+    db.queue.push([{ n: 0 }], [row({ scopes: ['sandbox'] })], []);
+    await createKey(ctx, 'Agent', ['sandbox']);
+    expect(owner.assertOwnerInTx).not.toHaveBeenCalled();
   });
 
   it('refuses an empty or over-60 name before any query', async () => {
