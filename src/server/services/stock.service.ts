@@ -8,7 +8,8 @@ import { nextSerialId } from './naming-series';
 import { recordAudit } from './activity.service';
 import { lockNavigationPolicy } from './nav-policy-lock';
 import { registerNotifCandidateSource } from './notif.service';
-import { lockRefusalError, recordLockFor } from './record-locks.service';
+import { hasLockPolicyRow, lockRefusalError, recordLockFor } from './record-locks.service';
+import { CorrectionError } from './stock-corrections.logic';
 import { emitHubEvent } from '$server/events/emit';
 import {
   stkItems,
@@ -1245,12 +1246,22 @@ export async function cancelEntryInTx(
   if (entry.status !== 'submitted')
     throw new StockError(`entry is ${entry.status}, not submitted`, 'not_submitted');
   if (options.checkRecordLock && entry.type === 'receipt' && entry.postedAt) {
+    // An org without finance settings could always cancel; corrections refuse it (spec 124). With the default
+    // policy cancel keeps today's behaviour (spec 140 FR-006); once the org saved its own rules it fails closed.
     const lock = await recordLockFor(tx, orgId, {
       type: 'stock_receipt',
       id,
       postedAt: entry.postedAt,
+    }).catch(async (e: unknown) => {
+      if (
+        e instanceof CorrectionError &&
+        e.code === 'policy_unverified' &&
+        !(await hasLockPolicyRow(tx, orgId))
+      )
+        return null;
+      throw e;
     });
-    if (lock.locked) throw lockRefusalError(lock);
+    if (lock?.locked) throw lockRefusalError(lock);
   }
 
   const origRows = await tx

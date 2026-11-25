@@ -69,6 +69,11 @@ async function readPolicy(tx: CoreTx, orgId: string) {
     : { policy: DEFAULT_LOCK_POLICY, hasRow: false };
 }
 
+/** True once the org saved its own lock rules (otherwise the default applies). */
+export async function hasLockPolicyRow(tx: CoreTx, orgId: string): Promise<boolean> {
+  return (await readPolicy(tx, orgId)).hasRow;
+}
+
 /** No row -> the default policy (month close only). */
 export async function getLockPolicy(tx: CoreTx, orgId: string): Promise<LockPolicy> {
   return (await readPolicy(tx, orgId)).policy;
@@ -230,6 +235,18 @@ export const recordLockForCtx = (ctx: CoreCtx, record: LockableRecord) =>
 /** Page hint only (the writes check again): is the signed-in person an owner of the organization? */
 export async function isOrgOwner(ctx: CoreCtx): Promise<boolean> {
   if (!ctx.profileId || !UUID_RE.test(ctx.profileId)) return false;
+  // A page hint only (writes re-check with assertOwnerInTx): an inactive principal or a removed member reads as
+  // "not owner" instead of failing the page.
+  return readOwner(ctx).catch((e: unknown) => {
+    console.warn(
+      '[record-locks] owner read failed; treating as not owner',
+      (e as { code?: string })?.code ?? e,
+    );
+    return false;
+  });
+}
+
+async function readOwner(ctx: CoreCtx): Promise<boolean> {
   // The nonlocking authority bridge requires a READ ONLY REPEATABLE READ snapshot.
   return getOrgTransactionDb(ctx.db).transaction(async (tx) => {
     await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`);

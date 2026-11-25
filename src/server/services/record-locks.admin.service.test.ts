@@ -23,7 +23,10 @@ vi.mock('./rbac.service', () => ({
     if (h.authority) throw h.authority;
     return { membershipRole: h.role };
   },
-  resolveFreshCapabilitiesReadOnlyInTransaction: async () => ({ membershipRole: h.role }),
+  resolveFreshCapabilitiesReadOnlyInTransaction: async () => {
+    if (h.authority) throw h.authority;
+    return { membershipRole: h.role };
+  },
 }));
 
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
@@ -242,5 +245,11 @@ describe('isOrgOwner', () => {
     h.role = 'admin';
     expect(await isOrgOwner(ctx)).toBe(false);
     expect(await isOrgOwner({ ...(ctx as object), profileId: undefined } as never)).toBe(false);
+  });
+
+  it('reads an inactive principal as not owner instead of failing the page', async () => {
+    h.authority = new Error('operator_principal_inactive');
+    expect(await isOrgOwner(ctx)).toBe(false);
+    h.authority = null;
   });
 });

@@ -110,7 +110,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await client.exec(
-    'TRUNCATE pos_period_locks, stk_ledger, stk_bins, stk_entry_lines, stk_entries, stk_items, stk_warehouses CASCADE',
+    'TRUNCATE pos_period_locks, org_lock_policy, stk_ledger, stk_bins, stk_entry_lines, stk_entries, stk_items, stk_warehouses CASCADE',
   );
   await client.query(
     `INSERT INTO stk_items (id, org_id, code, name) VALUES
@@ -257,6 +257,20 @@ describe('cancelling a receipt meets the record lock (spec 140)', () => {
     const posted = await receipt();
     expect((await cancelEntry(ctx, posted.id, actor)).status).toBe('cancelled');
     expect((await bins())[FILLER]![0]).toBe(30);
+  });
+  it('an org without finance settings still cancels, as before spec 140 (FR-006)', async () => {
+    const posted = await receipt();
+    await client.query('DELETE FROM fin_settings WHERE org_id = $1', [ORG]);
+    expect((await cancelEntry(ctx, posted.id, actor)).status).toBe('cancelled');
+  });
+
+  it('an org that saved its own lock rules but has no finance settings fails closed', async () => {
+    const posted = await receipt();
+    await client.query('DELETE FROM fin_settings WHERE org_id = $1', [ORG]);
+    await client.query('INSERT INTO org_lock_policy (org_id) VALUES ($1)', [ORG]);
+    await expect(cancelEntry(ctx, posted.id, actor)).rejects.toMatchObject({
+      code: 'policy_unverified',
+    });
   });
 });
 
