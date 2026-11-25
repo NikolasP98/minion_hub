@@ -3,7 +3,9 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireDataset } from '$server/auth/dataset-ctx';
 import {
   getLockPolicyFor,
+  hasLocksKey,
   isOrgOwner,
+  listExternalLocks,
   listLockEvents,
 } from '$server/services/record-locks.service';
 
@@ -15,10 +17,12 @@ export const load: PageServerLoad = async ({ locals, depends, url }) => {
   // "Cargar más" asks for 100 more rows through `?events=`; capped so the list stays one query.
   const asked = Number(url.searchParams.get('events'));
   const eventsLimit = Number.isInteger(asked) && asked >= 100 ? Math.min(asked, 500) : 100;
-  const [policy, isOwner, events] = await Promise.all([
+  const [policy, isOwner, events, externalLocks, locksKey] = await Promise.all([
     getLockPolicyFor(ctx),
     isOrgOwner(ctx),
     listLockEvents(ctx, { limit: eventsLimit }),
+    listExternalLocks(ctx),
+    hasLocksKey(ctx),
   ]);
-  return { policy, isOwner, events, eventsLimit };
+  return { policy, isOwner, events, eventsLimit, externalLocks, hasLocksKey: locksKey };
 };

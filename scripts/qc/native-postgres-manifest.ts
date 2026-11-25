@@ -1189,11 +1189,13 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/stock-corrections.sql.integration.test.ts',
-      minimumAssertions: 15,
+      minimumAssertions: 17,
       exactAssertions: true,
       requiredBehaviors: [
         'stock corrections against PostgreSQL refuses a purchase correction under the organization lock policy (spec 140)',
         'stock corrections against PostgreSQL lets an owner unlock one locked purchase for exactly one correction (spec 140)',
+        'stock corrections against PostgreSQL a webhook key lifts only its own locks and locks only receipts by id (spec 140)',
+        'stock corrections against PostgreSQL two webhook keys hold the same record and date as separate locks (spec 140)',
         'stock corrections against PostgreSQL preserves POS only no stock swap and rejects unauthorized stock effects',
         'stock corrections against PostgreSQL rolls back every intermediate write and records one immutable outcome',
         'stock corrections against PostgreSQL reconciles lost response and rejects changed intent operation reuse',

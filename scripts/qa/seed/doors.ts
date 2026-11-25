@@ -24,6 +24,8 @@ export const DOOR_OFF = matrixUuid('doors.door.inactive');
 export const DOOR_CONTACT = matrixUuid('doors.contact.first-touch');
 export const DOOR_SUBMISSION = matrixUuid('doors.submission.one');
 export const DOOR_API_KEY_REVOKED = matrixUuid('doors.api-key.revoked');
+export const DOOR_API_KEY_LOCKS_REVOKED = matrixUuid('doors.api-key.locks-revoked');
+const RECORD_LOCK_LIFTED = matrixUuid('doors.record-lock.lifted');
 
 const FORM_CONFIG = {
   fields: [
@@ -189,4 +191,31 @@ export async function seed(ctx: SeedContext): Promise<void> {
     on conflict (id) do update set revoked_at = excluded.revoked_at, revoked_by = excluded.revoked_by, scopes = excluded.scopes
   `;
   register('doors.api-key.revoked', { table: 'org_api_keys', where: { id: DOOR_API_KEY_REVOKED } });
+
+  // Spec 140 S4 (pairs with 20261124110000_api_key_scope_locks.sql): a revoked key with the `locks`
+  // scope (the webhook must refuse it) and the external lock it once set, already lifted by the owner.
+  const locksKeyHash = createHash('sha256')
+    .update('mk_0b10c4e0_qa-revoked-locks-key-dummy-000000000000000000')
+    .digest('hex');
+  await sql`
+    insert into org_api_keys (id, org_id, name, prefix, key_hash, created_by, created_at, revoked_by, revoked_at, scopes)
+    values (${DOOR_API_KEY_LOCKS_REVOKED}, ${ORG_BUSINESS}, 'QA old accounting key', '0b10c4e0', ${locksKeyHash},
+      ${owner}, ${new Date(now.getTime() - 30 * 86_400_000)}, ${owner}, ${new Date(now.getTime() - 3 * 86_400_000)}, '{locks}')
+    on conflict (id) do update set revoked_at = excluded.revoked_at, revoked_by = excluded.revoked_by, scopes = excluded.scopes
+  `;
+  register('doors.api-key.locks-revoked', {
+    table: 'org_api_keys',
+    where: { id: DOOR_API_KEY_LOCKS_REVOKED },
+  });
+  await sql`
+    insert into org_record_locks (id, org_id, source, label, up_to, api_key_id, actor_name, created_at, lifted_at, lifted_by_kind, lifted_by, lift_reason)
+    values (${RECORD_LOCK_LIFTED}, ${ORG_BUSINESS}, 'webhook', 'QA Contabilidad', '2026-09-30', ${DOOR_API_KEY_LOCKS_REVOKED},
+      'QA old accounting key', ${new Date(now.getTime() - 20 * 86_400_000)}, ${new Date(now.getTime() - 4 * 86_400_000)},
+      'person', ${owner}, 'QA fixture: lifted to correct a typo')
+    on conflict (id) do nothing
+  `;
+  register('doors.record-lock.lifted', {
+    table: 'org_record_locks',
+    where: { id: RECORD_LOCK_LIFTED },
+  });
 }

@@ -6,6 +6,7 @@ import { withOrgCore } from '$server/db/with-org-core';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { orgApiKeys } from '$server/db/pg-org-integrations-schema';
 import { isUniqueViolation } from './pos/db-errors';
+import { assertOwnerInTx } from './record-locks.service';
 import { API_KEY_SCOPES, type ApiKeyRow, type ApiKeyScope } from '$lib/types/api-keys';
 
 export type { ApiKeyRow };
@@ -45,7 +46,7 @@ export function generateKey(): { key: string; prefix: string } {
 
 export const hashKey = (key: string) => createHash('sha256').update(key).digest('hex');
 
-/** Create a key; the returned `key` is the only time its text leaves the server. */
+/** Create a key; the returned `key` is the only time its text leaves the server. The `locks` scope needs an owner (throws `owner_required`). */
 export async function createKey(
   ctx: CoreCtx,
   rawName: string,
@@ -60,6 +61,8 @@ export async function createKey(
     const { key, prefix } = generateKey();
     try {
       const created = await withOrgCore(ctx, async (tx) => {
+        // A `locks` key can lift the accounting system's locks, so only an owner may mint one (spec 140).
+        if (scopes.includes('locks')) await assertOwnerInTx(tx, ctx);
         // shortcut: count then insert, so two admins at the same instant may reach 11 (FR-004 accepts it).
         const [active] = await tx
           .select({ n: count() })
@@ -122,15 +125,20 @@ export async function revokeKey(ctx: CoreCtx, id: string): Promise<void> {
  * The active key whose text this is, or null. Malformed text returns null without a
  * query; the hash comparison is constant-time.
  */
-export async function verifyKey(
-  text: string,
-): Promise<{ id: string; orgId: string; lastUsedAt: Date | null; scopes: string[] } | null> {
+export async function verifyKey(text: string): Promise<{
+  id: string;
+  orgId: string;
+  name: string;
+  lastUsedAt: Date | null;
+  scopes: string[];
+} | null> {
   const match = KEY_RE.exec(text);
   if (!match) return null;
   const [hit] = await getCoreDb()
     .select({
       id: orgApiKeys.id,
       orgId: orgApiKeys.orgId,
+      name: orgApiKeys.name,
       keyHash: orgApiKeys.keyHash,
       lastUsedAt: orgApiKeys.lastUsedAt,
       revokedAt: orgApiKeys.revokedAt,
@@ -143,7 +151,13 @@ export async function verifyKey(
   const a = Buffer.from(hashKey(text), 'hex');
   const b = Buffer.from(hit.keyHash, 'hex');
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  return { id: hit.id, orgId: hit.orgId, lastUsedAt: hit.lastUsedAt, scopes: hit.scopes };
+  return {
+    id: hit.id,
+    orgId: hit.orgId,
+    name: hit.name,
+    lastUsedAt: hit.lastUsedAt,
+    scopes: hit.scopes,
+  };
 }
 
 /** Record a use; the condition keeps it to at most one write per key and minute. */

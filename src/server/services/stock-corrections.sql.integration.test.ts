@@ -12,7 +12,8 @@ vi.mock('@minion-stack/cache', () => ({
   invalidateTags: async () => undefined,
 }));
 import { CorrectionError } from './stock-corrections.logic';
-import { grantUnlock } from './record-locks.service';
+import { applyExternalLock, grantUnlock } from './record-locks.service';
+import { parseHookBody } from './record-locks.logic';
 import {
   applyStockCorrection,
   getStockCorrectionByOperationKey,
@@ -338,6 +339,107 @@ describe('stock corrections against PostgreSQL', () => {
     expect(await refusal(previewStockCorrection(wd.ownerCtx, await request(b1, '2'), 'typo'))).toBe(
       'period_locked',
     );
+  });
+
+  it('a webhook key lifts only its own locks and locks only receipts by id (spec 140)', async () => {
+    const wd = await world();
+    const item = randomUUID();
+    await owner.unsafe(
+      `insert into public.stk_items(id,org_id,code,name) values ('${item}','${wd.org}','WK','WK')`,
+    );
+    await owner.unsafe(
+      `insert into public.org_lock_policy(org_id,webhook_enabled) values ('${wd.org}', true)`,
+    );
+    const mine = { id: randomUUID(), name: 'Contabilidad' };
+    const other = { id: randomUUID(), name: 'Auditoria' };
+    const call = (key: typeof mine, body: Record<string, unknown>) =>
+      applyExternalLock(wd.ownerCtx, key, parseHookBody(body));
+    const receipt = await createEntry(
+      wd.ownerCtx,
+      { type: 'receipt', lines: [{ itemId: item, qty: 3, rate: 2, toWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    await submitEntry(wd.ownerCtx, receipt.id, actorOf(wd.boss));
+    const issue = await createEntry(
+      wd.ownerCtx,
+      { type: 'issue', lines: [{ itemId: item, qty: 1, fromWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    await submitEntry(wd.ownerCtx, issue.id, actorOf(wd.boss));
+
+    // Only a receipt can be locked by id; an issue lands in `unknown`.
+    const locked = await call(mine, {
+      action: 'lock',
+      label: 'Contabilidad',
+      recordType: 'stock_receipt',
+      ids: [receipt.id, issue.id],
+    });
+    expect(locked).toMatchObject({ created: 1, unknown: [issue.id] });
+    await call(mine, { action: 'lock', label: 'Contabilidad', upTo: '2020-01-31' });
+
+    // Another key lifts nothing, by date or by ids without a label.
+    expect(
+      await call(other, { action: 'lift', label: 'Contabilidad', upTo: '2020-01-31' }),
+    ).toMatchObject({ lifted: 0 });
+    expect(
+      await call(other, { action: 'lift', recordType: 'stock_receipt', ids: [receipt.id] }),
+    ).toMatchObject({ lifted: 0 });
+    expect(
+      await owner`select id from public.org_record_locks where org_id=${wd.org} and lifted_at is null`,
+    ).toHaveLength(2);
+    // The key that set them lifts both.
+    expect(
+      await call(mine, { action: 'lift', label: 'Contabilidad', upTo: '2020-01-31' }),
+    ).toMatchObject({ lifted: 1 });
+    expect(
+      await call(mine, { action: 'lift', recordType: 'stock_receipt', ids: [receipt.id] }),
+    ).toMatchObject({ lifted: 1 });
+  });
+
+  it('two webhook keys hold the same record and date as separate locks (spec 140)', async () => {
+    const wd = await world();
+    const item = randomUUID();
+    await owner.unsafe(
+      `insert into public.stk_items(id,org_id,code,name) values ('${item}','${wd.org}','PK','PK')`,
+    );
+    await owner.unsafe(
+      `insert into public.org_lock_policy(org_id,webhook_enabled) values ('${wd.org}', true)`,
+    );
+    const a = { id: randomUUID(), name: 'Contabilidad' };
+    const b = { id: randomUUID(), name: 'Auditoria' };
+    const call = (key: typeof a, body: Record<string, unknown>) =>
+      applyExternalLock(wd.ownerCtx, key, parseHookBody(body));
+    const receipt = await createEntry(
+      wd.ownerCtx,
+      { type: 'receipt', lines: [{ itemId: item, qty: 3, rate: 2, toWarehouseId: wd.wh }] },
+      actorOf(wd.boss),
+    );
+    await submitEntry(wd.ownerCtx, receipt.id, actorOf(wd.boss));
+    const byId = (label: string) => ({
+      action: 'lock',
+      label,
+      recordType: 'stock_receipt',
+      ids: [receipt.id],
+    });
+    const byDate = (label: string) => ({ action: 'lock', label, upTo: '2020-01-31' });
+
+    // Probe R1: the second key gets its OWN lock and its own label back, never the first key's.
+    expect(await call(a, byId('Contabilidad'))).toMatchObject({ created: 1, existing: 0 });
+    const mine = await call(b, byId('Auditoria'));
+    expect(mine).toMatchObject({ created: 1, existing: 0, locks: [{ label: 'Auditoria' }] });
+    expect(await call(a, byDate('Cierre'))).toMatchObject({ created: 1, existing: 0 });
+    expect(await call(b, byDate('Cierre'))).toMatchObject({ created: 1, existing: 0 });
+    // The same key repeating itself is still idempotent.
+    expect(await call(b, byId('Auditoria'))).toMatchObject({ created: 0, existing: 1 });
+    expect(await call(b, byDate('Cierre'))).toMatchObject({ created: 0, existing: 1 });
+    expect(
+      await owner`select id from public.org_record_locks where org_id=${wd.org} and lifted_at is null`,
+    ).toHaveLength(4);
+    // Lifting one key leaves the other key's locks in force.
+    await call(a, { action: 'lift', recordType: 'stock_receipt', ids: [receipt.id] });
+    expect(
+      await owner`select id from public.org_record_locks where org_id=${wd.org} and lifted_at is null and api_key_id=${b.id}`,
+    ).toHaveLength(2);
   });
 
   it('enforces tenant scoped five kind schema immutable grants and private source ownership', async () => {

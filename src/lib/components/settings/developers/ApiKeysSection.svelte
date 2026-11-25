@@ -21,7 +21,7 @@
   import { toastSuccess } from '$lib/state/ui/toast.svelte';
   import type { ApiKeyRow } from '$lib/types/api-keys';
 
-  let { keys }: { keys: ApiKeyRow[] } = $props();
+  let { keys, isOwner = false }: { keys: ApiKeyRow[]; isOwner?: boolean } = $props();
 
   const NAME_MAX = 60;
   const when = (iso: string | null) =>
@@ -32,6 +32,7 @@
   // A 403 always names the role; other refusals name their own fix.
   function failure(e: unknown, fallback: string): string {
     if (!(e instanceof ApiError)) return fallback;
+    if (e.message === 'owner_required') return m.settings_developers_locks_owner_required();
     if (e.status === 403) return m.settings_developers_forbidden();
     if (e.message === 'invalid_name') return m.settings_developers_invalid_name();
     if (e.message === 'invalid_scope') return m.settings_developers_create_failed();
@@ -43,6 +44,7 @@
   let createOpen = $state(false);
   let name = $state('');
   let sandboxScope = $state(false);
+  let locksScope = $state(false);
   let creating = $state(false);
   let createError = $state<string | null>(null);
   /** The key text, held only while the reveal dialog is open. */
@@ -51,6 +53,7 @@
   function openCreate() {
     name = '';
     sandboxScope = false;
+    locksScope = false;
     createError = null;
     revealed = null;
     createOpen = true;
@@ -71,7 +74,10 @@
         init: {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: name.trim(), scopes: sandboxScope ? ['sandbox'] : [] }),
+          body: JSON.stringify({
+            name: name.trim(),
+            scopes: [...(sandboxScope ? ['sandbox'] : []), ...(locksScope ? ['locks'] : [])],
+          }),
         },
         onSuccess: () => invalidate('settings:developers'),
       });
@@ -174,6 +180,9 @@
   {#if r.scopes.includes('sandbox')}
     <Badge size="sm">{m.settings_developers_scope_sandbox()}</Badge>
   {/if}
+  {#if r.scopes.includes('locks')}
+    <Badge size="sm">{m.settings_developers_scope_locks()}</Badge>
+  {/if}
 {/snippet}
 {#snippet createdCell(r: ApiKeyRow)}{when(r.createdAt)}{/snippet}
 {#snippet lastUsedCell(r: ApiKeyRow)}{when(r.lastUsedAt)}{/snippet}
@@ -270,6 +279,14 @@
         label={m.settings_developers_scope_sandbox()}
         description={m.settings_developers_scope_sandbox_hint()}
         disabled={creating}
+      />
+      <Toggle
+        bind:checked={locksScope}
+        label={m.settings_developers_scope_locks()}
+        description={isOwner
+          ? m.settings_developers_scope_locks_hint()
+          : m.settings_developers_locks_owner_required()}
+        disabled={creating || !isOwner}
       />
       {#if createError}<p class="error" role="alert">{createError}</p>{/if}
     </div>

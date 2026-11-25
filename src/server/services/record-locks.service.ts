@@ -3,7 +3,8 @@
  * record is locked and returns every rule that applies; it never throws for a locked record (the
  * caller decides the refusal). It runs in the caller's transaction and takes no lock of its own.
  */
-import { and, desc, eq, gt, isNull, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { instantDateKey } from '$lib/time/zoned';
 import type { CoreCtx } from '$server/auth/core-ctx';
 import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
 import { getOrgTransactionDb } from '$server/db/pg-client';
@@ -14,6 +15,7 @@ import { finSettings } from '$server/db/pg-finance-schema';
 import { posPeriodLocks } from '$server/db/pg-pos-schema';
 import {
   orgLockEvents,
+  orgApiKeys,
   orgLockPolicy,
   orgRecordLocks,
 } from '$server/db/pg-org-integrations-schema';
@@ -30,9 +32,11 @@ import {
   DEFAULT_LOCK_POLICY,
   evaluateRecordLock,
   isLocked,
+  HookError,
   parsePolicyInput,
   policyFromRow,
   type ExternalLockInput,
+  type HookBody,
 } from './record-locks.logic';
 import {
   CorrectionError,
@@ -594,4 +598,316 @@ export async function consumeUnlockInTx(
       });
     throw e;
   }
+}
+
+// ── S4: external locks (webhook) and the owner's lift ────────────────────────────────────
+
+/** The calling API key, as the audit actor and the `lifted_by` of a lift. */
+export interface HookKey {
+  id: string;
+  name: string;
+}
+
+export type HookResult =
+  | {
+      action: 'lock';
+      created: number;
+      existing: number;
+      unknown: string[];
+      locks: Array<{ id: string; label: string; upTo?: string }>;
+    }
+  | { action: 'lift'; lifted: number };
+
+const keyActor = (key: HookKey): LockActor => ({ kind: 'api_key', id: key.id, name: key.name });
+const typeKey = (t: HookBody['recordType']) => t ?? null;
+
+/**
+ * The webhook's one entry point. Refused with `webhook_rule_off` while the organization has not
+ * enabled "Por webhook" (storing locks that do nothing would mislead the caller). Idempotent by
+ * natural key: the same lock twice answers `created: 0` and writes no second event.
+ */
+export async function applyExternalLock(
+  ctx: CoreCtx,
+  key: HookKey,
+  body: HookBody,
+  opts: { now?: Date } = {},
+): Promise<HookResult> {
+  const now = opts.now ?? new Date();
+  return withOrgCore(ctx, async (tx) => {
+    const { policy } = await readPolicy(tx, ctx.tenantId);
+    if (!policy.webhook) throw new HookError('webhook_rule_off');
+    return body.action === 'lock'
+      ? lockExternal(tx, ctx.tenantId, key, body, now)
+      : liftExternal(tx, ctx.tenantId, key, body);
+  });
+}
+
+// TODO(handoff): (spec 140 S4) idempotency relies on `ON CONFLICT DO NOTHING` against the two partial unique indexes of
+// org_record_locks; it is unit-tested with a fake transaction only. No native-Postgres case, and the migration + seed were not
+// applied here (`bun run qa:reset`). Run both once on the qa stack before relying on it.
+async function lockExternal(
+  tx: CoreTx,
+  orgId: string,
+  key: HookKey,
+  body: HookBody,
+  now: Date,
+): Promise<HookResult> {
+  const label = body.label as string;
+  const base = { orgId, source: 'webhook', label, apiKeyId: key.id, actorName: key.name };
+
+  if (body.upTo) {
+    const [settings] = await tx
+      .select({ timezone: finSettings.timezone })
+      .from(finSettings)
+      .where(eq(finSettings.orgId, orgId));
+    // shortcut: an organization with no finance settings row is judged in UTC here (its records are refused as unverifiable anyway).
+    if (body.upTo > instantDateKey(now, settings?.timezone ?? 'UTC'))
+      throw new HookError('invalid_request', 'upTo cannot be in the future');
+    const [made] = await tx
+      .insert(orgRecordLocks)
+      .values({ ...base, recordType: typeKey(body.recordType), upTo: body.upTo })
+      .onConflictDoNothing()
+      .returning({ id: orgRecordLocks.id });
+    // `existing` is only ever this key's own row: another key's lock with the same label and date is
+    // its own row (the indexes include the key), and the label answered is the stored one.
+    const [lock] = made
+      ? [{ id: made.id, label }]
+      : await tx
+          .select({ id: orgRecordLocks.id, label: orgRecordLocks.label })
+          .from(orgRecordLocks)
+          .where(
+            and(
+              eq(orgRecordLocks.orgId, orgId),
+              eq(orgRecordLocks.label, label),
+              eq(orgRecordLocks.upTo, body.upTo),
+              eq(orgRecordLocks.apiKeyId, key.id),
+              body.recordType
+                ? eq(orgRecordLocks.recordType, body.recordType)
+                : isNull(orgRecordLocks.recordType),
+              isNull(orgRecordLocks.liftedAt),
+            ),
+          );
+    if (made)
+      await logLockEventInTx(tx, orgId, {
+        action: 'lock',
+        recordType: typeKey(body.recordType),
+        actor: keyActor(key),
+        detail: { lockId: made.id, label, upTo: body.upTo },
+      });
+    return {
+      action: 'lock',
+      created: made ? 1 : 0,
+      existing: made ? 0 : 1,
+      unknown: [],
+      locks: lock ? [{ id: lock.id, label: lock.label, upTo: body.upTo }] : [],
+    };
+  }
+
+  const ids = body.ids as string[];
+  const known = await tx
+    .select({ id: stkEntries.id })
+    .from(stkEntries)
+    .where(
+      and(eq(stkEntries.orgId, orgId), eq(stkEntries.type, 'receipt'), inArray(stkEntries.id, ids)),
+    );
+  const knownIds = new Set(known.map((k) => k.id));
+  const unknown = ids.filter((i) => !knownIds.has(i));
+  const wanted = ids.filter((i) => knownIds.has(i));
+  const made = wanted.length
+    ? await tx
+        .insert(orgRecordLocks)
+        .values(wanted.map((recordId) => ({ ...base, recordType: 'stock_receipt', recordId })))
+        .onConflictDoNothing()
+        .returning({ id: orgRecordLocks.id, recordId: orgRecordLocks.recordId })
+    : [];
+  if (made.length)
+    await tx.insert(orgLockEvents).values(
+      made.map((l) => ({
+        orgId,
+        action: 'lock',
+        recordType: 'stock_receipt',
+        recordId: l.recordId,
+        rules: [],
+        actorKind: 'api_key',
+        actorId: key.id,
+        actorName: key.name,
+        detail: { lockId: l.id, label },
+      })),
+    );
+  const active = wanted.length
+    ? await tx
+        .select({ id: orgRecordLocks.id, label: orgRecordLocks.label })
+        .from(orgRecordLocks)
+        .where(
+          and(
+            eq(orgRecordLocks.orgId, orgId),
+            eq(orgRecordLocks.recordType, 'stock_receipt'),
+            inArray(orgRecordLocks.recordId, wanted),
+            eq(orgRecordLocks.apiKeyId, key.id),
+            isNull(orgRecordLocks.liftedAt),
+          ),
+        )
+    : [];
+  return {
+    action: 'lock',
+    created: made.length,
+    existing: wanted.length - made.length,
+    unknown,
+    locks: active.map((l) => ({ id: l.id, label: l.label })),
+  };
+}
+
+async function liftExternal(
+  tx: CoreTx,
+  orgId: string,
+  key: HookKey,
+  body: HookBody,
+): Promise<HookResult> {
+  const target = body.upTo
+    ? and(
+        eq(orgRecordLocks.upTo, body.upTo),
+        eq(orgRecordLocks.label, body.label as string),
+        body.recordType
+          ? eq(orgRecordLocks.recordType, body.recordType)
+          : isNull(orgRecordLocks.recordType),
+      )
+    : and(
+        eq(orgRecordLocks.recordType, 'stock_receipt'),
+        inArray(orgRecordLocks.recordId, body.ids as string[]),
+        body.label ? eq(orgRecordLocks.label, body.label) : undefined,
+      );
+  const lifted = await tx
+    .update(orgRecordLocks)
+    .set({ liftedAt: new Date(), liftedByKind: 'api_key', liftedBy: key.id })
+    .where(
+      and(
+        eq(orgRecordLocks.orgId, orgId),
+        eq(orgRecordLocks.source, 'webhook'),
+        // A key lifts only its own locks; an owner lifts any through the settings route.
+        eq(orgRecordLocks.apiKeyId, key.id),
+        isNull(orgRecordLocks.liftedAt),
+        target,
+      ),
+    )
+    .returning({
+      id: orgRecordLocks.id,
+      label: orgRecordLocks.label,
+      upTo: orgRecordLocks.upTo,
+      recordType: orgRecordLocks.recordType,
+      recordId: orgRecordLocks.recordId,
+    });
+  if (lifted.length)
+    await tx.insert(orgLockEvents).values(
+      lifted.map((l) => ({
+        orgId,
+        action: 'lift',
+        recordType: l.recordType,
+        recordId: l.recordId,
+        rules: [],
+        actorKind: 'api_key',
+        actorId: key.id,
+        actorName: key.name,
+        detail: { lockId: l.id, label: l.label, upTo: l.upTo },
+      })),
+    );
+  return { action: 'lift', lifted: lifted.length };
+}
+
+/** An external lock as the settings page lists it. */
+export interface ExternalLockRow {
+  id: string;
+  label: string;
+  /** 'YYYY-MM-DD' when the lock is "everything up to a date". */
+  upTo: string | null;
+  recordId: string | null;
+  recordLabel: string | null;
+  actorName: string | null;
+  /** The webhook key that set it: locks of one call share it (and `createdAt`). */
+  apiKeyId: string | null;
+  createdAt: string;
+}
+
+/** Active external locks, newest first (lifted ones stay only in the audit list). */
+export async function listExternalLocks(ctx: CoreCtx): Promise<ExternalLockRow[]> {
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ l: orgRecordLocks, recordLabel: stkEntries.humanId })
+      .from(orgRecordLocks)
+      .leftJoin(
+        stkEntries,
+        and(eq(stkEntries.id, orgRecordLocks.recordId), eq(stkEntries.orgId, orgRecordLocks.orgId)),
+      )
+      .where(and(eq(orgRecordLocks.orgId, ctx.tenantId), isNull(orgRecordLocks.liftedAt)))
+      .orderBy(desc(orgRecordLocks.createdAt)),
+  );
+  return rows.map(({ l, recordLabel }) => ({
+    id: l.id,
+    label: l.label,
+    upTo: l.upTo,
+    recordId: l.recordId,
+    recordLabel: recordLabel ?? null,
+    actorName: l.actorName,
+    apiKeyId: l.apiKeyId,
+    createdAt: l.createdAt.toISOString(),
+  }));
+}
+
+/** Page hint: does the organization have an active API key that may call the lock webhook? */
+export async function hasLocksKey(ctx: CoreCtx): Promise<boolean> {
+  const [row] = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ id: orgApiKeys.id })
+      .from(orgApiKeys)
+      .where(
+        and(
+          eq(orgApiKeys.orgId, ctx.tenantId),
+          isNull(orgApiKeys.revokedAt),
+          sql`'locks' = any(${orgApiKeys.scopes})`,
+        ),
+      )
+      .limit(1),
+  );
+  return !!row;
+}
+
+/** Owner only. Lifts one external lock with a required reason; an already lifted lock answers `lifted: false`. */
+export async function liftLock(
+  ctx: CoreCtx,
+  lockId: string,
+  rawReason: unknown,
+  actor: LockActor,
+): Promise<{ lifted: boolean }> {
+  const reason = typeof rawReason === 'string' ? rawReason.trim() : '';
+  if (!reason || reason.length > REASON_MAX)
+    throw new CorrectionError('el motivo es obligatorio (1 a 1000 caracteres)', 'invalid_request');
+  if (!UUID_RE.test(lockId)) throw new CorrectionError('lock not found', 'not_found');
+  return withOrgCore(ctx, async (tx) => {
+    const profileId = await assertOwnerInTx(tx, ctx);
+    const [row] = await tx
+      .select()
+      .from(orgRecordLocks)
+      .where(and(eq(orgRecordLocks.id, lockId), eq(orgRecordLocks.orgId, ctx.tenantId)));
+    if (!row) throw new CorrectionError('lock not found', 'not_found');
+    if (row.liftedAt) return { lifted: false };
+    const [done] = await tx
+      .update(orgRecordLocks)
+      .set({
+        liftedAt: new Date(),
+        liftedByKind: 'person',
+        liftedBy: profileId,
+        liftReason: reason,
+      })
+      .where(and(eq(orgRecordLocks.id, lockId), isNull(orgRecordLocks.liftedAt)))
+      .returning({ id: orgRecordLocks.id });
+    if (!done) return { lifted: false };
+    await logLockEventInTx(tx, ctx.tenantId, {
+      action: 'lift',
+      recordType: row.recordType,
+      recordId: row.recordId,
+      actor,
+      reason,
+      detail: { lockId, label: row.label, upTo: row.upTo },
+    });
+    return { lifted: true };
+  });
 }

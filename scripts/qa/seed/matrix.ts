@@ -877,6 +877,16 @@ export const MATRIX: readonly MatrixEntry[] = [
     domain: 'doors',
     why: 'revoked organization API key (spec 121 S1): Settings → Developers lists it with revoker and time; it never authenticates',
   },
+  {
+    id: 'doors.api-key.locks-revoked',
+    domain: 'doors',
+    why: 'revoked API key with the locks scope (spec 140 S4): the record-lock webhook must refuse it; Settings → Developers lists it with its scope badge',
+  },
+  {
+    id: 'doors.record-lock.lifted',
+    domain: 'doors',
+    why: 'already-lifted external lock (spec 140 S4): proves lifted rows stay out of the active list and the unique indexes',
+  },
   // ── Org entitlements (spec 043 S1) ───────────────────────────────────
   {
     id: 'entitlements.org.premium',

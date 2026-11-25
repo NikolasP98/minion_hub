@@ -370,6 +370,21 @@
     "class": "todo"
   },
   {
+    "file": "src/server/locks/caller.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/mcp/caller.ts",
+    "calls": ["getCoreDb", "getDb"],
+    "class": "cross-org-by-design"
+  },
+  {
+    "file": "src/server/mcp/oauth.service.ts",
+    "calls": ["getCoreDb"],
+    "class": "cross-org-by-design"
+  },
+  {
     "file": "src/server/services/architecture-c4.model.ts",
     "calls": ["getDb"],
     "class": "todo"
@@ -678,16 +693,6 @@
     "file": "src/server/services/workspaces.service.ts",
     "calls": ["getCoreDb"],
     "class": "todo"
-  },
-  {
-    "file": "src/server/mcp/caller.ts",
-    "calls": ["getCoreDb", "getDb"],
-    "class": "cross-org-by-design"
-  },
-  {
-    "file": "src/server/mcp/oauth.service.ts",
-    "calls": ["getCoreDb"],
-    "class": "cross-org-by-design"
   },
   {
     "file": "src/routes/api/pos/shifts/auto-close/+server.ts",
