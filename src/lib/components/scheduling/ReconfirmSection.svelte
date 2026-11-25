@@ -101,7 +101,8 @@
     if (phase === 'closed') {
       if (result === 'rescheduled') return m.sched_reconfirm_text_rescheduled({ when: startLabel });
       if (result === 'will_come') return m.sched_reconfirm_text_will_come();
-      if (reconfirm.closeAction === 'booking_closed') return m.sched_reconfirm_text_booking_closed();
+      if (reconfirm.closeAction === 'booking_closed')
+        return m.sched_reconfirm_text_booking_closed();
       if (reconfirm.closeAction === 'moved_by_staff') return m.sched_reconfirm_text_moved();
       return m.sched_reconfirm_text_attended();
     }
