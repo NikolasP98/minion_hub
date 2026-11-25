@@ -236,7 +236,7 @@ export async function getCaseForBooking(
       agentState,
       result,
       title: caseTitle({ agentState, result }),
-      summary: c.summary == null ? null : String(c.summary),
+      summary: masked || c.summary == null ? null : String(c.summary), // may carry the client's words or name
       openedAt: new Date(String(c.opened_at)),
       waitUntil: c.wait_until ? new Date(String(c.wait_until)) : null,
       contactId: c.contact_id == null ? null : String(c.contact_id),

@@ -180,7 +180,7 @@ describe('getCaseForBooking masking (spec 139 S3)', () => {
     id: 'case-1',
     agent_state: 'done',
     result: 'declined',
-    summary: null,
+    summary: 'Ana Torres dijo: no puedo',
     opened_at: '2026-11-25T14:00:00Z',
     wait_until: null,
     contact_id: 'c1',
@@ -212,6 +212,7 @@ describe('getCaseForBooking masking (spec 139 S3)', () => {
     expect(v?.recipient).not.toContain('999000');
     expect(v?.recipient.endsWith('0111')).toBe(true);
     expect(v?.events[0]).toMatchObject({ verdict: 'negation', confidence: 0.95, content: null });
+    expect(v?.summary).toBeNull(); // the summary can carry the client's words or name
   });
 
   it('returns the real values otherwise, and null for no ids', async () => {
@@ -219,6 +220,7 @@ describe('getCaseForBooking masking (spec 139 S3)', () => {
     const v = await getCaseForBooking(ctx, 'b1');
     expect(v).toMatchObject({ masked: false, recipient: '+51999000111' });
     expect(v?.events[0]?.content).toBe('no voy a poder');
+    expect(v?.summary).toBe('Ana Torres dijo: no puedo');
     expect(await getCaseForBooking(ctx, [])).toBeNull();
   });
 });
