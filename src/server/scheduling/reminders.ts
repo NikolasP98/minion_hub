@@ -123,7 +123,7 @@ export function resolveRecipient(
 export function confirmCta(locale: string): string {
   return locale === 'en'
     ? "Reply YES to confirm or NO if you can't make it."
-    : 'Responde SÍ para confirmar o NO si no puedes asistir.';
+    : 'Responde SÍ para confirmar o NO si no podrás venir.';
 }
 
 const norm = (s: string) =>

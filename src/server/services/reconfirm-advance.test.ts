@@ -58,7 +58,7 @@ beforeEach(() => {
   clientWrote = false;
   claimFree = true;
   log = [];
-  h.config = { negationWaitHours: 24, locale: 'es', fromName: 'FACES' };
+  h.config = { enabled: true, negationWaitHours: 24, locale: 'es', fromName: 'FACES' };
   h.gateway.mockResolvedValue({ messageId: 'wa-1' });
   h.insertMessages.mockResolvedValue(undefined);
   h.tx = {
@@ -103,6 +103,14 @@ describe('advanceCases: the question', () => {
       agentId: 'reminders-agent',
       metadata: { kind: 'reconfirm', step: 'ask' },
     });
+  });
+
+  it('reminders turned off (FR-007): nothing is read and nothing is sent', async () => {
+    h.config = { ...h.config, enabled: false };
+    const r = await advanceCases(ctx, NOW);
+    expect(r).toMatchObject({ asked: 0, timedOut: 0, failed: 0 });
+    expect(h.gateway).not.toHaveBeenCalled();
+    expect(log).toHaveLength(0);
   });
 
   it('never sends twice: a claim already held (second tick) sends nothing', async () => {

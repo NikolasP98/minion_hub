@@ -489,6 +489,8 @@ async function clientWroteSince(ctx: CoreCtx, c: OpenCaseRow, since: string): Pr
  */
 export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<AdvanceResult> {
   const out: AdvanceResult = { asked: 0, timedOut: 0, failed: 0, offered: 0, rescheduled: 0 };
+  const config = await getReminderConfig(ctx);
+  if (!config.enabled) return out; // FR-007: reminders off means the agent writes nothing
   const open = rows(
     await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
@@ -511,7 +513,6 @@ export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<A
     ),
   ) as unknown as OpenCaseRow[];
   if (!open.length) return out;
-  const config = await getReminderConfig(ctx);
 
   for (const c of open) {
     try {
