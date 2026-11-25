@@ -544,6 +544,36 @@ export const finalColumnNames = {
   ],
 } as const;
 
+/**
+ * Columns and constraints that migrations after TARGET_VERSION add to these tables. The catalog is
+ * asserted both at the target prefix and after the full runner. `hub_migrations` cannot tell them
+ * apart (the prefix fixture pre-records every other version without running it), so each addition
+ * is expected only when a table its migration creates (`marker`) actually exists.
+ */
+const laterAdditions: ReadonlyArray<{
+  version: string;
+  marker: string;
+  columns: Partial<Record<keyof typeof finalColumnNames, readonly string[]>>;
+  constraints: readonly string[];
+}> = [
+  {
+    version: '20261123120000', // reconfirm_cases (spec 139)
+    marker: 'public.sched_reconfirm_cases',
+    columns: { sched_reminder_config: ['negation_wait_hours'], sched_reminders: ['account_id'] },
+    constraints: ['sched_reminder_config_negation_wait_hours_check'],
+  },
+];
+
+async function appliedLaterAdditions(db: Sql) {
+  const applied: (typeof laterAdditions)[number][] = [];
+  for (const addition of laterAdditions) {
+    const [{ present }] = await db<{ present: boolean }[]>`
+      SELECT to_regclass(${addition.marker}) IS NOT NULL AS present`;
+    if (present) applied.push(addition);
+  }
+  return applied;
+}
+
 export async function assertCanonicalCatalog(db: Sql) {
   const relations = await db<
     { table: keyof typeof finalColumnNames; owner: string; rls: boolean; forceRls: boolean }[]
@@ -575,7 +605,12 @@ export async function assertCanonicalCatalog(db: Sql) {
     WHERE n.nspname='public' AND c.relname = ANY(${Object.keys(finalColumnNames)})
       AND a.attnum>0 AND NOT a.attisdropped
     ORDER BY c.relname,a.attnum`;
-  for (const [table, expected] of Object.entries(finalColumnNames)) {
+  const later = await appliedLaterAdditions(db);
+  for (const [table, base] of Object.entries(finalColumnNames)) {
+    const expected = [
+      ...base,
+      ...later.flatMap((a) => a.columns[table as keyof typeof finalColumnNames] ?? []),
+    ];
     expect(columns.filter((row) => row.table === table).map((row) => row.column)).toEqual(expected);
   }
 
@@ -609,16 +644,19 @@ export async function assertCanonicalCatalog(db: Sql) {
       'public.notif_rules'::regclass,'public.notif_log'::regclass
     ) AND c.contype <> 'n'
     ORDER BY c.conrelid::regclass::text,c.conname`;
-  expect(stableConstraints.map((row) => row.name)).toEqual([
-    'notif_log_pkey',
-    'notif_log_status_check',
-    'notif_rules_pkey',
-    'sched_reminder_config_pkey',
-    'sched_reminders_booking_id_fkey',
-    'sched_reminders_pkey',
-    'sched_reminders_status_check',
-    'sched_reminders_status_sent_at_check',
-  ]);
+  expect(stableConstraints.map((row) => row.name)).toEqual(
+    [
+      'notif_log_pkey',
+      'notif_log_status_check',
+      'notif_rules_pkey',
+      'sched_reminder_config_pkey',
+      'sched_reminders_booking_id_fkey',
+      'sched_reminders_pkey',
+      'sched_reminders_status_check',
+      'sched_reminders_status_sent_at_check',
+      ...later.flatMap((a) => a.constraints),
+    ].sort(),
+  );
   expect(stableConstraints.find((row) => row.name === 'sched_reminders_booking_id_fkey')?.def).toBe(
     'FOREIGN KEY (booking_id) REFERENCES sched_bookings(id) ON DELETE CASCADE',
   );

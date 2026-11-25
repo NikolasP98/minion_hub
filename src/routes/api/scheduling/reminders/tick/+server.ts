@@ -24,7 +24,8 @@ export const GET: RequestHandler = async ({ request }) => {
   let failed = 0;
   let skipped = 0;
   let confirmed = 0;
-  let declined = 0;
+  let opened = 0;
+  let unclear = 0;
   for (const orgId of orgIds) {
     // Per-org AI usage scope — cron has no `locals.tenantCtx`, so without this
     // the reminder composer's tokens record against no organization at all.
@@ -36,14 +37,33 @@ export const GET: RequestHandler = async ({ request }) => {
         sent += r.sent;
         failed += r.failed;
         skipped += r.skipped;
-        // Second pass: read replies to pending confirmations and flip their status.
+        // Second pass: read replies to pending confirmations and flip their status; a "no" opens a reconfirmation case (spec 139).
         const c = await scanConfirmationReplies(ctx, now);
         confirmed += c.confirmed;
-        declined += c.declined;
+        opened += c.opened;
+        unclear += c.unclear;
       } catch (e) {
-        console.error('[reminders] tick failed for org', orgId, e);
+        // Name and driver code only: a driver message can carry query params (phones, message text).
+        const code =
+          e instanceof Error ? (e.cause as { code?: string } | undefined)?.code : undefined;
+        console.error(
+          '[reminders] tick failed for org',
+          orgId,
+          e instanceof Error ? e.name : 'unknown',
+          code,
+        );
       }
     });
   }
-  return json({ orgs: orgIds.length, sent, failed, skipped, confirmed, declined });
+  // `declined` stays in the response for readers of the old shape; a reply no longer declines anything.
+  return json({
+    orgs: orgIds.length,
+    sent,
+    failed,
+    skipped,
+    confirmed,
+    declined: 0,
+    opened,
+    unclear,
+  });
 };

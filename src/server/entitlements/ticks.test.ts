@@ -64,6 +64,12 @@ vi.mock('$server/db/with-org-core', () => ({
     fn({ execute: async () => h.txResults.shift() ?? [] }),
 }));
 vi.mock('$server/services/scheduling-bookings.service', () => ({ setBookingStatus: h.setStatus }));
+vi.mock('$server/services/reconfirm.service', () => ({
+  openCase: async () => ({ caseId: 'c', created: true }),
+  logVerdict: async () => {},
+  lastInboundAt: async () => new Map(),
+  agedUnclearVerdicts: async () => [],
+}));
 
 const req = (path: string) => ({
   request: new Request(`http://localhost${path}`, { headers: { authorization: 'Bearer sekret' } }),
@@ -121,15 +127,22 @@ describe('reminders for an org without ai.proactive', () => {
         {
           id: 'b1',
           start_time: new Date(Date.now() + 86_400_000).toISOString(),
-          attendee_phone: '+51999888777',
+          status: 'pending',
           attendee_name: 'Ana',
           crm_contact_id: null,
+          group_id: null,
           service_title: 'Botox',
           timezone: 'America/Lima',
-          confirm_sent_at: new Date().toISOString(),
+          channel: 'whatsapp',
+          recipient: '+51999888777',
+          reminder_text: null,
+          stage: 'confirmation',
+          rem_at: new Date(Date.now() - 3_600_000).toISOString(),
+          account_id: null,
         },
       ],
-      [{ content: 'si' }],
+      [{ id: 'm1', content: 'si', occurred_at: new Date().toISOString() }],
+      [], // outbound
     ];
     const { scanConfirmationReplies } = await import('$server/services/reminders.service');
     const r = await scanConfirmationReplies(ctx, new Date());
@@ -139,7 +152,7 @@ describe('reminders for an org without ai.proactive', () => {
 
   it('keeps model inference for an org that has the feature', async () => {
     h.allows.mockResolvedValue(true);
-    h.infer.mockResolvedValue('unclear');
+    h.infer.mockResolvedValue({ verdict: 'unclear', confidence: 0, via: 'jev' });
     h.config.mockResolvedValue({
       enabled: true,
       inferConfirmation: true,
@@ -151,15 +164,22 @@ describe('reminders for an org without ai.proactive', () => {
         {
           id: 'b1',
           start_time: new Date(Date.now() + 86_400_000).toISOString(),
-          attendee_phone: '+51999888777',
+          status: 'pending',
           attendee_name: 'Ana',
           crm_contact_id: null,
+          group_id: null,
           service_title: 'Botox',
           timezone: 'America/Lima',
-          confirm_sent_at: new Date().toISOString(),
+          channel: 'whatsapp',
+          recipient: '+51999888777',
+          reminder_text: null,
+          stage: 'confirmation',
+          rem_at: new Date(Date.now() - 3_600_000).toISOString(),
+          account_id: null,
         },
       ],
-      [{ content: 'si' }],
+      [{ id: 'm1', content: 'si', occurred_at: new Date().toISOString() }],
+      [], // outbound
     ];
     const { scanConfirmationReplies } = await import('$server/services/reminders.service');
     await scanConfirmationReplies(ctx, new Date());

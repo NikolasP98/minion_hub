@@ -50,7 +50,11 @@ import type {
   SchedEventType,
   SchedResource,
 } from '$server/db/pg-scheduling-schema';
-import { schedReminders } from '$server/db/pg-reminders-schema';
+import {
+  schedReconfirmCases,
+  schedReconfirmEvents,
+  schedReminders,
+} from '$server/db/pg-reminders-schema';
 import {
   posEmissions,
   posPackageRedemptions,
@@ -3188,8 +3192,8 @@ export async function patchBooking(
  *  (a POS ticket line, a sales order, or a realized stock accrual) — the UI
  *  offers "cancel instead" for these. */
 export class BookingReferencedError extends Error {
-  references: Array<'ticket' | 'order' | 'accrual'>;
-  constructor(references: Array<'ticket' | 'order' | 'accrual'>) {
+  references: VisitReference[];
+  constructor(references: VisitReference[]) {
     super(`booking is referenced by: ${references.join(', ')}`);
     this.name = 'BookingReferencedError';
     this.references = references;
@@ -3207,7 +3211,7 @@ export class LastServiceError extends Error {
 }
 
 /**
- * What still points at these bookings, in BULK (three queries for any number of
+ * What still points at these bookings, in BULK (five queries for any number of
  * ids, never three per id) — the one definition of "cannot be hard-deleted",
  * shared by `deleteBooking`, `removeServiceFromVisit` and the detail drawer's
  * per-service `referenced` badge. Every requested id is present in the map, with
@@ -3252,6 +3256,25 @@ async function collectBookingReferences(
       ),
     );
   for (const r of accruals) mark(r.bookingId, 'accrual');
+  // Spec 139: reconfirmation cases/events point at the booking with ON DELETE RESTRICT, so they
+  // must refuse here ("cancel instead") instead of surfacing a raw 23503.
+  const cases = await tx
+    .select({ bookingId: schedReconfirmCases.bookingId })
+    .from(schedReconfirmCases)
+    .where(
+      and(eq(schedReconfirmCases.orgId, ctx.tenantId), inArray(schedReconfirmCases.bookingId, ids)),
+    );
+  for (const r of cases) mark(r.bookingId, 'reconfirm');
+  const events = await tx
+    .select({ bookingId: schedReconfirmEvents.bookingId })
+    .from(schedReconfirmEvents)
+    .where(
+      and(
+        eq(schedReconfirmEvents.orgId, ctx.tenantId),
+        inArray(schedReconfirmEvents.bookingId, ids),
+      ),
+    );
+  for (const r of events) mark(r.bookingId, 'reconfirm');
   return out;
 }
 

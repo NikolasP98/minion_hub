@@ -8,6 +8,7 @@ import { planOverdueRule } from './plan-overdue';
 import { financeSyncFailedRule } from './finance-sync-failed';
 import { crmDniPendingRule } from './crm-dni-pending';
 import { crmBirthdayRule } from './crm-birthday';
+import { appointmentReconfirmRule } from './appointment-reconfirm';
 import type { Rule } from './types';
 
 export type { Rule, RuleResult } from './types';
@@ -34,4 +35,5 @@ export const INBOX_RULES: Rule[] = [
   financeSyncFailedRule,
   crmDniPendingRule,
   crmBirthdayRule,
+  appointmentReconfirmRule,
 ];

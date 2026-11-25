@@ -105,7 +105,7 @@ describe('getBookingDetail financial read boundaries', () => {
       [],
       [],
       [],
-      // visit facet: members, their event types, the money lines, the three
+      // visit facet: members, their event types, the money lines, the five
       // reference reads, then the org currency (no product ⇒ no price query).
       [member('b1'), member('b2')],
       [{ id: 'et1', title: 'Botox', productId: null }],
@@ -116,6 +116,8 @@ describe('getBookingDetail financial read boundaries', () => {
       [],
       [],
       [],
+      [], // reconfirm cases
+      [], // reconfirm events
       [{ currency: 'PEN' }],
       // ticket facet, now scoped to BOTH member ids: one row per event line.
       [

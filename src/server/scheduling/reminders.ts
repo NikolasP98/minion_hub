@@ -1,4 +1,5 @@
 import type { ReminderStage } from '$server/db/pg-reminders-schema';
+import type { Classified } from '$server/services/reminder-compose';
 
 /**
  * Pure reminder-scheduling engine. Given a booking, the org's configured stages,
@@ -37,7 +38,8 @@ export function dueStages(input: DueStagesInput): ReminderStage[] {
   const { booking, stages, now } = input;
   if (!ACTIVE_STATUSES.has(booking.status)) return [];
 
-  const sent = input.sentStageKeys instanceof Set ? input.sentStageKeys : new Set(input.sentStageKeys);
+  const sent =
+    input.sentStageKeys instanceof Set ? input.sentStageKeys : new Set(input.sentStageKeys);
   const nowMs = now.getTime();
   const startMs = booking.startTime.getTime();
 
@@ -65,7 +67,8 @@ export function dueStages(input: DueStagesInput): ReminderStage[] {
  *  tick's booking lookahead. */
 export function maxLeadMinutes(stages: ReminderStage[]): number {
   let max = 0;
-  for (const s of stages) if (s.minutesBefore != null && s.minutesBefore > max) max = s.minutesBefore;
+  for (const s of stages)
+    if (s.minutesBefore != null && s.minutesBefore > max) max = s.minutesBefore;
   return max;
 }
 
@@ -95,9 +98,20 @@ export interface RecipientContacts {
  * party has no identity reachable on that channel (e.g. a phone-only channel for
  * a staff member with only an email) → the caller records a graceful skip.
  */
-export function resolveRecipient(channel: string, role: RecipientRole, c: RecipientContacts): string | null {
+export function resolveRecipient(
+  channel: string,
+  role: RecipientRole,
+  c: RecipientContacts,
+): string | null {
   const byEmail = EMAIL_CHANNELS.has(channel);
-  const pick = role === 'client' ? (byEmail ? c.attendeeEmail : c.attendeePhone) : byEmail ? c.staffEmail : c.staffPhone;
+  const pick =
+    role === 'client'
+      ? byEmail
+        ? c.attendeeEmail
+        : c.attendeePhone
+      : byEmail
+        ? c.staffEmail
+        : c.staffPhone;
   return pick?.trim() || null;
 }
 
@@ -105,6 +119,8 @@ export function resolveRecipient(channel: string, role: RecipientRole, c: Recipi
 
 /** The "reply SÍ/NO" call-to-action appended to a pending booking's confirmation
  *  when AI inference is OFF (so the keyword scan has something deterministic). */
+// TODO(handoff): spec 139 - a "NO" no longer cancels (it opens a reconfirmation case), but this text still says
+// "NO para cancelar". Reword it together with the S2 question the agent sends, so the client is not promised a cancel.
 export function confirmCta(locale: string): string {
   return locale === 'en'
     ? 'Reply YES to confirm or NO to cancel.'
@@ -117,7 +133,16 @@ const norm = (s: string) =>
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '') // strip accents (sí → si)
     .replace(/[^a-z0-9\s]/g, ' ');
-const YES_TOKENS = new Set(['si', 'yes', 'confirmo', 'confirmar', 'confirmado', 'ok', 'dale', 'listo']);
+const YES_TOKENS = new Set([
+  'si',
+  'yes',
+  'confirmo',
+  'confirmar',
+  'confirmado',
+  'ok',
+  'dale',
+  'listo',
+]);
 const NO_TOKENS = new Set(['no', 'cancela', 'cancelar', 'cancelo', 'cancelado']);
 
 /**
@@ -137,4 +162,48 @@ export function parseYesNo(text: string | null | undefined): 'yes' | 'no' | null
   if (yes && !no) return 'yes';
   if (no && !yes) return 'no';
   return null;
+}
+
+// Phrases that decline or move the visit; matched on `norm`ed text (accent-insensitive).
+const NEGATION_PHRASES = [
+  'no puedo',
+  'no voy',
+  'no podre',
+  'no voy a poder',
+  'cancelar',
+  'cancelo',
+  'cambiar la fecha',
+];
+
+/**
+ * Spec 139: `parseYesNo` as a classified verdict (the keyword path, no model).
+ * - A yes with no negation token is decisive (1), as on master ("Sí, confirmo mi cita").
+ * - A no is decisive (1) when it carries a clear negation phrase ("no puedo", "cancelar") or is
+ *   at most two words ("no", "no gracias"); a bare "no" inside a longer sentence ("no sé a qué
+ *   hora es") is ambiguous (0.5) and so is acted on as unclear.
+ * - A clear phrase with no yes token ("cambiar la fecha") is a negation even without a `no`.
+ */
+export function keywordVerdict(
+  text: string | null | undefined,
+): Classified<'yes' | 'negation' | 'unclear'> {
+  const r = parseYesNo(text);
+  const n = norm(text ?? '')
+    .split(/\s+/)
+    .filter(Boolean);
+  const padded = ` ${n.join(' ')} `;
+  const phrase = NEGATION_PHRASES.some((p) => padded.includes(` ${p} `));
+  if (r === 'yes') return { verdict: 'yes', confidence: 1, via: 'keyword' };
+  if (r === 'no')
+    return { verdict: 'negation', confidence: phrase || n.length <= 2 ? 1 : 0.5, via: 'keyword' };
+  if (phrase && !n.some((t) => YES_TOKENS.has(t)))
+    return { verdict: 'negation', confidence: 1, via: 'keyword' };
+  return { verdict: 'unclear', confidence: 0, via: 'keyword' };
+}
+
+/**
+ * Did this reminder ask the client for an answer? The confirmation stage always counts; the
+ * 24h/2h templates ask "¿Confirmas tu asistencia?", and the SÍ/NO call-to-action counts too.
+ */
+export function reminderAsksForAnswer(stage: string, text: string | null | undefined): boolean {
+  return stage === 'confirmation' || norm(text ?? '').includes('confirm'); // confirmas / confirm / confirmar
 }
