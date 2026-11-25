@@ -7,7 +7,7 @@ import {
   getStockCorrectionByOperationKey,
 } from '$server/services/stock-corrections.service';
 import { parsePreviewRequest } from '$server/services/stock-corrections.logic';
-import { correctionResponse, noStore } from '../_corrections-http';
+import { correctionResponse, logLockRefusal, noStore } from '../_corrections-http';
 
 const KEYS = ['request', 'operationKey', 'previewHash', 'payloadHash', 'reason'];
 const SHA = /^[0-9a-f]{64}$/;
@@ -43,6 +43,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
     );
     return json(result, noStore);
   } catch (e) {
+    await logLockRefusal(ctx, locals.user?.displayName ?? locals.user?.email ?? null, e, b.request);
     return correctionResponse(e);
   }
 };

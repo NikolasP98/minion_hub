@@ -53,6 +53,9 @@ export function evaluateRecordLock(input: EvaluateInput): LockHit[] {
   const tz = input.settingsTimezone;
   const hits: LockHit[] = [];
 
+  // TODO(handoff): (spec 140 research R4 / tasks T048) the month rule judges a replacement receipt by its own
+  // posted_at, so a receipt corrected after its month closes is not locked by that month. Owner question 2; one line
+  // (pass `firstPostedAt`) but it changes today's default behaviour. Ledger: meta proposals, spec 140 open items.
   if (input.policy.month) {
     try {
       evaluateReceiptPeriod({

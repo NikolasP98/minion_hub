@@ -63,4 +63,13 @@ export interface LockEventRow {
   refEventId: string | null;
   expiresAt: string | null;
   occurredAt: string;
+  /** The record's human id (e.g. STE-2026-00559) when it still resolves; null otherwise. */
+  recordLabel: string | null;
+}
+
+/** Who did it: a person (profile), an API key or the system. */
+export interface LockActor {
+  kind: 'person' | 'api_key' | 'system';
+  id: string | null;
+  name: string | null;
 }

@@ -42,9 +42,10 @@ export const ROUTE_CONTRACT_EXPECTATIONS = Object.freeze({
   // /settings/developers added (spec 121 S1 — organization API keys) — 1 more screen+endpoint.
   // /pos/funnel added (spec 132 — PDV marketing funnel) — 1 more screen+endpoint.
   // /oauth/authorize added (spec 143 — approve an MCP sign-in) — 1 more screen+endpoint.
-  endpoints: 168,
+  // /settings/record-locks added (spec 140 S2 — record lock policy) — 1 more screen+endpoint.
+  endpoints: 169,
   // /scheduling/resources became a redirect to /team (hub-team-hr-module spec S4).
-  screens: 157,
+  screens: 158,
   redirects: 11,
   fixtures: 30,
   viewports: ['compact', 'medium', 'wide'] as const,

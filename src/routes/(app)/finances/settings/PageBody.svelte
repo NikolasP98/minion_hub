@@ -792,6 +792,9 @@
           <span>{m.fin_period_locks_title()}</span>
         </header>
         <p class="t-caption mb-3">{m.fin_period_locks_hint()}</p>
+        <a class="card-link period-locks-link" href="/settings/record-locks"
+          ><Lock size={iconSizes.sm} /> {m.finances_settings_locks_link()}</a
+        >
         {#if data.periodLocks.length}
           <ul class="lock-list">
             {#each data.periodLocks as lock (lock.id)}
@@ -913,6 +916,20 @@
 </PageShell>
 
 <style>
+  .period-locks-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+  }
+  .card-link {
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .card-link:hover,
+  .card-link:focus-visible {
+    text-decoration: underline;
+  }
   .card {
     border: 1px solid var(--hairline);
     border-radius: var(--radius-lg);

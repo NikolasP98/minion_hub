@@ -93,6 +93,13 @@ beforeAll(async () => {
       client_doc_number text, currency text, issued_at timestamptz, shadowed boolean NOT NULL DEFAULT false);
     CREATE TABLE fin_invoice_items (invoice_id uuid, total numeric);
     CREATE TABLE parties (id uuid PRIMARY KEY, org_id text NOT NULL, name text);
+    -- cancelling a receipt reads the record-lock inputs (spec 140)
+    CREATE TABLE org_lock_policy (org_id text PRIMARY KEY, month_enabled boolean NOT NULL DEFAULT true,
+      days_enabled boolean NOT NULL DEFAULT false, days integer, sunat_enabled boolean NOT NULL DEFAULT false,
+      webhook_enabled boolean NOT NULL DEFAULT false, updated_by uuid, updated_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE fin_settings (org_id text PRIMARY KEY, timezone text);
+    CREATE TABLE pos_period_locks (org_id text NOT NULL, period text NOT NULL);
+    CREATE TABLE stk_corrections (org_id text, kind text, source_entry_id uuid, replacement_entry_id uuid);
     GRANT USAGE ON SCHEMA public TO app_ledger;
     GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_ledger;
     REVOKE UPDATE, DELETE ON stk_ledger FROM app_ledger;
@@ -103,7 +110,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await client.exec(
-    'TRUNCATE stk_ledger, stk_bins, stk_entry_lines, stk_entries, stk_items, stk_warehouses CASCADE',
+    'TRUNCATE pos_period_locks, org_lock_policy, stk_ledger, stk_bins, stk_entry_lines, stk_entries, stk_items, stk_warehouses CASCADE',
   );
   await client.query(
     `INSERT INTO stk_items (id, org_id, code, name) VALUES
@@ -111,6 +118,10 @@ beforeEach(async () => {
     [FILLER, VOLUME, OTHER, ORG],
   );
   await client.query('INSERT INTO stk_warehouses (id, org_id) VALUES ($1,$2)', [WH, ORG]);
+  await client.query(
+    "INSERT INTO fin_settings (org_id, timezone) VALUES ($1,'America/Lima') ON CONFLICT DO NOTHING",
+    [ORG],
+  );
   // 30 Filler at S/ 250 average; 5 Volume already on hand at S/ 300.
   await client.query(
     `INSERT INTO stk_bins (org_id,item_id,warehouse_id,qty,valuation_rate) VALUES
@@ -207,6 +218,59 @@ describe('canje submit (spec 142)', () => {
     const cancelled = await cancelEntry(ctx, draft.id, actor);
     expect(cancelled.status).toBe('cancelled');
     expect(await bins()).toEqual({ [FILLER]: [30, 250], [VOLUME]: [5, 300] });
+  });
+});
+
+describe('cancelling a receipt meets the record lock (spec 140)', () => {
+  const receipt = async () => {
+    const draft = await createEntry(
+      ctx,
+      { type: 'receipt', lines: [{ itemId: FILLER, qty: 2, rate: 100, toWarehouseId: WH }] },
+      actor,
+    );
+    return submitEntry(ctx, draft.id, actor);
+  };
+
+  it('refuses a receipt posted in a closed month and leaves stock and status untouched', async () => {
+    const posted = await receipt();
+    await client.query(
+      "UPDATE stk_entries SET posted_at = now() - interval '70 days' WHERE id = $1",
+      [posted.id],
+    );
+    await client.query(
+      "INSERT INTO pos_period_locks (org_id, period) VALUES ($1, to_char((now() - interval '70 days') AT TIME ZONE 'America/Lima', 'YYYY-MM'))",
+      [ORG],
+    );
+    await expect(cancelEntry(ctx, posted.id, actor)).rejects.toMatchObject({
+      code: 'period_locked',
+      detail: { locks: [expect.objectContaining({ rule: 'month', kind: 'month' })] },
+    });
+    const { rows } = await client.query<{ status: string }>(
+      'SELECT status FROM stk_entries WHERE id = $1',
+      [posted.id],
+    );
+    expect(rows[0]!.status).toBe('submitted');
+    expect((await bins())[FILLER]![0]).toBe(32);
+  });
+
+  it('still cancels a receipt of the current month', async () => {
+    const posted = await receipt();
+    expect((await cancelEntry(ctx, posted.id, actor)).status).toBe('cancelled');
+    expect((await bins())[FILLER]![0]).toBe(30);
+  });
+  it('an org without finance settings still cancels, as before spec 140 (FR-006)', async () => {
+    const posted = await receipt();
+    await client.query('DELETE FROM fin_settings WHERE org_id = $1', [ORG]);
+    expect((await cancelEntry(ctx, posted.id, actor)).status).toBe('cancelled');
+  });
+
+  it('an org that saved its own lock rules but has no finance settings fails closed', async () => {
+    const posted = await receipt();
+    await client.query('DELETE FROM fin_settings WHERE org_id = $1', [ORG]);
+    await client.query('INSERT INTO org_lock_policy (org_id) VALUES ($1)', [ORG]);
+    await expect(cancelEntry(ctx, posted.id, actor)).rejects.toMatchObject({
+      code: 'policy_unverified',
+    });
   });
 });
 

@@ -249,3 +249,106 @@ it('links the corrected receipt to its replacement and the replacement to its or
     `/stock/entries/${U(9)}`,
   );
 });
+
+it('a locked receipt shows every reason and who can unlock, and the action is disabled (spec 140)', () => {
+  const locked = {
+    ...base,
+    isOwner: false,
+    lock: {
+      locked: true,
+      unlock: null,
+      rules: [
+        { rule: 'days', kind: 'days', unlockable: true, days: 60 },
+        {
+          rule: 'webhook',
+          kind: 'webhook_date',
+          unlockable: true,
+          label: 'Contabilidad',
+          upTo: '2026-10-31',
+          lockId: 'l1',
+          lockedAt: '2026-11-05T14:00:00.000Z',
+        },
+      ],
+    },
+  } as unknown as typeof data;
+  const v = render(Entry, { data: locked });
+  const notice = v.getByTestId('lock-notice');
+  expect(notice.textContent).toContain(m.record_locks_reason_days({ days: 60 }));
+  expect(notice.textContent).toContain('Contabilidad');
+  expect(notice.textContent).toContain(m.record_locks_notice_ask_owner());
+  expect(
+    (v.getByRole('button', { name: m.stock_corr_receipt_action() }) as HTMLButtonElement).disabled,
+  ).toBe(true);
+});
+
+it('a closed current month cannot be unlocked: the notice says to reopen the month', () => {
+  const locked = {
+    ...base,
+    lock: {
+      locked: true,
+      unlock: null,
+      rules: [{ rule: 'month', kind: 'month_current', unlockable: false, period: '2026-11' }],
+    },
+  } as unknown as typeof data;
+  const v = render(Entry, { data: locked });
+  expect(v.getByTestId('lock-notice').textContent).toContain(m.record_locks_notice_reopen_month());
+});
+
+it('an unlocked receipt shows no notice and keeps the action enabled', () => {
+  const free = {
+    ...base,
+    lock: { locked: false, rules: [], unlock: null },
+  } as unknown as typeof data;
+  const v = render(Entry, { data: free });
+  expect(v.queryByTestId('lock-notice')).toBeNull();
+  expect(
+    (v.getByRole('button', { name: m.stock_corr_receipt_action() }) as HTMLButtonElement).disabled,
+  ).toBe(false);
+});
+
+it('a refusal that names the locks shows each rule before the next step', async () => {
+  preview = () =>
+    Response.json(
+      {
+        code: 'record_locked',
+        outcome: 'not_applied',
+        locks: [{ rule: 'days', kind: 'days', unlockable: true, days: 60 }],
+        unlockBy: 'owner',
+      },
+      { status: 422 },
+    );
+  await open();
+  await type(m.stock_corr_receipt_qty(), 0, '8');
+  await fireEvent.input(screen.getByLabelText(new RegExp(m.stock_corr_reason_label())), {
+    target: { value: 'counted 8' },
+  });
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_preview() }));
+  await waitFor(() =>
+    screen.getByText((t) => t.includes(m.record_locks_reason_days({ days: 60 }))),
+  );
+  expect(screen.getByText((t) => t.includes(m.stock_corr_err_record_locked()))).toBeTruthy();
+});
+
+it('a refusal that includes a closed current month says to reopen it, not to ask an owner', async () => {
+  preview = () =>
+    Response.json(
+      {
+        code: 'record_locked',
+        outcome: 'not_applied',
+        locks: [
+          { rule: 'days', kind: 'days', unlockable: true, days: 60 },
+          { rule: 'month', kind: 'month_current', unlockable: false, period: '2026-11' },
+        ],
+        unlockBy: 'owner',
+      },
+      { status: 422 },
+    );
+  await open();
+  await type(m.stock_corr_receipt_qty(), 0, '8');
+  await fireEvent.input(screen.getByLabelText(new RegExp(m.stock_corr_reason_label())), {
+    target: { value: 'counted 8' },
+  });
+  await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_preview() }));
+  await waitFor(() => screen.getByText((t) => t.includes(m.stock_corr_err_period_locked())));
+  expect(screen.queryByText((t) => t.includes(m.stock_corr_err_record_locked()))).toBeNull();
+});

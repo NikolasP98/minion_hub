@@ -6,11 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { buildRouteInventory } from './ui-audit-inventory.mjs';
 
 describe('UI audit route inventory', () => {
-  it('locks the complete endpoint ledger at 155 screens and 11 redirects', async () => {
+  it('locks the complete endpoint ledger at 158 screens and 11 redirects', async () => {
     const inventory = await buildRouteInventory({ cleanBaseline: true });
 
-    expect(inventory.summary).toMatchObject({ endpoints: 168, screens: 157, redirects: 11 });
-    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(168);
+    expect(inventory.summary).toMatchObject({ endpoints: 169, screens: 158, redirects: 11 });
+    expect(new Set(inventory.routes.map((route) => route.pattern)).size).toBe(169);
     expect(
       inventory.routes.filter((route) => route.kind === 'redirect').map((route) => route.pattern),
     ).toEqual([
@@ -134,7 +134,7 @@ describe('UI audit route inventory', () => {
 
     // Unlike the current clean-HEAD ledger above, this reads the WORKTREE (no
     // cleanBaseline flag), so it also reflects uncommitted route changes.
-    expect(inventory.summary).toMatchObject({ endpoints: 168, screens: 157, redirects: 11 });
+    expect(inventory.summary).toMatchObject({ endpoints: 169, screens: 158, redirects: 11 });
     expect(terminal).toMatchObject({
       kind: 'redirect',
       source: 'src/routes/(app)/terminal/+page.svelte',
