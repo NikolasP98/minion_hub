@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { json, error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { json } from '@sveltejs/kit';
+import { requireCronSecret } from '$server/auth/authorize';
 import { getCoreDb } from '$server/db/pg-client';
 import { autoCloseOrgShifts, listAutoShiftOrgs } from '$server/services/pos-auto-close.service';
 
@@ -13,8 +13,7 @@ import { autoCloseOrgShifts, listAutoShiftOrgs } from '$server/services/pos-auto
  * any failure answers 500 so it shows in the cron log.
  */
 export const GET: RequestHandler = async ({ request }) => {
-  const secret = env.CRON_SECRET;
-  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
+  requireCronSecret(request);
 
   const orgIds = await listAutoShiftOrgs();
   const now = new Date();

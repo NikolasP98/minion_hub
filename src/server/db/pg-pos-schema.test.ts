@@ -45,6 +45,8 @@ describe('pos schema column sets match their migrations', () => {
         // `add column if not exists requirements jsonb not null default '{}'`
         // — 20260915000000_pos_requirements_pending_scheduling.sql, applied.
         'requirements',
+        // spec 148 "Caja automática" — 20261124180000_pos_settings_shift_mode.sql.
+        'shift_mode',
         'created_at',
         'updated_at',
       ].sort(),

@@ -7805,7 +7805,7 @@
   "cal_closure_warning": "The agenda is closed: {reason}. You can still book.",
   "pos_shift_auto_waiting": "Automatic register: opens with the first sale",
   "pos_shift_auto_today": "Automatic register · today",
-  "pos_settings_shift_card": "Register",
+  "pos_settings_shift_card": "Cash register",
   "pos_settings_shift_auto": "Automatic register",
   "pos_settings_shift_auto_hint": "The register opens with the first sale of the day and closes itself at midnight."
 }
