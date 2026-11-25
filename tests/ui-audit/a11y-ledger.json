@@ -1228,6 +1228,9 @@
       "document-title": 1
     },
     "/settings/pulse @ compact-390:coarse": "unmeasured",
+    "/settings/record-locks @ compact-390:coarse": {
+      "color-contrast": 1
+    },
     "/settings/roles @ compact-390:coarse": {
       "color-contrast": 1,
       "document-title": 1
