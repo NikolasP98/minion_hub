@@ -426,10 +426,13 @@ export async function scanConfirmationReplies(
         and b.start_time > now() - interval '1 day'
         -- A booking with an open follow-up case: the client's messages are answers to the agent (read by
         -- advanceAnswers) or staff's to handle, never a reply to the reminder. No yes-confirm, no paid read.
+        -- Once staff closed or changed that case (attended, moved, closed booking), replies to the same reminder
+        -- stay staff's: only a newer reminder, or a case the agent closed itself, reopens the scan.
         and not exists (
           select 1 from sched_reconfirm_cases oc
-          where oc.org_id = b.org_id and oc.closed_at is null
-            and (oc.booking_id = b.id or oc.subject_key = coalesce(b.metadata->>'groupId', b.id::text)))
+          where oc.org_id = b.org_id
+            and (oc.booking_id = b.id or oc.subject_key = coalesce(b.metadata->>'groupId', b.id::text))
+            and (oc.closed_at is null or (oc.close_action <> 'agent' and oc.opened_at > rem.sent_at)))
       order by b.start_time asc
       limit 100
     `),

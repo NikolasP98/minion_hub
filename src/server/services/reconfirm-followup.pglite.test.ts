@@ -220,6 +220,43 @@ describe('the old reply scan leaves a booking with an open case to the agent (R5
   });
 });
 
+describe('after staff close or change the case, replies to that reminder stay with staff (round-3 G)', () => {
+  const openThenStaffClose = async (action: 'attended' | 'moved_by_staff' | 'booking_closed') => {
+    await inbound('no voy a poder', -2 * H);
+    await scanConfirmationReplies(ctx, new Date());
+    await advanceCases(ctx, new Date()); // the agent asks
+    await pg.query(`update sched_reconfirm_cases set closed_at = now(), close_action = $1`, [
+      action,
+    ]);
+    vi.clearAllMocks();
+    h.send.mockResolvedValue({ messageId: 'wa-1' });
+  };
+  it('keyword org, case marked attended: "Sí, otra fecha porfa" does not accept the booking (G5)', async () => {
+    h.config = { ...h.config, inferConfirmation: false };
+    await openThenStaffClose('attended');
+    await inbound('Sí, otra fecha porfa', 60_000);
+    await scanConfirmationReplies(ctx, new Date());
+    expect(h.setStatus).not.toHaveBeenCalled();
+  });
+  it('AI org, staff moved the booking: the answer is not read and the patient gets no message (G2, G7)', async () => {
+    await openThenStaffClose('moved_by_staff');
+    await inbound('Sí, otra fecha porfa', 60_000);
+    const r = await scanConfirmationReplies(ctx, new Date());
+    await advanceCases(ctx, new Date());
+    expect(h.inferReply).not.toHaveBeenCalled();
+    expect(h.setStatus).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+    expect(r).toEqual({ confirmed: 0, opened: 0, unclear: 0 });
+  });
+  it('a case the agent closed itself still lets a later reply be read (R8c)', async () => {
+    h.config = { ...h.config, inferConfirmation: false };
+    await openThenStaffClose('agent' as never);
+    await inbound('Sí', 60_000);
+    await scanConfirmationReplies(ctx, new Date());
+    expect(h.setStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('staff takeover window starts at the first "no" (R2e)', () => {
   it('staff answered the "no" before the case was opened: the agent does not ask', async () => {
     await inbound('no voy a poder', -2 * H);
