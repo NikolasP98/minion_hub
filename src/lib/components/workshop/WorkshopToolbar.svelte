@@ -57,7 +57,7 @@
     size="sm"
     onclick={toggleIdleBanter}
     title={banterEnabled ? m.workshop_banterHintOn() : m.workshop_banterHintOff()}
-    aria-label={m.workshop_banter()}
+    aria-label={`${m.workshop_banter()} ${banterBudget.used}/${banterTotal}`}
     aria-pressed={banterEnabled}
     class="h-[var(--control-height-sm)] px-2 shrink-0 flex items-center gap-1 rounded border border-border font-mono text-xs transition-colors hover:bg-bg3 {banterEnabled
       ? 'text-muted'
