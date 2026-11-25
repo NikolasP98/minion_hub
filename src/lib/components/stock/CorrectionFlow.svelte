@@ -22,6 +22,8 @@
   import { FormField } from '$lib/components/ui/foundations';
   import * as m from '$lib/paraglide/messages';
   import { correctionRefusal } from './correction-refusals';
+  import { lockReason } from './lock-reasons';
+  import type { LockHit } from '$lib/types/record-locks';
   import {
     clearRefusedPendingCorrection,
     dismissAppliedPendingCorrection,
@@ -90,8 +92,13 @@
   const sent = new Set<string>();
   let generation = 0;
 
-  const message = (code: string | undefined) =>
-    (code ? refusal?.(code) : undefined) ?? correctionRefusal(code);
+  // A lock refusal names every rule that applies (spec 140), then the next step.
+  const message = (code: string | undefined, locks?: unknown) => {
+    const base = (code ? refusal?.(code) : undefined) ?? correctionRefusal(code);
+    return Array.isArray(locks) && locks.length
+      ? `${(locks as LockHit[]).map(lockReason).join('. ')}. ${base}`
+      : base;
+  };
   const intent = $derived(JSON.stringify(previewBody(reason.trim())));
   const hasIntent = $derived(previewBody(reason.trim()) !== null && reason.trim().length > 0);
   const stale = $derived(preview !== null && previewedIntent !== intent);
@@ -173,10 +180,13 @@
         body: JSON.stringify(body),
       });
       if (gen !== generation) return;
-      const out = (await res.json().catch(() => ({}))) as CorrectionPreviewView & { code?: string };
+      const out = (await res.json().catch(() => ({}))) as CorrectionPreviewView & {
+        code?: string;
+        locks?: unknown;
+      };
       if (!res.ok) {
         preview = null;
-        err = message(out.code);
+        err = message(out.code, out.locks);
         return;
       }
       preview = out;
@@ -237,7 +247,7 @@
       }
       if (gen !== generation) return; // another scope is shown now; the pointer stays for this principal
       const body = (await res.json().catch(() => null)) as
-        (PendingStatus & { code?: string }) | null;
+        (PendingStatus & { code?: string; locks?: unknown }) | null;
       if (
         res.ok &&
         body?.outcome === 'applied' &&
@@ -257,7 +267,7 @@
         clearRefusedPendingCorrection(localStorage, value);
         sent.delete(id);
         preview = null;
-        err = message(body.code);
+        err = message(body.code, body.locks);
         onrefused?.(body.code);
       } else unknown(); // 5xx, malformed or unrecognised: the outcome is unknown, never "failed"
     } finally {

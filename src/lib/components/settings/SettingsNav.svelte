@@ -19,6 +19,7 @@
     Activity,
     Table2,
     Code,
+    Lock,
   } from 'lucide-svelte';
   import { page } from '$app/state';
   import { goto } from '$lib/navigation';
@@ -67,6 +68,7 @@
     Activity,
     Table2,
     Code,
+    Lock,
   };
 
   type HubTab = { id: string; label: string; icon: string; href: string; adminOnly: boolean };
@@ -131,6 +133,13 @@
       label: m.settings_nav_developers(),
       icon: 'Code',
       href: '/settings/developers',
+      adminOnly: false,
+    },
+    {
+      id: 'record-locks',
+      label: m.settings_nav_record_locks(),
+      icon: 'Lock',
+      href: '/settings/record-locks',
       adminOnly: false,
     },
     {

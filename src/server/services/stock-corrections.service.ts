@@ -458,11 +458,12 @@ async function plan(
   );
   if (lock.locked) {
     const monthOnly = lock.rules.every((h) => h.rule === 'month');
-    // Month-only refusals keep today's code, text and (empty) detail so the wire stays byte-identical.
+    // Month-only refusals keep today's code and text; the hits ride along so the route can name the rule (spec 140 S2).
     if (monthOnly)
       throw new CorrectionError(
         `period ${lock.rules.map((h) => h.period as string).sort()[0]} is locked`,
         'period_locked',
+        { locks: lock.rules },
       );
     throw new CorrectionError(
       lock.rules.some((h) => h.kind === 'chain_unverified')

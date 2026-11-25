@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CorrectionError } from '$server/services/stock-corrections.logic';
 
-const mocks = vi.hoisted(() => ({ preview: vi.fn(), apply: vi.fn(), status: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  preview: vi.fn(),
+  apply: vi.fn(),
+  status: vi.fn(),
+  log: vi.fn(),
+}));
 vi.mock('$server/auth/core-ctx', () => ({
   getCoreCtx: () => Promise.resolve({ db: {}, tenantId: 'org-1', profileId: 'me' }),
 }));
@@ -9,6 +14,14 @@ vi.mock('$server/services/stock-corrections.service', () => ({
   previewStockCorrection: (...a: unknown[]) => mocks.preview(...a),
   applyStockCorrection: (...a: unknown[]) => mocks.apply(...a),
   getStockCorrectionByOperationKey: (...a: unknown[]) => mocks.status(...a),
+}));
+vi.mock('$server/services/record-locks.service', () => ({
+  logLockEvent: (...a: unknown[]) => mocks.log(...a),
+  personActor: (c: { profileId?: string }, name: string | null) => ({
+    kind: 'person',
+    id: c.profileId ?? null,
+    name,
+  }),
 }));
 import { POST as PREVIEW } from './preview/+server';
 import { POST as APPLY, GET } from './+server';
@@ -102,5 +115,75 @@ describe('stock corrections routes', () => {
     await expect(GET({ locals: {}, url: url('b'.repeat(64)) } as never)).rejects.toMatchObject({
       status: 401,
     });
+  });
+});
+
+describe('lock refusals (spec 140 S2)', () => {
+  const receipt = {
+    mode: 'receipt_replace',
+    sourceType: 'stock_receipt',
+    sourceId: U(5),
+    replacement: {
+      lines: [
+        {
+          originalLineId: U(6),
+          itemId: U(7),
+          qty: '8',
+          rate: '5',
+          uom: 'box',
+          toWarehouseId: U(8),
+        },
+      ],
+    },
+  };
+  const hit = { rule: 'days', kind: 'days', unlockable: true, days: 60 };
+
+  it.each([
+    ['record_locked', 'record is locked'],
+    ['period_locked', 'period 2026-10 is locked'],
+  ] as const)(
+    '%s names the rules, who can unlock, and writes a refused event',
+    async (code, msg) => {
+      mocks.preview.mockRejectedValue(new CorrectionError(msg, code, { locks: [hit] }));
+      const res = await post(PREVIEW, { request: receipt, reason: 'typo' });
+      expect(res.status).toBe(422);
+      expect(await res.json()).toEqual({
+        error: msg,
+        code,
+        outcome: 'not_applied',
+        locks: [hit],
+        unlockBy: 'owner',
+      });
+      expect(mocks.log).toHaveBeenCalledTimes(1);
+      expect(mocks.log.mock.calls[0]![1]).toMatchObject({
+        action: 'refused',
+        recordType: 'stock_receipt',
+        recordId: U(5),
+        rules: [hit],
+        actor: { kind: 'person', id: 'me' },
+        detail: { code },
+      });
+    },
+  );
+
+  it('apply refusals are logged too, and a failing log never changes the refusal', async () => {
+    mocks.apply.mockRejectedValue(
+      new CorrectionError('record is locked', 'record_locked', { locks: [hit] }),
+    );
+    mocks.log.mockRejectedValue(new Error('db down'));
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = await post(APPLY, { ...command, request: receipt });
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe('record_locked');
+    expect(mocks.log).toHaveBeenCalledTimes(1);
+    quiet.mockRestore();
+  });
+
+  it('other refusals and sale swaps write no event', async () => {
+    mocks.preview.mockRejectedValue(new CorrectionError('later movements', 'dependent_history'));
+    await post(PREVIEW, { request: receipt, reason: 'r' });
+    mocks.preview.mockRejectedValue(new CorrectionError('period locked', 'period_locked'));
+    await post(PREVIEW, { request, reason: 'r' });
+    expect(mocks.log).not.toHaveBeenCalled();
   });
 });

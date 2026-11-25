@@ -9,6 +9,7 @@
   import { iconSizes, PageHeader, Button, Badge, Modal, Input } from '$lib/components/ui';
   import { page } from '$app/state';
   import CorrectionFlow from '$lib/components/stock/CorrectionFlow.svelte';
+  import LockNotice from '$lib/components/stock/LockNotice.svelte';
   import { canAct } from '$lib/access/can.svelte';
   import { entryStatusVariant } from '$lib/components/stock/stock-ui';
   import { stockRefusal } from '$lib/components/stock/exchange';
@@ -45,6 +46,8 @@
       canAct('stock', 'manage') &&
       data.lines.every((l) => l.rate != null && l.toWarehouseId),
   );
+  // Spec 140: the organization's lock policy (null = not evaluated). A locked record cannot be corrected.
+  const lock = $derived(data.lock ?? null);
   let correcting = $state(false);
   let edits = $state<Record<string, { qty: string; rate: string }>>({});
   const DECIMAL = /^\d{1,9}(\.\d{1,4})?$/;
@@ -218,7 +221,12 @@
         >
       {:else if entry.status === 'submitted'}
         {#if canCorrect}
-          <Button variant="outline" size="sm" onclick={openCorrection}
+          <Button
+            variant="outline"
+            size="sm"
+            onclick={openCorrection}
+            disabled={lock?.locked}
+            title={lock?.locked ? m.record_locks_notice_disabled() : undefined}
             >{m.stock_corr_receipt_action()}</Button
           >
         {/if}
@@ -236,6 +244,7 @@
 
   <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
     {#if err}<p class="err-msg">{err}</p>{/if}
+    {#if lock?.locked}<LockNotice {lock} />{/if}
     {#if data.replacementEntryId}
       <p class="t-caption" role="status">
         {m.stock_corr_receipt_replaced()}

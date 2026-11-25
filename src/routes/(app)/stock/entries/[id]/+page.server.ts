@@ -4,6 +4,8 @@ import { datasetCtx, isDenied } from '$server/auth/dataset-ctx';
 import { getEntry, listItems, listWarehouses } from '$server/services/stock.service';
 import { getParty } from '$server/services/party.service';
 import { getReplacementEntryId } from '$server/services/stock-corrections.service';
+import { isOrgOwner, recordLockFor } from '$server/services/record-locks.service';
+import { withOrgCore } from '$server/db/with-org-core';
 import { uuidParamOr404 } from '$server/utils/uuid-param';
 
 export const load: PageServerLoad = async ({ locals, params, depends }) => {
@@ -28,10 +30,27 @@ export const load: PageServerLoad = async ({ locals, params, depends }) => {
   const party =
     result.entry.partyId && !isDenied(crm) ? await getParty(crm, result.entry.partyId) : null;
 
+  // Spec 140: a submitted receipt shows whether (and why) the organization's policy locks it.
+  // An unverifiable policy (no finance settings) shows no notice; the correction itself still refuses.
+  const lock =
+    result.entry.type === 'receipt' && result.entry.status === 'submitted' && result.entry.postedAt
+      ? await withOrgCore(ctx, (tx) =>
+          recordLockFor(tx, ctx.tenantId, {
+            type: 'stock_receipt',
+            id: result.entry.id,
+            postedAt: result.entry.postedAt as Date,
+          }),
+        )
+          .then(({ locked, rules, unlock }) => ({ locked, rules, unlock }))
+          .catch(() => null)
+      : null;
+
   return {
     stock: {
       entry: result.entry,
       replacementEntryId,
+      lock,
+      isOwner: lock ? await isOrgOwner(ctx).catch(() => false) : false,
       partyName: party?.name ?? null,
       lines: result.lines.map((l) => ({
         ...l,

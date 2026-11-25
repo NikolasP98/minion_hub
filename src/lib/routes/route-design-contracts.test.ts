@@ -101,7 +101,8 @@ describe('route design contracts', () => {
     // /settings/developers (spec 121 S1) adds one more Wave-A organization surface.
     // /pos/funnel (spec 132) adds one more Wave-B collection surface.
     // /oauth/authorize (spec 143) adds one more Wave-E public-auth surface.
-    expect(counts).toEqual({ A: 39, B: 78, C: 17, D: 23, E: 11 });
+    // /settings/record-locks (spec 140 S2) adds one more Wave-A organization surface.
+    expect(counts).toEqual({ A: 40, B: 78, C: 17, D: 23, E: 11 });
     expect(
       ROUTE_DESIGN_MANIFEST.find((route) => route.pattern === '/memberships')?.migrationWave,
     ).toBe('B');

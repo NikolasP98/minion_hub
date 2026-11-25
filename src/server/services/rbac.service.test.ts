@@ -638,6 +638,10 @@ describe('apiWriteCapability — central hooks write guard mapping', () => {
       module: 'settings',
       action: 'manage',
     });
+    expect(apiWriteCapability('/api/settings/record-locks/policy', 'PUT')).toEqual({
+      module: 'settings',
+      action: 'manage',
+    });
   });
   test('builder writes map agents/skills and tools to their owning modules', () => {
     expect(apiWriteCapability('/api/builder/agents', 'POST')).toEqual({

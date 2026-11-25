@@ -895,6 +895,8 @@ const API_WRITE_PREFIXES: ReadonlyArray<readonly [string, Module]> = [
   ['/api/plugins', 'settings'],
   // Organization API keys (spec 121); the handlers also call requireOrgCapability.
   ['/api/settings/api-keys', 'settings'],
+  // Record lock policy (spec 140); the services also require the owner role.
+  ['/api/settings/record-locks', 'settings'],
   // Sandbox element writes are already `requireAdmin` at each handler; this
   // prefix is the central belt-and-suspenders if that is ever relaxed
   // (spec 010 D6 — a dedicated `sandbox` module comes with the non-POC slice).

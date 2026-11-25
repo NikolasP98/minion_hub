@@ -45,6 +45,8 @@ export const PAGE_KEYWORDS: Record<string, string> = {
   '/settings/tables': 'tablas prefijos id columnas campos tables prefixes columns fields',
   '/settings/developers':
     'desarrolladores developers api keys claves api llaves tokens integraciones integrations',
+  '/settings/record-locks':
+    'bloqueo bloqueos registros bloquear candado lock locks record locks dias webhook auditoria',
   '/users': 'usuarios usuario accounts cuentas',
   '/channels': 'whatsapp telegram integraciones canales',
   '/channels/gmail': 'gmail correo',

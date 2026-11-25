@@ -6,20 +6,44 @@
  * TODO(handoff): (S3, tasks T029) the active-unlock read and `consumeUnlockInTx` are not built, so
  * `unlock` is always null here. See specs/140-record-lock-policy/tasks.md in the meta repo.
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
-import type { CoreTx } from '$server/db/with-org-core';
+import { and, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import type { CoreCtx } from '$server/auth/core-ctx';
+import { OperatorAuthorityError } from '$server/auth/active-operator-principal';
+import { withOrgCore, type CoreTx } from '$server/db/with-org-core';
+import { stkEntries } from '$server/db/pg-schema/stock';
 import { finSettings } from '$server/db/pg-finance-schema';
 import { posPeriodLocks } from '$server/db/pg-pos-schema';
-import { orgLockPolicy, orgRecordLocks } from '$server/db/pg-org-integrations-schema';
-import type { LockableRecord, LockPolicy, RecordLockResult } from '$lib/types/record-locks';
+import {
+  orgLockEvents,
+  orgLockPolicy,
+  orgRecordLocks,
+} from '$server/db/pg-org-integrations-schema';
+import type {
+  LockActor,
+  LockEventAction,
+  LockEventRow,
+  LockHit,
+  LockableRecord,
+  LockPolicy,
+  RecordLockResult,
+} from '$lib/types/record-locks';
 import {
   DEFAULT_LOCK_POLICY,
   evaluateRecordLock,
   isLocked,
+  parsePolicyInput,
   policyFromRow,
   type ExternalLockInput,
 } from './record-locks.logic';
-import { evaluateReceiptPeriod, type ReceiptPeriodEvaluation } from './stock-corrections.logic';
+import {
+  CorrectionError,
+  evaluateReceiptPeriod,
+  type ReceiptPeriodEvaluation,
+} from './stock-corrections.logic';
+import {
+  resolveFreshCapabilitiesInTransaction,
+  resolveFreshOperatorCapabilitiesForWriteInTransaction,
+} from './rbac.service';
 
 /** Replacement chains are followed at most this far back (research R4). */
 const CHAIN_CAP = 20;
@@ -142,4 +166,175 @@ export async function recordLockFor(
     policy,
     externalLockIds: rules.flatMap((h) => h.lockId ?? []).sort(),
   };
+}
+
+// ── S2: policy, audit ────────────────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The signed-in person as the audit actor (a non-uuid profile id is stored as null). */
+export const personActor = (ctx: CoreCtx, name: string | null): LockActor => ({
+  kind: 'person',
+  id: ctx.profileId && UUID_RE.test(ctx.profileId) ? ctx.profileId : null,
+  name,
+});
+
+/** Owner check inside the caller's write transaction (membership role, same read as spec 124's `owner_required`). */
+export async function assertOwnerInTx(tx: CoreTx, ctx: CoreCtx): Promise<string> {
+  if (!ctx.profileId || !UUID_RE.test(ctx.profileId))
+    throw new CorrectionError('an authenticated profile is required', 'forbidden');
+  try {
+    const caps = await resolveFreshOperatorCapabilitiesForWriteInTransaction(
+      tx,
+      ctx.tenantId,
+      ctx.profileId,
+    );
+    if (caps.membershipRole !== 'owner')
+      throw new CorrectionError('only an owner can change record locks', 'owner_required');
+  } catch (e) {
+    if (e instanceof OperatorAuthorityError) {
+      if (e.code === 'operator_principal_inactive' || e.code === 'operator_scope_invalid')
+        throw new CorrectionError('not allowed', 'forbidden');
+      throw new CorrectionError('authority is unavailable, try again', 'unavailable');
+    }
+    throw e;
+  }
+  return ctx.profileId;
+}
+
+/** Page hint only (the writes check again): is the signed-in person an owner of the organization? */
+export async function isOrgOwner(ctx: CoreCtx): Promise<boolean> {
+  if (!ctx.profileId || !UUID_RE.test(ctx.profileId)) return false;
+  return withOrgCore(
+    ctx,
+    async (tx) =>
+      (await resolveFreshCapabilitiesInTransaction(tx, ctx.tenantId, ctx.profileId as string))
+        .membershipRole === 'owner',
+  );
+}
+
+export interface LockEventInput {
+  action: LockEventAction;
+  recordType?: string | null;
+  recordId?: string | null;
+  rules?: LockHit[] | Record<string, unknown>[];
+  actor: LockActor;
+  reason?: string | null;
+  detail?: Record<string, unknown>;
+  refEventId?: string | null;
+  expiresAt?: Date | null;
+}
+
+/** Insert one audit row inside the caller's transaction. */
+export async function logLockEventInTx(tx: CoreTx, orgId: string, e: LockEventInput) {
+  const [row] = await tx
+    .insert(orgLockEvents)
+    .values({
+      orgId,
+      action: e.action,
+      recordType: e.recordType ?? null,
+      recordId: e.recordId ?? null,
+      rules: e.rules ?? [],
+      actorKind: e.actor.kind,
+      actorId: e.actor.id,
+      actorName: e.actor.name,
+      reason: e.reason ?? null,
+      detail: e.detail ?? {},
+      refEventId: e.refEventId ?? null,
+      expiresAt: e.expiresAt ?? null,
+    })
+    .returning({ id: orgLockEvents.id });
+  return row!.id;
+}
+
+/** One audit row in its own short transaction (refusals: the refused transaction cannot hold it). */
+export async function logLockEvent(ctx: CoreCtx, e: LockEventInput): Promise<void> {
+  await withOrgCore(ctx, (tx) => logLockEventInTx(tx, ctx.tenantId, e));
+}
+
+/** Owner only. Saving the same values writes nothing; a change writes one `policy_changed` event with before and after. */
+export async function setLockPolicy(
+  ctx: CoreCtx,
+  raw: unknown,
+  actor: LockActor,
+): Promise<LockPolicy> {
+  const next = parsePolicyInput(raw);
+  return withOrgCore(ctx, async (tx) => {
+    const profileId = await assertOwnerInTx(tx, ctx);
+    const { policy: before } = await readPolicy(tx, ctx.tenantId);
+    // `sunat` stays as stored: parsePolicyInput only accepts false until S5.
+    const after: LockPolicy = { ...next, sunat: before.sunat };
+    // Same values (also when no row exists yet: the default stays implicit) -> nothing to write.
+    if (JSON.stringify(before) === JSON.stringify(after)) return before;
+    const values = {
+      monthEnabled: after.month,
+      daysEnabled: after.days !== null,
+      days: after.days,
+      sunatEnabled: after.sunat,
+      webhookEnabled: after.webhook,
+      updatedBy: profileId,
+      updatedAt: new Date(),
+    };
+    await tx
+      .insert(orgLockPolicy)
+      .values({ orgId: ctx.tenantId, ...values })
+      .onConflictDoUpdate({ target: orgLockPolicy.orgId, set: values });
+    await logLockEventInTx(tx, ctx.tenantId, {
+      action: 'policy_changed',
+      actor,
+      detail: { before, after },
+    });
+    return after;
+  });
+}
+
+const EVENT_DEFAULT = 100;
+const EVENT_MAX = 500;
+
+/** Newest first; `before` is the `occurredAt` of the last row already shown. */
+export async function listLockEvents(
+  ctx: CoreCtx,
+  opts: { before?: string | null; limit?: number } = {},
+): Promise<LockEventRow[]> {
+  const limit = Math.min(Math.max(opts.limit ?? EVENT_DEFAULT, 1), EVENT_MAX);
+  const before = opts.before ? new Date(opts.before) : null;
+  const rows = await withOrgCore(ctx, (tx) =>
+    tx
+      .select({ e: orgLockEvents, label: stkEntries.humanId })
+      .from(orgLockEvents)
+      .leftJoin(
+        stkEntries,
+        and(
+          eq(orgLockEvents.recordType, sql`'stock_receipt'`),
+          eq(stkEntries.id, orgLockEvents.recordId),
+          eq(stkEntries.orgId, orgLockEvents.orgId),
+        ),
+      )
+      .where(
+        and(
+          eq(orgLockEvents.orgId, ctx.tenantId),
+          before && !Number.isNaN(before.getTime())
+            ? lt(orgLockEvents.occurredAt, before)
+            : undefined,
+        ),
+      )
+      .orderBy(desc(orgLockEvents.occurredAt))
+      .limit(limit),
+  );
+  return rows.map(({ e, label }) => ({
+    id: e.id,
+    action: e.action as LockEventAction,
+    recordType: e.recordType,
+    recordId: e.recordId,
+    rules: (e.rules ?? []) as LockHit[],
+    actorKind: e.actorKind as LockEventRow['actorKind'],
+    actorId: e.actorId,
+    actorName: e.actorName,
+    reason: e.reason,
+    detail: (e.detail ?? {}) as Record<string, unknown>,
+    refEventId: e.refEventId,
+    expiresAt: e.expiresAt ? e.expiresAt.toISOString() : null,
+    occurredAt: e.occurredAt.toISOString(),
+    recordLabel: label ?? null,
+  }));
 }
