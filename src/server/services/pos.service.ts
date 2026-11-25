@@ -318,6 +318,30 @@ function openShiftOf(orgId: string, userId: string | null) {
   );
 }
 
+/**
+ * The actor's open shift, locked FOR SHARE (a close waits for the caller, or the
+ * caller sees the shift closed). Spec 148 "Caja automática": in `auto` mode a
+ * missing shift is opened right here, in the caller's transaction. The
+ * one-open-per-user unique index makes concurrent first sales converge on one row.
+ */
+export async function lockedOpenShiftInTx(
+  tx: CoreTx,
+  orgId: string,
+  actorId: string | null,
+  shiftMode: 'manual' | 'auto',
+): Promise<PosShift | undefined> {
+  const select = () =>
+    tx.select().from(posShifts).where(openShiftOf(orgId, actorId)).limit(1).for('share');
+  const [open] = await select();
+  // A NULL opener never conflicts on the per-user unique index, so it could open duplicates.
+  if (open || shiftMode !== 'auto' || !actorId) return open;
+  await tx
+    .insert(posShifts)
+    .values({ orgId, openedBy: actorId, openingFloat: {} })
+    .onConflictDoNothing();
+  return (await select())[0];
+}
+
 /** Every open shift in the org — the "other cashiers are open" indicator, and
  *  the close route's check of whose register it is about to count.
  *  GET-only memoisation (brief-debloat-c §3): a no-op passthrough outside a
@@ -391,6 +415,9 @@ export async function closeShift(
     /** Close THIS shift instead of the actor's own one. The caller must have
      *  authorized it (`pos: manage`) — see /api/pos/shifts/close. */
     shiftId?: string;
+    /** Spec 148 automatic close: nobody counted, so every method's count is
+     *  the register's own total (tendered cash included). */
+    countedFromExpected?: boolean;
   },
 ): Promise<PosShift & { emission: EmissionBatch | null }> {
   // withOrgCore doesn't nest (same reason as the accrual hook in
@@ -427,7 +454,8 @@ export async function closeShift(
     );
     // Nobody counts a card or a transfer: the register's own total is the count.
     for (const method of settings.methods)
-      if (!method.takesTendered) counted[method.id] = expected[method.id] ?? 0;
+      if (input.countedFromExpected || !method.takesTendered)
+        counted[method.id] = expected[method.id] ?? 0;
 
     const [closed] = await tx
       .update(posShifts)
@@ -695,7 +723,8 @@ export async function previewTicket(
   );
   return {
     ...totals,
-    openShift: Boolean(shift),
+    // Automatic mode (spec 148) opens the shift with the sale itself.
+    openShift: Boolean(shift) || settings.shiftMode === 'auto',
     paymentPolicyRevision: settings.paymentPolicyRevision,
   };
 }
@@ -2282,12 +2311,12 @@ export async function submitTicket(
     const ticketId = clientTicketId ?? randomUUID();
     if (packages.size) await lockGrantSources(tx, ctx.tenantId, [ticketId]);
     // FOR SHARE: a close waits for this sale, or this sale sees the shift closed.
-    const [open] = await tx
-      .select()
-      .from(posShifts)
-      .where(openShiftOf(ctx.tenantId, input.actor.id))
-      .limit(1)
-      .for('share');
+    const open = await lockedOpenShiftInTx(
+      tx,
+      ctx.tenantId,
+      input.actor.id,
+      lockedSettings.shiftMode,
+    );
     if (!open) throw new PosError('open a shift first', 'no_open_shift');
 
     const humanId = await nextSerialId(tx, ctx.tenantId, 'POS-.YYYY.-', new Date());
@@ -2612,7 +2641,13 @@ export async function voidTicket(
   const noOpenShift = () => new PosError('no open shift for the refund', 'no_open_shift');
   // Preflight only: refusing here keeps the stock cancel below from running
   // for a void that cannot complete. The money transaction re-reads it.
-  if (refund === 'cash' && !(await withOrgCore(ctx, refundShift)).length) throw noOpenShift();
+  // In `auto` mode (spec 148) the money transaction opens the shift instead;
+  // settings are read only on that (rare) path, so a normal void costs nothing extra.
+  let shiftMode: 'manual' | 'auto' = 'manual';
+  if (refund === 'cash' && !(await withOrgCore(ctx, refundShift)).length) {
+    shiftMode = (await getPosSettings(ctx)).shiftMode;
+    if (shiftMode !== 'auto') throw noOpenShift();
+  }
 
   // ponytail: read once, BEFORE the stock cancel, so a package_in_use refusal
   // never leaves a cancelled stock entry behind on a ticket that stays live.
@@ -2678,7 +2713,10 @@ export async function voidTicket(
       .where(and(eq(posTickets.id, id), eq(posTickets.orgId, ctx.tenantId)))
       .for('update');
     if (locked?.status !== 'submitted') throw new PosError('ticket already void', 'already_void');
-    const [shift] = refund === 'cash' ? await refundShift(tx) : [];
+    const shift =
+      refund === 'cash'
+        ? await lockedOpenShiftInTx(tx, ctx.tenantId, actor.id, shiftMode)
+        : undefined;
     if (refund === 'cash' && !shift) throw noOpenShift();
     // A contact-only historical row follows the current active bridge for
     // wallet ownership. Freeze that bridge before deriving any wallet key, then
@@ -2983,12 +3021,7 @@ export async function changePaymentMethod(
         .set({ method: target.id, metadata: plan.metadata })
         .where(and(eq(posPayments.id, paymentId), eq(posPayments.orgId, ctx.tenantId)));
     } else {
-      const [open] = await tx
-        .select({ id: posShifts.id })
-        .from(posShifts)
-        .where(openShiftOf(ctx.tenantId, input.actor.id))
-        .limit(1)
-        .for('share');
+      const open = await lockedOpenShiftInTx(tx, ctx.tenantId, input.actor.id, settings.shiftMode);
       if (!open) throw new PosError('no open shift for the correction', 'no_open_shift');
       await tx.insert(posPayments).values(
         plan.rows.map((row) => ({

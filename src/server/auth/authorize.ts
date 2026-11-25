@@ -1,4 +1,5 @@
 import { error } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
 import type { TenantContext } from '$server/services/base';
 
 type AuthUser = NonNullable<App.Locals['user']>;
@@ -84,4 +85,11 @@ export async function isGatewayOrgMember(orgId: string, profileId: string): Prom
   // static import would put the pg pool in all of their module graphs.
   const { hasCanonicalMembership } = await import('$server/services/canonical-directory.service');
   return hasCanonicalMembership(profileId, orgId);
+}
+
+/** Cron entrypoints (Vercel cron / the netcup crontab): `Authorization: Bearer $CRON_SECRET`.
+ *  Refuses when the secret is unset, so a missing env never opens the route. */
+export function requireCronSecret(request: Request): void {
+  const secret = env.CRON_SECRET;
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) throw error(401);
 }

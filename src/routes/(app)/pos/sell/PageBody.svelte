@@ -633,8 +633,9 @@
       creditMoney.value.paidMinor > balanceMoney.value.minor,
   );
   // Server rejects tickets without an open shift (no_open_shift) — mirror that
-  // in the UI so the cashier can't even try.
-  const shiftOpen = $derived(!!page.data.openShift);
+  // in the UI so the cashier can't even try. "Caja automática" (spec 148): the
+  // sale opens the shift itself, so there is nothing to block on.
+  const shiftOpen = $derived(!!page.data.openShift || posSettings.shiftMode === 'auto');
   const submitting = $derived(paymentPolicyRecovery.submitting);
   // First unmet precondition, in fix-order — shown ON the step's own button so
   // a disabled button is never silent (one blocker at a time, not a checklist).

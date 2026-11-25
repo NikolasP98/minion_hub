@@ -137,6 +137,7 @@ beforeAll(async () => {
       allow_price_override boolean NOT NULL DEFAULT true,
       emission jsonb NOT NULL DEFAULT '{"mode":"off","docTypeDefault":"03"}',
       requirements jsonb NOT NULL DEFAULT '{}',
+      shift_mode text NOT NULL DEFAULT 'manual' CHECK (shift_mode IN ('manual','auto')),
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     );

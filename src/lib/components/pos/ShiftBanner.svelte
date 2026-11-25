@@ -38,7 +38,12 @@
   // (stories, tests) the buttons would do nothing, so they are not rendered.
   const dialogs = getShiftDialogs();
 
-  const settings = $derived(page.data.posSettings as { methods: PosMethodLike[] });
+  const settings = $derived(
+    page.data.posSettings as { methods: PosMethodLike[]; shiftMode?: 'manual' | 'auto' },
+  );
+  // Spec 148 "Caja automática": the first sale opens the shift and a midnight
+  // job closes it, so there is nothing to open and no stale shift to warn about.
+  const auto = $derived(settings?.shiftMode === 'auto');
   const openShift = $derived(
     page.data.openShift as { shift: PosShiftLike; summary: ShiftSummaryLike } | null,
   );
@@ -83,7 +88,7 @@
   }
 
   const isStale = $derived(
-    openShift ? now - new Date(openShift.shift.openedAt).getTime() > STALE_MS : false,
+    openShift && !auto ? now - new Date(openShift.shift.openedAt).getTime() > STALE_MS : false,
   );
   const openedAtLabel = $derived(
     openShift ? new Date(openShift.shift.openedAt).toLocaleString(appLocale()) : '',
@@ -272,11 +277,15 @@
     <!-- Sidebar footer widget: full card ≥xl, icon-only button on the collapsed rail. -->
     <div class="box box-open hidden xl:flex">
       <div class="status">
-        <AlertTriangle size={iconSizes.sm} class="shrink-0" />
-        <span class="msg">{m.pos_no_open_shift()}</span>
+        {#if auto}
+          <span class="msg">{m.pos_shift_auto_waiting()}</span>
+        {:else}
+          <AlertTriangle size={iconSizes.sm} class="shrink-0" />
+          <span class="msg">{m.pos_no_open_shift()}</span>
+        {/if}
       </div>
       <!-- central apiWriteCapability maps POS writes to pos:edit — gate must match -->
-      {#if dialogs && canAct('pos', 'edit')}
+      {#if dialogs && !auto && canAct('pos', 'edit')}
         <Button type="button" class="act" onclick={dialogs.startOpen}
           >{m.pos_shift_open_cta()}</Button
         >
@@ -285,10 +294,14 @@
     </div>
     <div class="mini-rail">
       <div class="mini-row mini-open-row">
-        <AlertTriangle size={iconSizes.sm} class="shrink-0" />
-        <span class="mini-status">{m.pos_no_open_shift()}</span>
+        {#if auto}
+          <span class="mini-status">{m.pos_shift_auto_waiting()}</span>
+        {:else}
+          <AlertTriangle size={iconSizes.sm} class="shrink-0" />
+          <span class="mini-status">{m.pos_no_open_shift()}</span>
+        {/if}
         {@render colleagues('closed-mini')}
-        {#if dialogs && canAct('pos', 'edit')}
+        {#if dialogs && !auto && canAct('pos', 'edit')}
           <Button type="button" class="act" onclick={dialogs.startOpen}
             >{m.pos_shift_open_cta()}</Button
           >
@@ -302,7 +315,9 @@
         <span class="tickets">{openShift.summary.ticketCount}</span>
       </div>
       <span class="since"
-        >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
+        >{auto
+          ? m.pos_shift_auto_today()
+          : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
       >
       {@render income(true)}
       {@render colleagues('live-wide')}
@@ -319,7 +334,9 @@
         {@render indicator()}
         <span class="tickets">{openShift.summary.ticketCount}</span>
         <span class="mini-detail"
-          >{m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
+          >{auto
+            ? m.pos_shift_auto_today()
+            : m.pos_shift_open_since({ time: openedAtLabel, name: openerName ?? '—' })}</span
         >
         {@render income(false)}
         {@render colleagues('live-mini')}

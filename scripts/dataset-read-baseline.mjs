@@ -95,7 +95,7 @@ const API_DIR = 'src/routes/api';
 // datasets) requireAssistantCapability enforces the module action. These are
 // real guards, not baseline exceptions; route/native tests qualify authority.
 const GUARD =
-  /\b(?:requireOrgCapability|requireAuth|requireAdmin|requireServerToken|requireAssistantCapability|resolveAssistantPrincipal)\b/;
+  /\b(?:requireOrgCapability|requireAuth|requireAdmin|requireServerToken|requireCronSecret|requireAssistantCapability|resolveAssistantPrincipal)\b/;
 const EXPORTS_GET =
   /export\s+(?:const|async\s+function|function)\s+GET\b|export\s*\{[^}]*\bGET\b[^}]*\}/;
 function walkApi(dir, out) {

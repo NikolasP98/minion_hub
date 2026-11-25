@@ -51,6 +51,9 @@ export const posSettings = pgTable('pos_settings', {
    *  requirement is off. See pos.service `submitTicket` and
    *  supabase/migrations/20260915000000_pos_requirements_pending_scheduling.sql. */
   requirements: jsonb('requirements').notNull().default({}),
+  /** Spec 148: `'auto'` opens the cashier's shift with the first sale and a
+   *  daily job closes it at local midnight; `'manual'` = the open/close dialogs. */
+  shiftMode: text('shift_mode').notNull().default('manual'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

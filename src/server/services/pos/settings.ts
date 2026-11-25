@@ -73,6 +73,8 @@ export interface PosSettings {
   allowPriceOverride: boolean;
   emission: EmissionSettings;
   requirements: Reqs;
+  /** Spec 148 "Caja automática": `'auto'` opens/closes the shift by itself. */
+  shiftMode: 'manual' | 'auto';
 }
 
 /**
@@ -139,6 +141,7 @@ export const DEFAULT_POS_SETTINGS: PosSettings = Object.freeze({
   allowPriceOverride: true,
   emission: Object.freeze({ mode: 'off', docTypeDefault: '03' }) as EmissionSettings,
   requirements: Object.freeze(reqNormalize({})) as Reqs,
+  shiftMode: 'manual',
 });
 
 /** Tolerant of a row whose `emission` column predates this slice's migration
@@ -173,6 +176,7 @@ function settingsRead(row?: SettingsRow | null): PosSettingsRead {
         allowPriceOverride: row.allowPriceOverride,
         emission: normalizeEmission(row.emission),
         requirements: normalizeRequirements(row.requirements),
+        shiftMode: row.shiftMode === 'auto' ? 'auto' : 'manual',
       }
     : {
         ...DEFAULT_POS_SETTINGS,
@@ -311,6 +315,8 @@ export async function updatePosSettings(
       next.requirements = reqNormalize({ ...current.requirements, ...reqPatch });
     }
     validateEmission(next.emission);
+    if (next.shiftMode !== 'manual' && next.shiftMode !== 'auto')
+      throw new PosError(`invalid shift mode ${String(next.shiftMode)}`, 'invalid_shift_mode');
     validateRequirements(next.requirements);
     next.requirements = normalizeRequirements(next.requirements);
 
@@ -329,6 +335,7 @@ export async function updatePosSettings(
         set.allowPriceOverride = next.allowPriceOverride;
       if (Object.hasOwn(patch, 'emission')) set.emission = next.emission;
       if (Object.hasOwn(patch, 'requirements')) set.requirements = next.requirements;
+      if (Object.hasOwn(patch, 'shiftMode')) set.shiftMode = next.shiftMode;
       [updated] = await tx
         .update(posSettings)
         .set(set)

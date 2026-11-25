@@ -80,6 +80,7 @@ export const posSettings: Settings = {
   allowPriceOverride: true,
   emission: { mode: 'off', docTypeDefault: '03' },
   requirements: normalizeRequirements({}),
+  shiftMode: 'manual',
   currencyIssue: null,
   supportedCurrencies: ['PEN'],
   paymentPolicyRevision: 'r1',

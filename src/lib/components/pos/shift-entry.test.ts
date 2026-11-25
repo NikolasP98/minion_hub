@@ -16,6 +16,14 @@ describe('shiftEntry', () => {
       income: 0,
     });
   });
+  it('automatic register with no shift yet: nothing to act on', () => {
+    expect(shiftEntry(null, NOW, true)).toEqual({
+      open: false,
+      stale: false,
+      attention: false,
+      income: 0,
+    });
+  });
   it('open and fresh: no attention, summed income', () => {
     expect(shiftEntry(shift(60_000), NOW)).toEqual({
       open: true,
