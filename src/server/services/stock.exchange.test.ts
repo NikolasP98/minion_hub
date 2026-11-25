@@ -97,6 +97,14 @@ beforeAll(async () => {
     CREATE TABLE org_lock_policy (org_id text PRIMARY KEY, month_enabled boolean NOT NULL DEFAULT true,
       days_enabled boolean NOT NULL DEFAULT false, days integer, sunat_enabled boolean NOT NULL DEFAULT false,
       webhook_enabled boolean NOT NULL DEFAULT false, updated_by uuid, updated_at timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE org_record_locks (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
+      lifted_at timestamptz);
+    CREATE TABLE org_lock_events (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), org_id text NOT NULL,
+      action text NOT NULL, record_type text, record_id uuid, rules jsonb NOT NULL DEFAULT '[]',
+      actor_kind text NOT NULL, actor_id uuid, actor_name text, reason text,
+      detail jsonb NOT NULL DEFAULT '{}', ref_event_id uuid, expires_at timestamptz,
+      occurred_at timestamptz NOT NULL DEFAULT now());
+    CREATE UNIQUE INDEX org_lock_events_used_uniq ON org_lock_events (org_id, ref_event_id) WHERE action = 'unlock_used';
     CREATE TABLE fin_settings (org_id text PRIMARY KEY, timezone text);
     CREATE TABLE pos_period_locks (org_id text NOT NULL, period text NOT NULL);
     CREATE TABLE stk_corrections (org_id text, kind text, source_entry_id uuid, replacement_entry_id uuid);
@@ -110,7 +118,7 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   await client.exec(
-    'TRUNCATE pos_period_locks, org_lock_policy, stk_ledger, stk_bins, stk_entry_lines, stk_entries, stk_items, stk_warehouses CASCADE',
+    'TRUNCATE org_lock_events, org_lock_policy, pos_period_locks, stk_ledger, stk_bins, stk_entry_lines, stk_entries, stk_items, stk_warehouses CASCADE',
   );
   await client.query(
     `INSERT INTO stk_items (id, org_id, code, name) VALUES
@@ -231,6 +239,22 @@ describe('cancelling a receipt meets the record lock (spec 140)', () => {
     return submitEntry(ctx, draft.id, actor);
   };
 
+  /** Back-date the receipt 70 days and close its month; returns the month. */
+  const closeMonthOf = async (id: string) => {
+    await client.query(
+      "UPDATE stk_entries SET posted_at = now() - interval '70 days' WHERE id = $1",
+      [id],
+    );
+    const { rows } = await client.query<{ p: string }>(
+      "SELECT to_char((now() - interval '70 days') AT TIME ZONE 'America/Lima', 'YYYY-MM') AS p",
+    );
+    await client.query('INSERT INTO pos_period_locks (org_id, period) VALUES ($1, $2)', [
+      ORG,
+      rows[0]!.p,
+    ]);
+    return rows[0]!.p;
+  };
+
   it('refuses a receipt posted in a closed month and leaves stock and status untouched', async () => {
     const posted = await receipt();
     await client.query(
@@ -251,6 +275,39 @@ describe('cancelling a receipt meets the record lock (spec 140)', () => {
     );
     expect(rows[0]!.status).toBe('submitted');
     expect((await bins())[FILLER]![0]).toBe(32);
+  });
+
+  it('lets an active owner unlock through once and uses it up in the same commit (probe R3d)', async () => {
+    const posted = await receipt();
+    const period = await closeMonthOf(posted.id);
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO org_lock_events (org_id, action, record_type, record_id, rules, actor_kind, actor_name, reason, expires_at)
+       VALUES ($1, 'unlock', 'stock_receipt', $2, $3::jsonb, 'person', 'Owner', 'audit fix', now() + interval '1 hour') RETURNING id`,
+      [
+        ORG,
+        posted.id,
+        JSON.stringify([{ rule: 'month', kind: 'month', unlockable: true, period }]),
+      ],
+    );
+    expect((await cancelEntry(ctx, posted.id, actor)).status).toBe('cancelled');
+    const used = await client.query(
+      "SELECT ref_event_id FROM org_lock_events WHERE action = 'unlock_used' AND record_id = $1",
+      [posted.id],
+    );
+    expect(used.rows).toEqual([{ ref_event_id: rows[0]!.id }]);
+  });
+
+  it('an unlock granted for another receipt does not open this one', async () => {
+    const posted = await receipt();
+    const period = await closeMonthOf(posted.id);
+    await client.query(
+      `INSERT INTO org_lock_events (org_id, action, record_type, record_id, rules, actor_kind, reason, expires_at)
+       VALUES ($1, 'unlock', 'stock_receipt', gen_random_uuid(), $2::jsonb, 'person', 'other', now() + interval '1 hour')`,
+      [ORG, JSON.stringify([{ rule: 'month', kind: 'month', unlockable: true, period }])],
+    );
+    await expect(cancelEntry(ctx, posted.id, actor)).rejects.toMatchObject({
+      code: 'period_locked',
+    });
   });
 
   it('still cancels a receipt of the current month', async () => {

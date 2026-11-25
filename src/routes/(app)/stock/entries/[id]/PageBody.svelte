@@ -248,7 +248,9 @@
 
   <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
     {#if err}<p class="err-msg">{err}</p>{/if}
-    {#if lock?.locked}<LockNotice {lock} />{/if}
+    {#if lock && (lock.locked || lock.unlock)}
+      <LockNotice {lock} recordId={entry.id} isOwner={data.isOwner} />
+    {/if}
     {#if data.replacementEntryId}
       <p class="t-caption" role="status">
         {m.stock_corr_receipt_replaced()}

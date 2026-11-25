@@ -26,6 +26,8 @@ export type CorrectionRefusalCode =
   | 'policy_unverified'
   | 'period_locked'
   | 'record_locked'
+  | 'not_locked'
+  | 'not_unlockable'
   | 'invalid_policy'
   | 'stock_scope_required'
   | 'owner_evidence_required'
@@ -52,6 +54,8 @@ export const CORRECTION_STATUS: Record<CorrectionRefusalCode, number> = {
   policy_unverified: 422,
   period_locked: 422,
   record_locked: 422,
+  not_locked: 409,
+  not_unlockable: 409,
   invalid_policy: 400,
   stock_scope_required: 422,
   owner_evidence_required: 422,

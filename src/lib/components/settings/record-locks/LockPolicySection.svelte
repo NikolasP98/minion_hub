@@ -6,7 +6,7 @@
   import { jsonMutation } from '$lib/api/json-mutation';
   import { ApiError } from '$lib/api/fetch-json';
   import { toastError, toastSuccess } from '$lib/state/ui/toast.svelte';
-  import { correctionRefusal } from '$lib/components/stock/correction-refusals';
+  import { lockRefusal } from '$lib/components/stock/lock-reasons';
   import type { LockPolicy } from '$lib/types/record-locks';
 
   let { policy, isOwner }: { policy: LockPolicy; isOwner: boolean } = $props();
@@ -46,7 +46,7 @@
     } catch (e) {
       const code =
         e instanceof ApiError ? (e.details as { code?: string } | undefined)?.code : undefined;
-      toastError(correctionRefusal(code));
+      toastError(lockRefusal(code));
     } finally {
       saving = false;
     }
@@ -84,7 +84,7 @@
             maxlength={4}
             aria-label={m.record_locks_days_label()}
             disabled={!isOwner || saving || !daysOn}
-            error={daysOn && !daysValid ? correctionRefusal('invalid_policy') : undefined}
+            error={daysOn && !daysValid ? lockRefusal('invalid_policy') : undefined}
           />
           <span class="t-body muted">{m.record_locks_days_unit()}</span>
         </span>

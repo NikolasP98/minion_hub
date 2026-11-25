@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import type { ComponentProps } from 'svelte';
 import Entry from './PageBody.svelte';
@@ -351,4 +351,122 @@ it('a refusal that includes a closed current month says to reopen it, not to ask
   await fireEvent.click(screen.getByRole('button', { name: m.stock_corr_preview() }));
   await waitFor(() => screen.getByText((t) => t.includes(m.stock_corr_err_period_locked())));
   expect(screen.queryByText((t) => t.includes(m.stock_corr_err_record_locked()))).toBeNull();
+});
+
+describe('owner unlock (spec 140 S3)', () => {
+  const unlockReasonLabel = new RegExp(
+    m.record_locks_unlock_reason().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  );
+  const lockedFor = (isOwner: boolean, rules: unknown[]) =>
+    ({
+      ...base,
+      isOwner,
+      lock: { locked: true, unlock: null, rules },
+    }) as unknown as typeof data;
+  const days = { rule: 'days', kind: 'days', unlockable: true, days: 60 };
+  const unlockButton = () => screen.queryByRole('button', { name: m.record_locks_unlock_action() });
+
+  it('only an owner sees the unlock button, and never for a closed current month', () => {
+    render(Entry, { data: lockedFor(false, [days]) });
+    expect(unlockButton()).toBeNull();
+    cleanup();
+    render(Entry, {
+      data: lockedFor(true, [
+        { rule: 'month', kind: 'month_current', unlockable: false, period: '2026-11' },
+      ]),
+    });
+    expect(unlockButton()).toBeNull();
+    cleanup();
+    render(Entry, { data: lockedFor(true, [days]) });
+    expect(unlockButton()).toBeTruthy();
+  });
+
+  it('requires a reason, posts it for this receipt, then reloads the entry', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url) === '/api/settings/record-locks/unlocks'
+        ? Response.json({ eventId: 'e1', expiresAt: '2026-11-25T10:00:00.000Z' }, { status: 201 })
+        : defaultFetch(url, init),
+    );
+    render(Entry, { data: lockedFor(true, [days]) });
+    await fireEvent.click(unlockButton()!);
+    const confirm = screen.getByRole('button', {
+      name: m.record_locks_unlock_confirm(),
+    }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(true);
+    await fireEvent.input(screen.getByLabelText(unlockReasonLabel), {
+      target: { value: '  Cantidad mal digitada  ' },
+    });
+    expect(confirm.disabled).toBe(false);
+    await fireEvent.click(confirm);
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith('stock:entry-detail'));
+    const [, init] = fetchMock.mock.calls.find(
+      ([u]) => String(u) === '/api/settings/record-locks/unlocks',
+    )! as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      recordType: 'stock_receipt',
+      recordId: ENTRY,
+      reason: 'Cantidad mal digitada',
+    });
+  });
+
+  it('a refused unlock shows the translated next step and keeps the dialog open', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url) === '/api/settings/record-locks/unlocks'
+        ? Response.json(
+            { error: 'x', code: 'not_unlockable', outcome: 'not_applied' },
+            { status: 409 },
+          )
+        : defaultFetch(url, init),
+    );
+    render(Entry, { data: lockedFor(true, [days]) });
+    await fireEvent.click(unlockButton()!);
+    await fireEvent.input(screen.getByLabelText(unlockReasonLabel), {
+      target: { value: 'x' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: m.record_locks_unlock_confirm() }));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByRole('alert').textContent).toBe(m.stock_corr_err_not_unlockable());
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it('an unlock refused for the role says only an owner can change this, not the stock-value text', async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) =>
+      String(url) === '/api/settings/record-locks/unlocks'
+        ? Response.json(
+            { error: 'x', code: 'owner_required', outcome: 'not_applied' },
+            { status: 403 },
+          )
+        : defaultFetch(url, init),
+    );
+    render(Entry, { data: lockedFor(true, [days]) });
+    await fireEvent.click(unlockButton()!);
+    await fireEvent.input(screen.getByLabelText(unlockReasonLabel), { target: { value: 'x' } });
+    await fireEvent.click(screen.getByRole('button', { name: m.record_locks_unlock_confirm() }));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByRole('alert').textContent).toBe(m.record_locks_err_owner_required());
+  });
+
+  it('an active unlock shows who and until when, hides the lock notice and enables the correction', () => {
+    const unlocked = {
+      ...base,
+      isOwner: true,
+      lock: {
+        locked: false,
+        rules: [days],
+        unlock: {
+          eventId: 'u1',
+          expiresAt: '2026-11-25T20:20:00.000Z',
+          grantedByName: 'Ada',
+        },
+      },
+    } as unknown as typeof data;
+    const v = render(Entry, { data: unlocked });
+    expect(v.queryByTestId('lock-notice')).toBeNull();
+    expect(v.getByTestId('lock-unlocked').textContent).toContain('Ada');
+    expect(unlockButton()).toBeNull();
+    expect(
+      (v.getByRole('button', { name: m.stock_corr_receipt_action() }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+  });
 });

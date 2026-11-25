@@ -1189,10 +1189,11 @@ export const NATIVE_POSTGRES_MANIFEST = {
     },
     {
       file: 'src/server/services/stock-corrections.sql.integration.test.ts',
-      minimumAssertions: 14,
+      minimumAssertions: 15,
       exactAssertions: true,
       requiredBehaviors: [
         'stock corrections against PostgreSQL refuses a purchase correction under the organization lock policy (spec 140)',
+        'stock corrections against PostgreSQL lets an owner unlock one locked purchase for exactly one correction (spec 140)',
         'stock corrections against PostgreSQL preserves POS only no stock swap and rejects unauthorized stock effects',
         'stock corrections against PostgreSQL rolls back every intermediate write and records one immutable outcome',
         'stock corrections against PostgreSQL reconciles lost response and rejects changed intent operation reuse',

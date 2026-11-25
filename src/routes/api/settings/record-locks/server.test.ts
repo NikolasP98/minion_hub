@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireOrgCapability: vi.fn(),
   requireCoreCtx: vi.fn(),
   setLockPolicy: vi.fn(),
+  grantUnlock: vi.fn(),
 }));
 vi.mock('$server/services/rbac.service', () => ({
   requireOrgCapability: mocks.requireOrgCapability,
@@ -12,6 +13,7 @@ vi.mock('$server/services/rbac.service', () => ({
 vi.mock('$server/auth/core-ctx', () => ({ requireCoreCtx: mocks.requireCoreCtx }));
 vi.mock('$server/services/record-locks.service', () => ({
   setLockPolicy: mocks.setLockPolicy,
+  grantUnlock: mocks.grantUnlock,
   logLockEvent: vi.fn(),
   personActor: (c: { profileId?: string }, name: string | null) => ({
     kind: 'person',
@@ -21,6 +23,7 @@ vi.mock('$server/services/record-locks.service', () => ({
 }));
 
 import { PUT } from './policy/+server';
+import { POST as UNLOCK } from './unlocks/+server';
 
 const ctx = { tenantId: 'org-1', profileId: 'p1' };
 const locals = { user: { id: 'u1', displayName: 'Ada', email: 'a@x.test' } };
@@ -77,5 +80,61 @@ describe('PUT /api/settings/record-locks/policy', () => {
     mocks.requireOrgCapability.mockRejectedValue({ status: 403 });
     await expect(put('{}')).rejects.toMatchObject({ status: 403 });
     expect(mocks.setLockPolicy).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/settings/record-locks/unlocks', () => {
+  const body = { recordType: 'stock_receipt', recordId: 'r1', reason: 'typo' };
+  const post = (raw: string) =>
+    UNLOCK({
+      locals,
+      request: new Request('http://hub.test/api/settings/record-locks/unlocks', {
+        method: 'POST',
+        body: raw,
+      }),
+    } as never) as Promise<Response>;
+
+  it('an owner gets 201 with the new unlock; the actor is the signed-in person', async () => {
+    mocks.grantUnlock.mockResolvedValue({
+      eventId: 'e1',
+      expiresAt: '2026-11-25T10:00:00.000Z',
+      created: true,
+    });
+    const res = await post(JSON.stringify(body));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ eventId: 'e1', expiresAt: '2026-11-25T10:00:00.000Z' });
+    expect(mocks.requireOrgCapability).toHaveBeenCalledWith(locals, 'settings', 'manage');
+    expect(mocks.grantUnlock).toHaveBeenCalledWith(ctx, body, {
+      kind: 'person',
+      id: 'p1',
+      name: 'Ada',
+    });
+  });
+
+  it('an active unlock answers 200 with the same shape', async () => {
+    mocks.grantUnlock.mockResolvedValue({ eventId: 'e0', expiresAt: 'x', created: false });
+    const res = await post(JSON.stringify(body));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ eventId: 'e0', expiresAt: 'x' });
+  });
+
+  it.each([
+    ['owner_required', 403],
+    ['not_found', 404],
+    ['not_locked', 409],
+    ['not_unlockable', 409],
+    ['invalid_request', 400],
+  ] as const)('maps %s to %i with the code in the body', async (code, status) => {
+    mocks.grantUnlock.mockRejectedValue(new CorrectionError('nope', code));
+    const res = await post(JSON.stringify(body));
+    expect(res.status).toBe(status);
+    expect(await res.json()).toMatchObject({ code, outcome: 'not_applied' });
+  });
+
+  it('a body that is not JSON is 400 and a caller without settings:manage never reaches the service', async () => {
+    await expect(post('nope')).rejects.toMatchObject({ status: 400 });
+    mocks.requireOrgCapability.mockRejectedValue({ status: 403 });
+    await expect(post(JSON.stringify(body))).rejects.toMatchObject({ status: 403 });
+    expect(mocks.grantUnlock).not.toHaveBeenCalled();
   });
 });

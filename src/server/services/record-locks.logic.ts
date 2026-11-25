@@ -53,9 +53,6 @@ export function evaluateRecordLock(input: EvaluateInput): LockHit[] {
   const tz = input.settingsTimezone;
   const hits: LockHit[] = [];
 
-  // TODO(handoff): (spec 140 research R4 / tasks T048) the month rule judges a replacement receipt by its own
-  // posted_at, so a receipt corrected after its month closes is not locked by that month. Owner question 2; one line
-  // (pass `firstPostedAt`) but it changes today's default behaviour. Ledger: meta proposals, spec 140 open items.
   if (input.policy.month) {
     try {
       evaluateReceiptPeriod({
@@ -73,6 +70,11 @@ export function evaluateRecordLock(input: EvaluateInput): LockHit[] {
       if (input.lockedPeriods.has(current))
         hits.push({ rule: 'month', kind: 'month_current', unlockable: false, period: current });
     }
+    // A replacement is dated today, so judging it by its own date would reopen a closed-month purchase for good
+    // after one unlock (spec 140 R4): the month of the chain's first receipt keeps locking it.
+    const first = monthInZone(input.firstPostedAt, tz as string);
+    if (input.lockedPeriods.has(first) && !hits.some((h) => h.period === first))
+      hits.push({ rule: 'month', kind: 'month', unlockable: true, period: first });
   } else if (!tz) {
     throw new CorrectionError('finance settings are not configured', 'policy_unverified');
   }

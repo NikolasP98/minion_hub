@@ -149,12 +149,24 @@ describe('recordLockFor', () => {
     expect(r.rules).toMatchObject([{ kind: 'chain_unverified' }]);
   });
 
-  it("keeps today's answer for an org without days or webhook rules, even at the cap", async () => {
+  it('fails closed past the cap under the default policy: the month rule reads the chain too (probe R3c)', async () => {
+    // 21 corrections made while the month was open, then the month closed: the chain tip cannot be proven young.
     const rows = Array.from({ length: 21 }, (_, i) => ({
       id: `r${i}`,
       posted_at: '2026-11-19T15:00:00Z',
     }));
     const f = fakeTx([[], TZ, []], [rows]);
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(true);
+    expect(r.rules.map((h) => h.kind)).toContain('chain_unverified');
+  });
+
+  it('trusts a long chain only when no rule reads the first receipt (month, days and webhook all off)', async () => {
+    const rows = Array.from({ length: 21 }, (_, i) => ({
+      id: `r${i}`,
+      posted_at: '2026-11-19T15:00:00Z',
+    }));
+    const f = fakeTx([[policyRow({ monthEnabled: false })], TZ, []], [rows]);
     const r = await recordLockFor(f.tx, 'org', rec, { now });
     expect(r.rules.map((h) => h.kind)).not.toContain('chain_unverified');
   });
@@ -195,5 +207,139 @@ describe('recordLockFor', () => {
     } as never;
     await recordLockFor(tx, 'org', rec, { now });
     expect(text).toContain('receipt_chain');
+  });
+});
+
+const DAYS_HIT = { rule: 'days', kind: 'days', unlockable: true, days: 30 };
+describe('recordLockFor with an owner unlock (spec 140 S3)', () => {
+  const chain = [
+    { id: 'r2', posted_at: '2026-11-19T15:00:00Z' },
+    { id: 'r1', posted_at: '2026-08-01T15:00:00Z' },
+  ];
+  const days30 = [policyRow({ daysEnabled: true, days: 30 })];
+
+  it('an active unlock clears the verdict, keeps every rule and names the grant', async () => {
+    const f = fakeTx(
+      [
+        days30,
+        TZ,
+        [],
+        [
+          {
+            id: 'u1',
+            expiresAt: new Date('2026-11-21T10:00:00Z'),
+            actorName: 'Ada',
+            rules: [DAYS_HIT],
+          },
+        ],
+      ],
+      [chain],
+    );
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(false);
+    expect(r.rules).toEqual([{ rule: 'days', kind: 'days', unlockable: true, days: 30 }]);
+    expect(r.unlock).toEqual({
+      eventId: 'u1',
+      expiresAt: '2026-11-21T10:00:00.000Z',
+      grantedByName: 'Ada',
+    });
+  });
+
+  it('no unlock row -> still locked, unlock null', async () => {
+    const f = fakeTx([days30, TZ, [], []], [chain]);
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r).toMatchObject({ locked: true, unlock: null });
+  });
+
+  it('an unlocked record costs no unlock read', async () => {
+    const f = fakeTx([[], TZ, []], []);
+    expect((await recordLockFor(f.tx, 'org', rec, { now })).unlock).toBeNull();
+    expect(f.reads()).toBe(3);
+  });
+
+  it('an unlock never clears a closed current month', async () => {
+    const f = fakeTx(
+      [
+        [],
+        TZ,
+        [{ period: '2026-11' }],
+        [
+          {
+            id: 'u1',
+            expiresAt: new Date('2026-11-21T10:00:00Z'),
+            actorName: null,
+            rules: [{ rule: 'month', kind: 'month_current', unlockable: false, period: '2026-11' }],
+          },
+        ],
+      ],
+      [],
+    );
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.locked).toBe(true);
+    expect(r.rules[0]).toMatchObject({ kind: 'month_current', unlockable: false });
+  });
+
+  it('a lock that appeared after the grant keeps the record locked and says a new unlock is needed', async () => {
+    const webhookPolicy = [policyRow({ daysEnabled: true, days: 30, webhookEnabled: true })];
+    const external = [
+      {
+        id: 'w1',
+        label: 'Contabilidad',
+        recordType: null,
+        upTo: '2026-12-31',
+        recordId: null,
+        createdAt: new Date('2026-11-20T12:00:00Z'),
+      },
+    ];
+    const f = fakeTx(
+      [
+        webhookPolicy,
+        TZ,
+        [],
+        external,
+        [
+          {
+            id: 'u1',
+            expiresAt: new Date('2026-11-21T10:00:00Z'),
+            actorName: 'Ada',
+            rules: [DAYS_HIT],
+          },
+        ],
+      ],
+      [chain],
+    );
+    const r = await recordLockFor(f.tx, 'org', rec, { now });
+    expect(r.rules.map((h) => h.kind)).toEqual(['days', 'webhook_date']);
+    expect(r).toMatchObject({ locked: true, unlock: null, unlockOutdated: true });
+  });
+
+  it('a different webhook lock than the one granted does not clear', async () => {
+    const f = fakeTx(
+      [
+        [policyRow({ webhookEnabled: true })],
+        TZ,
+        [],
+        [
+          {
+            id: 'w2',
+            label: 'Auditoría',
+            recordType: null,
+            upTo: '2026-12-31',
+            recordId: null,
+            createdAt: new Date('2026-11-20T12:00:00Z'),
+          },
+        ],
+        [
+          {
+            id: 'u1',
+            expiresAt: new Date('2026-11-21T10:00:00Z'),
+            actorName: null,
+            rules: [{ rule: 'webhook', kind: 'webhook_date', unlockable: true, lockId: 'w1' }],
+          },
+        ],
+      ],
+      [chain],
+    );
+    expect(await recordLockFor(f.tx, 'org', rec, { now })).toMatchObject({ locked: true });
   });
 });
