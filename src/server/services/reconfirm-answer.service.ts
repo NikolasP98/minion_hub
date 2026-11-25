@@ -347,6 +347,11 @@ async function handleAnswer(
     return;
   }
   if (intent === 'pick' && c.agent_state === 'offered' && ans.pick !== null && offered[ans.pick]) {
+    // Staff may have written while the pick was being read: the booking moves only while the agent still owns the chat.
+    if (await humanWroteSince(ctx, c)) {
+      await endAgentPart(ctx, c, 'staff_handling');
+      return;
+    }
     const r = await acceptOfferedSlot(ctx, c.id, ans.pick, newest, summary);
     if (r === 'rescheduled') {
       out.rescheduled += 1;

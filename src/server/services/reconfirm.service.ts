@@ -685,6 +685,8 @@ export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<A
         continue;
       }
       if (c.opt_out && c.opt_out !== 'false' && c.opt_out !== '0') {
+        // TODO(handoff): spec 139 - an opted-out client ends as send_failed, so staff read "No se confirmó el mensaje… revisa
+        // el chat" though nothing was sent. Title by the event's error (proposals/2026-11-25-reminders-failed-send-retry.md).
         await endAgentPart(ctx, c, 'send_failed', { error: 'opted_out' });
         out.failed += 1;
         continue;

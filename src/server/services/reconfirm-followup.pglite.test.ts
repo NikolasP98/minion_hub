@@ -508,6 +508,29 @@ describe('staff takeover is re-checked right before each send (R2d)', () => {
   });
 });
 
+describe('staff writes while a slot pick is read: the booking does not move (round-3 N3b)', () => {
+  it('the agent hands over instead of rescheduling', async () => {
+    await openAndAsk();
+    // The agent already offered one slot (state set directly: the offer path is covered elsewhere).
+    await pg.query(
+      `update sched_reconfirm_cases set agent_state = 'offered', offered_slots = $1::jsonb,
+         wait_until = now() + interval '20 hours'`,
+      [JSON.stringify([{ start: at(120 * H), resourceId: RES }])],
+    );
+    await inbound('1', 90_000);
+    h.inferAnswer.mockImplementation(async () => {
+      await staffOutbound('Hola Ana, soy recepción', 100_000);
+      return { ...answer('pick'), pick: 0 };
+    });
+    const sentBefore = sentTexts().length;
+    await advanceAnswers(ctx, new Date());
+    const { rescheduleAssistantBookingInTx } = await import('./scheduling-bookings.service');
+    expect(rescheduleAssistantBookingInTx).not.toHaveBeenCalled();
+    expect(sentTexts()).toHaveLength(sentBefore);
+    expect((await caseRow()).result).toBe('staff_handling');
+  });
+});
+
 describe('failed sends warn staff, and the warning is not lost to the info row (R6b, R6c)', () => {
   it('"sí voy" accepted but the closing message fails: warning on its own key', async () => {
     await openAndAsk();
