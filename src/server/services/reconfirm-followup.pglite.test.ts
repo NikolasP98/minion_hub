@@ -502,7 +502,7 @@ describe('staff takeover is re-checked right before each send (R2d)', () => {
     await advanceAnswers(ctx, new Date());
     expect(sentTexts()).toHaveLength(1);
     const r = await inbox();
-    expect(r.upserts.map((d) => [d.severity, d.dedupeKey.split(':').at(-1)])).toEqual([
+    expect(r.upserts.map((d) => [d.severity, d.dedupeKey!.split(':').at(-1)])).toEqual([
       ['warning', 'done-warn'],
     ]);
   });
