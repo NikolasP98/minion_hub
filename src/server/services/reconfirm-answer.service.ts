@@ -29,9 +29,11 @@ import {
   offerTemplate,
 } from './reminder-compose';
 import type { ClosingKind, ReconfirmAnswer } from './reminder-compose';
-import { sendAgentMessage } from './reconfirm.service';
+import { endAgentPart, humanWroteSince, sendAgentMessage } from './reconfirm.service';
 import {
   CONFIDENCE_MIN,
+  LATE_MS,
+  answerSummary,
   dateWindow,
   pickOfferSlots,
   waitUntil,
@@ -102,6 +104,9 @@ async function settle(
 }
 type Tx = Parameters<Parameters<typeof withOrgCore>[1]>[0];
 
+/** The booking moved or closed between reading the answer and accepting it: roll the settle back. */
+class BookingChangedError extends Error {}
+
 /**
  * One transaction: lock the case, run the strict move to the offered slot, accept a `pending`
  * booking, clear the booking's time-based client reminder claims (the new date gets its reminders),
@@ -113,6 +118,7 @@ export async function acceptOfferedSlot(
   caseId: string,
   pick: number,
   inboundAt: Date,
+  summary: string | null = null,
 ): Promise<'rescheduled' | 'slot_taken'> {
   try {
     return await withOrgCore(ctx, async (tx) => {
@@ -128,6 +134,8 @@ export async function acceptOfferedSlot(
         pick
       ];
       if (!c || !slot || !c.offer_booking_updated_at) throw new SlotUnavailableError();
+      // A slot that is now closer than the late cut-off is never booked, however long the client took.
+      if (new Date(slot.start).getTime() < Date.now() + LATE_MS) throw new SlotUnavailableError();
       const bookingId = String(c.booking_id);
       const moved = await rescheduleAssistantBookingInTx(tx, ctx, bookingId, {
         start: new Date(slot.start),
@@ -155,7 +163,7 @@ export async function acceptOfferedSlot(
         update sched_reconfirm_cases
         set result = 'rescheduled', agent_state = 'done', wait_until = null,
             booking_start_at = ${iso(new Date(slot.start))}::timestamptz,
-            last_inbound_at = ${iso(inboundAt)}::timestamptz,
+            last_inbound_at = ${iso(inboundAt)}::timestamptz, summary = ${summary},
             closed_at = now(), close_action = 'agent'
         where id = ${caseId}::uuid and org_id = ${ctx.tenantId}
       `);
@@ -216,6 +224,10 @@ export async function advanceAnswers(ctx: CoreCtx, now: Date, cap = 25): Promise
 
   for (const c of open) {
     try {
+      if (await humanWroteSince(ctx, c)) {
+        await endAgentPart(ctx, c, 'staff_handling'); // staff took over: the agent stops, whatever the client says
+        continue;
+      }
       const replies = rows(
         await withOrgCore(ctx, (tx) =>
           tx.execute(sql`
@@ -265,6 +277,10 @@ async function handleAnswer(
   out: AnswerResult,
 ) {
   const start = new Date(c.start_time);
+  if (start.getTime() - now.getTime() < LATE_MS) {
+    await settle(ctx, c, 'late_reply', newest); // too close to the start: no paid read, no message
+    return;
+  }
   const when = whenText(start, c.timezone, config.locale);
   const fromName = config.fromName || (config.locale === 'en' ? 'your business' : 'tu negocio');
   const offered = c.agent_state === 'offered' ? c.offered_slots : [];
@@ -277,6 +293,7 @@ async function handleAnswer(
   });
   const sure = ans.confidence >= CONFIDENCE_MIN;
   const intent = sure ? ans.verdict : 'unclear';
+  const summary = answerSummary(intent, ans.day, ans.partOfDay);
   const msgCtx = { ...c, attendee_name: c.attendee_name };
   const close = (kind: ClosingKind) =>
     sendAgentMessage(
@@ -288,21 +305,45 @@ async function handleAnswer(
     );
 
   if (intent === 'will_come') {
-    if (c.status === 'pending')
-      await withOrgCore(ctx, (tx) =>
-        setBookingStatusInTx(tx, ctx, c.booking_id, 'accepted', {
-          reason: 'client confirmed after asking',
-        }),
-      );
-    if (await settle(ctx, c, 'will_come', newest, { close: true })) await close('will_come');
+    try {
+      // Accept inside the settle transaction (lock order: case, then booking), re-checking that the
+      // appointment is still the one the client answered about.
+      const settled = await settle(ctx, c, 'will_come', newest, {
+        close: true,
+        summary,
+        afterTx: async (tx) => {
+          const b = rows(
+            await tx.execute(sql`
+              select status, start_time from sched_bookings
+              where id = ${c.booking_id}::uuid and org_id = ${ctx.tenantId} for update
+            `),
+          )[0];
+          if (
+            !b ||
+            new Date(String(b.start_time)).getTime() !== start.getTime() ||
+            (b.status !== 'pending' && b.status !== 'accepted')
+          )
+            throw new BookingChangedError();
+          if (b.status === 'pending')
+            await setBookingStatusInTx(tx, ctx, c.booking_id, 'accepted', {
+              reason: 'client confirmed after asking',
+            });
+        },
+      });
+      if (settled) await close('will_come');
+    } catch (e) {
+      if (!(e instanceof BookingChangedError)) throw e;
+      // Rolled back: nothing was accepted and the client is told nothing. Staff see why.
+      await endAgentPart(ctx, c, 'staff_handling', { reason: 'booking_changed' });
+    }
     return;
   }
   if (intent === 'decline') {
-    if (await settle(ctx, c, 'declined', newest)) await close('declined');
+    if (await settle(ctx, c, 'declined', newest, { summary })) await close('declined');
     return;
   }
   if (intent === 'pick' && c.agent_state === 'offered' && ans.pick !== null && offered[ans.pick]) {
-    const r = await acceptOfferedSlot(ctx, c.id, ans.pick, newest);
+    const r = await acceptOfferedSlot(ctx, c.id, ans.pick, newest, summary);
     if (r === 'rescheduled') {
       out.rescheduled += 1;
       const slot = new Date(offered[ans.pick]!.start);
@@ -317,12 +358,14 @@ async function handleAnswer(
         }),
         now,
       );
-    } else if (await settle(ctx, c, 'wants_other_date', newest)) await close('wants_other_date');
+    } else if (await settle(ctx, c, 'wants_other_date', newest, { summary }))
+      await close('wants_other_date');
     return;
   }
   if (c.agent_state === 'offered') {
     // shortcut: one offer round. Anything that is not a pick after the offer goes to staff.
-    if (await settle(ctx, c, 'wants_other_date', newest)) await close('wants_other_date');
+    if (await settle(ctx, c, 'wants_other_date', newest, { summary }))
+      await close('wants_other_date');
     return;
   }
   if (intent === 'other_date') {
@@ -338,7 +381,8 @@ async function handleAnswer(
     const picked = found ? pickOfferSlots(found.slots, ans.partOfDay, c.timezone, 3, now) : [];
     const deadline = waitUntil(now, start, config.negationWaitHours);
     if (!picked.length || !deadline) {
-      if (await settle(ctx, c, 'wants_other_date', newest)) await close('wants_other_date');
+      if (await settle(ctx, c, 'wants_other_date', newest, { summary }))
+      await close('wants_other_date');
       return;
     }
     const slots = picked.map((s) => ({ start: s.start.toISOString(), resourceId: c.resource_id }));
@@ -357,13 +401,15 @@ async function handleAnswer(
           update sched_reconfirm_cases
           set agent_state = 'offered', offered_slots = ${JSON.stringify(slots)}::jsonb,
               offer_booking_updated_at = ${iso(new Date(c.updated_at))}::timestamptz,
-              wait_until = ${iso(deadline)}::timestamptz, last_inbound_at = ${iso(newest)}::timestamptz
+              wait_until = ${iso(deadline)}::timestamptz, last_inbound_at = ${iso(newest)}::timestamptz,
+              summary = ${summary}
           where id = ${c.id}::uuid and org_id = ${ctx.tenantId} and closed_at is null and result is null
         `);
       },
     );
     if (sent === 'sent') out.offered += 1;
-    else if (sent === 'failed') await settle(ctx, c, 'send_failed', newest);
+    else if (sent === 'failed') await settle(ctx, c, 'send_failed', newest, { summary });
+    else await markRead(ctx, c.id, newest); // claimed: a stuck offer must not re-classify every tick
     return;
   }
   // unclear while asking: wait for the next reply or the deadline; this reply is not read again.

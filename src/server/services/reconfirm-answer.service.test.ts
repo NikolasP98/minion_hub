@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { SQL } from 'drizzle-orm';
 
@@ -14,6 +14,8 @@ const h = vi.hoisted(() => {
     slots: vi.fn(),
     move: vi.fn(),
     setStatus: vi.fn(),
+    human: vi.fn(),
+    endPart: vi.fn(),
     allows: vi.fn(),
     config: {} as Record<string, unknown>,
     SlotUnavailableError,
@@ -34,7 +36,11 @@ vi.mock('./scheduling-bookings.service', () => ({
 vi.mock('./scheduling-slots.service', () => ({ getSlotsForEventType: h.slots }));
 vi.mock('./reminder-config.service', () => ({ getReminderConfig: async () => h.config }));
 vi.mock('./entitlements.service', () => ({ orgAllows: h.allows }));
-vi.mock('./reconfirm.service', () => ({ sendAgentMessage: h.send }));
+vi.mock('./reconfirm.service', () => ({
+  sendAgentMessage: h.send,
+  humanWroteSince: h.human,
+  endAgentPart: h.endPart,
+}));
 vi.mock('./reminder-compose', async (orig) => ({
   ...(await orig<object>()),
   inferReconfirmAnswer: h.infer,
@@ -88,12 +94,16 @@ const answer = (over: Record<string, unknown> = {}) => ({
 let open: unknown[];
 let replies: unknown[];
 let offerRow: Record<string, unknown> | null;
+let bookingRow: Record<string, unknown> | null;
 let log: Array<{ text: string; params: unknown[] }>;
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ['Date'] }); // acceptOfferedSlot checks the slot against the real clock
+  vi.setSystemTime(NOW);
   open = [caseRow()];
   replies = [{ content: 'el lunes en la tarde', occurred_at: '2026-11-25T14:45:00Z' }];
   offerRow = null;
+  bookingRow = { status: 'pending', start_time: START };
   log = [];
   h.config = {
     enabled: true,
@@ -104,6 +114,8 @@ beforeEach(() => {
     stages: [{ key: 'confirmation' }, { key: '24h', minutesBefore: 1440 }],
   };
   h.allows.mockResolvedValue(true);
+  h.human.mockResolvedValue(false);
+  h.endPart.mockResolvedValue(undefined);
   h.send.mockResolvedValue('sent');
   h.infer.mockResolvedValue(answer());
   h.slots.mockResolvedValue({
@@ -118,6 +130,8 @@ beforeEach(() => {
       log.push({ text, params });
       if (text.includes('from sched_reconfirm_cases c join sched_bookings')) return open;
       if (text.includes("direction = 'inbound'")) return replies;
+      if (text.includes('from sched_bookings') && text.includes('for update'))
+        return bookingRow ? [bookingRow] : [];
       if (text.includes('select booking_id, offered_slots')) return offerRow ? [offerRow] : [];
       if (text.includes('update sched_reconfirm_cases') && text.includes('set result ='))
         return [{ id: 'case-1' }];
@@ -125,6 +139,7 @@ beforeEach(() => {
     },
   };
 });
+afterEach(() => vi.useRealTimers());
 const stmts = (n: string) => log.filter((s) => s.text.includes(n));
 const closings = () => h.send.mock.calls.filter((c) => c[2] === 'closing');
 
@@ -232,6 +247,17 @@ describe('advanceAnswers: the pick', () => {
     expect(stmts('set result =')[0]!.params).toContain('wants_other_date');
   });
 
+  it('acceptOfferedSlot refuses a slot that is now inside the late cut-off', async () => {
+    const soon = new Date(NOW.getTime() + 90 * 60_000).toISOString();
+    offerRow = {
+      booking_id: 'b1',
+      offered_slots: [{ start: soon, resourceId: 'res1' }],
+      offer_booking_updated_at: '2026-11-25T13:00:00.000Z',
+    };
+    expect(await acceptOfferedSlot(ctx, 'case-1', 0, NOW)).toBe('slot_taken');
+    expect(h.move).not.toHaveBeenCalled();
+  });
+
   it('acceptOfferedSlot answers slot_taken for a case that is no longer offered', async () => {
     offerRow = null;
     expect(await acceptOfferedSlot(ctx, 'case-1', 0, NOW)).toBe('slot_taken');
@@ -255,6 +281,76 @@ describe('advanceAnswers: the other outcomes', () => {
     expect(h.setStatus.mock.calls[0]!.slice(2, 4)).toEqual(['b1', 'accepted']);
     expect(stmts('set result =')[0]!.params).toContain('will_come');
     expect(stmts('set result =')[0]!.text).toContain('close_action');
+  });
+
+  it('will_come accepts INSIDE the settle transaction, after locking the booking', async () => {
+    h.infer.mockResolvedValue(answer({ verdict: 'will_come' }));
+    await advanceAnswers(ctx, NOW);
+    const order = log.map((s) => s.text);
+    const settle = order.findIndex((t) => t.includes('set result ='));
+    const lock = order.findIndex((t) => t.includes('from sched_bookings') && t.includes('for update'));
+    expect(lock).toBeGreaterThan(settle); // lock order: case, then booking
+    expect(h.setStatus.mock.calls[0]![0]).toBe(h.tx);
+    expect(closings()).toHaveLength(1);
+  });
+
+  it('will_come TOCTOU: the booking moved after the read, so nothing is accepted and the client is told nothing', async () => {
+    h.infer.mockResolvedValue(answer({ verdict: 'will_come' }));
+    bookingRow = { status: 'pending', start_time: '2026-11-28T22:15:00.000Z' };
+    await advanceAnswers(ctx, NOW);
+    expect(h.setStatus).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+    expect(h.endPart).toHaveBeenCalledWith(ctx, expect.anything(), 'staff_handling', {
+      reason: 'booking_changed',
+    });
+  });
+
+  it('will_come on a booking that is no longer pending/accepted is refused the same way', async () => {
+    h.infer.mockResolvedValue(answer({ verdict: 'will_come' }));
+    bookingRow = { status: 'cancelled', start_time: START };
+    await advanceAnswers(ctx, NOW);
+    expect(h.setStatus).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it('will_come on an already accepted booking writes no status', async () => {
+    h.infer.mockResolvedValue(answer({ verdict: 'will_come' }));
+    bookingRow = { status: 'accepted', start_time: START };
+    await advanceAnswers(ctx, NOW);
+    expect(h.setStatus).not.toHaveBeenCalled();
+    expect(closings()).toHaveLength(1);
+  });
+
+  it('a person wrote after the question: staff_handling, nothing is read or sent', async () => {
+    h.human.mockResolvedValue(true);
+    await advanceAnswers(ctx, NOW);
+    expect(h.endPart).toHaveBeenCalledWith(ctx, expect.anything(), 'staff_handling');
+    expect(h.infer).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+  });
+
+  it('inside 2 h of the start: late_reply, no classifier call, no message, no booking write', async () => {
+    open = [caseRow({ start_time: new Date(NOW.getTime() + 90 * 60_000).toISOString() })];
+    h.infer.mockResolvedValue(answer({ verdict: 'will_come' }));
+    await advanceAnswers(ctx, NOW);
+    expect(stmts('set result =')[0]!.params).toContain('late_reply');
+    expect(h.infer).not.toHaveBeenCalled();
+    expect(h.send).not.toHaveBeenCalled();
+    expect(h.setStatus).not.toHaveBeenCalled();
+  });
+
+  it('an offer someone else already holds (claimed) marks the reply read: no paid call next tick', async () => {
+    h.send.mockResolvedValue('claimed');
+    await advanceAnswers(ctx, NOW);
+    expect(stmts('set last_inbound_at')).toHaveLength(1);
+  });
+
+  it('the staff summary is a one-line template of intent, day and part of day (no client words)', async () => {
+    h.slots.mockResolvedValue({ slots: [] }); // nothing free: the case goes to staff with the summary
+    await advanceAnswers(ctx, NOW);
+    const set = stmts('set result =')[0]!;
+    expect(set.params).toContain('Pidió otra fecha: el lunes en la tarde');
+    expect(set.params.join('|')).not.toContain('el lunes en la tarde mejor');
   });
 
   it('an org without ai.proactive (or with AI reading off) never calls the classifier', async () => {

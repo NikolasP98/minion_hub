@@ -1,5 +1,6 @@
-// Spec 139 regression: the REAL scan / advance code against PGlite with minimal tables.
-// External calls (gateway, JEV, slots, booking writers) are mocked. Born from the S2-S4 audit probe.
+// Spec 139 regression: the REAL scan / answer / advance code against PGlite with minimal tables.
+// External calls (gateway, JEV, slots, booking writers) are mocked. Born from the S2-S4 audit probe
+// (P1 scan swallowed the answer, P2 staff takeover, P3 late guard, P4 reminders off, P5 concurrency).
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -11,9 +12,11 @@ const h = vi.hoisted(() => ({
   },
   config: {} as Record<string, unknown>,
   inferReply: vi.fn(),
+  inferAnswer: vi.fn(),
   send: vi.fn(),
   setStatus: vi.fn(),
   setStatusInTx: vi.fn(),
+  slots: vi.fn(),
 }));
 
 vi.mock('$server/db/with-org-core', () => ({
@@ -36,6 +39,7 @@ vi.mock('./entitlements.service', () => ({
 vi.mock('./reminder-compose', async (orig) => ({
   ...(await orig<object>()),
   inferConfirmationReply: h.inferReply,
+  inferReconfirmAnswer: h.inferAnswer,
 }));
 vi.mock('./scheduling-bookings.service', () => ({
   BookingTransitionError: class extends Error {},
@@ -51,6 +55,7 @@ vi.mock('$server/db/pg-client', () => ({
     execute: async (q: unknown) => ((await h.db.execute(q)) as { rows: unknown[] }).rows,
   }),
 }));
+vi.mock('./scheduling-slots.service', () => ({ getSlotsForEventType: h.slots }));
 vi.mock('$lib/server/gateway-rpc', () => ({ gatewayCall: h.send }));
 vi.mock('./messages.service', () => ({ insertMessages: async () => {} }));
 vi.mock('./modules.service', () => ({ isModuleEnabled: async () => true }));
@@ -59,6 +64,7 @@ import { scanConfirmationReplies } from './reminders.service';
 import { advanceCases } from './reconfirm.service';
 import { reapStaleSends } from './stale-sends.service';
 import { caseTitle } from '$server/scheduling/reconfirm';
+import { advanceAnswers } from './reconfirm-answer.service';
 import { handleInboundForReminders } from './reminder-reply-trigger.service';
 
 const pg = new PGlite();
@@ -131,10 +137,10 @@ const inbound = (content: string, ms: number) =>
      values ($1,'inbound','whatsapp','acct',$2,false,$3,$4)`,
     [ORG, PHONE, content, at(ms)],
   );
-const outbound = (content: string, ms: number) =>
+const staffOutbound = (content: string, ms: number) =>
   pg.query(
-    `insert into messages (org_id,direction,channel,account_id,sender_id,chat_id,is_group,content,occurred_at)
-     values ($1,'outbound','whatsapp','acct',$2,$2,false,$3,$4)`,
+    `insert into messages (org_id,direction,channel,account_id,sender_id,chat_id,is_group,content,occurred_at,agent_id)
+     values ($1,'outbound','whatsapp','acct',$2,$2,false,$3,$4,null)`,
     [ORG, PHONE, content, at(ms)],
   );
 const caseRow = async () =>
@@ -155,7 +161,98 @@ beforeEach(async () => {
   };
   h.send.mockResolvedValue({ messageId: 'wa-1' });
   h.inferReply.mockResolvedValue({ verdict: 'negation', confidence: 0.95, via: 'jev' });
+  h.inferAnswer.mockResolvedValue({
+    verdict: 'other_date', confidence: 0.95, via: 'jev', pick: null, day: 'mon', partOfDay: 'afternoon',
+  });
+  h.slots.mockResolvedValue({
+    slots: [{ start: new Date(Date.now() + 120 * H), end: new Date(Date.now() + 121 * H), resourceIds: [RES] }],
+  });
   await seed();
+});
+
+/** "no" -> case; the agent asks. Returns once the case is `asking`. */
+async function openAndAsk() {
+  await inbound('no voy a poder', -2 * H);
+  await scanConfirmationReplies(ctx, new Date());
+  await advanceCases(ctx, new Date());
+  expect((await caseRow()).agent_state).toBe('asking');
+  expect(sentTexts()).toHaveLength(1);
+}
+
+describe('P1 the S1 scan must not swallow the answer to the agent question', () => {
+  it('real order (scan -> answers): the classifier reads the answer once and the case advances', async () => {
+    await openAndAsk();
+    await inbound('el lunes en la tarde mejor', 60_000);
+    await scanConfirmationReplies(ctx, new Date()); // S1: "another date" is a negation by its criteria
+    await advanceAnswers(ctx, new Date());
+    expect(h.inferAnswer).toHaveBeenCalledTimes(1);
+    expect((await caseRow()).agent_state).not.toBe('asking');
+  });
+});
+
+describe('P2 staff takeover stops the agent', () => {
+  it('a staff message after the question: the client answers and the agent sends nothing', async () => {
+    await openAndAsk();
+    await staffOutbound('Hola Ana, soy Carla de recepción, te llamo ahora', 30_000);
+    await inbound('el lunes en la tarde mejor', 60_000);
+    await advanceAnswers(ctx, new Date());
+    expect(sentTexts()).toHaveLength(1); // only the question
+    expect(h.inferAnswer).not.toHaveBeenCalled();
+    expect((await caseRow()).result).toBe('staff_handling');
+  });
+});
+
+describe('P3 no action after the appointment started', () => {
+  it('a "will come" read after the start: no booking write, no message, late_reply', async () => {
+    await openAndAsk();
+    const past = at(-1 * H);
+    await pg.query(`update sched_bookings set start_time = $1`, [past]);
+    await pg.query(`update sched_reconfirm_cases set booking_start_at = $1`, [past]);
+    await inbound('perdón, sí voy a ir', 60_000);
+    h.inferAnswer.mockResolvedValue({
+      verdict: 'will_come', confidence: 0.95, via: 'jev', pick: null, day: null, partOfDay: null,
+    });
+    await advanceAnswers(ctx, new Date());
+    expect(sentTexts()).toHaveLength(1);
+    expect(h.setStatusInTx).not.toHaveBeenCalled();
+    expect((await caseRow()).result).toBe('late_reply');
+  });
+});
+
+describe('will_come accepts the booking inside the settle transaction', () => {
+  const willCome = {
+    verdict: 'will_come', confidence: 0.95, via: 'jev', pick: null, day: null, partOfDay: null,
+  };
+
+  it('control: an unchanged pending booking is accepted and the client is told', async () => {
+    await openAndAsk();
+    await inbound('sí voy a ir', 60_000);
+    h.inferAnswer.mockResolvedValue(willCome);
+    await advanceAnswers(ctx, new Date());
+    expect(h.setStatusInTx.mock.calls.map((c) => c[3])).toEqual(['accepted']);
+    expect(sentTexts()[1]).toMatch(/mantenemos tu cita/);
+    expect((await caseRow()).result).toBe('will_come');
+  });
+
+  it('staff moved the booking after the answer was read: not accepted, no "mantenemos tu cita"', async () => {
+    await openAndAsk();
+    await inbound('sí voy a ir', 60_000);
+    h.inferAnswer.mockImplementation(async () => {
+      // the staff reschedule lands between the read and the accept
+      await pg.query(`update sched_bookings set start_time = start_time + interval '1 day'`);
+      return willCome;
+    });
+    await advanceAnswers(ctx, new Date());
+    expect(h.setStatusInTx).not.toHaveBeenCalled();
+    expect(sentTexts()).toHaveLength(1);
+    const c = await caseRow();
+    expect(c.result).toBe('staff_handling');
+    expect(c.closed_at).toBeNull();
+    const ev = await pg.query(
+      `select 1 from sched_reconfirm_events where kind = 'system' and data->>'reason' = 'booking_changed'`,
+    );
+    expect(ev.rows).toHaveLength(1);
+  });
 });
 
 describe('reminders turned off: the agent writes nothing (FR-007)', () => {
@@ -260,7 +357,7 @@ describe('after staff close or change the case, replies to that reminder stay wi
 describe('staff takeover window starts at the first "no" (R2e)', () => {
   it('staff answered the "no" before the case was opened: the agent does not ask', async () => {
     await inbound('no voy a poder', -2 * H);
-    await outbound('Hola Ana, ¿quieres que te reprogramemos?', -2 * H + 60_000);
+    await staffOutbound('Hola Ana, ¿quieres que te reprogramemos?', -2 * H + 60_000);
     await scanConfirmationReplies(ctx, new Date());
     await advanceCases(ctx, new Date());
     expect(sentTexts()).toHaveLength(0);

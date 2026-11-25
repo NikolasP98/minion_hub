@@ -23,6 +23,8 @@ export interface ReconfirmCaseRow {
   timezone: string;
   serviceTitle: string;
   attendeeName: string | null;
+  /** The confirmation of a move the agent made could not be sent to the client. */
+  confirmFailed?: boolean;
 }
 
 // shortcut: fixed Spanish like the other rules (a cron tick has no request locale). Built from the
@@ -63,6 +65,7 @@ export function reconfirmDraft(orgId: string, c: ReconfirmCaseRow): Draft | null
   const phase = casePhase(c);
   if (!phase) return null;
   const w = when(c.startTime, c.timezone);
+  const notified = c.result === 'rescheduled' && c.confirmFailed ? false : true;
   const body = [`${c.serviceTitle} · ${c.attendeeName ?? '—'} · ${w.text}`, c.summary]
     .filter(Boolean)
     .join('\n');
@@ -71,8 +74,8 @@ export function reconfirmDraft(orgId: string, c: ReconfirmCaseRow): Draft | null
     orgId,
     capability: 'scheduling:manage',
     kind: KIND,
-    severity: phase === 'staff' ? 'warning' : 'info',
-    title: caseTitle(c),
+    severity: phase === 'staff' || notified === false ? 'warning' : 'info',
+    title: notified === false ? 'Reprogramada, pero no se pudo avisar al cliente' : caseTitle(c),
     body,
     // The calendar lands on the right day; `booking` opens the drawer once spec 139 S3 wires it.
     href: `/scheduling/calendar?date=${w.day}&booking=${c.bookingId}`,
@@ -96,7 +99,10 @@ export const appointmentReconfirmRule: Rule = {
     const found = (await withOrgCore(ctx, (tx) =>
       tx.execute(sql`
         select c.id, c.booking_id, c.agent_state, c.result, c.summary, c.closed_at,
-               b.start_time, r.timezone, et.title as service_title, b.attendee_name
+               b.start_time, r.timezone, et.title as service_title, b.attendee_name,
+               exists (select 1 from sched_reconfirm_events e
+                 where e.case_id = c.id and e.kind = 'system' and e.step = 'confirm'
+                   and e.data->>'error' = 'send') as confirm_failed
         from sched_reconfirm_cases c
         join sched_bookings b on b.id = c.booking_id and b.org_id = c.org_id
         join sched_resources r on r.id = b.resource_id and r.org_id = b.org_id
@@ -120,6 +126,7 @@ export const appointmentReconfirmRule: Rule = {
           timezone: String(r.timezone),
           serviceTitle: String(r.service_title),
           attendeeName: r.attendee_name == null ? null : String(r.attendee_name),
+          confirmFailed: r.confirm_failed === true,
         }),
       )
       .filter((d): d is Draft => d !== null);

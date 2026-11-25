@@ -195,3 +195,45 @@ export function pickOfferSlots(
   for (let i = 0; i < max; i += 1) idx.add(Math.round((i * (fit.length - 1)) / (max - 1)));
   return [...idx].sort((a, b) => a - b).map((i) => fit[i]!);
 }
+
+const SUMMARY_INTENT: Readonly<Record<string, string>> = {
+  will_come: 'Dijo que sí asistirá',
+  decline: 'Dijo que no desea continuar',
+  other_date: 'Pidió otra fecha',
+  pick: 'Eligió uno de los horarios ofrecidos',
+  unclear: 'Respuesta poco clara',
+};
+const SUMMARY_DAY: Readonly<Record<NamedDay, string>> = {
+  tomorrow: 'mañana',
+  day_after: 'pasado mañana',
+  mon: 'el lunes',
+  tue: 'el martes',
+  wed: 'el miércoles',
+  thu: 'el jueves',
+  fri: 'el viernes',
+  sat: 'el sábado',
+  sun: 'el domingo',
+  next_week: 'la próxima semana',
+};
+const SUMMARY_PART: Readonly<Record<PartOfDay, string>> = {
+  morning: 'en la mañana',
+  afternoon: 'en la tarde',
+  evening: 'en la noche',
+};
+
+/**
+ * One-line staff summary of what the client answered: intent, day and part of day only. Built from
+ * bounded fields, so it carries no phone number and none of the client's own words.
+ */
+export function answerSummary(
+  intent: string,
+  day: NamedDay | null,
+  partOfDay: PartOfDay | null,
+): string {
+  const when = [day ? SUMMARY_DAY[day] : null, partOfDay ? SUMMARY_PART[partOfDay] : null].filter(
+    Boolean,
+  );
+  return [SUMMARY_INTENT[intent] ?? SUMMARY_INTENT.unclear, intent === 'other_date' ? when.join(' ') : '']
+    .filter(Boolean)
+    .join(': ');
+}

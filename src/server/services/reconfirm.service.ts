@@ -84,11 +84,12 @@ export async function openCase(
     if (!caseId) {
       // TODO(handoff): a confident negation landing on an open case whose result is `unclear` keeps that
       // result; staff still see the logged verdict events. Clear the result here once the drawer (S3) shows events.
+      // Never bump last_inbound_at here: it is the answer reader's position (S4), and this scan
+      // would swallow the client's reply to the agent's question before it is read.
       const open = rows(
         await tx.execute(sql`
-          update sched_reconfirm_cases set last_inbound_at = ${iso(input.inboundAt)}::timestamptz
+          select id from sched_reconfirm_cases
           where org_id = ${ctx.tenantId} and subject_key = ${input.subjectKey} and closed_at is null
-          returning id
         `),
       );
       if (!open[0]) throw new Error('reconfirm: open case vanished during insert'); // closed between the two statements; the next scan opens a fresh one
@@ -420,7 +421,7 @@ const phone9 = (raw: string): string => raw.replace(/\D/g, '').slice(-9);
 const errName = (e: unknown) => (e instanceof Error ? e.name : 'unknown');
 
 /** End the agent's part: the case stays open for staff with this result. Idempotent per case. */
-async function endAgentPart(
+export async function endAgentPart(
   ctx: CoreCtx,
   c: Pick<OpenCaseRow, 'id' | 'booking_id'>,
   result: CaseResult,
@@ -448,7 +449,10 @@ async function endAgentPart(
  * window starts there, not at `opened_at`: a case opened from the tick (not at ingest) can be opened
  * well after the client wrote, and staff may already have answered in between.
  */
-async function humanWroteSince(ctx: CoreCtx, c: OpenCaseRow): Promise<boolean> {
+export async function humanWroteSince(
+  ctx: CoreCtx,
+  c: Pick<OpenCaseRow, 'id' | 'channel' | 'account_id' | 'recipient' | 'opened_at'>,
+): Promise<boolean> {
   const p9 = phone9(c.recipient);
   const found = rows(
     await withOrgCore(ctx, (tx) =>
@@ -531,6 +535,7 @@ export async function sendAgentMessage(
     ),
   );
   if (!claimed[0]) return 'claimed';
+  let messageId: string | null;
   try {
     const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
       channel: c.channel,
@@ -539,7 +544,22 @@ export async function sendAgentMessage(
       ...(c.account_id ? { accountId: c.account_id } : {}),
       idempotencyKey: `reconf-${c.id}-${step}`,
     });
-    const messageId = res?.messageId ?? res?.id ?? null;
+    messageId = res?.messageId ?? res?.id ?? null;
+  } catch (e) {
+    console.error('[reconfirm] send failed', c.id, errName(e));
+    // ask/offer callers end the agent's part; confirm/closing have no caller to do it, so record it.
+    if (step === 'confirm' || step === 'closing')
+      await withOrgCore(ctx, (tx) =>
+        tx.execute(sql`
+          insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, data)
+          values (${ctx.tenantId}, ${c.booking_id}::uuid, ${c.id}::uuid, 'system', ${step},
+            ${JSON.stringify({ step, error: 'send' })}::jsonb)
+        `),
+      );
+    return 'failed';
+  }
+  // The message is out: a DB failure from here on propagates and is never reported as a failed send.
+  {
     await withOrgCore(ctx, async (tx) => {
       await onSent?.(tx);
       await tx.execute(sql`
@@ -574,9 +594,6 @@ export async function sendAgentMessage(
       console.error('[reconfirm] ledger insert failed', c.id, errName(e));
     }
     return 'sent';
-  } catch (e) {
-    console.error('[reconfirm] send failed', c.id, errName(e));
-    return 'failed';
   }
 }
 
@@ -631,7 +648,11 @@ export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<A
         if (c.wait_until && new Date(c.wait_until).getTime() <= now.getTime()) {
           const answered = c.ask_at ? await clientWroteSince(ctx, c, c.ask_at) : false;
           // TODO(handoff): spec 139 S4 reads the answer; until then (and for orgs without `ai.proactive`) any reply is `unclear` for staff.
-          await endAgentPart(ctx, c, answered ? 'unclear' : 'no_answer');
+          await endAgentPart(
+            ctx,
+            c,
+            c.agent_state === 'offered' ? 'wants_other_date' : answered ? 'unclear' : 'no_answer',
+          );
           out.timedOut += 1;
         }
         continue;
