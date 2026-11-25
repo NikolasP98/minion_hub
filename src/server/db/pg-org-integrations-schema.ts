@@ -142,11 +142,22 @@ export const orgRecordLocks = pgTable(
     liftReason: text('lift_reason'),
   },
   (t) => ({
-    activeUpToUniq: uniqueIndex('org_record_locks_active_upto_uniq')
-      .on(t.orgId, sql`coalesce(${t.recordType}, '')`, t.label, t.upTo)
+    activeUpToUniq: uniqueIndex('org_record_locks_active_upto_key_uniq')
+      .on(
+        t.orgId,
+        sql`coalesce(${t.recordType}, '')`,
+        t.label,
+        t.upTo,
+        sql`coalesce(${t.apiKeyId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
       .where(sql`up_to is not null and lifted_at is null`),
-    activeRecordUniq: uniqueIndex('org_record_locks_active_record_uniq')
-      .on(t.orgId, t.recordType, t.recordId)
+    activeRecordUniq: uniqueIndex('org_record_locks_active_record_key_uniq')
+      .on(
+        t.orgId,
+        t.recordType,
+        t.recordId,
+        sql`coalesce(${t.apiKeyId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
       .where(sql`record_id is not null and lifted_at is null`),
     activeIdx: index('org_record_locks_active_idx')
       .on(t.orgId)

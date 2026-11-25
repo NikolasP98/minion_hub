@@ -10,14 +10,34 @@ import { applyExternalLock } from '$server/services/record-locks.service';
  * the `locks` scope (`/api/hooks` is in `API_HANDLER_AUTH_PATHS`: no session, no tenant). The key
  * can only lock and lift webhook locks; it cannot read data or unlock records.
  */
-// 200 ids is about 8 KB; the cap is read as text (as /api/mcp does) before any JSON parsing.
-const MAX_BODY_CHARS = 64 * 1024;
+// 200 ids is about 8 KB. The cap counts BYTES (a multibyte body is not under it by character count)
+// and is enforced while streaming, so an oversized body is never read to the end.
+const MAX_BODY_BYTES = 64 * 1024;
+
+/** The body as text, or null as soon as it exceeds `max` bytes (the rest of the stream is cancelled). */
+async function readCapped(request: Request, max: number): Promise<string | null> {
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
 
 export const POST: RequestHandler = async (event) => {
   const caller = await resolveLocksCaller(event);
   if (caller instanceof Response) return caller;
-  const text = await event.request.text();
-  if (text.length > MAX_BODY_CHARS)
+  const text = await readCapped(event.request, MAX_BODY_BYTES);
+  if (text === null)
     return json(
       {
         error: 'The request body is too large.',

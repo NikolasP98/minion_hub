@@ -668,16 +668,19 @@ async function lockExternal(
       .values({ ...base, recordType: typeKey(body.recordType), upTo: body.upTo })
       .onConflictDoNothing()
       .returning({ id: orgRecordLocks.id });
+    // `existing` is only ever this key's own row: another key's lock with the same label and date is
+    // its own row (the indexes include the key), and the label answered is the stored one.
     const [lock] = made
-      ? [made]
+      ? [{ id: made.id, label }]
       : await tx
-          .select({ id: orgRecordLocks.id })
+          .select({ id: orgRecordLocks.id, label: orgRecordLocks.label })
           .from(orgRecordLocks)
           .where(
             and(
               eq(orgRecordLocks.orgId, orgId),
               eq(orgRecordLocks.label, label),
               eq(orgRecordLocks.upTo, body.upTo),
+              eq(orgRecordLocks.apiKeyId, key.id),
               body.recordType
                 ? eq(orgRecordLocks.recordType, body.recordType)
                 : isNull(orgRecordLocks.recordType),
@@ -696,7 +699,7 @@ async function lockExternal(
       created: made ? 1 : 0,
       existing: made ? 0 : 1,
       unknown: [],
-      locks: lock ? [{ id: lock.id, label, upTo: body.upTo }] : [],
+      locks: lock ? [{ id: lock.id, label: lock.label, upTo: body.upTo }] : [],
     };
   }
 
@@ -733,13 +736,14 @@ async function lockExternal(
     );
   const active = wanted.length
     ? await tx
-        .select({ id: orgRecordLocks.id })
+        .select({ id: orgRecordLocks.id, label: orgRecordLocks.label })
         .from(orgRecordLocks)
         .where(
           and(
             eq(orgRecordLocks.orgId, orgId),
             eq(orgRecordLocks.recordType, 'stock_receipt'),
             inArray(orgRecordLocks.recordId, wanted),
+            eq(orgRecordLocks.apiKeyId, key.id),
             isNull(orgRecordLocks.liftedAt),
           ),
         )
@@ -749,7 +753,7 @@ async function lockExternal(
     created: made.length,
     existing: wanted.length - made.length,
     unknown,
-    locks: active.map((l) => ({ id: l.id, label })),
+    locks: active.map((l) => ({ id: l.id, label: l.label })),
   };
 }
 

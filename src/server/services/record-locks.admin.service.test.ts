@@ -501,11 +501,46 @@ describe('applyExternalLock (spec 140 S4)', () => {
   });
 
   it('the same call again is idempotent: created 0, existing 1, no second event', async () => {
-    h.selects = [on, [{ timezone: 'America/Lima' }], [{ id: 'lock-1' }]];
+    h.selects = [on, [{ timezone: 'America/Lima' }], [{ id: 'lock-1', label: 'Contabilidad' }]];
     h.returns = [[]];
     const out = await applyExternalLock(ctx, KEY, body({ upTo: '2026-10-31' }), { now });
     expect(out).toMatchObject({ created: 0, existing: 1, locks: [{ id: 'lock-1' }] });
     expect(h.inserts).toHaveLength(1); // only the (ignored) lock insert
+  });
+
+  // Probe R1: the active-lock indexes now include the key, and `existing` is answered from the calling key's own row.
+  const paramsOf = async (w: unknown) => {
+    const { PgDialect } = await import('drizzle-orm/pg-core');
+    return new PgDialect().sqlToQuery(w as never).params;
+  };
+
+  it('looks up an existing date lock only among the calling key rows', async () => {
+    h.selects = [on, [{ timezone: 'America/Lima' }], [{ id: 'lock-1', label: 'Contabilidad' }]];
+    h.returns = [[]];
+    await applyExternalLock(ctx, KEY, body({ upTo: '2026-10-31' }), { now });
+    expect(await paramsOf(h.wheres[2])).toContain(KEY.id);
+  });
+
+  it('by ids: existing and the answered labels come from the calling key rows, stored label included', async () => {
+    h.selects = [on, [{ id: R1 }], [{ id: 'mine', label: 'Cuenta A' }]];
+    h.returns = [[]];
+    const out = await applyExternalLock(
+      ctx,
+      KEY,
+      parseHookBody({
+        action: 'lock',
+        label: 'Otro nombre',
+        recordType: 'stock_receipt',
+        ids: [R1],
+      }),
+      { now },
+    );
+    expect(out).toMatchObject({
+      created: 0,
+      existing: 1,
+      locks: [{ id: 'mine', label: 'Cuenta A' }],
+    });
+    expect(await paramsOf(h.wheres[2])).toContain(KEY.id);
   });
 
   it('a date in the future (in the org timezone) is refused', async () => {

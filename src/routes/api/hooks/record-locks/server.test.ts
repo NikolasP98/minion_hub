@@ -90,6 +90,43 @@ describe('POST /api/hooks/record-locks', () => {
     expect(m.apply).not.toHaveBeenCalled();
   });
 
+  it('counts bytes, not characters: 30,000 euro signs are 90 KB', async () => {
+    const res = await post(JSON.stringify({ action: 'lock', label: '€'.repeat(30_000) }));
+    expect(res.status).toBe(413);
+    expect(m.apply).not.toHaveBeenCalled();
+  });
+
+  it('stops reading an oversized stream instead of draining it', async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(16 * 1024).fill(0x61);
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 1000) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    const res = (await POST({
+      request: new Request('https://hub.test/api/hooks/record-locks', {
+        method: 'POST',
+        body,
+        duplex: 'half',
+      } as RequestInit),
+    } as never)) as Response;
+    expect(res.status).toBe(413);
+    // 64 KB is 4 chunks; the stream is cancelled right after the 5th, not read to its 16 MB end.
+    expect(pulled).toBeLessThan(20);
+  });
+
+  it('a body just under the cap in bytes still parses', async () => {
+    m.apply.mockResolvedValue({ action: 'lift', lifted: 0 });
+    const res = await post(
+      JSON.stringify({ action: 'lift', label: 'Contabilidad', upTo: '2026-10-31' }) +
+        ' '.repeat(64 * 1024 - 80),
+    );
+    expect(res.status).toBe(200);
+  });
+
   it('more than 200 ids is 400', async () => {
     const ids = Array.from(
       { length: 201 },

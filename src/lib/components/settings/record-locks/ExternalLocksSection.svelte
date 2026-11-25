@@ -90,7 +90,12 @@
   }
 
   const columns: DataColumn<LockGroup>[] = [
-    { key: 'label', label: m.record_locks_external_col_label(), accessor: (r) => r.label, fill: true },
+    {
+      key: 'label',
+      label: m.record_locks_external_col_label(),
+      accessor: (r) => r.label,
+      fill: true,
+    },
     {
       key: 'scope',
       label: m.record_locks_external_col_scope(),
@@ -132,7 +137,9 @@
 {#snippet dateCell(r: LockGroup)}<span class="muted">{dayMonth(r.createdAt)}</span>{/snippet}
 {#snippet actionsCell(r: LockGroup)}
   {#if isOwner}
-    <Button variant="ghost" size="xs" onclick={() => ask(r)}>{m.record_locks_external_lift()}</Button>
+    <Button variant="ghost" size="xs" onclick={() => ask(r)}
+      >{m.record_locks_external_lift()}</Button
+    >
   {/if}
 {/snippet}
 {#snippet tableEmpty()}
@@ -162,7 +169,13 @@
   {/if}
 </section>
 
-<Dialog {open} labelledBy="record-locks-lift-title" size="sm" dirty={!busy && !!reason.trim()} onclose={() => (open = false)}>
+<Dialog
+  {open}
+  labelledBy="record-locks-lift-title"
+  size="sm"
+  dirty={!busy && !!reason.trim()}
+  onclose={() => (open = false)}
+>
   {#snippet header()}
     <h2 id="record-locks-lift-title" class="t-title">
       {m.record_locks_external_lift_title({ label: lifting?.label ?? '' })}
