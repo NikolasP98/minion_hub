@@ -15,5 +15,8 @@ export const load: PageServerLoad = async ({ locals, depends }) => {
     getReminderActivity(ctx).catch(() => null),
     isDenied(chan) ? Promise.resolve(null) : getChannelCatalog(chan).catch(() => null),
   ]);
-  return { scheduling: { config, activity, channels: catalog?.accounts ?? [] } };
+  // `channelsChecked`: true = the gateway answered; false = it did not (notice: "could not check");
+  // null = this viewer has no channels access (no notice either way).
+  const channelsChecked = isDenied(chan) ? null : catalog !== null;
+  return { scheduling: { config, activity, channels: catalog?.accounts ?? [], channelsChecked } };
 };

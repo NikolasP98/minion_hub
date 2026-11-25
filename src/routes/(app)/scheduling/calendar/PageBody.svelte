@@ -257,6 +257,27 @@
   /** Set by the calendar's "Mover a…": the drawer opens on the time editor. */
   let detailReschedule = $state(false);
 
+  // Deep link (spec 139, inbox "Por reconfirmar"): `?booking=<id>` opens that appointment once, then
+  // is removed from the address with a shallow replace (so a later date move does not reopen it).
+  let deepLinkRead = false;
+  $effect(() => {
+    if (deepLinkRead) return;
+    deepLinkRead = true;
+    const id = page.url.searchParams.get('booking');
+    if (!id) return;
+    untrack(() => (detailId = id));
+    const timer = setTimeout(() => {
+      try {
+        const params = new URLSearchParams(page.url.searchParams);
+        params.delete('booking');
+        replaceState(`?${params}`, page.state);
+      } catch {
+        // The router may not be started yet: the address keeps `booking=` (cosmetic; it is read once).
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  });
+
   /** The focused day per the URL, which the runway moves with a shallow replace —
    *  so it runs AHEAD of `data.day` (`settled-day.svelte.ts` owns the workaround). */
   const settled = createSettledDay({

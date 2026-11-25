@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   categoryCalls: [] as string[][],
   ticketLinks: new Map<string, { id: string; humanId: string | null }[]>(),
   ticketLinkCalls: [] as string[][],
+  openCases: new Set<string>(),
+  openCasesFail: false,
 }));
 
 vi.mock('$server/services/rbac.service', () => ({
@@ -21,6 +23,10 @@ vi.mock('$server/services/scheduling-bookings.service', () => ({
 }));
 vi.mock('$server/services/scheduling-closures.service', () => ({
   listClosures: vi.fn(async () => []),
+}));
+vi.mock('$server/services/reconfirm.service', () => ({
+  openCaseBookingIds: () =>
+    state.openCasesFail ? Promise.reject(new Error('down')) : Promise.resolve(state.openCases),
 }));
 vi.mock('$server/services/finance-products.service', () => ({
   categoryColorsForProducts: (_ctx: unknown, ids: string[]) => {
@@ -79,6 +85,8 @@ beforeEach(() => {
   state.categoryCalls = [];
   state.ticketLinks = new Map();
   state.ticketLinkCalls = [];
+  state.openCases = new Set();
+  state.openCasesFail = false;
 });
 
 const window = { from: new Date('2026-09-07T05:00:00Z'), to: new Date('2026-09-14T05:00:00Z') };
@@ -184,5 +192,34 @@ describe('loadCalendarWindow category payload (HC-020)', () => {
       pos: false,
     });
     expect(bookings[0]).toMatchObject({ id: 'b-own', category: null, categoryColor: null });
+  });
+});
+
+describe('loadCalendarWindow "Por reconfirmar" (spec 139)', () => {
+  const run = async () => {
+    const { loadCalendarWindow } = await import('./calendar-window.service');
+    return loadCalendarWindow(ctx, locals, { ...window, eventTypes, pos: false });
+  };
+
+  it('flags a booking with an open case and its visit mates, and nothing else', async () => {
+    state.bookings = [
+      booking('b1', { metadata: { groupId: 'g1' } }),
+      booking('b2', { metadata: { groupId: 'g1' } }),
+      booking('b3', {}),
+    ];
+    state.openCases = new Set(['b1']);
+    const out = await run();
+    expect(out.bookings.map((b) => [b.id, b.reconfirm])).toEqual([
+      ['b1', true],
+      ['b2', true],
+      ['b3', false],
+    ]);
+  });
+
+  it('fails soft: the calendar still answers with no flags', async () => {
+    state.bookings = [booking('b1', {})];
+    state.openCasesFail = true;
+    const out = await run();
+    expect(out.bookings[0]!.reconfirm).toBe(false);
   });
 });

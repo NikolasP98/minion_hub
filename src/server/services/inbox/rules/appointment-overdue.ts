@@ -61,9 +61,9 @@ export const appointmentOverdueRule: Rule = {
         const dedupeKey = `appt-overdue:${ctx.tenantId}:${b.id}`;
         const when = b.startTime.toISOString();
         const client = b.attendeeName ?? b.title ?? '—';
-        // TODO(handoff): ?booking= deep-link query param is not wired into the
-        // calendar page yet (open proposal 2026-09-28-hub-booking-deep-link-param.md)
-        // — the row is correct, the href may no-op until that lands.
+        // `?booking=` opens the drawer on /scheduling/calendar since spec 139. TODO(handoff): the
+        // POS page (/pos/appointments) does not read it yet (open proposal
+        // 2026-09-28-hub-booking-deep-link-param.md); this link targets the scheduling page.
         const href = `/scheduling/calendar?booking=${b.id}`;
         const common = {
           kind: 'appointment.overdue' as const,

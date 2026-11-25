@@ -183,6 +183,8 @@ export interface CalendarBooking {
   groupLength?: number | null;
   /** A follow-up that references a paid treatment (`metadata.followUpOf`). */
   checkup?: boolean;
+  /** Spec 139: a reminder follow-up is open for this booking ("Por reconfirmar"); derived, not a status. */
+  reconfirm?: boolean;
   /** Own event tags plus the client's (`contact`) and service's (`product`) — for dots + filters. */
   tags?: CalendarBookingTag[];
   /** Effective event kind (`booking.kindId ?? eventType.kindId`, null → org

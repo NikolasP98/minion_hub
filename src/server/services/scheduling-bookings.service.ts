@@ -70,6 +70,8 @@ import { stkAccruals } from '$server/db/pg-schema/stock';
 import { computeSlots, intervalsOverlap } from '$server/scheduling/slots';
 import type { ResourceAvailability, BusyInterval } from '$server/scheduling/slots';
 import { serviceRulesOf } from './scheduling-slots.service';
+import { getCaseForBooking } from './reconfirm.service';
+import type { ReconfirmCaseView } from './reconfirm.service';
 import { loadDayOffOverrides } from './hr.service';
 import { applyDayOffOverrides } from '$server/scheduling/day-off';
 import { zonedDateKey } from '$server/scheduling/tz';
@@ -3465,6 +3467,9 @@ export interface BookingDetail {
    *  grouped booking (members carry their own `price`), no product or an
    *  inactive one. Lets the client's fallback row apply the price-0 rule. */
   unitPrice: number | null;
+  /** Spec 139: the reminder follow-up of this event (latest case, an open one first), masked like the
+   *  attendee fields. Null when no client ever answered "no" to a reminder. */
+  reconfirm: ReconfirmCaseView | null;
 }
 
 export interface BookingTicketRef {
@@ -4000,6 +4005,17 @@ export async function getBookingDetail(
         })
     : new Map<string, string | null>();
 
+  // Fail-soft like every other facet: a follow-up read must not cost the operator the appointment.
+  const reconfirm = await getCaseForBooking(ctx, eventIds, {
+    maskPii: opts.maskAttendeePii === true,
+  }).catch((e: unknown) => {
+    console.error(
+      '[scheduling] follow-up lookup failed (detail stands)',
+      e instanceof Error ? e.name : 'unknown',
+    );
+    return null;
+  });
+
   const noTags = new Map<string, CalTag[]>();
   const [ownTags, eventTypeTags, productTags, contactTags] = await Promise.all([
     getTagLinks(ctx, 'booking', [id]),
@@ -4043,5 +4059,6 @@ export async function getBookingDetail(
     visit,
     products,
     unitPrice,
+    reconfirm,
   };
 }

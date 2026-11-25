@@ -2418,6 +2418,8 @@ export interface CatalogAccount {
   name: string | null;
   phone: string | null;
   enabled: boolean;
+  /** Gateway snapshot `linked` (spec 139): false = the number is not paired; null/absent = the gateway did not say. */
+  linked?: boolean | null;
 }
 
 /** The gateway's canonical channel-account catalog, org-scoped. */

@@ -26,6 +26,8 @@ interface RawAccountSnapshot {
   name?: string | null;
   self?: { e164?: string | null; jid?: string | null } | null;
   enabled?: boolean | null;
+  /** WhatsApp-style channels report whether the number is paired. */
+  linked?: boolean | null;
   /** Org tags from `channels.accountOrgs` (present only on scoped accounts). */
   orgIds?: string[];
 }
@@ -35,7 +37,10 @@ interface RawAccountSnapshot {
  * an account with no `orgIds` is global; otherwise it's visible only to the
  * orgs it's tagged with. Kept inline to avoid importing gateway source.
  */
-function orgVisible(resourceOrgIds: string[] | undefined, clientOrgId: string | undefined): boolean {
+function orgVisible(
+  resourceOrgIds: string[] | undefined,
+  clientOrgId: string | undefined,
+): boolean {
   if (!clientOrgId) return true;
   if (!resourceOrgIds || resourceOrgIds.length === 0) return true;
   return resourceOrgIds.includes(clientOrgId);
@@ -64,6 +69,7 @@ export async function getChannelCatalog(ctx: CoreCtx): Promise<ChannelCatalog | 
           name: a.name?.trim() || null,
           phone: a.self?.e164 ?? a.self?.jid ?? null,
           enabled: a.enabled !== false,
+          linked: typeof a.linked === 'boolean' ? a.linked : null,
         });
       }
     }

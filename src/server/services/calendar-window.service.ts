@@ -3,6 +3,7 @@ import { isDenied, type DatasetDenied } from '$lib/permissions';
 import { shouldMaskSensitive } from '$server/services/rbac.service';
 import { listBookings } from '$server/services/scheduling-bookings.service';
 import { listClosures } from '$server/services/scheduling-closures.service';
+import { openCaseBookingIds } from '$server/services/reconfirm.service';
 import { categoryColorsForProducts } from '$server/services/finance-products.service';
 import { accrualSummaryForSources } from '$server/services/stock-accruals.service';
 import { getTagLinks, getContactTagsBulk } from '$server/services/tag-links.service';
@@ -78,6 +79,21 @@ export async function loadCalendarWindow(
   // Agenda closures (spec 147). Fail-soft: a closure read must never cost the calendar.
   const closures = await listClosures(ctx, { from, to }).catch((): CalendarClosure[] => []);
   const bookings = await listBookings(ctx, { from, to, limit: 2000, maskAttendeePii });
+
+  // "Por reconfirmar" (spec 139): bookings with an open reminder follow-up, plus the rest of their
+  // merged visit. One query; fail-soft like the other facets.
+  const openCases = await openCaseBookingIds(
+    ctx,
+    bookings.map((b) => b.id),
+  ).catch(() => new Set<string>());
+  const groupOf = (b: (typeof bookings)[number]) =>
+    (b.metadata as { groupId?: string } | null)?.groupId ?? null;
+  const openGroups = new Set(
+    bookings
+      .filter((b) => openCases.has(b.id))
+      .map(groupOf)
+      .filter((g): g is string => !!g),
+  );
 
   // Name + colour of each booking's product category — the one interchangeable
   // colour source whose colour the client can't derive (`fin_products.category`
@@ -200,6 +216,7 @@ export async function loadCalendarWindow(
       /** Internal note — the hover card shows it read-only; the drawer edits it. */
       notes: b.notes ?? null,
       checkup: Boolean((b.metadata as { followUpOf?: unknown } | null)?.followUpOf),
+      reconfirm: openCases.has(b.id) || (groupOf(b) !== null && openGroups.has(groupOf(b)!)),
       /** Merged visit (`metadata.groupId`): members render as ONE box. */
       groupId: (b.metadata as { groupId?: string } | null)?.groupId ?? null,
       /** Order inside a merged visit (`metadata.groupSeq`, 0 = lead). */

@@ -211,3 +211,55 @@ describe('BookingDetailDrawer acts on the booking it shows (spec 116 FR-008)', (
     expect(view.container.querySelector('.edit-box')).toBeNull();
   });
 });
+
+describe('reminder follow-up (spec 139)', () => {
+  const reconfirm = (over: Record<string, unknown> = {}) => ({
+    id: 'case-1',
+    open: true,
+    agentState: 'done',
+    result: 'declined',
+    closeAction: null,
+    contactId: null,
+    masked: false,
+    events: [],
+    ...over,
+  });
+
+  it('an open follow-up shows "To reconfirm" beside the status and the section; the status stays', async () => {
+    net.details.A = detailOf('A', 'Ana', { reconfirm: reconfirm() });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByRole('button', { name: 'Mark no-show' });
+    expect(view.getByText('To reconfirm')).toBeTruthy();
+    expect(view.getByText('Reminder follow-up')).toBeTruthy();
+    expect(view.getByText("Doesn't want to continue")).toBeTruthy();
+    // The appointment keeps its own status badge.
+    expect(view.container.querySelector('.head-badges')?.textContent).toMatch(
+      /Confirmed|Accepted/i,
+    );
+  });
+
+  it("Reschedule in the section opens the drawer's time editor and writes nothing", async () => {
+    net.details.A = detailOf('A', 'Ana', { reconfirm: reconfirm() });
+    const view = render(BookingDetailDrawer, props('A'));
+    await view.findByRole('button', { name: 'Mark no-show' });
+    await fireEvent.click(view.getByRole('button', { name: 'Reschedule' }));
+    expect(view.container.querySelector('.edit-box')).not.toBeNull();
+    expect(net.writes).toEqual([]);
+  });
+
+  it('a closed follow-up shows the result but no badge; no follow-up shows neither', async () => {
+    net.details.A = detailOf('A', 'Ana', {
+      reconfirm: reconfirm({ open: false, result: 'rescheduled', closeAction: 'agent' }),
+    });
+    net.details.B = detailOf('B', 'Beto');
+    const a = render(BookingDetailDrawer, props('A'));
+    await a.findByRole('button', { name: 'Mark no-show' });
+    expect(a.queryByText('To reconfirm')).toBeNull();
+    expect(a.getByText(/Rescheduled by the agent to/)).toBeTruthy();
+    cleanup();
+    const b = render(BookingDetailDrawer, props('B'));
+    await b.findByRole('button', { name: 'Mark no-show' });
+    expect(b.queryByText('To reconfirm')).toBeNull();
+    expect(b.queryByText('Reminder follow-up')).toBeNull();
+  });
+});

@@ -47,6 +47,8 @@
   import type { CalTag } from '$lib/components/scheduling/calendar/types';
   import PlanScheduleWarning from '$lib/components/pos/PlanScheduleWarning.svelte';
   import BookingCustomFields from './BookingCustomFields.svelte';
+  import ReconfirmSection from './ReconfirmSection.svelte';
+  import type { ReconfirmCase } from './ReconfirmSection.svelte';
   import type { BookingCustomValues } from './kit/booking-custom-values.svelte';
   import { isInactiveMemberStatus } from './booking-groups';
   import { createAutosave } from '$lib/records/autosave.svelte';
@@ -178,6 +180,8 @@
     products: VisitProductLine[];
     /** Catalog price of an ungrouped booking's service (`BookingDetail.unitPrice`). */
     unitPrice?: number | null;
+    /** Spec 139: the reminder follow-up (latest case, open first), masked for viewers without PII access. */
+    reconfirm?: ReconfirmCase | null;
   };
 
   type Props = {
@@ -1028,9 +1032,15 @@
           <!-- A visit's services, in order, " · "-joined: the event has no one
                title of its own, and the full string stays readable on hover. -->
           <h3 class="t-title head-title" title={headTitle}>{headTitle}</h3>
-          <Badge {...statusBadge(headStatus)}>
-            {statusLabel(headStatus)}
-          </Badge>
+          <span class="head-badges">
+            <Badge {...statusBadge(headStatus)}>
+              {statusLabel(headStatus)}
+            </Badge>
+            <!-- Derived from an open follow-up (spec 139), not a status: the appointment keeps its own. -->
+            {#if d.reconfirm?.open}
+              <Badge variant="semantic" value="warning">{m.sched_reconfirm_badge()}</Badge>
+            {/if}
+          </span>
         </div>
         <dl class="facts">
           <dt class="t-caption">{m.sched_booking_when()}</dt>
@@ -1127,6 +1137,24 @@
           {/if}
         {/if}
       </section>
+
+      {#if d.reconfirm}
+        <ReconfirmSection
+          reconfirm={d.reconfirm}
+          phone={d.reconfirm.masked ? null : (d.booking.attendeePhone ?? null)}
+          startLabel={fmtDateTime(d.booking.startTime)}
+          fmt={fmtDateTime}
+          live={isLive}
+          {canEdit}
+          canManage={canAct('scheduling', 'manage')}
+          onreschedule={openEdit}
+          oncancel={() => {
+            cancelOpen = true;
+            cancelScope = 'one';
+          }}
+          onclosed={reloadDetail}
+        />
+      {/if}
 
       <!-- Services: every procedure of this event, in visit order. A plain
            booking renders as its own single row — the section never special-
@@ -1856,6 +1884,12 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: var(--space-2);
+  }
+  .head-badges {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
     gap: var(--space-2);
   }
   .head-title {

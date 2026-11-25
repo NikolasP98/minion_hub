@@ -14,6 +14,7 @@ import { reconfirmAskTemplate } from './reminder-compose';
 import type { Classified, ReplyVerdict } from './reminder-compose';
 import { getReminderConfig } from './reminder-config.service';
 import { insertMessages } from './messages.service';
+import { maskPii } from '$lib/pii';
 import { caseTitle, waitUntil, whenText, LATE_MS } from '$server/scheduling/reconfirm';
 import type { CaseResult } from '$server/scheduling/reconfirm';
 
@@ -179,6 +180,9 @@ export interface ReconfirmCaseView {
   waitUntil: Date | null;
   contactId: string | null;
   recipient: string;
+  /** Recipient and event texts were withheld: the viewer has no attendee PII access. */
+  masked: boolean;
+  closeAction: string | null;
   events: Array<{
     kind: string;
     verdict: string | null;
@@ -189,16 +193,27 @@ export interface ReconfirmCaseView {
   }>;
 }
 
-/** The booking's latest case, an open one first, with its events. */
+/**
+ * The latest case of a booking (or of any member of a visit), an open one first, with its events.
+ * With `maskPii` the recipient is masked and event texts are dropped, as `getBookingDetail` does for
+ * the attendee fields; the verdicts, steps and times stay.
+ */
 export async function getCaseForBooking(
   ctx: CoreCtx,
-  bookingId: string,
+  bookingIds: string | string[],
+  opts: { maskPii?: boolean } = {},
 ): Promise<ReconfirmCaseView | null> {
+  const ids = Array.isArray(bookingIds) ? bookingIds : [bookingIds];
+  if (!ids.length) return null;
   return withOrgCore(ctx, async (tx) => {
     const found = rows(
       await tx.execute(sql`
         select * from sched_reconfirm_cases
-        where org_id = ${ctx.tenantId} and booking_id = ${bookingId}::uuid
+        where org_id = ${ctx.tenantId}
+          and booking_id in (${sql.join(
+            ids.map((id) => sql`${id}::uuid`),
+            sql`, `,
+          )})
         order by (closed_at is null) desc, opened_at desc
         limit 1
       `),
@@ -214,24 +229,25 @@ export async function getCaseForBooking(
     );
     const agentState = String(c.agent_state);
     const result = c.result == null ? null : String(c.result);
+    const masked = opts.maskPii === true;
     return {
       id: String(c.id),
       open: c.closed_at == null,
       agentState,
       result,
       title: caseTitle({ agentState, result }),
-      summary: c.summary == null ? null : String(c.summary),
+      summary: masked || c.summary == null ? null : String(c.summary), // may carry the client's words or name
       openedAt: new Date(String(c.opened_at)),
       waitUntil: c.wait_until ? new Date(String(c.wait_until)) : null,
       contactId: c.contact_id == null ? null : String(c.contact_id),
-      // TODO(handoff): mask `recipient` and event `content` for a viewer without attendee PII
-      // access (as `getBookingDetail` does with `maskAttendeePii`) before S3 exposes this in the drawer.
-      recipient: String(c.recipient),
+      recipient: masked ? maskPii(String(c.recipient)) : String(c.recipient),
+      masked,
+      closeAction: c.close_action == null ? null : String(c.close_action),
       events: events.map((e) => ({
         kind: String(e.kind),
         verdict: e.verdict == null ? null : String(e.verdict),
         confidence: e.confidence == null ? null : Number(e.confidence),
-        content: e.content == null ? null : String(e.content),
+        content: masked || e.content == null ? null : String(e.content),
         step: e.step == null ? null : String(e.step),
         createdAt: new Date(String(e.created_at)),
       })),
