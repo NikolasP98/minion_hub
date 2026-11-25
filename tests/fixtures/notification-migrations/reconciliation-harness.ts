@@ -546,28 +546,32 @@ export const finalColumnNames = {
 
 /**
  * Columns and constraints that migrations after TARGET_VERSION add to these tables. The catalog is
- * asserted both at the target prefix and after the full runner, so each addition is expected only
- * once its migration is recorded in `hub_migrations`.
+ * asserted both at the target prefix and after the full runner. `hub_migrations` cannot tell them
+ * apart (the prefix fixture pre-records every other version without running it), so each addition
+ * is expected only when a table its migration creates (`marker`) actually exists.
  */
 const laterAdditions: ReadonlyArray<{
   version: string;
+  marker: string;
   columns: Partial<Record<keyof typeof finalColumnNames, readonly string[]>>;
   constraints: readonly string[];
 }> = [
   {
     version: '20261123120000', // reconfirm_cases (spec 139)
+    marker: 'public.sched_reconfirm_cases',
     columns: { sched_reminder_config: ['negation_wait_hours'], sched_reminders: ['account_id'] },
     constraints: ['sched_reminder_config_negation_wait_hours_check'],
   },
 ];
 
 async function appliedLaterAdditions(db: Sql) {
-  const [{ exists }] = await db<{ exists: boolean }[]>`
-    SELECT to_regclass('public.hub_migrations') IS NOT NULL AS exists`;
-  if (!exists) return [];
-  const rows = await db<{ version: string }[]>`SELECT version FROM public.hub_migrations`;
-  const applied = new Set(rows.map((r) => r.version));
-  return laterAdditions.filter((a) => applied.has(a.version));
+  const applied: (typeof laterAdditions)[number][] = [];
+  for (const addition of laterAdditions) {
+    const [{ present }] = await db<{ present: boolean }[]>`
+      SELECT to_regclass(${addition.marker}) IS NOT NULL AS present`;
+    if (present) applied.push(addition);
+  }
+  return applied;
 }
 
 export async function assertCanonicalCatalog(db: Sql) {
