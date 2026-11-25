@@ -497,6 +497,89 @@ async function clientWroteSince(ctx: CoreCtx, c: OpenCaseRow, since: string): Pr
   return found.length > 0;
 }
 
+export type AgentStep = 'ask' | 'offer' | 'confirm' | 'closing';
+
+/**
+ * Send ONE templated agent message for a case. The `(case_id, step)` unique index claims the step,
+ * so overlapping ticks cannot send twice ('claimed' = someone else holds or already sent it). The
+ * events log is append-only: the outcome is a `system` event, written in the same transaction as
+ * `onSent` (the caller's case-state update). Mirrors the text into `messages` as the reminders agent.
+ */
+export async function sendAgentMessage(
+  ctx: CoreCtx,
+  c: {
+    id: string;
+    booking_id: string;
+    channel: string;
+    account_id: string | null;
+    recipient: string;
+    attendee_name: string | null;
+  },
+  step: AgentStep,
+  text: string,
+  now: Date,
+  onSent?: (tx: Parameters<Parameters<typeof withOrgCore>[1]>[0]) => Promise<void>,
+): Promise<'sent' | 'claimed' | 'failed'> {
+  const claimed = rows(
+    await withOrgCore(ctx, (tx) =>
+      tx.execute(sql`
+        insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, send_status, content)
+        values (${ctx.tenantId}, ${c.booking_id}::uuid, ${c.id}::uuid, 'agent_message', ${step}, 'sending', ${text})
+        on conflict (case_id, step) where kind = 'agent_message' do nothing
+        returning id
+      `),
+    ),
+  );
+  if (!claimed[0]) return 'claimed';
+  try {
+    const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
+      channel: c.channel,
+      to: c.recipient,
+      text,
+      ...(c.account_id ? { accountId: c.account_id } : {}),
+      idempotencyKey: `reconf-${c.id}-${step}`,
+    });
+    const messageId = res?.messageId ?? res?.id ?? null;
+    await withOrgCore(ctx, async (tx) => {
+      await onSent?.(tx);
+      await tx.execute(sql`
+        insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, send_status, message_id, data)
+        values (${ctx.tenantId}, ${c.booking_id}::uuid, ${c.id}::uuid, 'system', ${step}, 'sent', ${messageId}, '{}'::jsonb)
+      `);
+    });
+    try {
+      await insertMessages(ctx.tenantId, null, [
+        {
+          clientId: `reconf-${c.id}-${step}`,
+          direction: 'outbound',
+          channel: c.channel,
+          accountId: c.account_id,
+          chatId: null,
+          isGroup: false,
+          senderId: c.recipient,
+          senderName: c.attendee_name,
+          senderHandle: null,
+          isBot: true,
+          content: text,
+          messageId,
+          agentId: 'reminders-agent',
+          sessionKey: null,
+          success: true,
+          error: null,
+          occurredAt: now.getTime(),
+          metadata: { bookingId: c.booking_id, caseId: c.id, step, kind: 'reconfirm' },
+        },
+      ]);
+    } catch (e) {
+      console.error('[reconfirm] ledger insert failed', c.id, errName(e));
+    }
+    return 'sent';
+  } catch (e) {
+    console.error('[reconfirm] send failed', c.id, errName(e));
+    return 'failed';
+  }
+}
+
 /**
  * Spec 139 S2: advance each open case one bounded step. The agent only ever asks (one templated
  * message per case, claimed through the unique `(case_id, step)` index so overlapping ticks cannot
@@ -528,7 +611,7 @@ export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<A
         join sched_resources r on r.id = b.resource_id and r.org_id = b.org_id
         left join crm_contacts ct on ct.id = c.contact_id
         where c.org_id = ${ctx.tenantId} and c.closed_at is null and c.result is null
-          and c.agent_state in ('none','asking')
+          and c.agent_state in ('none','asking','offered')
           and b.status in ('pending','accepted') and b.start_time = c.booking_start_at
         order by c.opened_at asc
         limit ${cap}
@@ -544,7 +627,7 @@ export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<A
         continue;
       }
       const start = new Date(c.start_time);
-      if (c.agent_state === 'asking') {
+      if (c.agent_state !== 'none') {
         if (c.wait_until && new Date(c.wait_until).getTime() <= now.getTime()) {
           const answered = c.ask_at ? await clientWroteSince(ctx, c, c.ask_at) : false;
           // TODO(handoff): spec 139 S4 reads the answer; until then (and for orgs without `ai.proactive`) any reply is `unclear` for staff.
@@ -574,72 +657,16 @@ export async function advanceCases(ctx: CoreCtx, now: Date, cap = 25): Promise<A
         fromName: config.fromName || (config.locale === 'en' ? 'your business' : 'tu negocio'),
         locale: config.locale,
       });
-      const claimed = rows(
-        await withOrgCore(ctx, (tx) =>
-          tx.execute(sql`
-            insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, send_status, content)
-            values (${ctx.tenantId}, ${c.booking_id}::uuid, ${c.id}::uuid, 'agent_message', 'ask', 'sending', ${text})
-            on conflict (case_id, step) where kind = 'agent_message' do nothing
-            returning id
-          `),
-        ),
-      );
-      if (!claimed[0]) continue; // another tick holds or already sent it
-      // The events log is append-only: the outcome is a `system` event, not an update of the claim row.
-      let messageId: string | null;
-      try {
-        const res = await gatewayCall<{ messageId?: string; id?: string }>('channels.send', {
-          channel: c.channel,
-          to: c.recipient,
-          text,
-          ...(c.account_id ? { accountId: c.account_id } : {}),
-          idempotencyKey: `reconf-${c.id}-ask`,
-        });
-        messageId = res?.messageId ?? res?.id ?? null;
-      } catch (e) {
-        console.error('[reconfirm] ask send failed', c.id, errName(e));
-        await endAgentPart(ctx, c, 'send_failed', { error: errName(e) });
-        out.failed += 1;
-        continue;
-      }
-      // The message is out: a DB failure from here on propagates to the per-case catch and is never
-      // reported as a failed send. The claim stays `sending`; the reaper then marks the case "not confirmed".
-      await withOrgCore(ctx, async (tx) => {
+      const sent = await sendAgentMessage(ctx, c, 'ask', text, now, async (tx) => {
         await tx.execute(sql`
           update sched_reconfirm_cases set agent_state = 'asking', wait_until = ${iso(deadline)}::timestamptz
           where id = ${c.id}::uuid and org_id = ${ctx.tenantId} and closed_at is null and result is null
         `);
-        await tx.execute(sql`
-          insert into sched_reconfirm_events (org_id, booking_id, case_id, kind, step, send_status, message_id, data)
-          values (${ctx.tenantId}, ${c.booking_id}::uuid, ${c.id}::uuid, 'system', 'ask', 'sent', ${messageId}, '{}'::jsonb)
-        `);
       });
-      out.asked += 1;
-      try {
-        await insertMessages(ctx.tenantId, null, [
-          {
-            clientId: `reconf-${c.id}-ask`,
-            direction: 'outbound',
-            channel: c.channel,
-            accountId: c.account_id,
-            chatId: null,
-            isGroup: false,
-            senderId: c.recipient,
-            senderName: c.attendee_name,
-            senderHandle: null,
-            isBot: true,
-            content: text,
-            messageId,
-            agentId: 'reminders-agent',
-            sessionKey: null,
-            success: true,
-            error: null,
-            occurredAt: now.getTime(),
-            metadata: { bookingId: c.booking_id, caseId: c.id, step: 'ask', kind: 'reconfirm' },
-          },
-        ]);
-      } catch (e) {
-        console.error('[reconfirm] ledger insert failed', c.id, errName(e));
+      if (sent === 'sent') out.asked += 1;
+      else if (sent === 'failed') {
+        await endAgentPart(ctx, c, 'send_failed', { error: 'send' });
+        out.failed += 1;
       }
     } catch (e) {
       // One case failing must not stop the others. Names only: no phones, no message text.

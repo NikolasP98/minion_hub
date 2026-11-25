@@ -5,6 +5,7 @@ import { getCoreDb } from '$server/db/pg-client';
 import { listEnabledReminderOrgs } from '$server/services/reminder-config.service';
 import { processOrgReminders, scanConfirmationReplies } from '$server/services/reminders.service';
 import { advanceCases } from '$server/services/reconfirm.service';
+import { advanceAnswers } from '$server/services/reconfirm-answer.service';
 import { isModuleEnabled } from '$server/services/modules.service';
 import { withAiUsageOrg } from '$server/ai-usage';
 
@@ -46,12 +47,14 @@ export const GET: RequestHandler = async ({ request }) => {
         unclear += c.unclear;
         cases.opened += c.opened;
         // Third pass (spec 139): the agent asks the client who said no, and hands silent cases to staff.
+        // Answers first (AI orgs only), so a case that was just answered is not timed out as silent.
+        const ans = await advanceAnswers(ctx, now);
+        cases.offered += ans.offered;
+        cases.rescheduled += ans.rescheduled;
         const a = await advanceCases(ctx, now);
         cases.asked += a.asked;
         cases.timedOut += a.timedOut;
         cases.failed += a.failed;
-        cases.offered += a.offered;
-        cases.rescheduled += a.rescheduled;
       } catch (e) {
         // Name and driver code only: a driver message can carry query params (phones, message text).
         const code =

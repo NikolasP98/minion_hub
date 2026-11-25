@@ -1098,7 +1098,7 @@ async function reverseBookingRedemptionsInTx(
  *  put the ticket-line release and every member's cancel in ONE transaction;
  *  `setBookingStatus` is this plus its own transaction and the post-commit
  *  accrual release. */
-async function setBookingStatusInTx(
+export async function setBookingStatusInTx(
   tx: CoreTx,
   ctx: CoreCtx,
   id: string,
@@ -1728,6 +1728,30 @@ export async function previewAssistantReschedule(
   });
 }
 
+/**
+ * The strict assistant move INSIDE a caller's transaction (spec 139 puts the move, the status
+ * change and the follow-up result in one). `rescheduleAssistantBooking` is this in its own one.
+ */
+export async function rescheduleAssistantBookingInTx(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+  input: AssistantRescheduleInput & { expectedUpdatedAt: Date },
+): Promise<{ booking: SchedBooking; outcome: 'moved' | 'already-at-target' }> {
+  if (!input.expectedUpdatedAt || !Number.isFinite(input.expectedUpdatedAt.getTime()))
+    throw new AssistantRescheduleError(400, 'expectedUpdatedAt is required from a booking preview');
+  const target = await prepareAssistantRescheduleInTx(tx, ctx, id, input, true);
+  if (target.sameTarget) return { booking: target.existing, outcome: 'already-at-target' };
+  const booking = await rescheduleBookingInTx(
+    tx,
+    ctx,
+    id,
+    { start: target.start, end: target.end, resourceId: target.resource.id },
+    target.existing.updatedAt,
+  );
+  return { booking, outcome: 'moved' };
+}
+
 /** Move and funding/link preservation commit together; retries never create replacements. */
 export async function rescheduleAssistantBooking(
   ctx: CoreCtx,
@@ -1736,22 +1760,7 @@ export async function rescheduleAssistantBooking(
 ): Promise<{ booking: SchedBooking; outcome: 'moved' | 'already-at-target' }> {
   if (!input.expectedUpdatedAt || !Number.isFinite(input.expectedUpdatedAt.getTime()))
     throw new AssistantRescheduleError(400, 'expectedUpdatedAt is required from a booking preview');
-  return withOrgCore(ctx, async (tx) => {
-    const target = await prepareAssistantRescheduleInTx(tx, ctx, id, input, true);
-    if (target.sameTarget) return { booking: target.existing, outcome: 'already-at-target' };
-    const booking = await rescheduleBookingInTx(
-      tx,
-      ctx,
-      id,
-      {
-        start: target.start,
-        end: target.end,
-        resourceId: target.resource.id,
-      },
-      target.existing.updatedAt,
-    );
-    return { booking, outcome: 'moved' };
-  });
+  return withOrgCore(ctx, (tx) => rescheduleAssistantBookingInTx(tx, ctx, id, input));
 }
 
 /** `metadata.groupId` of a booking row, or null. The one reader of the shape. */
