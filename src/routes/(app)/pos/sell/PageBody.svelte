@@ -1035,7 +1035,7 @@
   labelledBy="pos-sell-title"
   class="pos-sell-surface"
 >
-  <PageHeader titleId="pos-sell-title" title={m.pos_nav_sell()}>
+  <PageHeader documentTitle={false} titleId="pos-sell-title" title={m.pos_nav_sell()}>
     {#snippet leading()}<ShoppingCart size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 

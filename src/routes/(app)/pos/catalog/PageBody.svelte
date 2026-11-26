@@ -491,6 +491,7 @@
   <DataView views={['table', 'board']} value={viewPref.value} onchange={viewPref.set}>
     {#snippet children({ switcher, view })}
       <PageHeader
+        documentTitle={false}
         titleId="pos-catalog-title"
         title={m.pos_catalog_title()}
         subtitle={m.pos_catalog_subtitle()}

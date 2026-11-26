@@ -426,6 +426,7 @@
       <NavContextMenu kind="area">
         <nav
           data-part="navigation"
+          aria-label={m.nav_primaryAria()}
           class="mobile-menu-nav flex flex-col sm:flex-row sm:gap-4 px-2 pt-2 pb-1"
         >
           <div class="flex-1 min-w-0">

@@ -390,6 +390,7 @@
 
 <PageShell archetype="form" scroll="region" labelledBy="finances-settings-title">
   <PageHeader
+    documentTitle={false}
     titleId="finances-settings-title"
     title={m.fin_settings_title()}
     subtitle={m.fin_settings_subtitle()}

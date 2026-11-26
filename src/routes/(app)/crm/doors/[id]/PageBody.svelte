@@ -102,6 +102,7 @@
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="crm-door-title">
   <PageHeader
+    documentTitle={false}
     titleId="crm-door-title"
     title={committed.title}
     subtitle={doorKindLabel(data.door.kind)}

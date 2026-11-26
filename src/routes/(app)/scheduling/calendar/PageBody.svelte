@@ -470,6 +470,7 @@
 >
   {#if !compactCalendar}
     <PageHeader
+      documentTitle={false}
       titleId="scheduling-calendar-title"
       title={m.sched_calendar_title()}
       subtitle={m.sched_calendar_subtitle()}

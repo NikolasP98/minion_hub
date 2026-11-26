@@ -61,7 +61,12 @@
 <svelte:head><title>{docLabel} — {m.fin_purchases_title()}</title></svelte:head>
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="fin-purchase-title">
-  <PageHeader titleId="fin-purchase-title" title={docLabel} subtitle={p.supplierName ?? '—'}>
+  <PageHeader
+    documentTitle={false}
+    titleId="fin-purchase-title"
+    title={docLabel}
+    subtitle={p.supplierName ?? '—'}
+  >
     {#snippet leading()}
       {#if !inPeek()}
         <Button variant="ghost" size="sm" class="-ml-1" onclick={back.go} aria-label={back.label}>

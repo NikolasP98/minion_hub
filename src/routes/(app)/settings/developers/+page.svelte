@@ -14,6 +14,7 @@
 
 <PageShell archetype="form" scroll="page" labelledBy="settings-developers-title">
   <PageHeader
+    documentTitle={false}
     titleId="settings-developers-title"
     title={m.settings_developers_title()}
     subtitle={m.settings_developers_subtitle()}

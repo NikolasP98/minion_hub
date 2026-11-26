@@ -306,6 +306,7 @@
 
 <PageShell archetype="form" scroll="region" labelledBy="pos-settings-title">
   <PageHeader
+    documentTitle={false}
     titleId="pos-settings-title"
     title={m.pos_settings_title()}
     subtitle={m.pos_settings_subtitle()}

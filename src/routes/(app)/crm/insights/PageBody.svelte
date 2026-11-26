@@ -90,6 +90,7 @@
 
 <PageShell archetype="collection" scroll="region" labelledBy="crm-insights-title">
   <PageHeader
+    documentTitle={false}
     titleId="crm-insights-title"
     title={m.crm_insights_title()}
     subtitle={m.crm_subtitle()}

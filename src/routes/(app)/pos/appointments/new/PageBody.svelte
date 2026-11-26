@@ -71,6 +71,7 @@
 
 <PageShell archetype="form" scroll="region" labelledBy="pos-appointment-new-title">
   <PageHeader
+    documentTitle={false}
     titleId="pos-appointment-new-title"
     title={kind === 'checkup' ? m.appt_checkup_title() : m.appt_new_title()}
     subtitle={kind === 'checkup' ? m.appt_checkup_subtitle() : m.appt_new_subtitle()}

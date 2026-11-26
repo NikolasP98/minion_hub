@@ -106,6 +106,7 @@
 
 <PageShell archetype="collection" scroll="page" labelledBy="killswitches-title">
   <PageHeader
+    documentTitle={false}
     titleId="killswitches-title"
     title="Kill Switches"
     subtitle="Owner-only runtime controls. Switches are live and reset to config defaults on gateway restart."

@@ -44,6 +44,7 @@
 
 <PageShell archetype="collection" scroll="region" labelledBy="sales-title">
   <PageHeader
+    documentTitle={false}
     titleId="sales-title"
     title="Sales Orders"
     subtitle="Commitments to bill — created from bookings, reconciled against invoices"

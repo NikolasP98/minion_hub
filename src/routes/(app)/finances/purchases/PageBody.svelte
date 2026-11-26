@@ -221,6 +221,7 @@
 
 <PageShell archetype="collection" scroll="region" labelledBy="finances-purchases-title">
   <PageHeader
+    documentTitle={false}
     titleId="finances-purchases-title"
     title={m.fin_purchases_title()}
     subtitle={m.fin_purchases_subtitle()}

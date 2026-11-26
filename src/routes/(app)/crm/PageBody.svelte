@@ -468,6 +468,7 @@
   class="crm-dashboard-surface"
 >
   <PageHeader
+    documentTitle={false}
     titleId="crm-dashboard-title"
     title={m.crm_nav_dashboard()}
     subtitle={m.crm_subtitle()}

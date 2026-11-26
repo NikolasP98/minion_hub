@@ -20,6 +20,7 @@
 
 <PageShell archetype="form" scroll="page" labelledBy="scheduling-booking-new-title">
   <PageHeader
+    documentTitle={false}
     titleId="scheduling-booking-new-title"
     title={m.pos_appt_new()}
     subtitle={data.contact?.name ?? undefined}

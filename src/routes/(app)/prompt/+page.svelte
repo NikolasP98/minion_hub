@@ -12,7 +12,7 @@
 </svelte:head>
 
 <PageShell archetype="workspace" scroll="none">
-  <PageHeader title={m.nav_prompt()} subtitle={m.prompt_pipeline()} />
+  <PageHeader documentTitle={false} title={m.nav_prompt()} subtitle={m.prompt_pipeline()} />
   <PageBody padding="none" scroll="none" class="prompt-body">
     <PromptShell />
   </PageBody>

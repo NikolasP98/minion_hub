@@ -5,6 +5,8 @@
   import { navConfig } from '$lib/nav/nav-config.svelte';
   import { inferMainPageAccessTarget } from '$lib/nav/section-access-context';
   import SectionAccessButton from '$lib/components/navigation/SectionAccessButton.svelte';
+  import { getBranding } from '$lib/branding.svelte';
+  import { inPeek } from '$lib/records/peek.svelte';
 
   interface Props {
     title: string;
@@ -38,6 +40,12 @@
      *  lookup keeps working. `title` is still required (used for `<svelte:head>`
      *  titles etc.) but is not rendered when this is passed. */
     titleContent?: Snippet<[string]>;
+    /**
+     * The browser title this header gives the page: "<title> · <hub name>" (spec 151).
+     * The deepest `<title>` wins in Svelte, so a page that sets its own in
+     * `<svelte:head>` passes `false` to keep it; `page-title.test.ts` enforces that.
+     */
+    documentTitle?: boolean;
   }
 
   let {
@@ -53,7 +61,11 @@
     overflowActions,
     titleId,
     titleContent,
+    documentTitle = true,
   }: Props = $props();
+
+  // A header inside a record peek describes the peeked record, not the page.
+  const peeked = inPeek();
 
   const uid = $props.id();
   const headingId = $derived(titleId ?? `${uid}-title`);
@@ -76,6 +88,10 @@
     }
   });
 </script>
+
+<svelte:head>
+  {#if documentTitle && !peeked}<title>{title} · {getBranding().fullName}</title>{/if}
+</svelte:head>
 
 <!--
   Sticky title bar.

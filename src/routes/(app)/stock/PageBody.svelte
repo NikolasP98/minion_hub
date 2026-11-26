@@ -283,7 +283,7 @@
 {/snippet}
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader title={m.nav_stock()} subtitle={m.stock_overview_subtitle()}>
+  <PageHeader documentTitle={false} title={m.nav_stock()} subtitle={m.stock_overview_subtitle()}>
     {#snippet leading()}<Warehouse size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 

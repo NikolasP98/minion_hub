@@ -226,6 +226,7 @@
   labelledBy="socials-campaigns-campaignId-title"
 >
   <PageHeader
+    documentTitle={false}
     titleId="socials-campaigns-campaignId-title"
     title={campaign.campaignName ?? m.ads_nav_campaigns()}
     subtitle={m.ads_campaign_detail_subtitle()}

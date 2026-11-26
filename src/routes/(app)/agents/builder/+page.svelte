@@ -13,7 +13,11 @@
 </svelte:head>
 
 <PageShell archetype="collection" scroll="none">
-  <PageHeader title={m.builder_tabAgents()} subtitle={m.builder_noAgentsDesc()}>
+  <PageHeader
+    documentTitle={false}
+    title={m.builder_tabAgents()}
+    subtitle={m.builder_noAgentsDesc()}
+  >
     {#snippet leading()}<Bot size={iconSizes.md} aria-hidden="true" />{/snippet}
   </PageHeader>
   <PageBody padding="none" scroll="none" class="builder-body">

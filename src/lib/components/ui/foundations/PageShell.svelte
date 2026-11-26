@@ -11,10 +11,12 @@
     | 'public';
   export type PageScrollMode = 'page' | 'region' | 'none';
   export type PageDirection = 'column' | 'row';
+  /** Context key: `true` when an ancestor already renders the page's <main>. */
+  export const MAIN_LANDMARK = 'hub:main-landmark';
 </script>
 
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { getContext, type Snippet } from 'svelte';
 
   interface Props {
     children: Snippet;
@@ -37,9 +39,12 @@
     landmark = true,
     class: cls = '',
   }: Props = $props();
+
+  // The signed-in shell owns the page's one <main> (spec 151); inside it this is a plain block.
+  const insideMain = getContext<boolean | undefined>(MAIN_LANDMARK) === true;
 </script>
 
-{#if landmark}
+{#if landmark && !insideMain}
   <main
     data-component="page-shell"
     data-part="page-shell"

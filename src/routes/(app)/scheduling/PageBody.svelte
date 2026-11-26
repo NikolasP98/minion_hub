@@ -72,6 +72,7 @@
   class="scheduling-dashboard-surface"
 >
   <PageHeader
+    documentTitle={false}
     titleId="scheduling-dashboard-title"
     title={m.nav_scheduling()}
     subtitle={m.sched_dashboard_subtitle()}

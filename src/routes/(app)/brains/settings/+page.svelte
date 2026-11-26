@@ -187,7 +187,11 @@
 <svelte:head><title>{m.brains_nav_settings()} · {m.nav_brains()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="none">
-  <PageHeader title={m.brains_settings_page_title()} subtitle={m.brains_settings_page_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    title={m.brains_settings_page_title()}
+    subtitle={m.brains_settings_page_subtitle()}
+  >
     {#snippet leading()}
       <Settings size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

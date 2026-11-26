@@ -157,6 +157,7 @@
 
 <PageShell archetype="form" scroll="region" labelledBy="pos-catalog-editor-title">
   <PageHeader
+    documentTitle={false}
     titleId="pos-catalog-editor-title"
     {title}
     {subtitle}

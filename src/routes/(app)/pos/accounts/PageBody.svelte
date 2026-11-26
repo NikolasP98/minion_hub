@@ -159,6 +159,7 @@
 
 <PageShell archetype="collection" scroll="region" labelledBy="pos-accounts-title">
   <PageHeader
+    documentTitle={false}
     titleId="pos-accounts-title"
     title={m.pos_acct_title()}
     subtitle={m.pos_acct_subtitle()}

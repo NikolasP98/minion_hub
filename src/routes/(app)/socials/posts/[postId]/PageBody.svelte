@@ -137,7 +137,7 @@
 <!-- flex-1 min-w-0: page roots inside the SectionShell flex-row must fill it
      (bare h-full roots shrink to intrinsic width — governance layout contract). -->
 <div class="social-post-page flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader title={m.ads_post_detail_title()} subtitle={subtitleDate}>
+  <PageHeader documentTitle={false} title={m.ads_post_detail_title()} subtitle={subtitleDate}>
     {#snippet leading()}
       <PlatformIcon platform={post.platform} size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

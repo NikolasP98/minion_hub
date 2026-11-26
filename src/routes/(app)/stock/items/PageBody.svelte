@@ -226,6 +226,7 @@
 
 <PageShell archetype="collection" scroll="region" labelledBy="stock-items-title">
   <PageHeader
+    documentTitle={false}
     titleId="stock-items-title"
     title={m.stock_items_title()}
     subtitle={m.stock_items_subtitle()}
