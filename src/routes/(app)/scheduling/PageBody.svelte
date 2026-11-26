@@ -71,7 +71,7 @@
   labelledBy="scheduling-dashboard-title"
   class="scheduling-dashboard-surface"
 >
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="scheduling-dashboard-title"
     title={m.nav_scheduling()}
     subtitle={m.sched_dashboard_subtitle()}

@@ -395,7 +395,7 @@
 {/snippet}
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="pos-ticket-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="pos-ticket-title"
     title={`#${t.humanId ?? t.id.slice(0, 8)}`}
     subtitle={`${m.pos_ticket_title()} · ${stamp(t.submittedAt)}`}

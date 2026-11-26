@@ -107,7 +107,7 @@
     </div>
   {/snippet}
 </PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
+<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-5xl">
   {#if goals.length === 0}
     <div
       class="rounded-lg border border-border bg-card p-12 flex flex-col items-center justify-center text-center"
@@ -142,7 +142,7 @@
       {/each}
     </ul>
   {/if}
-</main>
+</div>
 
 <style>
   li[style*='--goal-depth'] {

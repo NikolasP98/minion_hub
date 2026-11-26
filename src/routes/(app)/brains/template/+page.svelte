@@ -64,7 +64,7 @@
 <svelte:head><title>{m.brains_nav_template()} · {m.nav_brains()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="none">
-  <PageHeader title={m.brains_template_page_title()} subtitle={m.brains_template_page_subtitle()}>
+  <PageHeader documentTitle={false} title={m.brains_template_page_title()} subtitle={m.brains_template_page_subtitle()}>
     {#snippet leading()}
       <FileText size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

@@ -1196,7 +1196,7 @@
   labelledBy="crm-contact-title"
   class="crm-contact-surface"
 >
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="crm-contact-title"
     title={contactLabel(c.displayName)}
     subtitle={c.source === 'manual' ? m.crm_manual_contact() : m.crm_harvested()}

@@ -962,7 +962,7 @@
   labelledBy="crm-customers-title"
   class="crm-customers-surface"
 >
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="crm-customers-title"
     title={m.crm_nav_customers()}
     subtitle={m.crm_subtitle()}

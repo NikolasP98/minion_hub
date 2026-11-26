@@ -246,7 +246,7 @@
   labelledBy="scheduling-reminders-title"
   class="scheduling-reminders-surface"
 >
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="scheduling-reminders-title"
     title={m.sched_rem_title()}
     subtitle={m.sched_rem_subtitle()}

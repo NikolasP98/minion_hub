@@ -1,6 +1,7 @@
 <script lang="ts">
   import { canonicalPath } from '$lib/canonical-path';
   import '../app.css';
+  import { getBranding } from '$lib/branding.svelte';
   import { onMount, onDestroy, untrack } from 'svelte';
   import { goto, afterNavigate, beforeNavigate, onNavigate } from '$lib/navigation';
   import { page, navigating, updated } from '$app/state';
@@ -177,6 +178,9 @@
     });
   });
 </script>
+
+<!-- Fallback browser title (spec 151): any page or PageHeader title is deeper and wins. -->
+<svelte:head><title>{getBranding().fullName}</title></svelte:head>
 
 <ParaglideJS {i18n} languageTag={locale.current}>
   {#if isVoxelized && canonicalPath(page.url.pathname) !== '/login'}

@@ -145,7 +145,7 @@
 </script>
 
 <PageShell archetype="collection" scroll="region" labelledBy={titleId} class={surfaceClass}>
-  <PageHeader {titleId} title={labels.title()} subtitle={labels.subtitle() ?? undefined}>
+  <PageHeader documentTitle={false} {titleId} title={labels.title()} subtitle={labels.subtitle() ?? undefined}>
     {#snippet leading()}
       <CalendarClock size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

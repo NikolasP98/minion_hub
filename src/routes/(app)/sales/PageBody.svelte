@@ -43,7 +43,7 @@
 <svelte:head><title>Sales Orders</title></svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="sales-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="sales-title"
     title="Sales Orders"
     subtitle="Commitments to bill — created from bookings, reconciled against invoices"

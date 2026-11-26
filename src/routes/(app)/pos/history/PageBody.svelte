@@ -265,7 +265,7 @@
 <svelte:head><title>{m.pos_history_title()} — {m.nav_pos()}</title></svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="pos-history-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="pos-history-title"
     title={m.pos_history_title()}
     subtitle={m.pos_history_subtitle()}

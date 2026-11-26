@@ -203,7 +203,7 @@
 <svelte:head><title>{entry.humanId ?? entry.id} — {m.nav_stock()}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader title={entry.humanId ?? entry.id.slice(0, 8)} subtitle={typeLabel}>
+  <PageHeader documentTitle={false} title={entry.humanId ?? entry.id.slice(0, 8)} subtitle={typeLabel}>
     {#snippet leading()}<ArrowLeftRight
         size={iconSizes.md}
         class="text-accent shrink-0"

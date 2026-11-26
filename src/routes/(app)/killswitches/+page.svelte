@@ -105,7 +105,7 @@
 <svelte:head><title>Kill Switches · {getBranding().name} hub</title></svelte:head>
 
 <PageShell archetype="collection" scroll="page" labelledBy="killswitches-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="killswitches-title"
     title="Kill Switches"
     subtitle="Owner-only runtime controls. Switches are live and reset to config defaults on gateway restart."

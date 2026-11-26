@@ -58,7 +58,7 @@
 <svelte:head><title>{data.portfolio.name}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader title={data.portfolio.name} subtitle={m.workforce_portfolios()} />
+  <PageHeader documentTitle={false} title={data.portfolio.name} subtitle={m.workforce_portfolios()} />
 
   <div class="flex-1 min-h-0 overflow-auto p-4 flex flex-col gap-4">
     <!-- Charter panel -->

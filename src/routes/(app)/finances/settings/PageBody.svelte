@@ -389,7 +389,7 @@
 <svelte:head><title>{m.fin_settings_title()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="region" labelledBy="finances-settings-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="finances-settings-title"
     title={m.fin_settings_title()}
     subtitle={m.fin_settings_subtitle()}

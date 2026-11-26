@@ -107,7 +107,7 @@
 
 <svelte:head><title>{m.nav_personalHome()} · {getBranding().name} hub</title></svelte:head>
 <PageShell archetype="form" labelledBy="personal-home-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="personal-home-title"
     title={selected?.label ?? m.nav_personalHome()}
     subtitle={selectedId ? undefined : m.nav_personalDescription()}

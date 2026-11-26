@@ -366,7 +366,7 @@
       "color-contrast": 1
     },
     "components-calendar-bookingcalendar--month-view": {
-      "color-contrast": 4
+      "color-contrast": 3
     },
     "components-calendar-bookingcalendar--off-hours-unshaded": {
       "color-contrast": 1
@@ -433,15 +433,6 @@
     },
     "components-calendar-daterangecontrols--year-to-date-monthly": {
       "color-contrast": 1
-    },
-    "components-calendar-eventtypeeditor--editing": {
-      "button-name": 1
-    },
-    "components-calendar-eventtypeeditor--editing·-phone": {
-      "button-name": 1
-    },
-    "components-calendar-eventtypeeditor--editing·-tablet": {
-      "button-name": 1
     },
     "components-calendar-membercalendarstrip--busy-day": {
       "color-contrast": 2
@@ -696,28 +687,22 @@
       "color-contrast": 3
     },
     "components-tags-inlinetagscell--default": {
-      "button-name": 1,
       "color-contrast": 2
     },
     "components-tags-inlinetagscell--product-scope": {
-      "button-name": 1,
       "color-contrast": 2
     },
     "components-tags-inlinetagscell--read-only-and-inherited-tags": {
-      "button-name": 1,
       "color-contrast": 8
     },
     "components-tags-inlinetagscell--table-mode-closed": {
-      "button-name": 1,
       "color-contrast": 2
     },
     "components-tags-inlinetagscell--table-mode-picker-open": {
       "aria-required-children": 1,
-      "button-name": 1,
       "color-contrast": 12
     },
     "components-tags-inlinetagscell--twenty-selected": {
-      "button-name": 1,
       "color-contrast": 20
     },
     "components-tags-tagchip--all-colours-persisted-palette": {
@@ -795,51 +780,40 @@
       "color-contrast": 2
     },
     "components-tags-tagsfield--rejected-save-rolls-back": {
-      "button-name": 1,
       "color-contrast": 1
     },
     "components-tags-tagsfield--selected": {
-      "button-name": 1,
       "color-contrast": 3
     },
     "components-tags-tagsfield--selection-pending-persisting": {
-      "button-name": 1,
       "color-contrast": 2
     },
     "components-tags-tagsfield--slow-save": {
-      "button-name": 1,
       "color-contrast": 1
     },
     "components-tags-tagsfield--stale-id-ignored": {
-      "button-name": 1,
       "color-contrast": 1
     },
     "components-tags-tagsfield--table-mode-closed": {
-      "button-name": 1,
       "color-contrast": 2
     },
     "components-tags-tagsfield--table-mode-no-add-picker-open": {
       "aria-required-children": 1,
-      "button-name": 1,
       "color-contrast": 12
     },
     "components-tags-tagsfield--twenty-selected-wraps": {
-      "button-name": 1,
       "color-contrast": 20
     },
     "components-tags-tagsfield--twenty-selected-wraps·-phone": {
-      "button-name": 1,
       "color-contrast": 20
     },
     "layouts-crm-contact--default": {
       "aria-tooltip-name": 1,
-      "button-name": 2,
       "color-contrast": 1,
       "select-name": 1
     },
     "layouts-crm-contact--default·-phone": {
       "aria-tooltip-name": 1,
-      "button-name": 1,
       "color-contrast": 1,
       "select-name": 1
     },

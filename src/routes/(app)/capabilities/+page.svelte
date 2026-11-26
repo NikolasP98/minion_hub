@@ -48,7 +48,7 @@
   {/snippet}
 
   <PageShell archetype="collection" scroll="none">
-    <PageHeader
+    <PageHeader documentTitle={false}
       title={activeItem?.label ?? m.nav_capabilities()}
       subtitle={m.tools_description()}
     />

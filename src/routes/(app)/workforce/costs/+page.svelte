@@ -64,7 +64,7 @@
     </div>
   {/snippet}
 </PageHeader>
-<main class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-6xl">
+<div class="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 max-w-6xl">
   <!-- KPI row: today / last 7 / month / projected -->
   <section class="grid grid-cols-2 sm:grid-cols-4 gap-4">
     <div class="rounded-lg border border-border bg-card p-4 space-y-1">
@@ -250,4 +250,4 @@
       </div>
     </section>
   </div>
-</main>
+</div>

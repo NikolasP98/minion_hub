@@ -235,7 +235,7 @@
 {/snippet}
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader title={m.nav_ads()} subtitle={m.ads_dashboard_subtitle()}>
+  <PageHeader documentTitle={false} title={m.nav_ads()} subtitle={m.ads_dashboard_subtitle()}>
     {#snippet leading()}<Megaphone size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 

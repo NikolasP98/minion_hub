@@ -50,7 +50,7 @@
 <svelte:head><title>Support</title></svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="support-title">
-  <PageHeader titleId="support-title" title="Support" subtitle="Customer tickets with SLA tracking">
+  <PageHeader documentTitle={false} titleId="support-title" title="Support" subtitle="Customer tickets with SLA tracking">
     {#snippet primaryActions()}
       <Button
         variant="primary"

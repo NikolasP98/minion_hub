@@ -11,7 +11,9 @@
   // ~0.3-1.5s later once requestIdleCallback fires (that gap read as "the
   // hover pill isn't there" — regression from the P2 boot-diet commit,
   // which mis-grouped it with the genuinely invoke-only overlays).
-  import { type Snippet } from 'svelte';
+  import { setContext, type Snippet } from 'svelte';
+  import { MAIN_LANDMARK } from '$lib/components/ui/foundations/PageShell.svelte';
+  import * as a11yMessages from '$lib/paraglide/messages';
   import { onMount, onDestroy, tick, untrack } from 'svelte';
   import { beforeNavigate, afterNavigate, replaceState } from '$lib/navigation';
   import { provideViewMemory } from '$lib/shell/view-context';
@@ -230,9 +232,21 @@
     const servers = (page.data as { hosts?: { servers?: unknown[] } })?.hosts?.servers;
     if (servers) loadHosts();
   });
+
+  // The shell owns the page's one <main>; PageShell reads this and renders a plain block.
+  setContext(MAIN_LANDMARK, true);
+  /** Focus the content directly: the router treats a bare hash link as a navigation. */
+  function skipToContent(event: MouseEvent) {
+    event.preventDefault();
+    document.getElementById('main-content')?.focus();
+  }
 </script>
 
 <QueryClientProvider client={queryClient}>
+  <!-- First focusable element on every signed-in page (spec 151). Visible only on focus. -->
+  <a class="skip-link" href="#main-content" onclick={skipToContent}>
+    {a11yMessages.a11y_skip_to_content()}
+  </a>
   <AppViewport density={density.mode} class="hub-shell-viewport">
     <div
       data-part="primary-shell"
@@ -250,12 +264,12 @@
           data-part="route-viewport"
           class="flex-1 min-h-0 overflow-y-auto overscroll-contain"
         >
-          <div class="h-full min-h-0 flex flex-col">
+          <main id="main-content" tabindex="-1" class="h-full min-h-0 flex flex-col">
             <!-- Spec 045: an admin-only page reached by URL renders nothing for anyone else. -->
             {#if !adminOnlyUrlHidden(page.url.pathname)}
               {@render children()}
             {/if}
-          </div>
+          </main>
         </div>
       </div>
     </div>
@@ -302,3 +316,32 @@
     {/await}
   {/if}
 </QueryClientProvider>
+
+<style>
+  /* Off-screen until it takes keyboard focus; then it sits over the shell's top-left corner
+     without moving the layout. */
+  .skip-link {
+    position: fixed;
+    top: var(--space-2);
+    left: var(--space-2);
+    z-index: var(--layer-command);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    color: var(--color-text-primary);
+    border: 1px solid var(--color-border);
+    font-size: var(--font-size-body);
+    font-weight: var(--font-weight-medium);
+    text-decoration: none;
+    transform: translateY(calc(-100% - var(--space-4)));
+  }
+  .skip-link:focus {
+    transform: none;
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  /* A programmatic focus target, not a control: no ring around the whole page. */
+  main:focus {
+    outline: none;
+  }
+</style>

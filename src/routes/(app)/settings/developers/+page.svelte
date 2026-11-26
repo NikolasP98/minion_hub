@@ -13,7 +13,7 @@
 <svelte:head><title>{m.settings_developers_title()} — {m.nav_settings()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="page" labelledBy="settings-developers-title">
-  <PageHeader
+  <PageHeader documentTitle={false}
     titleId="settings-developers-title"
     title={m.settings_developers_title()}
     subtitle={m.settings_developers_subtitle()}
