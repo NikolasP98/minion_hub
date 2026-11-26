@@ -1503,6 +1503,17 @@
       y: centre.rect.top + centre.y,
     };
   }
+  /** An element's overlay takes focus when it opens (its Escape handler is on its own layer)
+   *  and gives it back to what opened it when it closes. */
+  function overlayFocus(host: HTMLElement) {
+    const opener = document.activeElement as HTMLElement | null;
+    host.querySelector<HTMLElement>('[tabindex="-1"], button, input, textarea')?.focus();
+    return () => {
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || host.contains(active)))
+        opener.focus();
+    };
+  }
   function openElement(instanceId: string) {
     const el = workshopState.elements[instanceId];
     if (el) activeOverlay = { elementId: instanceId, type: el.type };
@@ -2148,20 +2159,31 @@
 
   <!-- Element Overlays -->
   {#if activeOverlay}
-    {#if activeOverlay.type === 'pinboard'}
-      <PinboardOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {:else if activeOverlay.type === 'messageboard'}
-      <MessageBoardOverlay
-        elementId={activeOverlay.elementId}
-        onClose={() => (activeOverlay = null)}
-      />
-    {:else if activeOverlay.type === 'inbox'}
-      <InboxOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {:else if activeOverlay.type === 'rulebook'}
-      <RulebookOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {:else if activeOverlay.type === 'portal'}
-      <PortalOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {/if}
+    <!-- TODO(handoff): the five element overlays are hand-built layers, not the shared Dialog
+      (no focus trap, a backdrop with a button role). `overlayFocus` below only takes focus in
+      and gives it back. See meta proposals/2026-11-20-hub-accessibility-program.md, item 21. -->
+    <div class="contents" {@attach overlayFocus}>
+      {#if activeOverlay.type === 'pinboard'}
+        <PinboardOverlay
+          elementId={activeOverlay.elementId}
+          onClose={() => (activeOverlay = null)}
+        />
+      {:else if activeOverlay.type === 'messageboard'}
+        <MessageBoardOverlay
+          elementId={activeOverlay.elementId}
+          onClose={() => (activeOverlay = null)}
+        />
+      {:else if activeOverlay.type === 'inbox'}
+        <InboxOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
+      {:else if activeOverlay.type === 'rulebook'}
+        <RulebookOverlay
+          elementId={activeOverlay.elementId}
+          onClose={() => (activeOverlay = null)}
+        />
+      {:else if activeOverlay.type === 'portal'}
+        <PortalOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
+      {/if}
+    </div>
   {/if}
 
   <!-- Task Prompt Dialog -->
