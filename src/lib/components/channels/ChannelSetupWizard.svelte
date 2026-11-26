@@ -287,7 +287,7 @@
           type={revealToken ? 'text' : 'password'}
           bind:value={token}
           placeholder="Token"
-          class="w-full bg-bg border border-border rounded-md px-3 py-2 pr-9 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-accent"
+          class="w-full bg-bg border border-border rounded-md px-3 py-2 pr-9 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-focus-ring"
           autocomplete="off"
           onkeydown={(e) => {
             if (e.key === 'Enter' && token && !verifying) startVerify();

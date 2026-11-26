@@ -119,7 +119,7 @@
        canvas fills edge-to-edge. -->
   <div
     {...api.getContentProps()}
-    class="surface-4 flex h-full w-full flex-col overflow-hidden text-foreground shadow-2xl outline-none {fullscreen
+    class="surface-4 flex h-full w-full flex-col overflow-hidden text-foreground shadow-2xl focus-ring-none {fullscreen
       ? 'rounded-none'
       : 'rounded-[var(--radius-xl)]'}"
   >

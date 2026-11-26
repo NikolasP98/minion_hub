@@ -218,7 +218,7 @@
       >
 
       <div
-        class="flex flex-1 min-w-0 items-center bg-bg3 border border-border rounded-sm transition-all focus-within:border-accent"
+        class="flex flex-1 min-w-0 items-center bg-bg3 border border-border rounded-sm transition-all focus-within:border-focus-ring"
         {...api.getControlProps()}
       >
         <input

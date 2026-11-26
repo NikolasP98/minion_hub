@@ -170,7 +170,7 @@
         bind:value={prompt}
         rows="4"
         placeholder={m.workshop_exp_problem_placeholder()}
-        class="w-full rounded border border-border bg-bg2 p-3 text-sm text-foreground font-mono resize-y outline-none focus:border-accent/50"
+        class="w-full rounded border border-border bg-bg2 p-3 text-sm text-foreground font-mono resize-y outline-none focus:border-focus-ring"
       ></textarea>
       <div class="flex gap-2">
         <Button

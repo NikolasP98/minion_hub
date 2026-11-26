@@ -171,7 +171,7 @@
     cursor: not-allowed;
   }
   .call-cluster :global(.call-btn):focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
 

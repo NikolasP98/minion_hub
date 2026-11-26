@@ -52,7 +52,7 @@
   variant="ghost"
   size="xs"
   {...normalizeButtonProps(api.getTriggerProps())}
-  class="relative group rounded-full bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg2"
+  class="relative group rounded-full bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg2"
   aria-label={m.usersui_avatarOptions()}
 >
   <UserAvatar {name} {email} {src} {size} />
@@ -68,7 +68,7 @@
 <div bind:this={layerEl} {...api.getPositionerProps()}>
   <div
     {...api.getContentProps()}
-    class="relative z-[var(--layer-modal)] min-w-36 rounded-[var(--radius-md)] surface-4 border border-[var(--elevation-4-border)] p-1 shadow-xl outline-none"
+    class="relative z-[var(--layer-modal)] min-w-36 rounded-[var(--radius-md)] surface-4 border border-[var(--elevation-4-border)] p-1 shadow-xl focus-ring-none"
   >
     <Button
       variant="ghost"

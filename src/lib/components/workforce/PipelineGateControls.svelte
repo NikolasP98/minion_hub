@@ -186,7 +186,7 @@
     </label>
     <textarea
       id="pipeline-gate-summary"
-      class="mt-1 min-h-20 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+      class="mt-1 min-h-20 w-full resize-y rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-focus-ring disabled:cursor-not-allowed disabled:opacity-60"
       maxlength="4000"
       placeholder={m.workforce_gate_summaryPlaceholder()}
       disabled={busy || !workforceAvailable || !canEdit}

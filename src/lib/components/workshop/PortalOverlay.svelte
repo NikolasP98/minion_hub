@@ -81,7 +81,7 @@
         <span class="text-xs font-mono text-muted">{m.portal_label()}</span>
         <input
           type="text"
-          class="w-full rounded border border-border bg-bg3 px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
+          class="w-full rounded border border-border bg-bg3 px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-focus-ring"
           placeholder={m.portal_namePlaceholder()}
           bind:value={label}
           oninput={handleInput}

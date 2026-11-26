@@ -337,7 +337,7 @@
           bind:value={backupHost}
           onchange={saveConfig}
           placeholder="backup.example.com"
-          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </label>
       <label class="block">
@@ -346,7 +346,7 @@
           type="text"
           bind:value={backupUser}
           onchange={saveConfig}
-          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </label>
       <label class="block">
@@ -355,7 +355,7 @@
           type="number"
           bind:value={backupPort}
           onchange={saveConfig}
-          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </label>
       <label class="block">
@@ -364,7 +364,7 @@
           type="text"
           bind:value={backupBasePath}
           onchange={saveConfig}
-          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </label>
     </div>
@@ -378,7 +378,7 @@
           bind:value={schedule}
           onchange={saveConfig}
           placeholder="0 3 * * *"
-          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </label>
       <label class="block">
@@ -388,7 +388,7 @@
           bind:value={retentionCount}
           onchange={saveConfig}
           min="1"
-          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+          class="mt-1 w-full bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </label>
       <label class="flex items-center gap-2 self-end pb-1">

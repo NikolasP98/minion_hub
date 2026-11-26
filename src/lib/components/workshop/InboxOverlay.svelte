@@ -363,14 +363,14 @@
           <input
             id="compose-subject"
             type="text"
-            class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-xs text-foreground placeholder:text-muted outline-none focus:border-accent"
+            class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-xs text-foreground placeholder:text-muted outline-none focus:border-focus-ring"
             placeholder={m.inbox_colSubject()}
             bind:value={composeSubject}
           />
         </div>
 
         <textarea
-          class="w-full resize-none rounded border border-border bg-bg3 px-2 py-1 text-xs text-foreground placeholder:text-muted outline-none focus:border-accent"
+          class="w-full resize-none rounded border border-border bg-bg3 px-2 py-1 text-xs text-foreground placeholder:text-muted outline-none focus:border-focus-ring"
           rows="2"
           placeholder={m.inbox_composePlaceholder()}
           bind:value={composeContent}></textarea>

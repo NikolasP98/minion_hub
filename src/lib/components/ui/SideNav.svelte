@@ -113,7 +113,7 @@
           type="text"
           bind:value={searchQuery}
           placeholder={search.placeholder ?? ''}
-          class="focus-ring-none w-full h-8 pl-7 pr-2 text-xs rounded-[var(--radius-md)] bg-bg2 border border-[var(--hairline)] text-foreground placeholder:text-muted focus:border-accent/60 transition-colors duration-[150ms]"
+          class="focus-ring-none w-full h-8 pl-7 pr-2 text-xs rounded-[var(--radius-md)] bg-bg2 border border-[var(--hairline)] text-foreground placeholder:text-muted focus:border-focus-ring transition-colors duration-[150ms]"
           aria-label={search.placeholder ?? ariaLabel}
         />
       </div>

@@ -236,7 +236,7 @@
     cursor: not-allowed;
   }
   .cb-control:focus-within {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
     box-shadow: var(--shadow-status-glow);
   }
 

@@ -465,7 +465,7 @@
       box-shadow var(--duration-fast);
   }
   .field-input:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
     box-shadow: var(--shadow-elevation-1);
   }
   .field-input::placeholder {
@@ -487,7 +487,7 @@
       box-shadow var(--duration-fast);
   }
   .field-textarea:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
     box-shadow: var(--shadow-elevation-1);
   }
   .field-textarea::placeholder {

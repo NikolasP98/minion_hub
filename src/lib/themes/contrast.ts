@@ -68,6 +68,35 @@ export function readableMutedFor(preset: ThemePreset, minimum = 4.5): string {
   return preset.colors.foreground;
 }
 
+/** Every opaque surface of a preset that text, links and focus rings can sit on. */
+function surfacesOf(preset: ThemePreset): string[] {
+  const { bg, bg2, bg3, card } = preset.colors;
+  return [bg, bg2, bg3, card];
+}
+
+/**
+ * The accent as a readable foreground: the accent itself where it already reaches `minimum`
+ * on EVERY surface of the preset, otherwise the nearest darker (light themes) or lighter
+ * (dark themes) shade that does (same 5 % stepping as `readableMutedFor`). 3 for the focus ring
+ * (WCAG 1.4.11), 4.5 for link text (WCAG 1.4.3). The accent itself is never changed.
+ */
+export function readableAccentFor(preset: ThemePreset, accent: string, minimum: number): string {
+  const surfaces = surfacesOf(preset);
+  const passes = (color: string) => surfaces.every((s) => contrastRatio(color, s) >= minimum);
+  const start = rgb(accent);
+  // Toward black on light themes and white on dark ones: the hue stays the accent's
+  // (mixing toward the grey text colour would wash it out).
+  const target: Rgb = preset.mode === 'light' ? [0, 0, 0] : [255, 255, 255];
+  // Non-hex values cannot be measured here; the browser resolves them unchanged.
+  if (!start) return accent;
+  if (passes(accent)) return accent;
+  for (let amount = 0.05; amount <= 1; amount += 0.05) {
+    const adjusted = toHex(mix(start, target, amount));
+    if (passes(adjusted)) return adjusted;
+  }
+  return preset.colors.foreground;
+}
+
 export function statusForegrounds(mode: 'light' | 'dark') {
   return mode === 'light'
     ? {

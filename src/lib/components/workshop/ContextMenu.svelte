@@ -48,7 +48,7 @@
 <Button
   type="button"
   variant="ghost"
-  class="fixed inset-0 z-[var(--layer-dropdown)] w-full h-full rounded-none bg-transparent border-none outline-none cursor-default"
+  class="fixed inset-0 z-[var(--layer-dropdown)] w-full h-full rounded-none bg-transparent border-none focus-ring-none cursor-default"
   onclick={onClose}
   oncontextmenu={(e: MouseEvent) => {
     e.preventDefault();

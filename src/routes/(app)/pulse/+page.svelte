@@ -443,7 +443,6 @@
     resize: vertical;
   }
   .args-editor:focus-visible {
-    outline: none;
     box-shadow: var(--shadow-focus);
   }
   .error {

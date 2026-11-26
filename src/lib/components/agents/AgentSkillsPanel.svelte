@@ -114,7 +114,7 @@
       placeholder={m.skills_searchPlaceholder()}
       class="flex-1 bg-bg3 border border-border rounded-md text-[length:var(--font-size-caption)] text-foreground
         px-2.5 py-1.5 outline-none placeholder:text-muted-strong
-        focus:border-accent/50 transition-colors"
+        focus:border-focus-ring transition-colors"
     />
     <div class="flex rounded-md border border-border overflow-hidden shrink-0">
       {#each [{ key: 'all', label: m.skills_filterAll(), count: agentSkillsState.skills.length }, { key: 'enabled', label: m.skills_filterEnabled(), count: enabledSkills.length }, { key: 'disabled', label: m.skills_filterDisabled(), count: disabledSkills.length }] as tab (tab.key)}

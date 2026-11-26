@@ -219,7 +219,7 @@
           >
           <input
             id="host-name"
-            class="bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-1.25 px-2.25 font-[inherit] text-xs outline-none transition-colors focus:border-accent"
+            class="bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-1.25 px-2.25 font-[inherit] text-xs outline-none transition-colors focus:border-focus-ring"
             type="text"
             bind:value={formName}
             placeholder="protopi"
@@ -233,7 +233,7 @@
           >
           <input
             id="host-token"
-            class="bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-1.25 px-2.25 font-[inherit] text-xs outline-none transition-colors focus:border-accent"
+            class="bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-1.25 px-2.25 font-[inherit] text-xs outline-none transition-colors focus:border-focus-ring"
             type="password"
             bind:value={formToken}
             placeholder="••••••"
@@ -245,7 +245,7 @@
           >
           <input
             id="host-url"
-            class="bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-1.25 px-2.25 font-[inherit] text-xs outline-none transition-colors focus:border-accent"
+            class="bg-bg3 border border-border rounded-[var(--radius-sm)] text-foreground py-1.25 px-2.25 font-[inherit] text-xs outline-none transition-colors focus:border-focus-ring"
             type="text"
             bind:value={formUrl}
             placeholder="wss://host.ts.net"

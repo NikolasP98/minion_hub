@@ -95,6 +95,12 @@
    hub-specific tokens the shared package doesn't carry live here. Runtime theme
    presets still override the shared tokens on :root via applyTheme(). */
 @theme {
+  /* Readable shades of the accent (spec 153), overridden with the accent in
+     themes/runtime.ts: `focus-ring` reaches 3:1 on every surface of the theme, `link`
+     4.5:1. Declared here so `border-focus-ring`, `ring-focus-ring` and `text-link` exist. */
+  --color-focus-ring: var(--color-accent);
+  --color-link: var(--color-accent);
+
   /* Animations (keyframes defined in @layer utilities below) */
   --animate-typing-bounce: typing-bounce 0.6s ease infinite;
   --animate-spin: spin 0.7s linear infinite;
@@ -172,14 +178,28 @@
   }
 
   /* ── Global focus ring (single source of truth, theme-adaptive) ── */
+  /* `--color-focus-ring` is the accent's hue at 3:1 or better against every surface of the
+     theme (set with the accent in themes/runtime.ts, spec 153); the accent is the fallback
+     before the theme is applied. */
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
     border-radius: var(--radius-xs);
   }
   /* Opt-out for components that supply their own ring (e.g. inputs with border-color focus) */
   .focus-ring-none:focus-visible {
     outline: none;
+  }
+  /* Forced colours (Windows contrast themes): author colours and shadows are dropped, so
+     the ring is always drawn, in the system highlight colour, opt-outs included. */
+  @media (forced-colors: active) {
+    /* !important: the shared controls switch the outline off with a utility class and
+       rely on a shadow, which forced colours removes. */
+    :focus-visible,
+    .focus-ring-none:focus-visible {
+      outline: 2px solid Highlight !important;
+      outline-offset: 2px !important;
+    }
   }
 
   /* ── Global cursor affordances ── */
@@ -1413,7 +1433,7 @@ html[data-theme='crt'][data-crt-flicker='true'] body {
 [data-theme='crt'] [data-part='input']:focus,
 [data-theme='crt'] [data-part='select']:focus,
 [data-theme='crt'] [data-part='textarea']:focus {
-  border-color: var(--color-accent) !important;
+  border-color: var(--color-focus-ring) !important;
   box-shadow: 0 0 8px rgba(var(--crt-glow-hot), 0.25) !important;
   outline: none;
 }

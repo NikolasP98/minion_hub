@@ -337,7 +337,7 @@
   }
   .skip-link:focus {
     transform: none;
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
   /* A programmatic focus target, not a control: no ring around the whole page. */

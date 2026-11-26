@@ -46,7 +46,7 @@
     variant="ghost"
     type="button"
     class="ai-disclosure__toggle w-3 h-3 flex items-center justify-center rounded-sm
-      hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent
+      hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring
       transition-all duration-[var(--duration-fast)]"
     title={collapsed ? 'Show AI disclosure' : 'Collapse AI disclosure'}
     aria-label={collapsed ? 'Show AI disclosure' : 'Collapse AI disclosure'}

@@ -299,7 +299,7 @@
                       value={fieldVal(p.pluginId, f.key)}
                       oninput={(e) =>
                         setFieldVal(p.pluginId, f.key, (e.currentTarget as HTMLInputElement).value)}
-                      class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+                      class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
                     />
                   {/each}
                   <Button

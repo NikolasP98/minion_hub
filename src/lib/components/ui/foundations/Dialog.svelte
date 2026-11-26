@@ -538,7 +538,7 @@
     );
   }
   [data-part='close-trigger']:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
   .dialog-body {

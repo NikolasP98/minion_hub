@@ -38,7 +38,7 @@
           type="text"
           bind:value={provisionState.config.sshHost}
           placeholder={m.provision_hostPlaceholder()}
-          class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+          class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </div>
       <div class="grid grid-cols-2 gap-2.5">
@@ -51,7 +51,7 @@
             type="text"
             bind:value={provisionState.config.sshUser}
             placeholder="root"
-            class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+            class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
           />
         </div>
         <div>
@@ -63,7 +63,7 @@
             type="number"
             bind:value={provisionState.config.sshPort}
             placeholder="22"
-            class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+            class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
           />
         </div>
       </div>
@@ -88,7 +88,7 @@
           type="text"
           bind:value={provisionState.config.agentName}
           placeholder="minion"
-          class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+          class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </div>
       <div class="grid grid-cols-2 gap-2.5">
@@ -164,7 +164,7 @@
           type="number"
           bind:value={provisionState.config.gatewayPort}
           placeholder="18789"
-          class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+          class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
         />
       </div>
       <div>
@@ -229,7 +229,7 @@
         type="password"
         bind:value={provisionState.config.apiKey}
         placeholder="sk-ant-..."
-        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+        class="w-full bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground font-mono placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
       />
       <p class="text-[length:var(--font-size-telemetry)] text-muted-strong mt-1">
         {m.provision_apiKeyHint()}

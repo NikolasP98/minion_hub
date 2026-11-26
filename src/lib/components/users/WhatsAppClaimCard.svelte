@@ -236,7 +236,7 @@
               type="tel"
               placeholder="+51 922 286 663"
               bind:value={phone}
-              class="flex-1 bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+              class="flex-1 bg-bg border border-border rounded px-2.5 py-1.5 text-sm text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
             />
             <Button
               variant="primary"
@@ -260,7 +260,7 @@
               maxlength="6"
               placeholder="000000"
               bind:value={code}
-              class="w-28 bg-bg border border-border rounded px-2.5 py-1.5 text-sm tracking-[0.3em] text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-accent"
+              class="w-28 bg-bg border border-border rounded px-2.5 py-1.5 text-sm tracking-[0.3em] text-foreground placeholder:text-muted-strong focus:outline-none focus:ring-1 focus:ring-focus-ring"
             />
             <Button
               variant="primary"

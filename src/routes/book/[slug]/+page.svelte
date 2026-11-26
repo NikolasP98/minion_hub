@@ -359,7 +359,7 @@
             type="date"
             bind:value={customDate}
             onchange={loadCustomDay}
-            class="h-[var(--control-height-touch)] w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] focus-visible:border-accent focus-visible:shadow-[var(--shadow-focus)]"
+            class="h-[var(--control-height-touch)] w-full rounded-[var(--radius-md)] border border-border bg-bg px-3 text-sm text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] focus-visible:border-focus-ring focus-visible:shadow-[var(--shadow-focus)]"
           />
         </div>
 

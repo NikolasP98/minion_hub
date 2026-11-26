@@ -517,7 +517,7 @@
           </div>
         {/if}
         <textarea
-          class="w-full h-[40vh] bg-bg2 border border-border/50 rounded px-3 py-2 text-xs font-mono text-foreground resize-none focus:outline-none focus:border-accent"
+          class="w-full h-[40vh] bg-bg2 border border-border/50 rounded px-3 py-2 text-xs font-mono text-foreground resize-none focus:outline-none focus:border-focus-ring"
           value={slot.dirty ?? slot.content}
           placeholder={slot.templateDefault && !slot.exists ? slot.templateDefault : ''}
           oninput={onInput}></textarea>

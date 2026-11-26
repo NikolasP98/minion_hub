@@ -351,7 +351,6 @@
     width: 100%;
   }
   .search:focus-visible {
-    outline: none;
     box-shadow: var(--shadow-focus);
   }
   .rows {

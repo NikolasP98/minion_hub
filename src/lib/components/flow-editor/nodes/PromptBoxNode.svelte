@@ -56,7 +56,7 @@
   </div>
 
   <textarea
-    class="w-full text-xs bg-bg3 border border-border rounded-lg px-2 py-1.5 text-foreground resize-none focus:outline-none focus:border-accent/60 min-h-16"
+    class="w-full text-xs bg-bg3 border border-border rounded-lg px-2 py-1.5 text-foreground resize-none focus:outline-none focus:border-focus-ring min-h-16"
     placeholder={m.flow_enterPromptText()}
     value={data.value}
     oninput={handleInput}

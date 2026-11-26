@@ -58,6 +58,16 @@ describe('runtime theme semantic contract', () => {
     expect(root.style.getPropertyValue('--theme-radius')).toBe('');
     expect(root.style.getPropertyValue('--color-accent')).toBe('#f43f5e');
     expect(root.style.getPropertyValue('--color-on-accent')).toBe('#000000');
+    // Spec 153: the focus ring and the accent-as-text colour are readable shades of the
+    // accent, and the shared controls' focus shadow is a solid ring in the ring colour.
+    const ring = root.style.getPropertyValue('--color-focus-ring');
+    expect(ring).toMatch(/^#[0-9a-f]{6}$/);
+    const link = root.style.getPropertyValue('--color-link');
+    expect(link).toMatch(/^#[0-9a-f]{6}$/);
+    expect(link).not.toBe('#f43f5e'); // this rose is below 4.5:1 on ayu-light: darkened as text
+    expect(root.style.getPropertyValue('--shadow-focus')).toBe(
+      `0 0 0 2px var(--color-canvas), 0 0 0 4px ${ring}`,
+    );
     expect(root.style.getPropertyValue('--color-accent-foreground')).toBe('');
   });
 

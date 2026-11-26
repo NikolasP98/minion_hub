@@ -337,7 +337,7 @@
     transition: border-color var(--duration-fast);
   }
   .prompt-input:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   .prompt-input::placeholder {
     color: var(--color-muted);

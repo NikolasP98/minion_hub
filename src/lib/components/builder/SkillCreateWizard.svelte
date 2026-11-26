@@ -167,7 +167,7 @@
     transition: border-color var(--duration-fast);
   }
   .desc-input:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   .desc-input::placeholder {
     color: var(--color-muted);

@@ -252,7 +252,7 @@
           bind:value={bugReporter.comment}
           placeholder={m.bug_commentPlaceholder()}
           rows={3}
-          class="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg text-foreground placeholder:text-muted-strong focus:outline-none focus:border-accent/50 resize-none"
+          class="w-full px-3 py-2 text-sm bg-bg border border-border rounded-lg text-foreground placeholder:text-muted-strong focus:outline-none focus:border-focus-ring resize-none"
         ></textarea>
       </div>
     </div>

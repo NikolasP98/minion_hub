@@ -1440,7 +1440,6 @@
   .composer-modes :global(button:hover),
   .composer-modes :global(button:focus-visible) {
     color: var(--color-foreground);
-    outline: none;
   }
   .composer-modes :global(button.active) {
     border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));

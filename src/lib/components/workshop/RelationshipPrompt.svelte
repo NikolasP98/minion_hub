@@ -68,7 +68,7 @@
       type="text"
       aria-labelledby={titleId}
       placeholder={m.workshop_linkPlaceholder()}
-      class="mb-2 w-full rounded border border-border bg-bg3 px-2 py-1 font-mono text-xs text-foreground outline-none focus:border-accent"
+      class="mb-2 w-full rounded border border-border bg-bg3 px-2 py-1 font-mono text-xs text-foreground outline-none focus:border-focus-ring"
       onkeydown={handleKeydown}
     />
 

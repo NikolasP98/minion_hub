@@ -421,7 +421,7 @@
   }
 
   .search-input:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
 
   .search-input::placeholder {

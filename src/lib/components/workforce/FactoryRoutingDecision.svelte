@@ -391,7 +391,7 @@
   input:focus,
   :global(.repository-select):focus,
   textarea:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   :global(.repository-select):disabled {
     cursor: not-allowed;

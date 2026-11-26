@@ -246,7 +246,7 @@
   }
   nav a:hover,
   nav a:focus-visible {
-    border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+    border-color: color-mix(in srgb, var(--color-focus-ring) 55%, var(--color-border));
     color: var(--color-foreground);
     outline: none;
   }
