@@ -176,10 +176,20 @@ describe('SessionKanban on BoardView (spec 146)', () => {
     opener.focus();
     await fireEvent.keyDown(opener, { key: 'Enter' });
     await settle();
-    // The shared Dropdown leaves its items in the Tab order (no tabindex="-1"), so an open
-    // menu has five tab stops. That is hub-wide Dropdown debt, logged for the widget slice
-    // (TODO(handoff) in Dropdown.svelte); every other menu rule is asserted here.
-    await assertPattern(menuEl()!, 'menu', { opener, skip: ['one-tab-stop'] });
+    await assertPattern(menuEl()!, 'menu', { opener });
+  });
+
+  it('Tab closes the "Move to…" menu instead of doing nothing (spec 152)', async () => {
+    const { trigger } = await mount();
+    const opener = trigger('t1');
+    opener.focus();
+    await fireEvent.keyDown(opener, { key: 'Enter' });
+    await settle();
+    expect(menuEl()).not.toBeNull();
+    await fireEvent.keyDown(menuEl()!, { key: 'Tab' });
+    await settle();
+    expect(menuEl()).toBeNull();
+    expect(document.activeElement).toBe(opener);
   });
 
   it('keeps the existing text for a session without tasks', async () => {

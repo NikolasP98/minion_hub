@@ -76,6 +76,15 @@
   // while OPEN, not while mounted — the positioner below is always in the DOM
   // and only `hidden` when closed.
   let positionerEl = $state<HTMLElement | null>(null);
+  let triggerEl = $state<HTMLElement | null>(null);
+
+  /** Tab leaves the menu: it closes and focus continues from the trigger, in either
+   *  direction. (The menu is portalled to the end of the page, so Tab had nowhere to go.) */
+  function leaveOnTab(e: KeyboardEvent) {
+    if (e.key !== 'Tab') return;
+    triggerEl?.focus();
+    api.setOpen(false);
+  }
   $effect(() => {
     if (!api.open || !positionerEl) return;
     return registerLayer(positionerEl);
@@ -83,6 +92,7 @@
 </script>
 
 <button
+  bind:this={triggerEl}
   {...api.getTriggerProps()}
   class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-[var(--radius-md)]"
 >
@@ -103,16 +113,15 @@
 >
   <div
     {...api.getContentProps()}
+    onkeydowncapture={leaveOnTab}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"
   >
     {#each items as it (it.value)}
       {#if it.divider}
         <div {...api.getSeparatorProps()} class="my-1 h-px bg-[var(--hairline)]"></div>
       {:else}
-        <!-- TODO(handoff): items stay in the Tab order (no tabindex="-1"), so an open menu has
-             one tab stop per item instead of one for the menu (APG menu pattern; found by
-             assertPattern in SessionKanban.mounted.test.ts). Hub-wide: fix with the widget
-             slice of meta proposals/2026-11-20-hub-accessibility-program.md. -->
+        <!-- tabindex -1: the menu is ONE tab stop; Zag moves the highlight with
+             aria-activedescendant while focus stays on the menu itself. -->
         <svelte:element
           this={it.href ? 'a' : 'button'}
           href={it.href}
@@ -122,6 +131,7 @@
             disabled: it.disabled,
             closeOnSelect: it.closeOnSelect,
           })}
+          tabindex={-1}
           class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-sm text-left no-underline bg-transparent border-none cursor-pointer outline-none transition-colors
             data-[highlighted]:bg-foreground/[0.06]
             data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed
