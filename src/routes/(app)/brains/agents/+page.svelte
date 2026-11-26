@@ -108,7 +108,11 @@
   {/if}
 {/snippet}
 <PageShell archetype="collection" scroll="none">
-  <PageHeader documentTitle={false} title={m.brains_nav_agents()} subtitle={m.brains_agents_page_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    title={m.brains_nav_agents()}
+    subtitle={m.brains_agents_page_subtitle()}
+  >
     {#snippet leading()}
       <Bot size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

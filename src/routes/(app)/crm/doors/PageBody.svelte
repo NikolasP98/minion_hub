@@ -259,7 +259,12 @@
 {/snippet}
 
 <PageShell archetype="collection" scroll="none" labelledBy="crm-doors-title">
-  <PageHeader documentTitle={false} titleId="crm-doors-title" title={m.doors_title()} subtitle={m.doors_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    titleId="crm-doors-title"
+    title={m.doors_title()}
+    subtitle={m.doors_subtitle()}
+  >
     {#snippet leading()}
       <DoorOpen size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

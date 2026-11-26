@@ -1224,7 +1224,11 @@
     : 'pos-appointments-surface'}
 >
   {#if !compactCalendar}
-    <PageHeader documentTitle={false} titleId="pos-appointments-title" title={m.pos_nav_appointments()}>
+    <PageHeader
+      documentTitle={false}
+      titleId="pos-appointments-title"
+      title={m.pos_nav_appointments()}
+    >
       {#snippet leading()}
         <CalendarDays size={iconSizes.md} class="text-accent shrink-0" />
       {/snippet}

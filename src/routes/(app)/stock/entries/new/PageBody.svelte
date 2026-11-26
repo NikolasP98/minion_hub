@@ -675,7 +675,11 @@
 <svelte:head><title>{m.stock_new_entry_title()} — {m.nav_stock()}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader documentTitle={false} title={m.stock_new_entry_title()} subtitle={type ? typeLabel(type) : undefined}>
+  <PageHeader
+    documentTitle={false}
+    title={m.stock_new_entry_title()}
+    subtitle={type ? typeLabel(type) : undefined}
+  >
     {#snippet leading()}<ArrowLeftRight
         size={iconSizes.md}
         class="text-accent shrink-0"

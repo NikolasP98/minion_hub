@@ -305,7 +305,8 @@
 <svelte:head><title>{m.pos_settings_title()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="region" labelledBy="pos-settings-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="pos-settings-title"
     title={m.pos_settings_title()}
     subtitle={m.pos_settings_subtitle()}

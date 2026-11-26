@@ -77,7 +77,8 @@
 <svelte:head><title>{m.cloud_settings_title()} · {getBranding().name} hub</title></svelte:head>
 
 <PageShell archetype="form" scroll="none" labelledBy="cloud-settings-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="cloud-settings-title"
     title={m.cloud_settings_title()}
     subtitle={m.cloud_settings_description()}

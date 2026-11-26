@@ -14,7 +14,11 @@
 <svelte:head><title>{m.sched_edit_booking()} · {m.nav_scheduling()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="page" labelledBy="scheduling-booking-edit-title">
-  <PageHeader documentTitle={false} titleId="scheduling-booking-edit-title" title={m.sched_edit_booking()}>
+  <PageHeader
+    documentTitle={false}
+    titleId="scheduling-booking-edit-title"
+    title={m.sched_edit_booking()}
+  >
     {#snippet leading()}
       <CalendarClock size={iconSizes.md} class="text-accent shrink-0" />
     {/snippet}

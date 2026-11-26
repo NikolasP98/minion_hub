@@ -101,7 +101,8 @@
 <svelte:head><title>{committed.title} · {m.doors_title()}</title></svelte:head>
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="crm-door-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="crm-door-title"
     title={committed.title}
     subtitle={doorKindLabel(data.door.kind)}

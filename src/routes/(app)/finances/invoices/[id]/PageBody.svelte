@@ -393,7 +393,8 @@
 >
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="finances-invoices-id-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="finances-invoices-id-title"
     title={`${m.fin_invoice_detail_title()} ${inv.number ?? inv.documentId ?? inv.id}`}
     subtitle={m.fin_invoice_detail_subtitle()}

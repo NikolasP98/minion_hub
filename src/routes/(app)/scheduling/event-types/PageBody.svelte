@@ -124,7 +124,8 @@
   labelledBy="scheduling-event-types-title"
   class="scheduling-event-types-surface"
 >
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="scheduling-event-types-title"
     title={m.sched_eventTypes_title()}
     subtitle={m.sched_dashboard_subtitle()}

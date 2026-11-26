@@ -446,7 +446,8 @@
 {/snippet}
 
 <PageShell archetype="dashboard" scroll="region" labelledBy="finances-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="finances-title"
     title={m.nav_finance()}
     subtitle={m.fin_dashboard_subtitle()}

@@ -142,7 +142,8 @@
   labelledBy="scheduling-links-title"
   class="scheduling-links-surface"
 >
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="scheduling-links-title"
     title={m.sched_links_title()}
     subtitle={m.sched_dashboard_subtitle()}

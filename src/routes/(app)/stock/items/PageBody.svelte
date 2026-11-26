@@ -225,7 +225,8 @@
 <svelte:head><title>{m.stock_items_title()} — {m.nav_stock()}</title></svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="stock-items-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="stock-items-title"
     title={m.stock_items_title()}
     subtitle={m.stock_items_subtitle()}

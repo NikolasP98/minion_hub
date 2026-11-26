@@ -69,7 +69,8 @@
 <svelte:head><title>{o.humanId ?? 'Order'} — Sales</title></svelte:head>
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="sales-id-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="sales-id-title"
     title={o.description ?? 'Sales order'}
     subtitle={`${o.humanId ?? 'Order'} · created ${relativeTime(o.createdAt)}`}

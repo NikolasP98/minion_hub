@@ -219,7 +219,11 @@
 <svelte:head><title>{m.settings_tables_title()} — {m.nav_settings()}</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader documentTitle={false} title={m.settings_tables_title()} subtitle={m.settings_tables_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    title={m.settings_tables_title()}
+    subtitle={m.settings_tables_subtitle()}
+  >
     {#snippet leading()}<span class="lead-ico"><Table2 /></span>{/snippet}
   </PageHeader>
   <div class="flex-1 min-h-0 p-4 tables-page">

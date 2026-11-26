@@ -47,7 +47,12 @@
 </svelte:head>
 
 <PageShell archetype="collection" scroll="region" labelledBy="team-title">
-  <PageHeader documentTitle={false} titleId="team-title" title={TITLES[tab]()} subtitle={m.team_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    titleId="team-title"
+    title={TITLES[tab]()}
+    subtitle={m.team_subtitle()}
+  >
     {#snippet leading()}
       <Users size={iconSizes.md} class="text-accent shrink-0" aria-hidden="true" />
     {/snippet}

@@ -16,7 +16,8 @@
 <svelte:head><title>{m.record_locks_title()} — {m.nav_settings()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="page" labelledBy="settings-record-locks-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="settings-record-locks-title"
     title={m.record_locks_title()}
     subtitle={m.record_locks_subtitle()}

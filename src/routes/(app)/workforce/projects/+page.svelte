@@ -118,7 +118,8 @@
 <svelte:head><title>Projects</title></svelte:head>
 
 <div class="flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     title="Projects"
     subtitle="Where people and agents do the work — tasks, milestones, timesheets, execution"
   />

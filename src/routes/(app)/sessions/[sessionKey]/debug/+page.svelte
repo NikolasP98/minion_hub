@@ -89,7 +89,8 @@
 </svelte:head>
 
 <PageShell archetype="workspace" scroll="page" labelledBy="session-debug-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="session-debug-title"
     title={m.debug_steppedBuildTitle()}
     subtitle={sessionKey || undefined}

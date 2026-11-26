@@ -325,7 +325,11 @@
 {/snippet}
 
 <div class="stock-entries-page flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader documentTitle={false} title={m.stock_entries_title()} subtitle={m.stock_entries_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    title={m.stock_entries_title()}
+    subtitle={m.stock_entries_subtitle()}
+  >
     {#snippet leading()}<ArrowLeftRight
         size={iconSizes.md}
         class="text-accent shrink-0"

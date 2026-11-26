@@ -193,7 +193,11 @@
 <svelte:head><title>{m.ads_nav_campaigns()} · {m.nav_ads()}</title></svelte:head>
 
 <div class="social-campaigns-page flex flex-col h-full min-h-0 flex-1 min-w-0">
-  <PageHeader documentTitle={false} title={m.ads_nav_campaigns()} subtitle={m.ads_campaigns_subtitle()}>
+  <PageHeader
+    documentTitle={false}
+    title={m.ads_nav_campaigns()}
+    subtitle={m.ads_campaigns_subtitle()}
+  >
     {#snippet leading()}<Target size={iconSizes.md} class="text-accent shrink-0" />{/snippet}
   </PageHeader>
 

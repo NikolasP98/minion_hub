@@ -254,7 +254,8 @@
   labelledBy="crm-settings-title"
   class="crm-settings-surface"
 >
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="crm-settings-title"
     title={m.crm_settings_title()}
     subtitle={m.crm_settings_subtitle()}

@@ -81,7 +81,8 @@
 <svelte:head><title>{i.subject} — Support</title></svelte:head>
 
 <PageShell archetype="record-detail" scroll="region" labelledBy="support-id-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="support-id-title"
     title={i.subject}
     subtitle={`${i.humanId ?? 'Ticket'} · opened ${relativeTime(i.createdAt)}`}

@@ -203,7 +203,8 @@
 <svelte:head><title>{m.sched_nav_settings()} · {m.nav_scheduling()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="region" labelledBy="scheduling-settings-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="scheduling-settings-title"
     title={m.sched_nav_settings()}
     subtitle={m.nav_scheduling()}

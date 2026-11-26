@@ -19,7 +19,8 @@
 <svelte:head><title>{m.pos_appt_new()} · {m.nav_scheduling()}</title></svelte:head>
 
 <PageShell archetype="form" scroll="page" labelledBy="scheduling-booking-new-title">
-  <PageHeader documentTitle={false}
+  <PageHeader
+    documentTitle={false}
     titleId="scheduling-booking-new-title"
     title={m.pos_appt_new()}
     subtitle={data.contact?.name ?? undefined}
