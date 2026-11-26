@@ -1758,7 +1758,12 @@
               </div>
               <div class="relative overflow-hidden">
                 <ScanLine speed={12} opacity={0.018} />
-                <Chart options={sankeyOptions} height="380px" onItemClick={handleSankeyClick} />
+                <Chart
+                  options={sankeyOptions}
+                  height="380px"
+                  onItemClick={handleSankeyClick}
+                  ariaLabel={m.reliability_eventFlow()}
+                />
               </div>
             </div>
 
@@ -1798,6 +1803,7 @@
                     options={topEventsOptions}
                     height="300px"
                     onItemClick={handleTopEventClick}
+                    ariaLabel={m.reliability_topEvents()}
                   />
                 </div>
               </div>
@@ -1816,6 +1822,7 @@
                     options={severityOptions}
                     height="300px"
                     onItemClick={handleSeverityClick}
+                    ariaLabel={m.reliability_severityDistribution()}
                   />
                 </div>
               </div>

@@ -19,7 +19,7 @@
     component: Sparkline,
     tags: ['autodocs'],
     argTypes: { glow: { control: 'boolean' }, color: { control: 'text' } },
-    args: { bins, glow: false },
+    args: { bins, glow: false, ariaLabel: 'Activity trend' },
   });
 </script>
 

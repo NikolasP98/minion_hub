@@ -44,6 +44,9 @@
 
   // Cost (USD) vs raw token-count view for every breakdown.
   let metric = $state<'cost' | 'tokens'>('cost');
+  const metricLabel = $derived(
+    metric === 'cost' ? m.chart_name_llm_metric_cost() : m.chart_name_llm_metric_tokens(),
+  );
 
   // ── Parsing ──────────────────────────────────────────────────────────────
   function parseMetadata(raw: unknown): Record<string, unknown> | null {
@@ -593,7 +596,12 @@
               >
             </div>
             {#if byModel.length > 0}
-              <Chart options={modelChart} height="200px" onItemClick={onBarClick('model')} />
+              <Chart
+                options={modelChart}
+                height="200px"
+                onItemClick={onBarClick('model')}
+                ariaLabel={m.chart_name_llm_by_model({ metric: metricLabel })}
+              />
             {:else}
               <div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">
                 No data
@@ -609,7 +617,12 @@
               >
             </div>
             {#if byChannel.length > 0}
-              <Chart options={channelChart} height="200px" onItemClick={onBarClick('channel')} />
+              <Chart
+                options={channelChart}
+                height="200px"
+                onItemClick={onBarClick('channel')}
+                ariaLabel={m.chart_name_llm_by_channel({ metric: metricLabel })}
+              />
             {:else}
               <div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">
                 No data
@@ -629,6 +642,7 @@
                 options={providerTokenChart}
                 height="200px"
                 onItemClick={onBarClick('provider')}
+                ariaLabel={m.chart_name_llm_by_provider()}
               />
             {:else}
               <div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">
@@ -645,7 +659,12 @@
               >
             </div>
             {#if bySource.length > 0}
-              <Chart options={sourceChart} height="200px" onItemClick={onBarClick('source')} />
+              <Chart
+                options={sourceChart}
+                height="200px"
+                onItemClick={onBarClick('source')}
+                ariaLabel={m.chart_name_llm_by_trigger({ metric: metricLabel })}
+              />
             {:else}
               <div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">
                 No data
@@ -661,7 +680,12 @@
               >
             </div>
             {#if byAgent.length > 0}
-              <Chart options={agentChart} height="200px" onItemClick={onBarClick('agent')} />
+              <Chart
+                options={agentChart}
+                height="200px"
+                onItemClick={onBarClick('agent')}
+                ariaLabel={m.chart_name_llm_by_agent({ metric: metricLabel })}
+              />
             {:else}
               <div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">
                 No data
@@ -677,7 +701,11 @@
               >
             </div>
             {#if overTime.points.length > 0}
-              <Chart options={overTimeChart} height="200px" />
+              <Chart
+                options={overTimeChart}
+                height="200px"
+                ariaLabel={m.chart_name_llm_over_time({ metric: metricLabel })}
+              />
             {:else}
               <div class="flex items-center justify-center h-[200px] text-muted-strong text-xs">
                 No data

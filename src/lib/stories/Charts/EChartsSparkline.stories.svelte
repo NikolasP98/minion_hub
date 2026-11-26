@@ -22,7 +22,7 @@
       chartStyle: { control: 'select', options: ['area', 'bar', 'stepped'] },
       glow: { control: 'boolean' },
     },
-    args: { bins, color: accent, glow: false, chartStyle: 'area' },
+    args: { bins, color: accent, glow: false, chartStyle: 'area', ariaLabel: 'Activity trend' },
   });
 </script>
 
