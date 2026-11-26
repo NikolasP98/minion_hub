@@ -8,6 +8,7 @@ const svc = vi.hoisted(() => ({
   listPages: vi.fn(),
   removeElement: vi.fn(),
   upsertElement: vi.fn(),
+  setListens: vi.fn(),
 }));
 vi.mock('$server/sandbox/sandbox.service', () => ({ ...svc, LIBRARY_PAGE: 'library' }));
 const auth = vi.hoisted(() => ({ can: vi.fn(), caps: vi.fn(), orgs: vi.fn() }));
@@ -45,7 +46,7 @@ const stored = {
 beforeEach(() => vi.clearAllMocks());
 
 describe('sandbox tools', () => {
-  it('exposes exactly the ten named tools', () => {
+  it('exposes exactly the eleven named tools', () => {
     expect(sandboxTools.map((t) => t.name)).toEqual([
       'sandbox_datasets',
       'sandbox_pages',
@@ -57,6 +58,7 @@ describe('sandbox tools', () => {
       'sandbox_block_chart',
       'sandbox_block_table',
       'sandbox_block_list',
+      'sandbox_block_filter',
     ]);
   });
 
@@ -143,6 +145,91 @@ describe('sandbox tools', () => {
     expect(input).not.toHaveProperty('page');
   });
 
+  it('a filter is stored as a validated filter spec with the key id and no grid size', async () => {
+    svc.upsertElement.mockResolvedValue(stored);
+    await call('sandbox_block_filter', {
+      title: 'Period',
+      var: 'period',
+      control: 'date_range',
+      page: 'ventas',
+    });
+    const input = svc.upsertElement.mock.lastCall![1];
+    expect(input).toMatchObject({ page: 'ventas', title: 'Period', writtenByKey: 'key-1' });
+    expect(input.spec).toEqual({ v: 1, type: 'filter', var: 'period', control: 'date_range' });
+    expect(input).not.toHaveProperty('w');
+    await expect(
+      call('sandbox_block_filter', { title: 'x', var: 'Bad', control: 'date_range' }),
+    ).rejects.toBeInstanceOf(ToolFailure);
+    await expect(
+      call('sandbox_block_filter', {
+        title: 'x',
+        var: 'who',
+        control: 'select',
+        options: { dataset: 'pos.tickets', col: 'customer_name' },
+      }),
+    ).rejects.toBeInstanceOf(SandboxQueryError);
+  });
+
+  it('a block accepts listens and the catalogue teaches filters and one wired page', async () => {
+    svc.upsertElement.mockResolvedValue(stored);
+    const kpi = {
+      title: 'S',
+      source: { dataset: 'pos.tickets', metric: { fn: 'count', col: '*' } },
+      listens: [{ var: 'period', col: 'submitted_at' }],
+      page: 'ventas',
+    };
+    await call('sandbox_block_kpi', kpi);
+    expect(svc.upsertElement.mock.lastCall![1].spec.listens).toEqual(kpi.listens);
+    const catalogue = (await call('sandbox_blocks')) as Record<string, unknown>;
+    expect(catalogue).toHaveProperty('filter');
+    expect(catalogue).toHaveProperty('wiredPage');
+  });
+
+  it('write with listens replaces only the connections through the locked write, with the key id', async () => {
+    const listens = [{ var: 'period', col: 'submitted_at' }];
+    svc.setListens.mockResolvedValue(stored);
+    await call('sandbox_element_write', { id: 'e1', listens });
+    expect(svc.setListens).toHaveBeenCalledWith(expect.anything(), 'e1', listens, 'key-1');
+    expect(svc.upsertElement).not.toHaveBeenCalled();
+
+    svc.upsertElement.mockResolvedValue(stored);
+    await call('sandbox_element_write', { id: 'e1', title: 'New', listens });
+    expect(svc.upsertElement).toHaveBeenCalledTimes(1);
+    expect(svc.setListens).toHaveBeenCalledTimes(2);
+
+    await expect(call('sandbox_element_write', { listens })).rejects.toBeInstanceOf(ToolFailure);
+    await expect(
+      call('sandbox_element_write', { id: 'e1', listens: [{ var: 'Bad', col: 'x' }] }),
+    ).rejects.toBeInstanceOf(ToolFailure);
+  });
+
+  it('elements returns the wiring report with every connection problem', async () => {
+    svc.listElements.mockResolvedValue([
+      { ...stored, id: 'f1', spec: { v: 1, type: 'filter', var: 'period', control: 'date_range' } },
+      {
+        ...stored,
+        id: 'k1',
+        position: 1,
+        spec: {
+          v: 1,
+          type: 'kpi',
+          source: { dataset: 'pos.tickets', metric: { fn: 'count', col: '*' } },
+          listens: [
+            { var: 'period', col: 'status' },
+            { var: 'gone', col: 'status' },
+          ],
+        },
+      },
+    ]);
+    const r = (await call('sandbox_elements')) as {
+      wiring: { blocks: Record<string, { problems: Array<{ code: string }> }> };
+    };
+    expect(r.wiring.blocks.k1.problems.map((p) => p.code)).toEqual([
+      'kind_mismatch',
+      'no_publisher',
+    ]);
+  });
+
   it('write refuses bad arguments before the service', async () => {
     for (const args of [
       { page: 'library', title: 'x' },
@@ -192,7 +279,7 @@ describe('signed-in callers (spec 143)', () => {
     const user = sandboxToolsFor('user').map((t) => t.name);
     expect(user[0]).toBe('whoami');
     expect(user.at(-1)).toBe('sandbox_query');
-    expect(user).toHaveLength(12);
+    expect(user).toHaveLength(13);
     expect(sandboxToolsFor('key').map((t) => t.name)).not.toContain('whoami');
     expect(sandboxToolsFor('key').map((t) => t.name)).not.toContain('sandbox_query');
   });

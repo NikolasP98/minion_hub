@@ -3,12 +3,10 @@
   import { LayoutDashboard } from 'lucide-svelte';
   import { iconSizes, PageHeader, EmptyState } from '$lib/components/ui';
   import { PageBody, PageShell } from '$lib/components/ui/foundations';
-  import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
-  import type { GridLayout } from '$lib/components/dashboard/editable-grid';
-  import ElementFrame from '$lib/components/sandbox/ElementFrame.svelte';
+  import SyncedPage from '$lib/components/sandbox/SyncedPage.svelte';
   import LibraryPanel from '$lib/components/sandbox/LibraryPanel.svelte';
   import { reorder } from '$lib/components/dashboard/editable-grid';
-  import { addToPage, DRAG_MIME, type ComponentCopy } from '$lib/sandbox/library';
+  import { addToPage, type ComponentCopy } from '$lib/sandbox/library';
   import { createSandboxHost, type SandboxElementRecord } from '$lib/sandbox/host.svelte';
   import { byPosition, canvasSummary, layoutUpdates } from '$lib/sandbox/canvas';
   import { createPageContextLease } from '$lib/assistant/page-context';
@@ -21,24 +19,18 @@
   // write); the server load is only the first paint.
   // svelte-ignore state_referenced_locally
   const pageLease = createPageContextLease(
-    canvasSummary((data.elements ?? []) as SandboxElementRecord[]),
+    canvasSummary((data.elements ?? []) as SandboxElementRecord[], data.wiring ?? null),
   );
   // svelte-ignore state_referenced_locally
-  const host = createSandboxHost((data.elements ?? []) as SandboxElementRecord[], {
-    begin: () => pageLease.invalidate(),
-    publish: (elements, capability) => pageLease.update(canvasSummary(elements), capability),
-  });
-
-  // The element rows ARE the layout (spec 013 D2): the grid runs controlled and
-  // every reorder/resize becomes the minimal PATCH set, debounced so a drag
-  // across several cells is one write batch.
-  const gridItems = $derived(host.elements.map((e) => ({ id: e.id, w: e.w, h: e.h })));
-  const byId = $derived(new Map(host.elements.map((e) => [e.id, e])));
-  let layoutTimer: ReturnType<typeof setTimeout> | undefined;
-  function onLayout(layout: GridLayout) {
-    clearTimeout(layoutTimer);
-    layoutTimer = setTimeout(() => void host.arrange(layoutUpdates(host.elements, layout)), 300);
-  }
+  const host = createSandboxHost(
+    (data.elements ?? []) as SandboxElementRecord[],
+    {
+      begin: () => pageLease.invalidate(),
+      publish: (elements, wiring, capability) =>
+        pageLease.update(canvasSummary(elements, wiring), capability),
+    },
+    data.wiring ?? null,
+  );
 
   // Edit mode (bound from the grid) shows the component library; a component
   // dropped on a cell is inserted before it, dropped elsewhere it is appended.
@@ -47,25 +39,15 @@
     const created = await addToPage(c);
     await host.load();
     if (!beforeId || beforeId === created.id) return;
+    // Filters live in the filter bar, not the grid: ordering only sees grid elements.
+    const grid = host.elements.filter((e) => e.spec?.type !== 'filter');
     const order = reorder(
-      byPosition(host.elements).map((e) => e.id),
+      byPosition(grid).map((e) => e.id),
       created.id,
       beforeId,
     );
-    const span = Object.fromEntries(host.elements.map((e) => [e.id, { w: e.w, h: e.h }]));
+    const span = Object.fromEntries(grid.map((e) => [e.id, { w: e.w, h: e.h }]));
     await host.arrange(layoutUpdates(host.elements, { order, span }));
-  }
-  function onDragOver(e: DragEvent) {
-    if (!e.dataTransfer?.types.includes(DRAG_MIME)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  }
-  function onDrop(e: DragEvent) {
-    const raw = e.dataTransfer?.getData(DRAG_MIME);
-    if (!raw) return;
-    e.preventDefault();
-    const cell = (e.target as HTMLElement | null)?.closest('[data-grid-id]');
-    void addComponent(JSON.parse(raw) as ComponentCopy, cell?.getAttribute('data-grid-id') ?? null);
   }
 
   // The agent's canvas map (model-only); cleared when the page unmounts.
@@ -85,14 +67,18 @@
               registerSandboxTools?: (opts: {
                 signal: AbortSignal;
                 acknowledge: typeof host.load;
+                isFilter: (id: string) => boolean;
               }) => void;
             }
-          ).registerSandboxTools?.({ signal: ac.signal, acknowledge: host.load }),
+          ).registerSandboxTools?.({
+            signal: ac.signal,
+            acknowledge: host.load,
+            isFilter: (id) => host.elements.some((e) => e.id === id && e.spec?.type === 'filter'),
+          }),
         )
         .catch(() => {});
     }
     return () => {
-      clearTimeout(layoutTimer);
       ac.abort();
       detach();
       pageLease.dispose();
@@ -122,21 +108,7 @@
       {#if editing}
         <LibraryPanel onadd={(c) => void addComponent(c)} />
       {/if}
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div class="board" ondragover={onDragOver} ondrop={onDrop}>
-        <EditableGrid
-          id="sandbox"
-          items={gridItems}
-          onchange={onLayout}
-          rowHeight={220}
-          bind:editing
-        >
-          {#snippet cell(id)}
-            {@const element = byId.get(id)}
-            {#if element}<ElementFrame {element} {host} />{/if}
-          {/snippet}
-        </EditableGrid>
-      </div>
+      <SyncedPage {host} bind:editing onadd={(c, beforeId) => void addComponent(c, beforeId)} />
     {/if}
   </PageBody>
 </PageShell>

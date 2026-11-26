@@ -9,39 +9,17 @@
  * filters can be created in any order. A connection with a problem is ignored
  * until fixed (it is simply absent from `bindings`).
  */
-import type { FilterControl, BlockSpec } from '$lib/sandbox/blocks/schema';
+import type { BlockSpec } from '$lib/sandbox/blocks/schema';
 import type { ColumnType, Dataset } from './datasets';
+import type { Publisher, WiringReport, BlockWiring } from '$lib/sandbox/wiring-types';
 
-export type WiringProblemCode = 'no_publisher' | 'kind_mismatch' | 'conflicting_publishers';
-
-export interface WiringProblem {
-  var: string;
-  code: WiringProblemCode;
-  detail: string;
-}
-
-export interface Publisher {
-  var: string;
-  control: FilterControl;
-  /** Column type the value fits; null when a picker's choices column cannot be resolved. */
-  colType: ColumnType | null;
-  elementId: string;
-  position: number;
-}
-
-export interface BlockWiring {
-  /** Connections that work: the page applies exactly these. */
-  bindings: Array<{ var: string; col: string }>;
-  problems: WiringProblem[];
-}
-
-export interface WiringReport {
-  publishers: Publisher[];
-  /** Only data blocks that have connections. */
-  blocks: Record<string, BlockWiring>;
-  /** Same value name, same control and type: valid; the lowest position supplies the default. */
-  duplicates: Array<{ var: string; elementIds: string[] }>;
-}
+export type {
+  BlockWiring,
+  Publisher,
+  WiringProblem,
+  WiringProblemCode,
+  WiringReport,
+} from '$lib/sandbox/wiring-types';
 
 export interface WiringElement {
   id: string;
@@ -64,7 +42,7 @@ export function pageWiring(
   const publishers: Publisher[] = [];
   for (const e of [...elements].sort((a, b) => a.position - b.position)) {
     if (e.spec?.type !== 'filter') continue;
-    const { var: name, control, options } = e.spec;
+    const { var: name, control, options, default: initial } = e.spec;
     publishers.push({
       var: name,
       control,
@@ -76,6 +54,7 @@ export function pageWiring(
             : null,
       elementId: e.id,
       position: e.position,
+      ...(initial ? { default: initial } : {}),
     });
   }
 

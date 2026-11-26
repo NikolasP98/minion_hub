@@ -5,7 +5,8 @@
  * rows, so a drag/resize becomes the minimal set of PATCHes.
  */
 import type { GridLayout } from '$lib/components/dashboard/editable-grid';
-import type { BlockSpec } from './blocks/schema';
+import type { BlockSpec, Listens } from './blocks/schema';
+import type { WiringProblem, WiringReport } from './wiring-types';
 
 export interface ElementLike {
   id: string;
@@ -28,6 +29,10 @@ export interface ElementDescription {
   datasets: string[];
   /** Block kind (+ chart preset) for a block; ECharts series type inferred for custom JS. */
   chart: string | null;
+  /** Connections to page filters (spec 150), as saved. */
+  listens: Listens;
+  /** Wiring problems the server reported for this block's connections. */
+  problems: WiringProblem[];
 }
 
 // TODO(handoff): regex inference over CUSTOM element JS only — a custom element
@@ -37,7 +42,7 @@ const DATASET_RE = /dataset\s*:\s*['"`]([\w.]+)['"`]/g;
 const CHART_RE =
   /type\s*:\s*['"`](bar|line|pie|scatter|heatmap|radar|gauge|funnel|treemap|sunburst|sankey|boxplot|candlestick)['"`]/;
 
-export function describeElement(e: ElementLike): ElementDescription {
+export function describeElement(e: ElementLike, wiring?: WiringReport | null): ElementDescription {
   if (e.spec?.type === 'filter') {
     return {
       id: e.id,
@@ -47,6 +52,8 @@ export function describeElement(e: ElementLike): ElementDescription {
       position: e.position,
       datasets: e.spec.options ? [e.spec.options.dataset] : [],
       chart: `filter:${e.spec.control}`,
+      listens: [],
+      problems: [],
     };
   }
   if (e.spec) {
@@ -58,6 +65,8 @@ export function describeElement(e: ElementLike): ElementDescription {
       position: e.position,
       datasets: [e.spec.source.dataset],
       chart: e.spec.type === 'chart' ? `${e.spec.type}:${e.spec.preset}` : e.spec.type,
+      listens: e.spec.listens ?? [],
+      problems: wiring?.blocks[e.id]?.problems ?? [],
     };
   }
   const js = String(e.js ?? '');
@@ -70,6 +79,8 @@ export function describeElement(e: ElementLike): ElementDescription {
     position: e.position,
     datasets,
     chart: CHART_RE.exec(js)?.[1] ?? null,
+    listens: [],
+    problems: [],
   };
 }
 
@@ -77,18 +88,67 @@ export function byPosition<T extends ElementLike>(elements: readonly T[]): T[] {
   return [...elements].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));
 }
 
-/** Model-only canvas map: index, full id, title, size, datasets, chart type. */
-export function canvasSummary(elements: readonly ElementLike[], cols = 4): string {
-  if (elements.length === 0) return `Canvas: empty (${cols} columns).`;
-  const rows = byPosition(elements).map((e, i) => {
-    const d = describeElement(e);
+const isFilter = (e: ElementLike) => e.spec?.type === 'filter';
+
+function describeFilter(e: ElementLike): string {
+  const spec = e.spec;
+  if (spec?.type !== 'filter') return '';
+  const from = spec.options ? ` · choices from ${spec.options.dataset}.${spec.options.col}` : '';
+  const fallback = spec.default
+    ? spec.default.kind === 'date'
+      ? spec.default.range
+      : spec.default.kind === 'select'
+        ? String(spec.default.value)
+        : spec.default.values.join(', ')
+    : 'none';
+  return `- [${e.id}] "${e.title}" ${spec.control} · value name "${spec.var}"${from} · default ${fallback}`;
+}
+
+/**
+ * Model-only canvas map: filters first (kind, value name, default), then one
+ * line per grid element — id, title, size, datasets, chart type — with each
+ * block's connections (`value name → column`) and the wiring problems the
+ * server reported for them (spec 150 FR-010).
+ */
+export function canvasSummary(
+  elements: readonly ElementLike[],
+  wiring?: WiringReport | null,
+  cols = 4,
+): string {
+  const filters = byPosition(elements.filter(isFilter));
+  const grid = elements.filter((e) => !isFilter(e));
+  const parts: string[] = [];
+  if (filters.length > 0) {
+    parts.push(
+      `Filters (${filters.length}, shown in the filter bar above the grid):\n` +
+        filters.map(describeFilter).join('\n'),
+    );
+    for (const dup of wiring?.duplicates ?? []) {
+      parts.push(
+        `Note: filters ${dup.elementIds.map((id) => `[${id}]`).join(', ')} share the value name "${dup.var}"; they set the same value.`,
+      );
+    }
+  }
+  if (grid.length === 0) {
+    parts.push(`Canvas: empty (${cols} columns).`);
+    return parts.join('\n');
+  }
+  const rows = byPosition(grid).map((e, i) => {
+    const d = describeElement(e, wiring);
     const data = d.datasets.length ? d.datasets.join(', ') : 'no query';
-    return `${i + 1}. [${d.id}] "${d.title}" ${d.w}x${d.h} · ${data}${d.chart ? ` · ${d.chart}` : ''}`;
+    const links = d.listens.length
+      ? ` · connected: ${d.listens.map((l) => `${l.var} → ${l.col}`).join(', ')}`
+      : '';
+    const issues = d.problems.length
+      ? ` · PROBLEMS: ${d.problems.map((p) => `${p.var} (${p.code}: ${p.detail})`).join('; ')}`
+      : '';
+    return `${i + 1}. [${d.id}] "${d.title}" ${d.w}x${d.h} · ${data}${d.chart ? ` · ${d.chart}` : ''}${links}${issues}`;
   });
-  return (
-    `Canvas (${cols} columns, ${elements.length} element${elements.length === 1 ? '' : 's'}, display order):\n` +
-    rows.join('\n')
+  parts.push(
+    `Canvas (${cols} columns, ${grid.length} element${grid.length === 1 ? '' : 's'}, display order):\n` +
+      rows.join('\n'),
   );
+  return parts.join('\n');
 }
 
 export interface LayoutUpdate {

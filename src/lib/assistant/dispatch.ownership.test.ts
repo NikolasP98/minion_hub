@@ -155,7 +155,8 @@ describe('actual live dispatch ownership', () => {
       disposers.push(lease.dispose);
       const host = createSandboxHost([], {
         begin: lease.invalidate,
-        publish: (elements, capability) => lease.update(JSON.stringify(elements), capability),
+        publish: (elements, _wiring, capability) =>
+          lease.update(JSON.stringify(elements), capability),
       });
       const ac = new AbortController();
       disposers.push(() => ac.abort());

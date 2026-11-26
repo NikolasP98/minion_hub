@@ -5,6 +5,8 @@ import { requireOrgCapability } from '$server/services/rbac.service';
 import { requireCoreCtx } from '$server/auth/core-ctx';
 import { listElements, upsertElement } from '$server/sandbox/sandbox.service';
 import { validateBlockSpec } from '$server/sandbox/blocks';
+import { DATASETS } from '$server/sandbox/datasets';
+import { pageWiring } from '$server/sandbox/wiring';
 import { parseSandboxBody, sandboxErrorResponse } from '../_errors';
 
 /**
@@ -31,7 +33,9 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   await requireOrgCapability(locals, 'settings', 'manage');
   const ctx = await requireCoreCtx(locals);
   const page = url.searchParams.get('page') || 'default';
-  return json({ elements: await listElements(ctx, page) });
+  const elements = await listElements(ctx, page);
+  // The wiring report is computed from the FULL registry, never the viewer's catalog (spec 150 R3).
+  return json({ elements, wiring: pageWiring(elements, DATASETS) });
 };
 
 /** POST /api/sandbox/elements */

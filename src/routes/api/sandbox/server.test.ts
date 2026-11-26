@@ -493,4 +493,213 @@ describe('element writes are admin-only', () => {
       'profile-1',
     ]);
   });
+
+  it('returns the wiring report with the list, computed from the full registry (spec 150)', async () => {
+    const id = (n: number) => `11111111-1111-4111-8111-11111111111${n}`;
+    const row = (n: number, position: number, spec: unknown) => ({
+      id: id(n),
+      page: 'default',
+      title: `E${n}`,
+      html: '',
+      css: '',
+      js: '',
+      spec,
+      w: 1,
+      h: 1,
+      position,
+      createdBy: 'profile-1',
+      updatedAt: '2026-11-25T00:00:00.000Z',
+    });
+    mocks.execute.mockResolvedValue([
+      row(1, 0, { v: 1, type: 'filter', var: 'period', control: 'date_range' }),
+      row(2, 1, {
+        v: 1,
+        type: 'kpi',
+        source: { dataset: 'pos.tickets', metric: { fn: 'count', col: '*' } },
+        format: 'number',
+        tone: 'accent',
+        listens: [
+          { var: 'period', col: 'submitted_at' },
+          { var: 'gone', col: 'status' },
+        ],
+      }),
+    ]);
+    const response = await elementsGet({
+      locals: ADMIN,
+      url: new URL('https://h.test/api/sandbox/elements'),
+    } as never);
+    const body = (await response.json()) as {
+      elements: unknown[];
+      wiring: { publishers: unknown[]; blocks: Record<string, unknown> };
+    };
+    expect(body.elements).toHaveLength(2);
+    expect(body.wiring.publishers).toHaveLength(1);
+    expect(body.wiring.blocks[id(2)]).toMatchObject({
+      bindings: [{ var: 'period', col: 'submitted_at' }],
+      problems: [{ var: 'gone', code: 'no_publisher' }],
+    });
+  });
+});
+
+describe('connections write (spec 150 FR-009)', () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const kpiSpec = {
+    v: 1,
+    type: 'kpi',
+    source: {
+      dataset: 'pos.tickets',
+      metric: { fn: 'sum', col: 'total' },
+      period: { col: 'submitted_at', range: 'this_month' },
+    },
+    format: 'money',
+    tone: 'accent',
+  };
+  const stored = (spec: unknown) => ({ spec });
+  const row = (spec: unknown) => ({
+    id,
+    page: 'default',
+    title: 'Sales',
+    html: '',
+    css: '',
+    js: '',
+    spec,
+    w: 1,
+    h: 1,
+    position: 0,
+    createdBy: 'profile-1',
+    updatedAt: '2026-11-25T00:00:00.000Z',
+  });
+  const patch = (body: unknown) =>
+    elementPatch(post(ADMIN, body, `/api/sandbox/elements/${id}`, { id }));
+  const listens = [{ var: 'period', col: 'submitted_at' }];
+
+  it('locks the row, validates the merged spec and writes only listens with updated_at', async () => {
+    mocks.execute
+      .mockResolvedValueOnce([stored(kpiSpec)])
+      .mockResolvedValueOnce([row({ ...kpiSpec, listens })]);
+    const response = await patch({ listens });
+    expect(response.status).toBe(200);
+    const [select, update] = statements();
+    expect(select.sql).toContain('select spec from sandbox_elements');
+    expect(select.sql).toContain('for update');
+    expect(update.sql).toContain("jsonb_set(spec, '{listens}'");
+    expect(update.sql).toContain('updated_at = now()');
+    expect(update.sql).toContain('written_by_key = null');
+    expect(update.params).toContain(JSON.stringify(listens));
+    await expect(response.json()).resolves.toMatchObject({
+      element: { spec: { listens } },
+    });
+  });
+
+  it('clears connections with an empty list', async () => {
+    mocks.execute
+      .mockResolvedValueOnce([stored({ ...kpiSpec, listens })])
+      .mockResolvedValueOnce([row(kpiSpec)]);
+    await patch({ listens: [] });
+    expect(statements()[1].sql).toContain("spec - 'listens'");
+  });
+
+  it('400s a missing row, a custom element and a filter, naming listens, without writing', async () => {
+    mocks.execute.mockResolvedValueOnce([]);
+    const missing = await patch({ listens });
+    expect(missing.status).toBe(400);
+    await expect(missing.json()).resolves.toEqual({ error: 'element not found', field: 'id' });
+
+    mocks.execute.mockReset().mockResolvedValueOnce([stored(null)]);
+    const custom = await patch({ listens });
+    expect(custom.status).toBe(400);
+    await expect(custom.json()).resolves.toMatchObject({ field: 'listens' });
+
+    mocks.execute
+      .mockReset()
+      .mockResolvedValueOnce([
+        stored({ v: 1, type: 'filter', var: 'period', control: 'date_range' }),
+      ]);
+    const filter = await patch({ listens });
+    await expect(filter.json()).resolves.toMatchObject({ field: 'listens' });
+    expect(statements().every((s) => !s.sql.includes('update sandbox_elements'))).toBe(true);
+  });
+
+  it('refuses a stale or personal-data connection naming spec.listens.<i>.col', async () => {
+    mocks.execute.mockResolvedValueOnce([stored(kpiSpec)]);
+    const stale = await patch({ listens: [{ var: 'period', col: 'gone' }] });
+    await expect(stale.json()).resolves.toMatchObject({ field: 'spec.listens.0.col' });
+    mocks.execute.mockResolvedValueOnce([stored(kpiSpec)]);
+    const pii = await patch({ listens: [{ var: 'who', col: 'customer_name' }] });
+    await expect(pii.json()).resolves.toMatchObject({ field: 'spec.listens.0.col' });
+  });
+
+  it('changing the look without mentioning listens keeps the stored connections', async () => {
+    const chart = {
+      v: 1,
+      type: 'chart',
+      preset: 'line',
+      source: {
+        dataset: 'pos.tickets',
+        time: { col: 'submitted_at', bucket: 'day' },
+        measures: [{ fn: 'sum', col: 'total' }],
+      },
+    };
+    mocks.execute
+      .mockResolvedValueOnce([stored({ ...chart, preset: 'bar', listens })])
+      .mockResolvedValueOnce([row({ ...chart, listens })]);
+    const response = await patch({ spec: chart });
+    expect(response.status).toBe(200);
+    const [select, update] = statements();
+    expect(select.sql).toContain('for update');
+    const written = update.params.find(
+      (p) => typeof p === 'string' && p.includes('"preset":"line"'),
+    );
+    expect(JSON.parse(written as string)).toMatchObject({ preset: 'line', listens });
+  });
+
+  it('changing the dataset refuses a connection that no longer fits', async () => {
+    mocks.execute.mockResolvedValueOnce([stored({ ...kpiSpec, listens })]);
+    const response = await patch({
+      spec: {
+        v: 1,
+        type: 'kpi',
+        source: { dataset: 'crm.contacts', metric: { fn: 'count', col: '*' } },
+      },
+    });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ field: 'spec.listens.0.col' });
+    expect(statements().every((s) => !s.sql.includes('update sandbox_elements'))).toBe(true);
+  });
+
+  it('an explicit listens in the spec replaces the stored ones; the body listens overrides both', async () => {
+    mocks.execute.mockResolvedValue([row(kpiSpec)]);
+    await patch({ spec: { ...kpiSpec, listens: [{ var: 'a', col: 'status' }] }, listens });
+    const [update] = statements();
+    const written = update.params.find((p) => typeof p === 'string' && p.includes('"type":"kpi"'));
+    expect(JSON.parse(written as string).listens).toEqual(listens);
+    expect(update.sql).not.toContain('for update');
+  });
+
+  it('refuses listens together with a filter spec', async () => {
+    const response = await patch({
+      spec: { v: 1, type: 'filter', var: 'period', control: 'date_range' },
+      listens,
+    });
+    await expect(response.json()).resolves.toMatchObject({ field: 'listens' });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it("a patch with neither spec nor listens keeps today's SQL (no lock, no extra select)", async () => {
+    mocks.execute.mockResolvedValue([row(kpiSpec)]);
+    await patch({ title: 'Renamed' });
+    expect(statements()).toHaveLength(1);
+    expect(statements()[0].sql).not.toContain('for update');
+  });
+
+  it('refuses a bad value name on create naming the field', async () => {
+    const response = await elementsPost(
+      post(
+        ADMIN,
+        { title: 'x', spec: { ...kpiSpec, listens: [{ var: 'Bad', col: 'status' }] } },
+        '/api/sandbox/elements',
+      ),
+    );
+    await expect(response.json()).resolves.toMatchObject({ field: 'spec.listens.0.var' });
+  });
 });

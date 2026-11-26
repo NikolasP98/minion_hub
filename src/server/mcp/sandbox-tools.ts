@@ -13,6 +13,7 @@ import {
   listPages,
   removeElement,
   runQuery,
+  setListens,
   upsertElement,
   type SandboxElementInput,
 } from '$server/sandbox/sandbox.service';
@@ -20,7 +21,15 @@ import { SandboxQueryError, type QuerySpec } from '$server/sandbox/query-compile
 import { loadCanonicalMemberships } from '$server/services/canonical-directory.service';
 import { hasOrgCapability, resolveCapabilities } from '$server/services/rbac.service';
 import { validateBlockSpec } from '$server/sandbox/blocks';
-import { BLOCK_DESCRIPTIONS, BLOCK_EXAMPLES } from '$lib/sandbox/blocks/catalog';
+import { DATASETS } from '$server/sandbox/datasets';
+import { pageWiring } from '$server/sandbox/wiring';
+import {
+  BLOCK_DESCRIPTIONS,
+  BLOCK_EXAMPLES,
+  FILTER_DESCRIPTION,
+  FILTER_EXAMPLE,
+  WIRED_PAGE_EXAMPLE,
+} from '$lib/sandbox/blocks/catalog';
 import {
   BLOCK_KINDS,
   BUCKETS,
@@ -29,6 +38,8 @@ import {
   RANGES,
   TONES,
   blockToolSchemas,
+  filterToolSchema,
+  listensSchema,
 } from '$lib/sandbox/blocks/schema';
 import { ToolFailure, type McpTool } from './protocol';
 
@@ -107,11 +118,13 @@ const tools: McpTool<SandboxToolContext>[] = [
   },
   {
     name: 'sandbox_elements',
-    description: 'List the elements of one sandbox page.',
+    description:
+      'List the elements of one sandbox page, plus its wiring report: the filters publishing page values and, per block, its working bindings and wiring problems (no_publisher, kind_mismatch, conflicting_publishers).',
     inputSchema: obj({ page: { type: 'string', description: 'Page name; default "default".' } }),
-    call: async (args, { ctx }) => ({
-      elements: (await listElements(ctx, pageArg(args))).map(element),
-    }),
+    call: async (args, { ctx }) => {
+      const elements = await listElements(ctx, pageArg(args));
+      return { elements: elements.map(element), wiring: pageWiring(elements, DATASETS) };
+    },
   },
   {
     name: 'sandbox_element_write',
@@ -127,8 +140,28 @@ const tools: McpTool<SandboxToolContext>[] = [
       w: { type: 'integer', minimum: 1, maximum: 4 },
       h: { type: 'integer', minimum: 1, maximum: 4 },
       position: { type: 'integer', minimum: 0 },
+      listens: {
+        type: 'array',
+        maxItems: 6,
+        description:
+          "Connections of a kpi/chart/table/list block: [{ var, col }]. Replaces ONLY the block's connections (send [] to clear); needs id.",
+        items: obj({ var: { type: 'string' }, col: { type: 'string' } }, ['var', 'col']),
+      },
     }),
     call: async (args, { ctx, keyId }) => {
+      let listens;
+      if (args.listens !== undefined) {
+        const parsed = listensSchema.safeParse(args.listens);
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          throw new ToolFailure(
+            `invalid listens.${issue?.path.join('.') ?? ''}: ${issue?.message}`,
+          );
+        }
+        if (args.id === undefined)
+          throw new ToolFailure('listens needs the id of an existing block.');
+        listens = parsed.data;
+      }
       const input: SandboxElementInput = { writtenByKey: keyId };
       for (const f of STRING_FIELDS) {
         if (args[f] === undefined) continue;
@@ -148,7 +181,13 @@ const tools: McpTool<SandboxToolContext>[] = [
       }
       if (args.id !== undefined) input.id = idArg(args);
       else input.page = pageArg(args);
-      return { element: element(await upsertElement(ctx, input)) };
+      // Connections have their own locked write (spec 150): the other fields land first,
+      // then the connections, so one call can do both.
+      const onlyListens =
+        listens !== undefined && Object.keys(args).every((k) => k === 'id' || k === 'listens');
+      const written = onlyListens ? null : await upsertElement(ctx, input);
+      if (listens === undefined) return { element: element(written!) };
+      return { element: element(await setListens(ctx, idArg(args), listens, keyId)) };
     },
   },
   {
@@ -200,6 +239,42 @@ const blockTools: McpTool<SandboxToolContext>[] = blockToolSchemas().map((tool) 
   };
 });
 
+const filterTool = filterToolSchema();
+
+/** A page filter (spec 150): same grammar and validation as the in-page assistant's tool. */
+const filterWriter: McpTool<SandboxToolContext> = {
+  name: 'sandbox_block_filter',
+  description: `${FILTER_DESCRIPTION} Pass \`page\` to choose the page of a new filter.`,
+  inputSchema: {
+    ...(filterTool.inputSchema as { properties?: Record<string, unknown> }),
+    properties: {
+      ...(filterTool.inputSchema as { properties?: Record<string, unknown> }).properties,
+      page: PAGE_PROP,
+    },
+  },
+  call: async (args, { ctx, keyId }) => {
+    const { page: _page, ...rest } = args;
+    let parsed: ReturnType<typeof filterTool.parse>;
+    try {
+      parsed = filterTool.parse(rest);
+    } catch (err) {
+      const issue = (err as { issues?: Array<{ path: unknown[]; message: string }> }).issues?.[0];
+      throw new ToolFailure(
+        issue ? `invalid ${issue.path.join('.') || 'input'}: ${issue.message}` : 'invalid input',
+      );
+    }
+    const { id, title, spec } = parsed;
+    const input: SandboxElementInput = {
+      title,
+      spec: validateBlockSpec(spec),
+      writtenByKey: keyId,
+    };
+    if (id) input.id = id;
+    else input.page = pageArg(args);
+    return { element: element(await upsertElement(ctx, input)) };
+  },
+};
+
 tools.push(
   {
     name: 'sandbox_blocks',
@@ -216,9 +291,12 @@ tools.push(
         bucket: BUCKETS,
       },
       examples: BLOCK_EXAMPLES,
+      filter: { description: FILTER_DESCRIPTION, example: FILTER_EXAMPLE },
+      wiredPage: WIRED_PAGE_EXAMPLE,
     }),
   },
   ...blockTools,
+  filterWriter,
 );
 
 const gated = (tool: McpTool<SandboxToolContext>): McpTool<SandboxToolContext> => ({
@@ -229,7 +307,7 @@ const gated = (tool: McpTool<SandboxToolContext>): McpTool<SandboxToolContext> =
   },
 });
 
-/** The ten key-callable tools; for a signed-in caller each also checks `settings:manage`. */
+/** The key-callable tools; for a signed-in caller each also checks `settings:manage`. */
 export const sandboxTools = tools.map(gated);
 
 const LIST_CAPS = { whereMax: 20, orderMax: 5, groupMax: 5, aggregateMax: 10, selectMax: 50 };

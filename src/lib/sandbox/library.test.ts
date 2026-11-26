@@ -96,3 +96,23 @@ describe('component library', () => {
     expect(JSON.parse(init.body)).toEqual({ published: true });
   });
 });
+
+describe('componentCopy keeps connections and copies filters (spec 150)', () => {
+  const base = { title: 'T', html: '', css: '', js: '', w: 1, h: 1 };
+  test('a connected block copies with its listens', () => {
+    const spec = {
+      v: 1,
+      type: 'kpi',
+      source: { dataset: 'pos.tickets', metric: { fn: 'count', col: '*' } },
+      format: 'number',
+      tone: 'accent',
+      listens: [{ var: 'period', col: 'submitted_at' }],
+    } as const;
+    expect(componentCopy({ ...base, spec: spec as never }).spec).toEqual(spec);
+  });
+
+  test('a filter copies as a filter', () => {
+    const spec = { v: 1, type: 'filter', var: 'period', control: 'date_range' } as const;
+    expect(componentCopy({ ...base, spec: spec as never }).spec).toEqual(spec);
+  });
+});

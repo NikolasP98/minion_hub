@@ -2,6 +2,7 @@
   import { Trash2, Bookmark, BookmarkCheck } from 'lucide-svelte';
   import { saveToLibrary } from '$lib/sandbox/library';
   import { isDataBlock } from '$lib/sandbox/blocks/schema';
+  import type { Binding } from '$lib/sandbox/blocks/query';
   import { Button, iconSizes } from '$lib/components/ui';
   import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { theme } from '$lib/state/ui/theme.svelte';
@@ -14,9 +15,13 @@
   interface Props {
     element: SandboxElementRecord;
     host: SandboxHost;
+    /** Working page connections for a block (spec 150); forwarded to BlockView. */
+    bindings?: Binding[];
+    bindingKey?: string;
+    wiringAvailable?: boolean;
   }
 
-  let { element, host }: Props = $props();
+  let { element, host, bindings = [], bindingKey = '', wiringAvailable = true }: Props = $props();
 
   let frame = $state<HTMLIFrameElement | null>(null);
   let box = $state<HTMLDivElement | null>(null);
@@ -106,6 +111,9 @@
         spec={element.spec}
         title={element.title}
         version={host.versionOf(element.id) + Date.parse(element.updatedAt)}
+        {bindings}
+        {bindingKey}
+        {wiringAvailable}
       />
     {:else if !element.spec}
       <iframe

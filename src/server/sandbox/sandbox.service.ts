@@ -15,7 +15,8 @@ import {
   resolveOwnerScope,
   shouldMaskSensitive,
 } from '$server/services/rbac.service';
-import type { BlockSpec } from '$lib/sandbox/blocks/schema';
+import { isDataBlock, type BlockSpec, type Listens } from '$lib/sandbox/blocks/schema';
+import { validateListens } from './blocks';
 import { DATASETS, datasetCatalogEntry, findDataset, type Dataset } from './datasets';
 import { compile, SandboxQueryError, type QuerySpec } from './query-compiler';
 import { UUID_RE } from './uuid';
@@ -236,6 +237,28 @@ export function listElements(ctx: CoreCtx, page = 'default'): Promise<SandboxEle
 }
 
 /**
+ * The stored connections of a data block, read under a row lock so a concurrent
+ * `setListens` cannot interleave (spec 150 R4). Null when the row is missing or
+ * is not a data block.
+ */
+async function lockedListens(
+  tx: CoreTx,
+  ctx: CoreCtx,
+  id: string,
+): Promise<{ found: boolean; spec: BlockSpec | null }> {
+  const found = rows(
+    await tx.execute(sql`
+      select spec from sandbox_elements
+      where org_id = ${ctx.tenantId} and id = ${id}::uuid and ${libraryWritable(ctx)}
+      for update
+    `),
+  );
+  return found.length === 0
+    ? { found: false, spec: null }
+    : { found: true, spec: specOf(found[0].spec) };
+}
+
+/**
  * Create (no `id`) or patch (with `id`) one element. The patch is a single
  * statement with `coalesce(<new>, <old>)` per field, so an omitted field keeps
  * its stored value and the row is never read-modify-written.
@@ -247,8 +270,19 @@ export async function upsertElement(
   assertSize(input);
   const id = input.id === undefined ? null : requireUuid(input.id, 'id');
   const page = input.page ?? 'default';
-  const specJson = input.spec ? JSON.stringify(input.spec) : null;
   const result = await withOrgCore(ctx, async (tx: CoreTx) => {
+    let spec = input.spec;
+    if (id && spec && isDataBlock(spec) && spec.listens === undefined) {
+      // A spec written without `listens` keeps the stored connections (spec 150 FR-009);
+      // the merged result is validated, so a connection a new dataset no longer fits is refused.
+      const stored = (await lockedListens(tx, ctx, id)).spec;
+      if (stored && isDataBlock(stored) && stored.listens?.length) {
+        spec = { ...spec, listens: stored.listens };
+        validateListens(spec, spec.listens);
+        assertSize({ ...input, spec });
+      }
+    }
+    const specJson = spec ? JSON.stringify(spec) : null;
     if (id) {
       return rows(
         await tx.execute(sql`
@@ -288,6 +322,44 @@ export async function upsertElement(
           ),
           ${ctx.profileId ?? null}, ${input.writtenByKey ?? null}
         )
+        returning ${elementColumns(ctx)}
+      `),
+    );
+  });
+  const row = result[0];
+  if (!row) throw new SandboxQueryError('element not found', 'id', 400);
+  return rowToElement(row);
+}
+
+/**
+ * Replace ONLY a data block's connections (spec 150 FR-009): one transaction,
+ * the row locked, the merged spec validated, `updated_at` and `written_by_key`
+ * handled exactly like `upsertElement`. `[]` clears them.
+ */
+export async function setListens(
+  ctx: CoreCtx,
+  id: string,
+  listens: Listens,
+  writtenByKey?: string,
+): Promise<SandboxElement> {
+  const elementId = requireUuid(id, 'id');
+  const result = await withOrgCore(ctx, async (tx: CoreTx) => {
+    const { found, spec } = await lockedListens(tx, ctx, elementId);
+    if (!found) throw new SandboxQueryError('element not found', 'id', 400);
+    if (!spec || !isDataBlock(spec)) {
+      throw new SandboxQueryError(
+        'only a kpi, chart, table or list block can have connections',
+        'listens',
+      );
+    }
+    validateListens(spec, listens);
+    return rows(
+      await tx.execute(sql`
+        update sandbox_elements set
+          spec = ${listens.length ? sql`jsonb_set(spec, '{listens}', ${JSON.stringify(listens)}::jsonb)` : sql`spec - 'listens'`},
+          ${writtenByKey ? sql`written_by_key = ${writtenByKey}::uuid,` : sql`written_by_key = null,`}
+          updated_at = now()
+        where org_id = ${ctx.tenantId} and id = ${elementId}::uuid and ${libraryWritable(ctx)}
         returning ${elementColumns(ctx)}
       `),
     );

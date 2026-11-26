@@ -274,7 +274,8 @@ describe.each(['Home', 'Floating'] as const)(
       const lease = createPageContextLease('initial fixture canvas');
       const host = createSandboxHost([], {
         begin: lease.invalidate,
-        publish: (elements, capability) => lease.update(JSON.stringify(elements), capability),
+        publish: (elements, _wiring, capability) =>
+          lease.update(JSON.stringify(elements), capability),
       });
       const tools = new AbortController();
       registerSandboxTools({ signal: tools.signal, acknowledge: host.load });

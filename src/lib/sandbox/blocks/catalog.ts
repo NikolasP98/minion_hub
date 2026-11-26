@@ -7,7 +7,16 @@ import type { BlockKind } from './schema';
  * grammar the server validates with. The descriptions are operative — they
  * are the model's only manual for choosing a kind.
  */
-export const BLOCK_DESCRIPTIONS: Record<BlockKind, string> = {
+/** Appended to every data kind: how a block joins a synced page (spec 150). */
+const LISTENS_NOTE =
+  ' To make it follow a page filter, pass `listens`: up to 6 `{ var, col }` entries, where `var` ' +
+  'is the value name a sandbox.block_filter publishes and `col` is one of THIS block’s own ' +
+  'columns (not personal data). Create the filter and the connected blocks in ONE reply; a ' +
+  'connection to a name nobody publishes is saved but ignored until the filter exists. ' +
+  'Changing a block without mentioning `listens` keeps its connections; use sandbox.wire to ' +
+  'change only the connections.';
+
+const KIND_DESCRIPTIONS: Record<BlockKind, string> = {
   kpi:
     'Add or replace a KPI tile: ONE number from a dataset (count/sum/avg/min/max of a column), ' +
     'rendered with the hub’s own typography and theme. Options: `source.period` for a time ' +
@@ -35,6 +44,80 @@ export const BLOCK_DESCRIPTIONS: Record<BlockKind, string> = {
     '(top products, sales by staff, contacts by source), shown as labelled bars with the ' +
     'formatted value, largest first, `source.limit` rows (≤20, default 8). Prefer this over ' +
     'a bar chart when the user wants to READ the values. Width 1–2, height 2.',
+};
+
+export const BLOCK_DESCRIPTIONS: Record<BlockKind, string> = {
+  kpi: KIND_DESCRIPTIONS.kpi + LISTENS_NOTE,
+  chart: KIND_DESCRIPTIONS.chart + LISTENS_NOTE,
+  table: KIND_DESCRIPTIONS.table + LISTENS_NOTE,
+  list: KIND_DESCRIPTIONS.list + LISTENS_NOTE,
+};
+
+/** The filter tool's manual (spec 150): operative, the model's only guide to synced pages. */
+export const FILTER_DESCRIPTION =
+  'Add or replace a page FILTER: a control in the filter bar above the blocks that publishes ' +
+  'one page value under `var` (a short lowercase word: letter first, up to 32 letters, digits ' +
+  'or underscores). `control` is date_range (one of today, yesterday, last_7d, last_30d, ' +
+  'last_90d, this_week, this_month, last_month, this_year, all), select (one value) or ' +
+  'multi_select (up to 100 values); pickers need `options: { dataset, col }`, the column ' +
+  'whose most common values (top 200) are the choices — never a personal-data column. ' +
+  '`default` is the initial value (kind date | select | multi, matching the control). A filter ' +
+  'does nothing by itself: connect blocks with `listens` on sandbox.block_* or sandbox.wire. ' +
+  'A date filter fits only timestamp columns; a picker fits columns of its choices’ type. ' +
+  'Filters never take a grid cell and cannot be rearranged.';
+
+export const FILTER_EXAMPLE: Record<string, unknown> = {
+  title: 'Service',
+  var: 'service',
+  control: 'select',
+  options: { dataset: 'pos.ticket_lines', col: 'product_name' },
+};
+
+/** One complete synced page: a date filter, a connected KPI and chart, and one block left alone. */
+export const WIRED_PAGE_EXAMPLE = {
+  filters: [
+    {
+      title: 'Period',
+      var: 'period',
+      control: 'date_range',
+      default: { kind: 'date', range: 'last_30d' },
+    },
+  ],
+  blocks: [
+    {
+      kind: 'kpi',
+      title: 'Sales',
+      source: {
+        dataset: 'pos.tickets',
+        metric: { fn: 'sum', col: 'total' },
+        period: { col: 'submitted_at', range: 'this_month' },
+      },
+      format: 'money',
+      listens: [{ var: 'period', col: 'submitted_at' }],
+    },
+    {
+      kind: 'chart',
+      title: 'Bookings per week',
+      w: 4,
+      preset: 'bar',
+      source: {
+        dataset: 'scheduling.bookings',
+        time: { col: 'start_time', bucket: 'week' },
+        measures: [{ fn: 'count', col: '*' }],
+      },
+      listens: [{ var: 'period', col: 'start_time' }],
+    },
+    {
+      kind: 'kpi',
+      title: 'Sales this year (not connected: ignores the filter)',
+      source: {
+        dataset: 'pos.tickets',
+        metric: { fn: 'sum', col: 'total' },
+        period: { col: 'submitted_at', range: 'this_year' },
+      },
+      format: 'money',
+    },
+  ],
 };
 
 export const BLOCK_EXAMPLES: Record<BlockKind, Record<string, unknown>> = {

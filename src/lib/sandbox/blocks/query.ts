@@ -5,7 +5,7 @@
  * RBAC/RLS on the server). Blocks never compute dates or group rows in the
  * browser; the SQL does it.
  */
-import type { DataBlockSpec, Bucket, Range } from './schema';
+import type { DataBlockSpec, Bucket, PageValue, Range } from './schema';
 
 /** Client-side mirror of the server `QuerySpec` (`$server` is not importable here). */
 export interface BlockQuery {
@@ -102,16 +102,52 @@ function base(
     filters?: BlockQuery['where'];
     period?: { col: string; range: Range };
   },
-  now: Date,
-  window?: Window | null,
+  window: Window | null,
+  extra: NonNullable<BlockQuery['where']>,
 ): BlockQuery {
-  const w =
-    window === undefined ? (source.period ? periodWindow(source.period.range, now) : null) : window;
   const where = [
     ...(source.filters ?? []),
-    ...(source.period ? windowWhere(source.period.col, w) : []),
+    ...(source.period ? windowWhere(source.period.col, window) : []),
+    ...extra,
   ];
   return { dataset: source.dataset, ...(where.length ? { where } : {}) };
+}
+
+/** One working connection resolved to the page value it currently reads (spec 150). */
+export interface Binding {
+  /** The block's own column the value filters. */
+  col: string;
+  value: PageValue;
+}
+
+/**
+ * Folds bindings into the block's own conditions. A date value on the column of
+ * the block's own period REPLACES that window (and drives compare/trend);
+ * on any other column it adds a window of its own. Pickers add `=` / `in`.
+ */
+function resolve(
+  source: { period?: { col: string; range: Range } },
+  bindings: readonly Binding[],
+  now: Date,
+) {
+  let window = source.period ? periodWindow(source.period.range, now) : null;
+  let range = source.period?.range;
+  let overridden = false;
+  const extra: NonNullable<BlockQuery['where']> = [];
+  for (const { col, value } of bindings) {
+    if (value.kind === 'date') {
+      if (source.period && col === source.period.col && !overridden) {
+        range = value.range;
+        window = periodWindow(value.range, now);
+        overridden = true;
+      } else extra.push(...windowWhere(col, periodWindow(value.range, now)));
+    } else if (value.kind === 'select') {
+      extra.push({ col, op: 'eq', value: value.value });
+    } else if (value.values.length > 0) {
+      extra.push({ col, op: 'in', value: value.values });
+    }
+  }
+  return { window, range, overridden, extra };
 }
 
 /** The alias every single-metric block reads its number from. */
@@ -127,23 +163,28 @@ export type BlockQueries =
   | { kind: 'kpi'; value: BlockQuery; compare?: BlockQuery; trend?: BlockQuery }
   | { kind: 'chart' | 'table' | 'list'; rows: BlockQuery };
 
-export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
+export function blockQueries(
+  spec: DataBlockSpec,
+  now: Date,
+  bindings: readonly Binding[] = [],
+): BlockQueries {
+  const { window, range, overridden, extra } = resolve(spec.source, bindings, now);
   switch (spec.type) {
     case 'kpi': {
       const { source } = spec;
       const metric = [{ fn: source.metric.fn, col: source.metric.col, as: VALUE }];
-      const window = source.period ? periodWindow(source.period.range, now) : null;
-      const value: BlockQuery = { ...base(source, now, window), aggregate: metric };
+      const value: BlockQuery = { ...base(source, window, extra), aggregate: metric };
       const out: BlockQueries = { kind: 'kpi', value };
       if (spec.compare && source.period && window) {
         out.compare = {
-          ...base(source, now, previousWindow(window, source.period.range)),
+          ...base(source, previousWindow(window, range), extra),
           aggregate: metric,
         };
       }
-      if (spec.trend && source.period) {
+      // An "all time" filter on the block's own column has no window to bucket.
+      if (spec.trend && source.period && !(overridden && !window)) {
         out.trend = {
-          ...base(source, now, window),
+          ...base(source, window, extra),
           bucket: { col: source.period.col, unit: spec.trend },
           aggregate: metric,
           orderBy: [{ col: source.period.col, dir: 'asc' }],
@@ -163,7 +204,7 @@ export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
         return {
           kind: 'chart',
           rows: {
-            ...base(source, now),
+            ...base(source, window, extra),
             bucket: { col: source.time.col, unit: source.time.bucket },
             aggregate,
             orderBy: [{ col: source.time.col, dir: 'asc' }],
@@ -176,7 +217,7 @@ export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
       return {
         kind: 'chart',
         rows: {
-          ...base(source, now),
+          ...base(source, window, extra),
           groupBy: [dimension],
           aggregate,
           orderBy:
@@ -192,7 +233,7 @@ export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
       return {
         kind: 'table',
         rows: {
-          ...base(source, now),
+          ...base(source, window, extra),
           ...(source.select?.length ? { select: source.select } : {}),
           ...(source.orderBy?.length ? { orderBy: source.orderBy } : {}),
           limit: source.limit,
@@ -204,7 +245,7 @@ export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
       return {
         kind: 'list',
         rows: {
-          ...base(source, now),
+          ...base(source, window, extra),
           groupBy: [source.dimension],
           aggregate: [{ fn: source.metric.fn, col: source.metric.col, as: VALUE }],
           orderBy: [{ col: VALUE, dir: 'desc' }],
@@ -213,4 +254,39 @@ export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
       };
     }
   }
+}
+
+/** Choices a picker shows (FR-002). One more than shown is fetched so a cut-off list is detectable. */
+export const OPTIONS_LIMIT = 200;
+
+/**
+ * The query behind a picker: distinct values of one column, most common first.
+ * It goes through `/api/sandbox/query`, so the viewer only sees values from rows
+ * their role may read, and a personal-data column was refused at save.
+ *
+ * TODO(handoff): choices beyond the first 200 need a server-side search
+ * (`startsWith` on the typed text) — planned for S2 of spec 150; until then a
+ * longer list is cut at 200 with no hint to the viewer.
+ */
+export function optionsQuery(options: { dataset: string; col: string }): BlockQuery {
+  return {
+    dataset: options.dataset,
+    groupBy: [options.col],
+    aggregate: [{ fn: 'count', col: '*', as: 'n' }],
+    orderBy: [{ col: 'n', dir: 'desc' }],
+    limit: OPTIONS_LIMIT + 1,
+  };
+}
+
+export interface PickerOption {
+  value: string | number | boolean;
+  count: number;
+}
+
+/** Drops the blank group (never a choice) and keeps the first 200. */
+export function pickerOptions(rows: Record<string, unknown>[], col: string): PickerOption[] {
+  return rows
+    .filter((r) => r[col] !== null && r[col] !== undefined && r[col] !== '')
+    .slice(0, OPTIONS_LIMIT)
+    .map((r) => ({ value: r[col] as PickerOption['value'], count: Number(r.n) || 0 }));
 }

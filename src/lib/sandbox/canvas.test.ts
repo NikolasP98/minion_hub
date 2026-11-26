@@ -94,3 +94,77 @@ describe('layoutUpdates', () => {
     ]);
   });
 });
+
+describe('canvasSummary on a synced page (spec 150 FR-010, SC-007)', () => {
+  const filter = (id: string, position: number, spec: Record<string, unknown>) => ({
+    ...el(id, position),
+    spec: { v: 1 as const, type: 'filter' as const, ...spec } as never,
+  });
+  const kpi = (id: string, position: number, listens: Array<{ var: string; col: string }>) => ({
+    ...el(id, position),
+    spec: {
+      v: 1 as const,
+      type: 'kpi' as const,
+      source: { dataset: 'pos.tickets', metric: { fn: 'count' as const, col: '*' } },
+      format: 'number' as const,
+      tone: 'accent' as const,
+      listens,
+    },
+  });
+
+  test('lists filters first, then each block with its connections and problems', () => {
+    const elements = [
+      filter('f1', 0, {
+        var: 'period',
+        control: 'date_range',
+        default: { kind: 'date', range: 'last_30d' },
+      }),
+      filter('f2', 1, {
+        var: 'status',
+        control: 'select',
+        options: { dataset: 'pos.tickets', col: 'status' },
+      }),
+      filter('f3', 2, { var: 'period', control: 'date_range' }),
+      kpi('k1', 3, [{ var: 'period', col: 'submitted_at' }]),
+      kpi('k2', 4, [
+        { var: 'gone', col: 'status' },
+        { var: 'status', col: 'submitted_at' },
+      ]),
+    ];
+    const wiring = {
+      publishers: [],
+      duplicates: [{ var: 'period', elementIds: ['f1', 'f3'] }],
+      blocks: {
+        k1: { bindings: [{ var: 'period', col: 'submitted_at' }], problems: [] },
+        k2: {
+          bindings: [],
+          problems: [
+            { var: 'gone', code: 'no_publisher' as const, detail: 'no filter publishes "gone"' },
+            {
+              var: 'status',
+              code: 'kind_mismatch' as const,
+              detail: 'a select filter does not fit column "submitted_at"',
+            },
+          ],
+        },
+      },
+    };
+    expect(canvasSummary(elements, wiring)).toMatchInlineSnapshot(`
+      "Filters (3, shown in the filter bar above the grid):
+      - [f1] "T-f1" date_range · value name "period" · default last_30d
+      - [f2] "T-f2" select · value name "status" · choices from pos.tickets.status · default none
+      - [f3] "T-f3" date_range · value name "period" · default none
+      Note: filters [f1], [f3] share the value name "period"; they set the same value.
+      Canvas (4 columns, 2 elements, display order):
+      1. [k1] "T-k1" 2x1 · pos.tickets · kpi · connected: period → submitted_at
+      2. [k2] "T-k2" 2x1 · pos.tickets · kpi · connected: gone → status, status → submitted_at · PROBLEMS: gone (no_publisher: no filter publishes "gone"); status (kind_mismatch: a select filter does not fit column "submitted_at")"
+    `);
+  });
+
+  test('a page of only filters still says the canvas is empty; no filters leaves the old text', () => {
+    expect(canvasSummary([filter('f1', 0, { var: 'period', control: 'date_range' })])).toContain(
+      'Canvas: empty (4 columns).',
+    );
+    expect(canvasSummary([el('a', 0)])).not.toContain('Filters');
+  });
+});

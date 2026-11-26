@@ -145,7 +145,7 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
     // rule below therefore loads this manifest on EVERY record_action turn,
     // which is deliberate and harmless — the envelope section is additionally
     // gated on the route being /sandbox (assistant-context.ts), and off the
-    // sandbox the five sandbox.* tools are not even registered.
+    // sandbox the sandbox.* tools are not even registered.
     mode: 'record_action',
     question:
       'Is the user asking to create, change or remove a chart, table or visual element on the ' +
@@ -185,9 +185,15 @@ export const CONTEXT_MANIFESTS: readonly ContextManifest[] = [
       'await minion.echarts`, then colour the series from `minion.theme`. Size with `w`/`h` in ' +
       'grid units 1-4. Catch errors and render the message inside the element so the user reads ' +
       'it instead of a blank box. To change an existing visual, call sandbox.upsert_element with ' +
-      'its `id` (sandbox.list_elements gives you the ids). Reads (sandbox.datasets, sandbox.preview, ' +
+      'its `id` (sandbox.list_elements gives you the ids). SYNCED PAGES (spec 150): a ' +
+      'sandbox.block_filter (date_range, select or multi_select) publishes a page value under a ' +
+      'short lowercase `var`; a data block follows it through `listens` ([{ var, col }], its own ' +
+      'column, up to 6). Create the filters and the connected blocks in ONE reply. To change only ' +
+      'the connections of an existing block use sandbox.wire (it replaces that block’s list; ' +
+      'a block edit that does not mention `listens` keeps them); the page description lists each ' +
+      'block’s connections and any wiring problem — fix those, never guess. Reads (sandbox.datasets, sandbox.preview, ' +
       'sandbox.list_elements, sandbox.blocks) come back to you in a follow-up turn; a successful write ends the turn, ' +
-      'so put every sandbox.block_*, sandbox.upsert_element and sandbox.arrange for the request in ONE reply.',
+      'so put every sandbox.block_*, sandbox.wire, sandbox.upsert_element and sandbox.arrange for the request in ONE reply.',
   },
 ];
 

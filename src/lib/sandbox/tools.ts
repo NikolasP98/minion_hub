@@ -3,7 +3,7 @@ import type { InvocationCapability } from '$lib/assistant/accepted-runs';
 /**
  * Page-scoped assistant tools for `/sandbox` (contract §5, spec FR-008).
  *
- * These five tools exist in the registry only while the sandbox page is
+ * These tools exist in the registry only while the sandbox page is
  * mounted, so their schemas enter the assistant envelope (via
  * `uiToolsBriefing(getTools())`) on the sandbox and nowhere else — that is the
  * whole point of registering them here rather than in global-tools.
@@ -15,7 +15,13 @@ import type { InvocationCapability } from '$lib/assistant/accepted-runs';
 import { registerTool, type ModelContextTool } from '$lib/assistant/model-context';
 import { fetchJson } from '$lib/api/fetch-json';
 import { describeElement, type ElementLike } from './canvas';
-import { BLOCK_DESCRIPTIONS, BLOCK_EXAMPLES } from './blocks/catalog';
+import {
+  BLOCK_DESCRIPTIONS,
+  BLOCK_EXAMPLES,
+  FILTER_DESCRIPTION,
+  FILTER_EXAMPLE,
+  WIRED_PAGE_EXAMPLE,
+} from './blocks/catalog';
 import {
   BLOCK_KINDS,
   BUCKETS,
@@ -24,8 +30,11 @@ import {
   RANGES,
   TONES,
   blockToolSchemas,
-  type BlockKind,
+  filterToolSchema,
+  listensSchema,
 } from './blocks/schema';
+import { z } from 'zod';
+import type { WiringReport } from './wiring-types';
 
 /** The sandbox page listens for this and re-renders the element's iframe. */
 export const SANDBOX_CHANGED_EVENT = 'minion:sandbox-changed';
@@ -158,6 +167,8 @@ function blockTools(
         bucket: BUCKETS,
       },
       examples: BLOCK_EXAMPLES,
+      filter: { description: FILTER_DESCRIPTION, example: FILTER_EXAMPLE },
+      wiredPage: WIRED_PAGE_EXAMPLE,
     }),
     annotations: { readOnlyHint: true },
   };
@@ -197,10 +208,77 @@ function blockTools(
     },
     annotations: { readOnlyHint: false },
   }));
-  return [catalog, ...writers];
+  const filterSchema = filterToolSchema();
+  const filterWriter: ModelContextTool = {
+    name: 'sandbox.block_filter',
+    description: FILTER_DESCRIPTION,
+    inputSchema: filterSchema.inputSchema,
+    execute: async (input, ctx) => {
+      let parsed: ReturnType<typeof filterSchema.parse>;
+      try {
+        parsed = filterSchema.parse(input);
+      } catch (err) {
+        const issue = (err as { issues?: Array<{ path: unknown[]; message: string }> }).issues?.[0];
+        return {
+          error: issue
+            ? `invalid ${issue.path.join('.') || 'input'}: ${issue.message}`
+            : String(err),
+        };
+      }
+      const { id, title, spec } = parsed;
+      const saved = await fetchJson<unknown>(
+        id ? `/api/sandbox/elements/${encodeURIComponent(id)}` : '/api/sandbox/elements',
+        {
+          method: id ? 'PATCH' : 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ title, spec }),
+          signal: ctx.signal,
+        },
+      );
+      const savedId = elementId(saved, id ?? '');
+      return { id: savedId, ...(await refresh(savedId, ctx.capability, ctx.signal, ctx)) };
+    },
+    annotations: { readOnlyHint: false },
+  };
+  const wire: ModelContextTool = {
+    name: 'sandbox.wire',
+    description:
+      'Change ONLY the connections of one data block (kpi, chart, table, list), without ' +
+      'restating the block. `listens` REPLACES the block’s connections: up to 6 `{ var, col }` ' +
+      'entries (`var` = a filter’s value name, `col` = one of the block’s own columns); pass `[]` ' +
+      'to disconnect it from every filter. To drop one connection, send the others you keep. ' +
+      'A refused save names the field (for example spec.listens.0.col) so you can correct it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The block’s element id.' },
+        listens: z.toJSONSchema(listensSchema, { io: 'input' }),
+      },
+      required: ['id', 'listens'],
+    },
+    execute: async (input, ctx) => {
+      const id = str(input.id);
+      const parsed = listensSchema.safeParse(input.listens);
+      if (!id) return { error: 'invalid id: required' };
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        return { error: `invalid listens.${issue?.path.join('.') ?? ''}: ${issue?.message}` };
+      }
+      await fetchJson<unknown>(`/api/sandbox/elements/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ listens: parsed.data }),
+        signal: ctx.signal,
+      });
+      return { id, ...(await refresh(id, ctx.capability, ctx.signal, ctx)) };
+    },
+    annotations: { readOnlyHint: false },
+  };
+  return [catalog, ...writers, filterWriter, wire];
 }
 
 function sandboxTools(
+  isFilter?: (id: string) => boolean,
   acknowledge?: (
     capability?: InvocationCapability,
     signal?: AbortSignal,
@@ -342,16 +420,23 @@ function sandboxTools(
     {
       name: 'sandbox.list_elements',
       description:
-        'List the elements already on this page — id, title and size. Call it before changing or ' +
-        'removing something the user refers to by name, and to avoid rebuilding a visual that is ' +
-        'already there.',
+        'List the elements already on this page — id, title, size, connections — plus the ' +
+        'wiring report: the filters publishing page values and, per block, its working ' +
+        'bindings and wiring problems (no_publisher, kind_mismatch, conflicting_publishers). ' +
+        'Call it before changing or removing something the user refers to by name, and to avoid ' +
+        'rebuilding a visual that is already there.',
       inputSchema: { type: 'object', properties: {} },
-      execute: async (_input, ctx) => ({
-        elements: collection<Record<string, unknown>>(
-          await fetchJson<unknown>('/api/sandbox/elements', { signal: ctx.signal }),
-          'elements',
-        ).map((e) => describeElement(e as unknown as ElementLike)),
-      }),
+      execute: async (_input, ctx) => {
+        const body = await fetchJson<unknown>('/api/sandbox/elements', { signal: ctx.signal });
+        const wiring = ((body as { wiring?: WiringReport } | null)?.wiring ??
+          null) as WiringReport | null;
+        return {
+          elements: collection<Record<string, unknown>>(body, 'elements').map((e) =>
+            describeElement(e as unknown as ElementLike, wiring),
+          ),
+          wiring,
+        };
+      },
       annotations: { readOnlyHint: true },
     },
     {
@@ -361,7 +446,8 @@ function sandboxTools(
         'id in the order it should appear (top-left first; an id you leave out keeps its stored ' +
         'position). `sizes` sets w (1-4 columns) and h (1-4 rows) per id. Use it to group related ' +
         'visuals, put KPIs first or widen a time series; the canvas map in your context is the ' +
-        'current board.',
+        'current board. Filters live in the filter bar, not the grid: a filter id is reported in ' +
+        '`failed` and left alone.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -400,6 +486,10 @@ function sandboxTools(
         const failed: string[] = [];
         let updated = 0;
         for (const [id, patch] of patches) {
+          if (isFilter?.(id)) {
+            failed.push(id);
+            continue;
+          }
           if (!isEffectCurrent(ctx)) {
             failed.push(id);
             continue;
@@ -434,11 +524,21 @@ function sandboxTools(
  */
 export function registerSandboxTools(opts: {
   signal: AbortSignal;
+  /**
+   * Filters are not grid cells (spec 150): the page says which ids are filters so
+   * `sandbox.arrange` reports them in `failed` instead of moving them.
+   * TODO(handoff): tasks.md T022 asked for a GET of the elements first; that adds a request
+   * ahead of the serial writes and breaks the timing of three lease tests in
+   * `src/lib/assistant/dispatch.ownership.test.ts`, so the page's own host list is used. Without
+   * the callback (tests, other hosts) arrange behaves as before.
+   */
+  isFilter?: (id: string) => boolean;
   acknowledge?: (
     capability?: InvocationCapability,
     signal?: AbortSignal,
     lease?: EffectLease,
   ) => Promise<boolean>;
 }) {
-  for (const tool of sandboxTools(opts.acknowledge)) registerTool(tool, { signal: opts.signal });
+  for (const tool of sandboxTools(opts.isFilter, opts.acknowledge))
+    registerTool(tool, { signal: opts.signal });
 }

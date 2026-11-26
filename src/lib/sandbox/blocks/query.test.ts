@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { blockQueries, periodWindow, previousWindow } from './query';
+import {
+  type Binding,
+  blockQueries,
+  optionsQuery,
+  periodWindow,
+  pickerOptions,
+  previousWindow,
+} from './query';
 import { parseBlockSpec } from './schema';
 
 // Saturday 2026-11-07 15:30 local time.
@@ -187,5 +194,147 @@ describe('blockQueries', () => {
         limit: 8,
       },
     });
+  });
+});
+
+describe('blockQueries with page bindings (spec 150)', () => {
+  const kpi = (
+    extra: Record<string, unknown> = {},
+    period: unknown = { col: 'submitted_at', range: 'this_year' },
+  ) =>
+    parseBlockSpec({
+      v: 1,
+      type: 'kpi',
+      source: {
+        dataset: 'pos.tickets',
+        metric: { fn: 'sum', col: 'total' },
+        period,
+        filters: [{ col: 'status', op: 'eq', value: 'submitted' }],
+      },
+      ...extra,
+    });
+  const date = (range: string) => ({ kind: 'date' as const, range: range as never });
+  const value = (spec: ReturnType<typeof kpi>, bindings: Binding[] = []) => {
+    const q = blockQueries(spec, now, bindings);
+    if (q.kind !== 'kpi') throw new Error('kpi');
+    return q;
+  };
+
+  it('no bindings is exactly the unbound query', () => {
+    const spec = kpi({ compare: true });
+    expect(blockQueries(spec, now, [])).toEqual(blockQueries(spec, now));
+  });
+
+  it('AS1: a date binding on the block own column replaces its window (appended after own filters)', () => {
+    const q = value(kpi(), [{ col: 'submitted_at', value: date('last_30d') }]);
+    expect(q.value.where).toEqual([
+      { col: 'status', op: 'eq', value: 'submitted' },
+      { col: 'submitted_at', op: 'gte', value: iso(2026, 9, 9) },
+      { col: 'submitted_at', op: 'lt', value: iso(2026, 10, 8) },
+    ]);
+  });
+
+  it('AS2: an "all" binding on the same column removes the window and skips compare and trend', () => {
+    const q = value(kpi({ compare: true, trend: 'day' }), [
+      { col: 'submitted_at', value: date('all') },
+    ]);
+    expect(q.value.where).toEqual([{ col: 'status', op: 'eq', value: 'submitted' }]);
+    expect(q.compare).toBeUndefined();
+    expect(q.trend).toBeUndefined();
+  });
+
+  it('AS3: clearing the filter (no binding) brings the own range back', () => {
+    const q = value(kpi());
+    expect(q.value.where?.[1]).toEqual({ col: 'submitted_at', op: 'gte', value: iso(2026, 0, 1) });
+  });
+
+  it('AS4: a date binding on another column adds its window next to the own one', () => {
+    const q = value(kpi(), [{ col: 'voided_at', value: date('today') }]);
+    expect(q.value.where).toEqual([
+      { col: 'status', op: 'eq', value: 'submitted' },
+      { col: 'submitted_at', op: 'gte', value: iso(2026, 0, 1) },
+      { col: 'submitted_at', op: 'lt', value: iso(2026, 10, 8) },
+      { col: 'voided_at', op: 'gte', value: iso(2026, 10, 7) },
+      { col: 'voided_at', op: 'lt', value: iso(2026, 10, 8) },
+    ]);
+  });
+
+  it('compare uses the previous window of the filter range and keeps the other clauses; trend covers the filter range', () => {
+    const q = value(kpi({ compare: true, trend: 'week' }), [
+      { col: 'submitted_at', value: date('last_month') },
+      { col: 'status', value: { kind: 'select', value: 'void' } },
+    ]);
+    expect(q.compare?.where).toEqual([
+      { col: 'status', op: 'eq', value: 'submitted' },
+      { col: 'submitted_at', op: 'gte', value: iso(2026, 8, 1) },
+      { col: 'submitted_at', op: 'lt', value: iso(2026, 9, 1) },
+      { col: 'status', op: 'eq', value: 'void' },
+    ]);
+    expect(q.trend?.where?.slice(1, 3)).toEqual([
+      { col: 'submitted_at', op: 'gte', value: iso(2026, 9, 1) },
+      { col: 'submitted_at', op: 'lt', value: iso(2026, 10, 1) },
+    ]);
+    expect(q.trend?.where?.at(-1)).toEqual({ col: 'status', op: 'eq', value: 'void' });
+  });
+
+  it('select adds eq, multi adds in, an empty multi adds nothing', () => {
+    const spec = parseBlockSpec({
+      v: 1,
+      type: 'table',
+      source: { dataset: 'pos.tickets' },
+    });
+    const rows = (b: Parameters<typeof blockQueries>[2]) => {
+      const q = blockQueries(spec, now, b);
+      if (q.kind === 'kpi') throw new Error('rows');
+      return q.rows.where;
+    };
+    expect(rows([{ col: 'status', value: { kind: 'select', value: 'void' } }])).toEqual([
+      { col: 'status', op: 'eq', value: 'void' },
+    ]);
+    expect(rows([{ col: 'status', value: { kind: 'multi', values: ['a', 'b'] } }])).toEqual([
+      { col: 'status', op: 'in', value: ['a', 'b'] },
+    ]);
+    expect(rows([{ col: 'status', value: { kind: 'multi', values: [] } }])).toBeUndefined();
+  });
+
+  it('a date binding on a block without a period adds a window; charts and lists honour bindings', () => {
+    const chart = parseBlockSpec({
+      v: 1,
+      type: 'chart',
+      source: {
+        dataset: 'pos.tickets',
+        dimension: 'status',
+        measures: [{ fn: 'count', col: '*' }],
+      },
+    });
+    const q = blockQueries(chart, now, [{ col: 'submitted_at', value: date('today') }]);
+    expect(q.kind === 'chart' && q.rows.where).toEqual([
+      { col: 'submitted_at', op: 'gte', value: iso(2026, 10, 7) },
+      { col: 'submitted_at', op: 'lt', value: iso(2026, 10, 8) },
+    ]);
+  });
+});
+
+describe('picker choices (spec 150 FR-002)', () => {
+  it('asks for distinct values by count, one past the 200 shown', () => {
+    expect(optionsQuery({ dataset: 'pos.tickets', col: 'status' })).toEqual({
+      dataset: 'pos.tickets',
+      groupBy: ['status'],
+      aggregate: [{ fn: 'count', col: '*', as: 'n' }],
+      orderBy: [{ col: 'n', dir: 'desc' }],
+      limit: 201,
+    });
+  });
+
+  it('drops the blank group and keeps at most 200', () => {
+    const rows = [
+      { status: null, n: 9 },
+      { status: '', n: 8 },
+      ...Array.from({ length: 205 }, (_, i) => ({ status: `s${i}`, n: 205 - i })),
+    ];
+    const out = pickerOptions(rows, 'status');
+    expect(out).toHaveLength(200);
+    expect(out[0]).toEqual({ value: 's0', count: 205 });
+    expect(out.some((o) => o.value === null || o.value === '')).toBe(false);
   });
 });
