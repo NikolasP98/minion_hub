@@ -76,6 +76,15 @@
   // while OPEN, not while mounted — the positioner below is always in the DOM
   // and only `hidden` when closed.
   let positionerEl = $state<HTMLElement | null>(null);
+  let triggerEl = $state<HTMLElement | null>(null);
+
+  /** Tab leaves the menu: it closes and focus continues from the trigger, in either
+   *  direction. (The menu is portalled to the end of the page, so Tab had nowhere to go.) */
+  function leaveOnTab(e: KeyboardEvent) {
+    if (e.key !== 'Tab') return;
+    triggerEl?.focus();
+    api.setOpen(false);
+  }
   $effect(() => {
     if (!api.open || !positionerEl) return;
     return registerLayer(positionerEl);
@@ -83,6 +92,7 @@
 </script>
 
 <button
+  bind:this={triggerEl}
   {...api.getTriggerProps()}
   class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-[var(--radius-md)]"
 >
@@ -103,6 +113,7 @@
 >
   <div
     {...api.getContentProps()}
+    onkeydowncapture={leaveOnTab}
     class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"
   >
     {#each items as it (it.value)}

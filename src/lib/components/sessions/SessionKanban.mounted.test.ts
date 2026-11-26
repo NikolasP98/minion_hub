@@ -179,6 +179,19 @@ describe('SessionKanban on BoardView (spec 146)', () => {
     await assertPattern(menuEl()!, 'menu', { opener });
   });
 
+  it('Tab closes the "Move to…" menu instead of doing nothing (spec 152)', async () => {
+    const { trigger } = await mount();
+    const opener = trigger('t1');
+    opener.focus();
+    await fireEvent.keyDown(opener, { key: 'Enter' });
+    await settle();
+    expect(menuEl()).not.toBeNull();
+    await fireEvent.keyDown(menuEl()!, { key: 'Tab' });
+    await settle();
+    expect(menuEl()).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('keeps the existing text for a session without tasks', async () => {
     vi.stubGlobal(
       'fetch',
