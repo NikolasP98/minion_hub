@@ -45,6 +45,7 @@
    */
   import { tick } from 'svelte';
   import { floatingLayer } from './floating-layer.svelte';
+  import { rovingTarget, setRovingStop } from '$lib/a11y/roving';
 
   interface Props {
     /** Viewport coordinates (a `MouseEvent`'s `clientX`/`clientY`). */
@@ -98,22 +99,31 @@
   // Separate from the measuring effect: re-focusing on every `items` change
   // would steal focus back from a submenu the operator just opened.
   $effect(() => {
-    root?.querySelector<HTMLElement>(ROW_SELECTOR)?.focus();
+    if (!root) return;
+    // What had focus before the menu took it (the element a keyboard user opened it from).
+    const opener = document.activeElement as HTMLElement | null;
+    const menu = root;
+    menu.querySelector<HTMLElement>(ROW_SELECTOR)?.focus();
+    return () => {
+      // Give focus back only if the menu still holds it (or lost it by closing); a click
+      // elsewhere that closed the menu keeps the focus it chose.
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || menu.contains(active)))
+        opener.focus();
+    };
   });
+
+  /** The whole menu, submenus included, is one tab stop: the row that has focus. */
+  function onfocusin(e: FocusEvent) {
+    const row = (e.target as HTMLElement).closest<HTMLElement>(ROW_SELECTOR);
+    if (root && row) setRovingStop([...root.querySelectorAll<HTMLElement>(ROW_SELECTOR)], row);
+  }
 
   /** The rows that belong to `menu` itself, not to a submenu nested in it. */
   function rowsIn(menu: HTMLElement): HTMLElement[] {
     return [...menu.querySelectorAll<HTMLElement>(ROW_SELECTOR)].filter(
       (r) => r.closest('[role="menu"]') === menu,
     );
-  }
-
-  function step(el: HTMLElement, dir: 1 | -1) {
-    const menu = el.closest<HTMLElement>('[role="menu"]');
-    if (!menu) return;
-    const rows = rowsIn(menu);
-    const i = rows.indexOf(el);
-    rows[(i + dir + rows.length) % rows.length]?.focus();
   }
 
   async function openSubmenu(item: ContextMenuItem, depth: number, parent: HTMLElement) {
@@ -132,12 +142,21 @@
 
   function onkeydown(e: KeyboardEvent, item: ContextMenuItem, depth: number) {
     const el = e.currentTarget as HTMLElement;
+    // Arrows, Home, End and type-ahead move among the rows of this row's own menu.
+    const menu = el.closest<HTMLElement>('[role="menu"]');
+    const target =
+      menu &&
+      rovingTarget(
+        e,
+        rowsIn(menu).filter((r) => !r.hasAttribute('disabled')),
+        el,
+      );
+    if (target) {
+      e.preventDefault();
+      target.focus();
+      return;
+    }
     switch (e.key) {
-      case 'ArrowDown':
-      case 'ArrowUp':
-        e.preventDefault();
-        step(el, e.key === 'ArrowDown' ? 1 : -1);
-        return;
       case 'ArrowRight':
         if (!item.children?.length) return;
         e.preventDefault();
@@ -195,6 +214,7 @@
         type="button"
         role="menuitem"
         class="ctxm-item"
+        tabindex={-1}
         data-item={item.id}
         aria-haspopup="menu"
         aria-expanded={isOpen(depth, item.id)}
@@ -226,6 +246,7 @@
       aria-checked={item.selection ? Boolean(item.checked) : undefined}
       class="ctxm-item"
       class:danger={item.danger}
+      tabindex={-1}
       data-item={item.id}
       disabled={item.disabled}
       onclick={(e) => pick(item, depth, e.currentTarget)}
@@ -251,6 +272,7 @@
   role="menu"
   aria-label={label}
   tabindex="-1"
+  {onfocusin}
   style="left:{pos.x}px; top:{pos.y}px"
 >
   {#each items as item (item.id)}

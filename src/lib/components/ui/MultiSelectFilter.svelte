@@ -12,6 +12,8 @@
 <script lang="ts">
   import { ChevronDown, X, Check } from 'lucide-svelte';
   import { Popover } from '$lib/components/ui';
+  import { rovingTarget, setRovingStop } from '$lib/a11y/roving';
+  import * as m from '$lib/paraglide/messages';
 
   // Multi-select filter: a compact dropdown trigger that opens a checkbox
   // popover, with the applied selections rendered as removable pills inline
@@ -36,7 +38,7 @@
     selected,
     onToggle,
     onClear,
-    allLabel = 'All',
+    allLabel = m.common_all(),
     class: cls = '',
   }: Props = $props();
 
@@ -44,6 +46,21 @@
 
   const selectedOptions = $derived(options.filter((o) => selected.has(o.value)));
   const count = $derived(selected.size);
+
+  // The list is ONE tab stop: arrows, Home, End and type-ahead move between options.
+  const optionEls = (list: HTMLElement) => [
+    ...list.querySelectorAll<HTMLElement>('[role="option"]'),
+  ];
+  function onListKeydown(e: KeyboardEvent & { currentTarget: HTMLElement }) {
+    const target = rovingTarget(e, optionEls(e.currentTarget), e.target as HTMLElement);
+    if (!target) return;
+    e.preventDefault();
+    target.focus();
+  }
+  function onListFocusin(e: FocusEvent & { currentTarget: HTMLElement }) {
+    const option = (e.target as HTMLElement).closest<HTMLElement>('[role="option"]');
+    if (option) setRovingStop(optionEls(e.currentTarget), option);
+  }
 </script>
 
 <div class="flex items-center gap-1.5 flex-wrap {cls}">
@@ -78,7 +95,11 @@
          that owns them (UI-04 contract: 44px on touch). -->
     <div
       role="listbox"
+      aria-label={label}
       aria-multiselectable="true"
+      tabindex={-1}
+      onkeydown={onListKeydown}
+      onfocusin={onListFocusin}
       class="msf-list min-w-[180px] max-h-[280px] overflow-y-auto
         rounded-lg border border-border bg-bg2 shadow-[var(--shadow-overlay)] p-1"
     >
@@ -89,6 +110,7 @@
         type="button"
         role="option"
         aria-selected={count === 0}
+        tabindex={0}
         class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[length:var(--font-size-caption)] cursor-pointer transition-colors
           {count === 0
           ? 'text-foreground bg-bg3/60'
@@ -112,6 +134,7 @@
           type="button"
           role="option"
           aria-selected={isSel}
+          tabindex={-1}
           class="flex items-center w-full gap-2 px-2 py-1.5 rounded text-[length:var(--font-size-caption)] cursor-pointer transition-colors
             {isSel
             ? 'text-foreground bg-bg3/60'
@@ -151,8 +174,8 @@
       {opt.label}
       <button
         type="button"
-        aria-label={`Remove ${opt.label}`}
-        class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-foreground/15 cursor-pointer transition-colors"
+        aria-label={m.common_removeNamed({ name: opt.label })}
+        class="msf-remove flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-foreground/15 cursor-pointer transition-colors"
         onclick={() => onToggle(opt.value)}
       >
         <X size={10} />
@@ -162,6 +185,15 @@
 </div>
 
 <style>
+  /* The remove button keeps its 14px look; its pointer target is 24px (WCAG 2.5.8). */
+  .msf-remove {
+    position: relative;
+  }
+  .msf-remove::after {
+    content: '';
+    position: absolute;
+    inset: calc((0.875rem - 1.5rem) / 2);
+  }
   @media (max-width: 767.98px), (pointer: coarse) {
     .msf-list :global([role='option']) {
       min-height: var(--control-height-touch);

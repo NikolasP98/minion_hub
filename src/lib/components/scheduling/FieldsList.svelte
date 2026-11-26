@@ -15,6 +15,7 @@
    * Drag state is local — two lists never drag into each other — and the host
    * only hears the committed `onmove(from, to)`.
    */
+  import { announce } from '$lib/a11y/announce';
   import { Check, GripVertical, ArrowUp, ArrowDown } from 'lucide-svelte';
   import { tick } from 'svelte';
   import * as m from '$lib/paraglide/messages';
@@ -46,17 +47,17 @@
 
   let dragKey = $state<string | null>(null);
   let root: HTMLDivElement;
-  let announce = $state('');
   async function move(key: string, direction: -1 | 1) {
     const i = order.indexOf(key);
     const target = order[i + direction];
     if (!target || locked(key) || locked(target)) return;
     if (direction < 0) onmove(key, target);
     else onmove(target, key);
-    announce =
+    announce(
       direction < 0
         ? m.design_move_before({ label: labelOf(key) })
-        : m.design_move_after({ label: labelOf(key) });
+        : m.design_move_after({ label: labelOf(key) }),
+    );
     await tick();
     // Focus stays on a move control (same direction, else the other); a second Enter
     // must never land on the visibility toggle and hide the field.
@@ -99,7 +100,6 @@
 {/snippet}
 
 <div class="hc-fields" bind:this={root}>
-  <span class="sr-only" aria-live="polite">{announce}</span>
   {#if heading}<div class="t-caption hc-fields-h">{heading}</div>{/if}
   {#each order as f (f)}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
