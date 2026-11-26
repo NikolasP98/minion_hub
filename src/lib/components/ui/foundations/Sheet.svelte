@@ -3,15 +3,14 @@
   import Dialog from './Dialog.svelte';
   import type {
     DialogCloseReason,
+    DialogName,
     DialogSize,
     DialogVariant,
     SheetPlacement,
   } from './Dialog.svelte';
 
-  interface Props {
+  type Props = DialogName & {
     open?: boolean;
-    title?: string;
-    labelledBy?: string;
     description?: string;
     describedBy?: string;
     placement?: SheetPlacement;
@@ -27,7 +26,7 @@
     children?: Snippet;
     footer?: Snippet;
     class?: string;
-  }
+  };
 
   let {
     open = $bindable(false),
@@ -49,6 +48,9 @@
     footer,
     class: cls = '',
   }: Props = $props();
+
+  // Forwarded as one object so the "title or labelledBy" requirement survives the wrapper.
+  const name = $derived((labelledBy ? { title, labelledBy } : { title }) as DialogName);
 </script>
 
 <!--
@@ -58,8 +60,7 @@
 -->
 <Dialog
   bind:open
-  {title}
-  {labelledBy}
+  {...name}
   {description}
   {describedBy}
   {size}

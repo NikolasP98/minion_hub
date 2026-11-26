@@ -43,6 +43,9 @@
     details,
   }: Props = $props();
 
+  const uid = $props.id();
+  const messageId = `${uid}-message`;
+
   let busy = $state(false);
   let failed = $state(false);
   let wasOpen = false;
@@ -79,13 +82,26 @@
   }
 </script>
 
-<Dialog bind:open {title} size="sm" {variant} dismissible={!busy} hideClose={busy} onclose={close}>
+<!-- A confirmation interrupts for a decision: an alertdialog described by its message, with
+     first focus on the action that loses nothing (APG alert dialog). -->
+<Dialog
+  bind:open
+  {title}
+  role="alertdialog"
+  describedBy={messageId}
+  initialFocus=".confirm-cancel"
+  size="sm"
+  {variant}
+  dismissible={!busy}
+  hideClose={busy}
+  onclose={close}
+>
   <div data-component="confirm-dialog" data-tone={tone} class="confirm-copy">
     {#if tone === 'danger'}
       <span class="confirm-icon" aria-hidden="true"><AlertTriangle size={18} /></span>
     {/if}
     <div>
-      <p>{message}</p>
+      <p id={messageId}>{message}</p>
       {#if details}<div class="confirm-details">{@render details()}</div>{/if}
     </div>
   </div>
@@ -94,7 +110,9 @@
   {/if}
 
   {#snippet footer()}
-    <Button variant="ghost" disabled={busy} onclick={cancel}>{cancelLabel}</Button>
+    <Button variant="ghost" class="confirm-cancel" disabled={busy} onclick={cancel}
+      >{cancelLabel}</Button
+    >
     <Button
       variant={tone === 'danger' ? 'danger' : 'primary'}
       loading={busy}

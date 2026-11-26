@@ -194,9 +194,8 @@ try {
     .locator('aside[aria-label="Primary"]')
     .getByRole('link', { name: 'Back', exact: true })
     .click();
-  const guardHeading = page.getByRole('heading', { name: 'You have unsaved changes', exact: true });
-  const guard = guardHeading.locator('..');
-  await expect(guardHeading).toBeVisible();
+  const guard = page.getByRole('alertdialog', { name: 'You have unsaved changes', exact: true });
+  await expect(guard).toBeVisible();
   await guard.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(page).toHaveURL(/\/settings\?s=security$/);
   await shot(page, 'dirty-back-cancelled');
