@@ -30,7 +30,6 @@ import MessageBoardOverlay from '$lib/components/workshop/MessageBoardOverlay.sv
 import PortalOverlay from '$lib/components/workshop/PortalOverlay.svelte';
 import RulebookOverlay from '$lib/components/workshop/RulebookOverlay.svelte';
 import PinboardOverlay from '$lib/components/workshop/PinboardOverlay.svelte';
-import RelationshipPrompt from '$lib/components/workshop/RelationshipPrompt.svelte';
 import AgentSidebarHost from '../../../tests/fixtures/role-button-keys/AgentSidebarHost.svelte';
 import AgentNodeHost from '../../../tests/fixtures/role-button-keys/AgentNodeHost.svelte';
 import CodeEditorPane from '../../routes/(app)/tools/[id]/_components/CodeEditorPane.svelte';
@@ -391,22 +390,8 @@ const sites: Site[] = [
       return { el: roleButton(v.container), count: () => onClose.mock.calls.length };
     },
   })),
-  {
-    site: 'workshop RelationshipPrompt backdrop',
-    tab: false,
-    mount() {
-      const onCancel = vi.fn();
-      const v = render(RelationshipPrompt, {
-        fromName: 'A',
-        toName: 'B',
-        x: 10,
-        y: 10,
-        onSubmit: () => {},
-        onCancel,
-      });
-      return { el: roleButton(v.container), count: () => onCancel.mock.calls.length };
-    },
-  },
+  // The workshop's link prompt is no longer here: it renders through the shared Dialog
+  // (spec 152), whose native backdrop replaced its role="button" backdrop.
 ];
 
 // happy-dom ships no window.confirm (AgentGroupHeader's Delete calls it) and no
