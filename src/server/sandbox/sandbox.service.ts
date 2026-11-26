@@ -18,6 +18,7 @@ import {
 import type { BlockSpec } from '$lib/sandbox/blocks/schema';
 import { DATASETS, datasetCatalogEntry, findDataset, type Dataset } from './datasets';
 import { compile, SandboxQueryError, type QuerySpec } from './query-compiler';
+import { UUID_RE } from './uuid';
 
 /** Shown to an element whose author may not read a sensitive column. */
 export const MASKED = '***';
@@ -210,8 +211,6 @@ function assertSize(input: SandboxElementInput): void {
 function rows(result: unknown): Record<string, unknown>[] {
   return result as Record<string, unknown>[];
 }
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** `${id}::uuid` on a non-uuid is a Postgres 22P02 — a 500 for a caller
  *  mistake. Reject it as the 400 it is, before any SQL runs. */

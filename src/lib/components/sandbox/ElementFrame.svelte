@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Trash2, Bookmark, BookmarkCheck } from 'lucide-svelte';
   import { saveToLibrary } from '$lib/sandbox/library';
+  import { isDataBlock } from '$lib/sandbox/blocks/schema';
   import { Button, iconSizes } from '$lib/components/ui';
   import { ConfirmDialog } from '$lib/components/ui/foundations';
   import { theme } from '$lib/state/ui/theme.svelte';
@@ -98,7 +99,7 @@
     </Button>
   </header>
   <div class="element-box" bind:this={box}>
-    {#if element.spec}
+    {#if isDataBlock(element.spec)}
       <!-- A block is data rendered with the hub's own components (spec 049);
            only custom code goes through the sandboxed iframe below. -->
       <BlockView
@@ -106,7 +107,7 @@
         title={element.title}
         version={host.versionOf(element.id) + Date.parse(element.updatedAt)}
       />
-    {:else}
+    {:else if !element.spec}
       <iframe
         bind:this={frame}
         {srcdoc}

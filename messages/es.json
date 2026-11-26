@@ -7101,6 +7101,7 @@
   "sandbox_block_kind_chart": "Gráfico",
   "sandbox_block_kind_table": "Tabla",
   "sandbox_block_kind_list": "Lista",
+  "sandbox_block_kind_filter": "Filtro",
   "sandbox_block_kind_custom": "Personalizado",
   "design_move_before": "Mover {label} antes",
   "design_move_after": "Mover {label} después",

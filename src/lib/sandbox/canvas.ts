@@ -38,6 +38,17 @@ const CHART_RE =
   /type\s*:\s*['"`](bar|line|pie|scatter|heatmap|radar|gauge|funnel|treemap|sunburst|sankey|boxplot|candlestick)['"`]/;
 
 export function describeElement(e: ElementLike): ElementDescription {
+  if (e.spec?.type === 'filter') {
+    return {
+      id: e.id,
+      title: e.title,
+      w: e.w,
+      h: e.h,
+      position: e.position,
+      datasets: e.spec.options ? [e.spec.options.dataset] : [],
+      chart: `filter:${e.spec.control}`,
+    };
+  }
   if (e.spec) {
     return {
       id: e.id,

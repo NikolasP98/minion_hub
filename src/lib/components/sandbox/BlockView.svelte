@@ -17,7 +17,7 @@
    */
   import { EmptyState, Skeleton } from '$lib/components/ui';
   import { blockQueries, type BlockQuery } from '$lib/sandbox/blocks/query';
-  import type { BlockSpec } from '$lib/sandbox/blocks/schema';
+  import type { DataBlockSpec } from '$lib/sandbox/blocks/schema';
   import * as m from '$lib/paraglide/messages';
   import KpiBlock from './blocks/KpiBlock.svelte';
   import ChartBlock from './blocks/ChartBlock.svelte';
@@ -25,7 +25,7 @@
   import ListBlock from './blocks/ListBlock.svelte';
 
   interface Props {
-    spec: BlockSpec;
+    spec: DataBlockSpec;
     title: string;
     /** Bump to re-query (the element row changed). */
     version?: number;
@@ -45,7 +45,7 @@
     return { columns: body?.columns ?? [], rows: body?.rows ?? [] };
   }
 
-  async function load(current: BlockSpec): Promise<LoadedBlock> {
+  async function load(current: DataBlockSpec): Promise<LoadedBlock> {
     const q = blockQueries(current, new Date());
     if (q.kind === 'kpi') {
       const [value, compare, trend] = await Promise.all([

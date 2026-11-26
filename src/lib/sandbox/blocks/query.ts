@@ -5,7 +5,7 @@
  * RBAC/RLS on the server). Blocks never compute dates or group rows in the
  * browser; the SQL does it.
  */
-import type { BlockSpec, Bucket, Range } from './schema';
+import type { DataBlockSpec, Bucket, Range } from './schema';
 
 /** Client-side mirror of the server `QuerySpec` (`$server` is not importable here). */
 export interface BlockQuery {
@@ -127,7 +127,7 @@ export type BlockQueries =
   | { kind: 'kpi'; value: BlockQuery; compare?: BlockQuery; trend?: BlockQuery }
   | { kind: 'chart' | 'table' | 'list'; rows: BlockQuery };
 
-export function blockQueries(spec: BlockSpec, now: Date): BlockQueries {
+export function blockQueries(spec: DataBlockSpec, now: Date): BlockQueries {
   switch (spec.type) {
     case 'kpi': {
       const { source } = spec;

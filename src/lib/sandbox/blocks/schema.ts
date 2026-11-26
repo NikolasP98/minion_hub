@@ -9,8 +9,10 @@
  */
 import { z } from 'zod';
 
+/** The four data kinds; `filter` is a page control, not a data block (spec 150). */
 export const BLOCK_KINDS = ['kpi', 'chart', 'table', 'list'] as const;
 export type BlockKind = (typeof BLOCK_KINDS)[number];
+export type DataKind = BlockKind;
 
 export const FORMATS = ['number', 'compact', 'money', 'percent'] as const;
 export type Format = (typeof FORMATS)[number];
@@ -89,6 +91,38 @@ const filterSchema = z.object({
   value: z.unknown().optional(),
 });
 
+/** A page value name: short lowercase word (spec 150 FR-007). */
+export const VAR_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
+const varName = z
+  .string()
+  .regex(VAR_PATTERN)
+  .describe('Page value name: lowercase letter first, up to 32 letters, digits or underscores.');
+
+/** Max connections per block (spec 150 FR-003). */
+export const MAX_LISTENS = 6;
+/** Max values a multi-select can hold (the compiler's `in` cap). */
+export const MAX_MULTI_VALUES = 100;
+
+const scalar = z.union([z.string(), z.number(), z.boolean()]);
+
+/** What a filter currently holds: kept in the page (URL in S2), never saved except as `default`. */
+export const pageValueSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('date'), range: z.enum(RANGES) }),
+  z.object({ kind: z.literal('select'), value: scalar }),
+  z.object({ kind: z.literal('multi'), values: z.array(scalar).max(MAX_MULTI_VALUES) }),
+]);
+export type PageValue = z.infer<typeof pageValueSchema>;
+
+/**
+ * Connections: "when page value `var` is set, filter my column `col`". No
+ * default on purpose — an absent `listens` means "keep what is stored".
+ */
+export const listensSchema = z
+  .array(z.object({ var: varName, col }))
+  .max(MAX_LISTENS)
+  .describe('Connections to page filters: { var: filter value name, col: this block column }.');
+export type Listens = z.infer<typeof listensSchema>;
+
 const baseSource = {
   dataset: z.string().min(1).max(100).describe('Dataset id from sandbox.datasets.'),
   filters: z.array(filterSchema).max(10).optional().describe('Extra row filters (AND).'),
@@ -120,6 +154,7 @@ export const kpiParamsSchema = z.object({
     ),
   target: z.number().positive().optional().describe('Goal value: adds a progress bar toward it.'),
   unit: z.string().max(12).optional().describe('Suffix after the value, e.g. "tickets".'),
+  listens: listensSchema.optional(),
 });
 
 export const chartParamsSchema = z.object({
@@ -142,6 +177,7 @@ export const chartParamsSchema = z.object({
   }),
   format: z.enum(FORMATS).default('number'),
   currency,
+  listens: listensSchema.optional(),
 });
 
 export const tableParamsSchema = z.object({
@@ -163,6 +199,7 @@ export const tableParamsSchema = z.object({
     .optional()
     .describe('Per-column display format; inferred from the column type when omitted.'),
   currency,
+  listens: listensSchema.optional(),
 });
 
 export const listParamsSchema = z.object({
@@ -174,6 +211,24 @@ export const listParamsSchema = z.object({
   }),
   format: z.enum(FORMATS).default('number'),
   currency,
+  listens: listensSchema.optional(),
+});
+
+export const FILTER_CONTROLS = ['date_range', 'select', 'multi_select'] as const;
+export type FilterControl = (typeof FILTER_CONTROLS)[number];
+
+/** A page control (spec 150): publishes one page value under `var`. */
+export const filterParamsSchema = z.object({
+  var: varName,
+  control: z.enum(FILTER_CONTROLS),
+  options: z
+    .object({
+      dataset: z.string().min(1).max(100).describe('Dataset id from sandbox.datasets.'),
+      col: col.describe('Column whose distinct values are the choices.'),
+    })
+    .optional()
+    .describe('Choices source; required for select and multi_select, not allowed for date_range.'),
+  default: pageValueSchema.optional().describe('Initial value; its kind must match the control.'),
 });
 
 export const BLOCK_PARAMS = {
@@ -183,23 +238,35 @@ export const BLOCK_PARAMS = {
   list: listParamsSchema,
 } as const;
 
-/** The stored shape: `{ v: 1, type, ...params }` (spelled out so inference stays exact). */
-export const blockSpecSchema = z.discriminatedUnion('type', [
+/** The stored data-block shapes: `{ v: 1, type, ...params }` (spelled out so inference stays exact). */
+const dataBlockMembers = [
   kpiParamsSchema.extend({ v: z.literal(1), type: z.literal('kpi') }),
   chartParamsSchema.extend({ v: z.literal(1), type: z.literal('chart') }),
   tableParamsSchema.extend({ v: z.literal(1), type: z.literal('table') }),
   listParamsSchema.extend({ v: z.literal(1), type: z.literal('list') }),
-]);
+] as const;
+
+const filterMember = filterParamsSchema.extend({ v: z.literal(1), type: z.literal('filter') });
+
+export const dataBlockSpecSchema = z.discriminatedUnion('type', dataBlockMembers);
+export const blockSpecSchema = z.discriminatedUnion('type', [...dataBlockMembers, filterMember]);
 
 export type BlockSpec = z.infer<typeof blockSpecSchema>;
+export type FilterSpec = Extract<BlockSpec, { type: 'filter' }>;
+export type DataBlockSpec = Exclude<BlockSpec, FilterSpec>;
 export type KpiSpec = Extract<BlockSpec, { type: 'kpi' }>;
 export type ChartSpec = Extract<BlockSpec, { type: 'chart' }>;
 export type TableSpec = Extract<BlockSpec, { type: 'table' }>;
 export type ListSpec = Extract<BlockSpec, { type: 'list' }>;
 
-/** Shape-only check; the API additionally validates columns against the registry. */
-export function parseBlockSpec(raw: unknown): BlockSpec {
-  return blockSpecSchema.parse(raw);
+/** Narrows to the four data kinds: only those carry `source` and run queries. */
+export function isDataBlock(spec: BlockSpec | null | undefined): spec is DataBlockSpec {
+  return !!spec && spec.type !== 'filter';
+}
+
+/** Shape-only check of a data block; the API additionally validates columns against the registry. */
+export function parseBlockSpec(raw: unknown): DataBlockSpec {
+  return dataBlockSpecSchema.parse(raw);
 }
 
 const toolEnvelope = {
@@ -219,7 +286,7 @@ export interface BlockToolSchema {
     title: string;
     w?: number;
     h?: number;
-    spec: BlockSpec;
+    spec: DataBlockSpec;
   };
 }
 
@@ -238,8 +305,38 @@ export function blockToolSchemas(): BlockToolSchema[] {
       inputSchema,
       parse: (raw: unknown) => {
         const { id, title, w, h, ...rest } = input.parse(raw);
-        return { id, title, w, h, spec: blockSpecSchema.parse({ v: 1, type: kind, ...rest }) };
+        return {
+          id,
+          title,
+          w,
+          h,
+          spec: dataBlockSpecSchema.parse({ v: 1, type: kind, ...rest }),
+        };
       },
     };
   });
+}
+
+export interface FilterToolSchema {
+  inputSchema: Record<string, unknown>;
+  /** Parses a tool input into `{ id, title, spec }`; filters have no grid size. */
+  parse: (input: unknown) => { id?: string; title: string; spec: FilterSpec };
+}
+
+/** The `filter` tool, derived from the same grammar (envelope: `{ id?, title }` only). */
+export function filterToolSchema(): FilterToolSchema {
+  const { id, title } = toolEnvelope;
+  const input = z.object({ id, title, ...filterParamsSchema.shape });
+  const { $schema: _dropped, ...inputSchema } = z.toJSONSchema(input, { io: 'input' });
+  return {
+    inputSchema,
+    parse: (raw: unknown) => {
+      const { id: elementId, title: name, ...rest } = input.parse(raw);
+      return {
+        id: elementId,
+        title: name,
+        spec: blockSpecSchema.parse({ v: 1, type: 'filter', ...rest }) as FilterSpec,
+      };
+    },
+  };
 }

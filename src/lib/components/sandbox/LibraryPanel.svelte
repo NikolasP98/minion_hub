@@ -40,6 +40,7 @@
     chart: m.sandbox_block_kind_chart,
     table: m.sandbox_block_kind_table,
     list: m.sandbox_block_kind_list,
+    filter: m.sandbox_block_kind_filter,
   } as const;
   const kindOf = (c: LibraryComponent) =>
     c.spec ? KIND_LABEL[c.spec.type]() : m.sandbox_block_kind_custom();

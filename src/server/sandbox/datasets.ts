@@ -177,7 +177,10 @@ export const DATASETS: readonly Dataset[] = [
     id: 'scheduling.bookings',
     module: 'scheduling',
     meaning: 'Calendar bookings (appointments).',
-    from: 'sched_bookings t',
+    from: [
+      'sched_bookings t',
+      'left join fin_products p on p.id = t.product_id and p.org_id = t.org_id',
+    ].join(' '),
     orgColumn: 't.org_id',
     defaultOrder: 'start_time desc',
     defaultColumns: ['title', 'start_time', 'end_time', 'status'],
@@ -189,6 +192,9 @@ export const DATASETS: readonly Dataset[] = [
       col('attendee_name', 'text', 'Attendee name', { pii: true }),
       col('crm_contact_id', 'uuid', 'Linked CRM contact id'),
       col('product_id', 'uuid', 'Booked catalog product id'),
+      col('service_name', 'text', 'Booked service name (catalog product name)', {
+        expr: 'p.name',
+      }),
     ],
   },
   ...datasetsFrom([stockServer]),

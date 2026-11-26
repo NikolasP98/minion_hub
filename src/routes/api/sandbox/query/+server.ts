@@ -2,7 +2,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import { requireAuth } from '$server/auth/authorize';
-import { AGGREGATE_FNS, OPS } from '$server/sandbox/query-compiler';
+import { AGGREGATE_FNS, BUCKET_UNITS, OPS } from '$server/sandbox/query-compiler';
 import { runQuery } from '$server/sandbox/sandbox.service';
 import { parseSandboxBody, sandboxErrorResponse } from '../_errors';
 
@@ -36,6 +36,8 @@ const specSchema = z.object({
     )
     .max(10)
     .optional(),
+  /** Time series (spec 049): without it zod strips the key and trend/time charts 400. */
+  bucket: z.object({ col: z.string().max(100), unit: z.enum(BUCKET_UNITS) }).optional(),
 });
 
 /** POST /api/sandbox/query */

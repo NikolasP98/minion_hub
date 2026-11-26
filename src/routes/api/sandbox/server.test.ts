@@ -201,6 +201,33 @@ describe('POST /api/sandbox/query', () => {
     });
   });
 
+  it('lets a bucket spec through to the compiler (trend / time-series blocks)', async () => {
+    const response = await queryPost(
+      post(MEMBER, {
+        dataset: 'pos.tickets',
+        bucket: { col: 'submitted_at', unit: 'day' },
+        aggregate: [{ fn: 'sum', col: 'total', as: 'value' }],
+        orderBy: [{ col: 'submitted_at', dir: 'asc' }],
+      }),
+    );
+    expect(response.status).toBe(200);
+    const [, query] = statements();
+    expect(query.sql).toContain('date_trunc($1, t.submitted_at) as "submitted_at"');
+    expect(query.params).toContain('day');
+  });
+
+  it('400s a value that does not fit its column, naming where.<i>.value, before any SQL', async () => {
+    const response = await queryPost(
+      post(MEMBER, {
+        dataset: 'pos.tickets',
+        where: [{ col: 'total', op: 'gt', value: 'abc' }],
+      }),
+    );
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ field: 'where.0.value' });
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
   it('reports limited:true when the row count reaches the limit', async () => {
     mocks.execute.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: 1 }, { total: 2 }]);
     const response = await queryPost(
