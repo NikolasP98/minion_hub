@@ -88,6 +88,7 @@
     <div class="combo">
       <Combobox
         id={`filter-${id}`}
+        {label}
         items={choices}
         itemToValue={(c) => String(c.value)}
         itemToString={(c) => String(c.value)}
@@ -111,6 +112,8 @@
       </Button>
     {/if}
   {:else}
+    <!-- TODO(handoff): the shared MultiSelectFilter popup does not yet follow the APG listbox
+         pattern (see PickFilter.mounted.test.ts); the fix belongs to the primitive. -->
     <MultiSelectFilter
       {label}
       allLabel={m.sandbox_filter_all()}
@@ -137,6 +140,15 @@
   }
   .combo {
     min-width: 11rem;
+  }
+  /* The visible title sits beside the control; the combobox's own label stays for screen readers. */
+  .combo :global(.cb-label) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   .note {
     color: var(--color-text-tertiary);

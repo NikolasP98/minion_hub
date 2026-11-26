@@ -68,8 +68,8 @@
 
 <FilterBar {filters} {host} read={values.draft} onchange={values.set} />
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="board" ondragover={onDragOver} ondrop={onDrop}>
+<!-- A pointer-only drop target for library components: not an interactive control. -->
+<div class="board" role="presentation" ondragover={onDragOver} ondrop={onDrop}>
   <EditableGrid id="sandbox" items={gridItems} onchange={onLayout} rowHeight={220} bind:editing>
     {#snippet cell(id)}
       {@const element = byId.get(id)}

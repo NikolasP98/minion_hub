@@ -7101,7 +7101,7 @@
   "sandbox_block_kind_chart": "Gráfico",
   "sandbox_block_kind_table": "Tabla",
   "sandbox_block_kind_list": "Lista",
-  "sandbox_block_kind_filter": "Filtro",
+  "sandbox_block_kind_filter": "Filtro de página",
   "sandbox_wiring_unavailable": "Este bloque está conectado a filtros de la página, pero no se pudieron leer las conexiones, así que se ocultan sus cifras en vez de mostrar datos sin filtrar.",
   "sandbox_filter_bar_label": "Filtros de la página",
   "sandbox_filter_any_date": "Cualquier fecha",

@@ -7101,7 +7101,7 @@
   "sandbox_block_kind_chart": "Chart",
   "sandbox_block_kind_table": "Table",
   "sandbox_block_kind_list": "List",
-  "sandbox_block_kind_filter": "Filter",
+  "sandbox_block_kind_filter": "Page filter",
   "sandbox_wiring_unavailable": "This block is connected to page filters, but the page connections could not be read, so its numbers are hidden instead of showing unfiltered data.",
   "sandbox_filter_bar_label": "Page filters",
   "sandbox_filter_any_date": "Any date",

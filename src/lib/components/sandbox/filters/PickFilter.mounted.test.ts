@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import PickFilter from './PickFilter.svelte';
+import { assertPattern } from '$lib/a11y/assert-pattern';
 
 afterEach(cleanup);
 
@@ -60,6 +61,11 @@ describe('PickFilter', () => {
       'submitted 9',
       'void 2',
     ]);
+    // TODO(handoff): the shared `ui/MultiSelectFilter` popup fails the APG listbox pattern
+    // (no accessible name on the listbox, one tab stop per option instead of roving focus, no
+    // Arrow/End keys). Fixing it belongs to the hub a11y program (meta proposal 2026-11-20 hub
+    // accessibility, slices S2+); then replace this comment with
+    // `await assertPattern(document.body, 'listbox')`.
     await fireEvent.click(submitted);
     expect(onchange).toHaveBeenLastCalledWith({ kind: 'multi', values: ['submitted'] });
     view.unmount();
@@ -92,6 +98,24 @@ describe('PickFilter', () => {
     await waitFor(() => expect((input as HTMLInputElement).value).toBe('void'));
     await fireEvent.click(screen.getByRole('button', { name: 'Clear value' }));
     expect(onchange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('the single picker follows the APG combobox pattern (spec 137, SC-009)', async () => {
+    const view = render(PickFilter, {
+      props: {
+        id: 'f',
+        label: 'Status',
+        control: 'select',
+        options,
+        value: null,
+        onchange: vi.fn(),
+      },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect((screen.getByRole('combobox') as HTMLInputElement).disabled).toBe(false),
+    );
+    await assertPattern(view.container, 'combobox');
   });
 
   it('shows a calm message when the choices cannot load', async () => {

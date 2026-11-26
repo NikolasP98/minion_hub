@@ -50,9 +50,9 @@
   <!-- Trigger + popover panel (Zag handles outside-click / Escape dismissal) -->
   <Popover bind:open placement="bottom" bare>
     {#snippet trigger()}
+      <!-- aria-haspopup / aria-expanded live on the Popover's own trigger button; repeating them
+           on this role-less span is an aria-allowed-attr violation. -->
       <span
-        aria-haspopup="listbox"
-        aria-expanded={open}
         class="flex items-center gap-1.5 h-7 pl-2.5 pr-1.5 rounded-md border text-[length:var(--font-size-caption)] font-medium cursor-pointer transition-colors
           {count > 0
           ? 'border-accent/40 bg-accent/10 text-foreground'

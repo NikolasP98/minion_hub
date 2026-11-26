@@ -42,28 +42,11 @@
       "aria-required-parent": 8,
       "list": 1
     },
-    "atoms-inputs-multiselectfilter--everything-selected-many-pills": {
-      "aria-allowed-attr": 1
-    },
-    "atoms-inputs-multiselectfilter--long-labels": {
-      "aria-allowed-attr": 1
-    },
-    "atoms-inputs-multiselectfilter--no-colours-or-counts": {
-      "aria-allowed-attr": 1
-    },
-    "atoms-inputs-multiselectfilter--nothing-selected": {
-      "aria-allowed-attr": 1
-    },
     "atoms-inputs-multiselectfilter--open": {
-      "aria-allowed-attr": 1,
       "aria-input-field-name": 1
     },
     "atoms-inputs-multiselectfilter--open·-phone": {
-      "aria-allowed-attr": 1,
       "aria-input-field-name": 1
-    },
-    "atoms-inputs-multiselectfilter--selected-interactive": {
-      "aria-allowed-attr": 1
     },
     "atoms-inputs-segmentedcontrol--default": {
       "color-contrast": 1
