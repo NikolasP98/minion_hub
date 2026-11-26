@@ -109,10 +109,8 @@
       {#if it.divider}
         <div {...api.getSeparatorProps()} class="my-1 h-px bg-[var(--hairline)]"></div>
       {:else}
-        <!-- TODO(handoff): items stay in the Tab order (no tabindex="-1"), so an open menu has
-             one tab stop per item instead of one for the menu (APG menu pattern; found by
-             assertPattern in SessionKanban.mounted.test.ts). Hub-wide: fix with the widget
-             slice of meta proposals/2026-11-20-hub-accessibility-program.md. -->
+        <!-- tabindex -1: the menu is ONE tab stop; Zag moves the highlight with
+             aria-activedescendant while focus stays on the menu itself. -->
         <svelte:element
           this={it.href ? 'a' : 'button'}
           href={it.href}
@@ -122,6 +120,7 @@
             disabled: it.disabled,
             closeOnSelect: it.closeOnSelect,
           })}
+          tabindex={-1}
           class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-sm text-left no-underline bg-transparent border-none cursor-pointer outline-none transition-colors
             data-[highlighted]:bg-foreground/[0.06]
             data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed

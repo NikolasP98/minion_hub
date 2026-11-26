@@ -42,12 +42,6 @@
       "aria-required-parent": 8,
       "list": 1
     },
-    "atoms-inputs-multiselectfilter--open": {
-      "aria-input-field-name": 1
-    },
-    "atoms-inputs-multiselectfilter--open·-phone": {
-      "aria-input-field-name": 1
-    },
     "atoms-inputs-segmentedcontrol--default": {
       "color-contrast": 1
     },
