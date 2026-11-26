@@ -103,7 +103,8 @@
     // What had focus before the menu took it (the element a keyboard user opened it from).
     const opener = document.activeElement as HTMLElement | null;
     const menu = root;
-    menu.querySelector<HTMLElement>(ROW_SELECTOR)?.focus();
+    // The first row that can take it: a disabled first row would leave focus outside the menu.
+    (rowsIn(menu).find((r) => !r.hasAttribute('disabled')) ?? menu).focus();
     return () => {
       // Give focus back only if the menu still holds it (or lost it by closing); a click
       // elsewhere that closed the menu keeps the focus it chose.
