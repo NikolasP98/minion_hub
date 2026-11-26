@@ -34,6 +34,8 @@ await build({
   resolve: {
     alias: [
       ...[
+        '$lib/services/gateway.svelte',
+        '$lib/state/features/voice-call.svelte',
         '$lib/access/can.svelte',
         '$lib/navigation',
         '$lib/state/agents/tool-catalog.svelte',
@@ -74,12 +76,10 @@ fs.writeFileSync(
   JSON.stringify(
     {
       purpose: 'Rendered local fixture only; synthetic answer data; no authenticated backend proof',
-      sources: [...inputs]
-        .sort()
-        .map((file) => ({
-          file: path.relative(hub, file),
-          sha256: createHash('sha256').update(fs.readFileSync(file)).digest('hex'),
-        })),
+      sources: [...inputs].sort().map((file) => ({
+        file: path.relative(hub, file),
+        sha256: createHash('sha256').update(fs.readFileSync(file)).digest('hex'),
+      })),
     },
     null,
     2,
