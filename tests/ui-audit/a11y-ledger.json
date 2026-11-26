@@ -608,12 +608,6 @@
     "components-overlays-bugreporter--minimized": {
       "label-content-name-mismatch": 1
     },
-    "components-overlays-commandpalette--no-results": {
-      "aria-required-children": 1
-    },
-    "components-overlays-commandpalette--trigger-mod-k": {
-      "aria-required-children": 1
-    },
     "components-overlays-notificationspopup--open-empty-inbox": {
       "button-name": 1
     },

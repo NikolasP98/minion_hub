@@ -51,10 +51,10 @@ function deferred<T>() {
 const calls = (method: string) => spies.send.mock.calls.filter(([name]) => name === method);
 async function cancelConfirmation() {
   await fireEvent.click(screen.getByRole('button', { name: m.common_cancel() }));
-  const dialog = screen.getByRole('dialog');
+  const dialog = screen.getByRole('alertdialog');
   // happy-dom does not run CSS animations; deliver the native completion boundary.
   await fireEvent.animationEnd(dialog.querySelector('[data-part=content]')!);
-  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 }
 const clearButton = () => screen.getByRole('button', { name: 'Clear' });
 const confirmButton = () =>

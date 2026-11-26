@@ -99,6 +99,21 @@
       /* already open or unsupported — z-index fallback still applies */
     }
   });
+  // A non-modal dialog still takes focus when it opens and gives it back when it closes
+  // (spec 152). A host that focuses something inside first (Picker's search field) wins.
+  $effect(() => {
+    const el = frameEl;
+    if (!el) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    queueMicrotask(() => {
+      if (el.isConnected && !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+    });
+    return () => {
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || el.contains(active)))
+        opener.focus({ preventScroll: true });
+    };
+  });
   let dragging = false;
   let resizing = false;
   let startPointerX = 0;

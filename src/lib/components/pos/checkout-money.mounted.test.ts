@@ -381,7 +381,7 @@ describe('mounted POS money drafts', () => {
     });
     const launch = await view.findByRole('button', { name: 'Cancel unresolved request' });
     await fireEvent.click(launch);
-    const dialog = await view.findByRole('dialog', { name: 'Cancel unresolved request' });
+    const dialog = await view.findByRole('alertdialog', { name: 'Cancel unresolved request' });
     const confirm = within(dialog).getByRole('button', { name: 'Cancel unresolved request' });
 
     await fireEvent.click(confirm);
@@ -454,7 +454,7 @@ describe('mounted POS money drafts', () => {
       ).find((candidate) => candidate.closest('dialog') === null);
       if (!launch) throw new Error('missing cancellation launcher');
       await fireEvent.click(launch);
-      const dialog = await view.findByRole('dialog', { name: 'Cancel unresolved request' });
+      const dialog = await view.findByRole('alertdialog', { name: 'Cancel unresolved request' });
       await fireEvent.click(
         within(dialog).getByRole('button', { name: 'Cancel unresolved request' }),
       );
@@ -558,7 +558,7 @@ describe('mounted POS money drafts', () => {
     await fireEvent.click(await view.findByRole('button', { name: 'Check account' }));
     expect(await view.findByText(/current cart differs/)).toBeTruthy();
     await fireEvent.click(view.getByRole('button', { name: 'Restore pending sale' }));
-    const dialog = await view.findByRole('dialog', { name: 'Restore pending sale' });
+    const dialog = await view.findByRole('alertdialog', { name: 'Restore pending sale' });
     expect(within(dialog).getByText(/replaces the current cart/)).toBeTruthy();
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore pending sale' }));
 

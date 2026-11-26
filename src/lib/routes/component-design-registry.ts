@@ -311,7 +311,7 @@ export const COMPONENT_DESIGN_REGISTRY = [
     '$lib/components/ui/foundations/Dialog.svelte',
     {
       size: ['sm', 'md', 'lg', 'xl'],
-      presentation: ['dialog', 'sheet'],
+      presentation: ['dialog', 'sheet', 'bare'],
       placement: ['left', 'right', 'bottom'],
       variant: ['default', 'crt', 'voxelized', 'canvas', 'terminal'],
     },

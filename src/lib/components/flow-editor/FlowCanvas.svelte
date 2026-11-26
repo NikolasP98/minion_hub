@@ -141,11 +141,42 @@
     if (!raw) return;
 
     let payload: {
-      type: 'agent' | 'promptBox' | 'llm' | 'trigger' | 'pluginTrigger' | 'pluginAction' | 'transform' | 'structured' | 'router' | 'toolAgent' | 'channel' | 'handoff' | 'reaction' | 'subflow' | 'database' | 'fileWrite' | 'schedule';
-      agentId?: string; label?: string;
-      descriptor?: { pluginId: string; id: string; kind: 'trigger' | 'action'; label: string; event?: string; method?: string; channelId?: string; config?: FlowNodeConfigField[] };
+      type:
+        | 'agent'
+        | 'promptBox'
+        | 'llm'
+        | 'trigger'
+        | 'pluginTrigger'
+        | 'pluginAction'
+        | 'transform'
+        | 'structured'
+        | 'router'
+        | 'toolAgent'
+        | 'channel'
+        | 'handoff'
+        | 'reaction'
+        | 'subflow'
+        | 'database'
+        | 'fileWrite'
+        | 'schedule';
+      agentId?: string;
+      label?: string;
+      descriptor?: {
+        pluginId: string;
+        id: string;
+        kind: 'trigger' | 'action';
+        label: string;
+        event?: string;
+        method?: string;
+        channelId?: string;
+        config?: FlowNodeConfigField[];
+      };
     };
-    try { payload = JSON.parse(raw); } catch { return; }
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
 
     const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
 
@@ -190,7 +221,12 @@
         id: makeId(),
         type: 'trigger',
         position,
-        data: { event: 'message:received', label: 'Channel message', deliverResponse: false, sources: [] } satisfies TriggerNodeData,
+        data: {
+          event: 'message:received',
+          label: 'Channel message',
+          deliverResponse: false,
+          sources: [],
+        } satisfies TriggerNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'pluginTrigger' && payload.descriptor) {
@@ -199,7 +235,15 @@
         id: makeId(),
         type: 'pluginTrigger',
         position,
-        data: { pluginId: d.pluginId, contributionId: d.id, event: d.event ?? '', label: d.label, deliverResponse: false, filterChannelId: d.channelId, config: defaultConfigForFields(d.config) } satisfies PluginTriggerNodeData,
+        data: {
+          pluginId: d.pluginId,
+          contributionId: d.id,
+          event: d.event ?? '',
+          label: d.label,
+          deliverResponse: false,
+          filterChannelId: d.channelId,
+          config: defaultConfigForFields(d.config),
+        } satisfies PluginTriggerNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'pluginAction' && payload.descriptor) {
@@ -208,72 +252,124 @@
         id: makeId(),
         type: 'pluginAction',
         position,
-        data: { pluginId: d.pluginId, contributionId: d.id, method: d.method ?? '', label: d.label, config: defaultConfigForFields(d.config) } satisfies PluginActionNodeData,
+        data: {
+          pluginId: d.pluginId,
+          contributionId: d.id,
+          method: d.method ?? '',
+          label: d.label,
+          config: defaultConfigForFields(d.config),
+        } satisfies PluginActionNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'transform') {
       const node: FlowNode = {
-        id: makeId(), type: 'transform', position,
+        id: makeId(),
+        type: 'transform',
+        position,
         data: { template: '{input}', label: 'Transform' } satisfies TransformNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'structured') {
       const node: FlowNode = {
-        id: makeId(), type: 'structured', position,
-        data: { modelId: 'claude-haiku-4-5-20251001', schema: '{\n  "type": "object",\n  "properties": {}\n}', label: 'Structured' } satisfies StructuredNodeData,
+        id: makeId(),
+        type: 'structured',
+        position,
+        data: {
+          modelId: 'claude-haiku-4-5-20251001',
+          schema: '{\n  "type": "object",\n  "properties": {}\n}',
+          label: 'Structured',
+        } satisfies StructuredNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'router') {
       const node: FlowNode = {
-        id: makeId(), type: 'router', position,
-        data: { mode: 'rule', branches: [{ id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } }], label: 'Router' } satisfies RouterNodeData,
+        id: makeId(),
+        type: 'router',
+        position,
+        data: {
+          mode: 'rule',
+          branches: [
+            { id: `b-${makeId()}`, label: 'Branch 1', rule: { op: 'contains', value: '' } },
+          ],
+          label: 'Router',
+        } satisfies RouterNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'toolAgent') {
       const node: FlowNode = {
-        id: makeId(), type: 'toolAgent', position,
-        data: { modelId: '', systemPrompt: '', tools: [], label: 'Tool Agent' } satisfies ToolAgentNodeData,
+        id: makeId(),
+        type: 'toolAgent',
+        position,
+        data: {
+          modelId: '',
+          systemPrompt: '',
+          tools: [],
+          label: 'Tool Agent',
+        } satisfies ToolAgentNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'channel') {
       const node: FlowNode = {
-        id: makeId(), type: 'channel', position,
+        id: makeId(),
+        type: 'channel',
+        position,
         data: { channel: '', destinations: [], label: 'Channel' } satisfies ChannelNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'handoff') {
       const node: FlowNode = {
-        id: makeId(), type: 'handoff', position,
-        data: { label: 'Human Handoff', destinations: [], suggestionCount: 3, language: 'es' } satisfies HandoffNodeData,
+        id: makeId(),
+        type: 'handoff',
+        position,
+        data: {
+          label: 'Human Handoff',
+          destinations: [],
+          suggestionCount: 3,
+          language: 'es',
+        } satisfies HandoffNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'reaction') {
       const node: FlowNode = {
-        id: makeId(), type: 'reaction', position,
+        id: makeId(),
+        type: 'reaction',
+        position,
         data: { label: 'Set Reaction', emoji: '👀' } satisfies ReactionNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'subflow') {
       const node: FlowNode = {
-        id: makeId(), type: 'subflow', position,
+        id: makeId(),
+        type: 'subflow',
+        position,
         data: { label: 'Subflow' } satisfies SubflowNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'database') {
       const node: FlowNode = {
-        id: makeId(), type: 'database', position,
+        id: makeId(),
+        type: 'database',
+        position,
         data: { label: 'Database', action: 'read', sql: '' } satisfies DatabaseNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'fileWrite') {
       const node: FlowNode = {
-        id: makeId(), type: 'fileWrite', position,
-        data: { label: 'Write File', path: 'report-{date}.md', mode: 'overwrite' } satisfies FileWriteNodeData,
+        id: makeId(),
+        type: 'fileWrite',
+        position,
+        data: {
+          label: 'Write File',
+          path: 'report-{date}.md',
+          mode: 'overwrite',
+        } satisfies FileWriteNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
     } else if (payload.type === 'schedule') {
       const node: FlowNode = {
-        id: makeId(), type: 'schedule', position,
+        id: makeId(),
+        type: 'schedule',
+        position,
         data: { label: 'Schedule', every: 1, unit: 'days' } satisfies ScheduleNodeData,
       };
       setNodes([...flowEditorState.nodes, node]);
@@ -282,7 +378,8 @@
 
   function handleConnect(connection: Connection) {
     // Infer edge type from target handle: bottom handle → context, others → flow
-    const isContext = connection.targetHandle?.includes('ctx') || connection.sourceHandle?.includes('ctx');
+    const isContext =
+      connection.targetHandle?.includes('ctx') || connection.sourceHandle?.includes('ctx');
     const edgeType = isContext ? 'context' : 'flow';
     const newEdge: FlowEdge = {
       id: `e-${Date.now()}`,
@@ -310,7 +407,7 @@
         active.tagName === 'INPUT' ||
         active.tagName === 'TEXTAREA' ||
         active.isContentEditable ||
-        active.closest('[role="dialog"]')
+        active.closest('dialog, [role="dialog"], [role="alertdialog"]')
       )
         return;
       const id = active.closest('.svelte-flow__node')?.getAttribute('data-id');
@@ -354,7 +451,7 @@
     onnodedragstop={({ targetNode }) => {
       if (!targetNode) return;
       const updated = flowEditorState.nodes.map((n) =>
-        n.id === targetNode.id ? { ...n, position: targetNode.position } : n
+        n.id === targetNode.id ? { ...n, position: targetNode.position } : n,
       );
       setNodes(updated);
     }}

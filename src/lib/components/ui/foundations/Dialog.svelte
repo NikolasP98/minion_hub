@@ -2,7 +2,12 @@
   export type DialogSize = 'sm' | 'md' | 'lg' | 'xl';
   export type DialogVariant = 'default' | 'crt' | 'voxelized' | 'canvas' | 'terminal';
   export type DialogCloseReason = 'close-button' | 'cancel' | 'backdrop' | 'programmatic';
-  export type DialogPresentation = 'dialog' | 'sheet';
+  /** `bare`: no surface, header or padding of its own; the caller draws the panel (command palette). */
+  export type DialogPresentation = 'dialog' | 'sheet' | 'bare';
+  export type DialogRole = 'dialog' | 'alertdialog';
+  /** A dialog always has an accessible name: its own `title`, or the id of a visible heading. */
+  export type DialogName =
+    { title: string; labelledBy?: string } | { title?: string; labelledBy: string };
   export type SheetPlacement = 'left' | 'right' | 'bottom';
 </script>
 
@@ -17,11 +22,10 @@
   import { assertDialogLabel } from './dialog';
   import { registerLayer } from '../floating-layer.svelte';
 
-  interface Props {
+  type Props = DialogName & {
     open?: boolean;
-    /** Required unless `labelledBy` points at a visible heading supplied by `header`. */
-    title?: string;
-    labelledBy?: string;
+    /** `alertdialog` for a prompt that interrupts for a decision (confirmations). */
+    role?: DialogRole;
     description?: string;
     describedBy?: string;
     size?: DialogSize;
@@ -43,10 +47,11 @@
     children?: Snippet;
     footer?: Snippet;
     class?: string;
-  }
+  };
 
   let {
     open = $bindable(false),
+    role,
     title,
     labelledBy,
     description,
@@ -79,6 +84,8 @@
   const titleId = `${uid}-title`;
   const descriptionId = `${uid}-description`;
   const accessibleTitleId = $derived(labelledBy ?? (title ? titleId : undefined));
+  // A bare dialog renders no heading, so its `title` is the accessible name directly.
+  const bareName = $derived(presentation === 'bare' && !labelledBy ? title : undefined);
   const accessibleDescriptionId = $derived(
     describedBy ?? (description ? descriptionId : undefined),
   );
@@ -224,14 +231,14 @@
         }
       }
     } else if (element.open && !closing) {
-      closing = true;
+      // `bare` has no exit animation, so there is no `animationend` to wait for: close now.
+      // (Waiting left the palette open as a modal layer over the page.)
+      if (presentation === 'bare') finishClose();
+      else closing = true;
     }
   });
 
-  // Fires for both the enter and exit CSS animations on `.dialog-content`;
-  // only the exit one should trigger the real native close.
-  function handleContentAnimationEnd(event: AnimationEvent) {
-    if (!closing || event.target !== event.currentTarget) return;
+  function finishClose() {
     closing = false;
     const element = dialogElement;
     if (element?.open) {
@@ -240,6 +247,13 @@
       releaseModalState();
       element.close();
     }
+  }
+
+  // Fires for both the enter and exit CSS animations on `.dialog-content`;
+  // only the exit one should trigger the real native close.
+  function handleContentAnimationEnd(event: AnimationEvent) {
+    if (!closing || event.target !== event.currentTarget) return;
+    finishClose();
   }
 
   function handleCancel(event: Event) {
@@ -287,7 +301,10 @@
   data-size={size}
   data-variant={variant}
   data-closing={closing || undefined}
-  aria-labelledby={accessibleTitleId}
+  {role}
+  aria-modal="true"
+  aria-label={bareName}
+  aria-labelledby={bareName ? undefined : accessibleTitleId}
   aria-describedby={accessibleDescriptionId}
   oncancel={handleCancel}
   onclose={handleNativeClose}
@@ -303,7 +320,7 @@
       oninputcapture={handleContentChange}
       onchangecapture={handleContentChange}
     >
-      {#if header || title || !hideClose}
+      {#if presentation !== 'bare' && (header || title || !hideClose)}
         <header data-part="header" class="dialog-header">
           <div class="dialog-heading">
             {#if header}
@@ -407,6 +424,23 @@
   }
   .dialog-positioner[data-size='xl'] {
     max-width: min(calc(100% - (2 * var(--space-page-gutter, 16px))), 56rem);
+  }
+
+  /* `bare`: sits where the command palette always sat (below the top edge), and the caller's
+     own panel is the surface. */
+  .dialog-positioner[data-presentation='bare'] {
+    margin-top: clamp(var(--space-12), 15dvh, 10rem);
+    max-width: min(calc(100% - (2 * var(--space-page-gutter, 16px))), 32rem);
+  }
+  .dialog-positioner[data-presentation='bare'] .dialog-content {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .dialog-positioner[data-presentation='bare'] .dialog-body {
+    padding: 0;
   }
 
   .dialog-content {

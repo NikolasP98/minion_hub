@@ -1,5 +1,6 @@
 <script lang="ts">
   import { iconSizes } from '$lib/components/ui';
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { tick } from 'svelte';
   import { createHotkey } from '$lib/hotkeys';
   import {
@@ -36,7 +37,10 @@
   } from 'lucide-svelte';
   import * as m from '$lib/paraglide/messages';
 
-  let inputEl: HTMLInputElement | undefined = $state();
+  // The input is a combobox that controls the result list and names the active option.
+  const uid = $props.id();
+  const listId = `${uid}-results`;
+  const optionId = (index: number) => `${listId}-${index}`;
 
   // Flows/permission gating is handled inside getFilteredCommands (sourced
   // from the canonical route registry $lib/nav/routes).
@@ -75,18 +79,8 @@
     meta: { name: m.shortcuts_commandPaletteName(), description: m.shortcuts_commandPaletteDesc() },
   });
 
-  // View-scoped: list navigation, live only while the palette is open. The
-  // search input is focused, so arrows/Enter set ignoreInputs:false to fire
-  // there; stopPropagation:false preserves Escape reaching other overlays.
-  createHotkey(
-    'Escape',
-    () => closePalette(),
-    () => ({
-      enabled: palette.open,
-      stopPropagation: false,
-      conflictBehavior: 'allow',
-    }),
-  );
+  // View-scoped: list navigation, live only while the palette is open. The search input is
+  // focused, so arrows/Enter set ignoreInputs:false to fire there. Escape belongs to the dialog.
   createHotkey(
     'ArrowDown',
     () => {
@@ -122,12 +116,6 @@
     });
   }
 
-  function handleBackdropClick(e: MouseEvent) {
-    if ((e.target as HTMLElement).dataset.backdrop !== undefined) {
-      closePalette();
-    }
-  }
-
   function selectCommand(idx: number) {
     const cmd = flatCommands[idx];
     if (cmd) {
@@ -144,128 +132,133 @@
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => runRecordSearch(q), 150);
   });
-
-  // Focus input when opened
-  $effect(() => {
-    if (palette.open) {
-      tick().then(() => inputEl?.focus());
-    }
-  });
 </script>
 
-{#if palette.open}
-  <!-- Backdrop -->
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- A modal dialog (shared Dialog, `bare`: this panel is the surface): the page behind is
+     inert, Escape and the backdrop close it, and focus returns to where it was. -->
+<Dialog
+  bind:open={palette.open}
+  presentation="bare"
+  title={m.shortcuts_commandPaletteName()}
+  hideClose
+  guardDismiss={false}
+  initialFocus="[data-palette-input]"
+  onclose={closePalette}
+>
+  <!-- Palette container -->
   <div
-    class="fixed inset-0 z-[var(--layer-command,70)] bg-[color-mix(in_srgb,var(--color-canvas,var(--color-bg))_60%,transparent)] backdrop-blur-sm flex items-start justify-center pt-[clamp(var(--space-12),15dvh,10rem)] px-[var(--space-page-gutter,16px)]"
-    data-backdrop
-    onclick={handleBackdropClick}
+    class="w-full max-h-[calc(100dvh-30dvh-env(safe-area-inset-bottom,0px))] bg-bg2 border border-border rounded-xl shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))] overflow-hidden"
+    style="animation: palette-in 150ms ease-out"
   >
-    <!-- Palette container -->
-    <div
-      class="w-full max-w-lg max-h-[calc(100dvh-30dvh-env(safe-area-inset-bottom,0px))] bg-bg2 border border-border rounded-xl shadow-[var(--shadow-overlay,var(--shadow-xl,var(--shadow-lg)))] overflow-hidden"
-      style="animation: palette-in 150ms ease-out"
-    >
-      <!-- Search input -->
-      <div class="flex items-center gap-3 px-4 py-3 border-b border-border">
-        <Search size={iconSizes.md} class="text-muted shrink-0" />
-        <input
-          bind:this={inputEl}
-          bind:value={palette.query}
-          type="text"
-          class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
-          placeholder={m.command_searchPlaceholder()}
-          autocomplete="off"
-          spellcheck="false"
-        />
-        <kbd
-          class="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bg3 border border-border text-[length:var(--font-size-telemetry)] font-mono text-muted"
-        >
-          Esc
-        </kbd>
-      </div>
+    <!-- Search input -->
+    <div class="flex items-center gap-3 px-4 py-3 border-b border-border">
+      <Search size={iconSizes.md} class="text-muted shrink-0" />
+      <input
+        data-palette-input
+        bind:value={palette.query}
+        type="text"
+        role="combobox"
+        aria-label={m.command_searchPlaceholder()}
+        aria-expanded={flatCommands.length > 0}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={flatCommands.length ? optionId(palette.selectedIndex) : undefined}
+        class="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted"
+        placeholder={m.command_searchPlaceholder()}
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <kbd
+        class="hidden sm:inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-bg3 border border-border text-[length:var(--font-size-telemetry)] font-mono text-muted"
+      >
+        Esc
+      </kbd>
+    </div>
 
-      <!-- Results -->
+    <!-- Results -->
+    {#if flatCommands.length === 0}
+      <!-- Not an empty listbox (a listbox must own options): a status the screen reader reads. -->
+      <div class="py-2">
+        <div class="px-4 py-8 text-center text-sm text-muted" role="status">
+          {m.command_noResults()}
+        </div>
+      </div>
+    {:else}
+      {@const flatIdx = { value: 0 }}
       <div
+        id={listId}
         class="max-h-72 overflow-y-auto py-2"
         role="listbox"
         aria-label={m.command_searchPlaceholder()}
       >
-        {#if flatCommands.length === 0}
-          <div class="px-4 py-8 text-center text-sm text-muted">
-            {m.command_noResults()}
+        {#each groups as group}
+          <div class="px-3 pt-2 pb-1">
+            <span
+              class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong"
+            >
+              {group.category}
+            </span>
           </div>
-        {:else}
-          {@const flatIdx = { value: 0 }}
-          {#each groups as group}
-            <div class="px-3 pt-2 pb-1">
-              <span
-                class="text-[length:var(--font-size-telemetry)] font-semibold uppercase tracking-wider text-muted-strong"
-              >
-                {group.category}
-              </span>
+          {#each group.commands as cmd}
+            {@const currentIdx = flatIdx.value++}
+            {@const isSelected = palette.selectedIndex === currentIdx}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div
+              class="mx-2 px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors duration-[var(--duration-instant)] {isSelected
+                ? 'bg-accent/12 text-foreground'
+                : 'text-muted hover:bg-bg3 hover:text-foreground'}"
+              id={optionId(currentIdx)}
+              data-cmd-index={currentIdx}
+              onmouseenter={() => {
+                palette.selectedIndex = currentIdx;
+              }}
+              onclick={() => selectCommand(currentIdx)}
+              role="option"
+              tabindex={-1}
+              aria-selected={isSelected}
+            >
+              {#if cmd.icon && cmd.icon.length <= 2}
+                <!-- Emoji icon (from agent) -->
+                <span class="text-sm w-5 text-center shrink-0">{cmd.icon}</span>
+              {:else if cmd.icon && iconMap[cmd.icon]}
+                {@const Icon = iconMap[cmd.icon]}
+                <Icon size={iconSizes.md} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
+              {:else}
+                <Bot size={iconSizes.md} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
+              {/if}
+              <span class="text-sm flex-1 truncate">{cmd.label}</span>
+              {#if cmd.category === 'page'}
+                <span
+                  class="text-[length:var(--font-size-telemetry)] text-muted-foreground font-mono shrink-0"
+                  >{m.command_pageTag()}</span
+                >
+              {/if}
             </div>
-            {#each group.commands as cmd}
-              {@const currentIdx = flatIdx.value++}
-              {@const isSelected = palette.selectedIndex === currentIdx}
-              <!-- svelte-ignore a11y_click_events_have_key_events -->
-              <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <div
-                class="mx-2 px-3 py-2 rounded-lg flex items-center gap-3 cursor-pointer transition-colors duration-[var(--duration-instant)] {isSelected
-                  ? 'bg-accent/12 text-foreground'
-                  : 'text-muted hover:bg-bg3 hover:text-foreground'}"
-                data-cmd-index={currentIdx}
-                onmouseenter={() => {
-                  palette.selectedIndex = currentIdx;
-                }}
-                onclick={() => selectCommand(currentIdx)}
-                role="option"
-                tabindex={-1}
-                aria-selected={isSelected}
-              >
-                {#if cmd.icon && cmd.icon.length <= 2}
-                  <!-- Emoji icon (from agent) -->
-                  <span class="text-sm w-5 text-center shrink-0">{cmd.icon}</span>
-                {:else if cmd.icon && iconMap[cmd.icon]}
-                  {@const Icon = iconMap[cmd.icon]}
-                  <Icon size={iconSizes.md} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
-                {:else}
-                  <Bot size={iconSizes.md} class="shrink-0 {isSelected ? 'text-accent' : ''}" />
-                {/if}
-                <span class="text-sm flex-1 truncate">{cmd.label}</span>
-                {#if cmd.category === 'page'}
-                  <span
-                    class="text-[length:var(--font-size-telemetry)] text-muted-foreground font-mono shrink-0"
-                    >{m.command_pageTag()}</span
-                  >
-                {/if}
-              </div>
-            {/each}
           {/each}
-        {/if}
+        {/each}
       </div>
+    {/if}
 
-      <!-- Footer hint -->
-      <div
-        class="px-4 py-2 border-t border-border flex items-center gap-4 text-[length:var(--font-size-telemetry)] text-muted-foreground"
-      >
-        <span class="flex items-center gap-1">
-          <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&uarr;&darr;</kbd>
-          {m.command_hintNavigate()}
-        </span>
-        <span class="flex items-center gap-1">
-          <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&crarr;</kbd>
-          {m.command_hintSelect()}
-        </span>
-        <span class="flex items-center gap-1">
-          <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">esc</kbd>
-          {m.command_hintClose()}
-        </span>
-      </div>
+    <!-- Footer hint -->
+    <div
+      class="px-4 py-2 border-t border-border flex items-center gap-4 text-[length:var(--font-size-telemetry)] text-muted-foreground"
+    >
+      <span class="flex items-center gap-1">
+        <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&uarr;&darr;</kbd>
+        {m.command_hintNavigate()}
+      </span>
+      <span class="flex items-center gap-1">
+        <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">&crarr;</kbd>
+        {m.command_hintSelect()}
+      </span>
+      <span class="flex items-center gap-1">
+        <kbd class="px-1 py-0.5 rounded bg-bg3 border border-border font-mono">esc</kbd>
+        {m.command_hintClose()}
+      </span>
     </div>
   </div>
-{/if}
+</Dialog>
 
 <style>
   @keyframes palette-in {
