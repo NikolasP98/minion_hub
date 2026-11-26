@@ -482,24 +482,6 @@
       "aria-required-parent": 7,
       "color-contrast": 1
     },
-    "components-cards-kanbancol--board-four-columns": {
-      "aria-required-children": 1
-    },
-    "components-cards-kanbancol--empty": {
-      "aria-required-children": 1
-    },
-    "components-cards-taskcard--all-statuses": {
-      "aria-required-parent": 4
-    },
-    "components-cards-taskcard--long-title": {
-      "aria-required-parent": 1
-    },
-    "components-cards-taskcard--no-description": {
-      "aria-required-parent": 1
-    },
-    "components-cards-taskcard--todo": {
-      "aria-required-parent": 1
-    },
     "components-chat-attachmentpreviewswitch--driving-tiles-live-mode": {
       "button-name": 3,
       "color-contrast": 1
