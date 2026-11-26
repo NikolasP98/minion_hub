@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
@@ -320,180 +321,197 @@
 
 <svelte:window onkeydown={onWindowKey} onpaste={onPaste} />
 
-<!-- TODO(handoff): HC-028 claims aria-modal="true" without a native modal (no inert background, no Tab trap, no focus return). Full-screen mode, not a dialog: either open through the shared Dialog or drop the modal claim. See spec-hc028-overlay-dialog-contract.md DELTA 3. -->
-<div class="easel" role="dialog" aria-modal="true" aria-label={m.a11y4_easelBoard()}>
-  <!-- Toolbar -->
-  <div class="toolbar">
-    <span class="board-name">
-      <input
-        value={note.title}
-        placeholder={m.easel_untitledBoard()}
-        oninput={(e) => updateNote(note.id, { title: e.currentTarget.value })}
-        aria-label={m.easel_boardTitle()}
-      />
-    </span>
-    <div class="tools">
-      <Button
-        type="button"
-        loading={busy}
-        title={m.easel_addImage()}
-        onclick={() => fileInput?.click()}
-      >
-        <ImagePlus size={iconSizes.md} />
-        {m.easel_image()}
-      </Button>
-      <Button type="button" title={m.easel_addImageFromUrl()} onclick={() => (urlOpen = !urlOpen)}>
-        <Link2 size={iconSizes.md} />
-        {m.easel_url()}
-      </Button>
-      <Button type="button" title={m.easel_addText()} onclick={addText}
-        ><Type size={iconSizes.md} /> {m.easel_text()}</Button
-      >
-      <Button type="button" title={m.easel_fitToContent()} onclick={fitToContent}>
-        <Maximize size={iconSizes.md} />
-      </Button>
-      <span class="zoom">{Math.round(cam.zoom * 100)}%</span>
-      <Button
-        type="button"
-        class="close"
-        title={m.easel_closeBoardEsc()}
-        aria-label={m.common_close()}
-        onclick={onclose}
-      >
-        <X size={17} />
-      </Button>
-    </div>
-  </div>
-
-  {#if urlOpen}
-    <form
-      class="url-bar"
-      onsubmit={(e) => {
-        e.preventDefault();
-        void submitUrl();
-      }}
-    >
-      <input
-        type="url"
-        placeholder={m.easel_pasteImageUrl()}
-        bind:value={urlValue}
-        aria-label={m.easel_imageUrl()}
-      />
-      <Button type="submit" loading={busy}>{m.common_add()}</Button>
-    </form>
-  {/if}
-
-  <!-- Canvas -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="stage"
-    bind:this={stage}
-    onpointerdown={onStagePointerDown}
-    onpointermove={onPointerMove}
-    onpointerup={onPointerUp}
-    onwheel={onWheel}
-    ondragover={(e) => e.preventDefault()}
-    ondrop={onDrop}
-  >
-    <div class="bg-grid" data-bg="1"></div>
-    <div class="world" style:transform={`translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})`}>
-      {#each easelItems as item (item.id)}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="item"
-          class:selected={selectedId === item.id}
-          style:left={`${item.x}px`}
-          style:top={`${item.y}px`}
-          style:width={`${item.w}px`}
-          style:height={`${item.h}px`}
-          style:z-index={item.z}
-          style:transform={`rotate(${item.rotation}deg)`}
-          onpointerdown={(e) => onItemPointerDown(e, item)}
+<!-- A real modal (spec 152): the page behind is inert and focus returns when the board
+     closes. Full-screen surface, so the shared dialog is `bare` with a clear backdrop.
+     Escape stays with this component (it deselects first, then closes), hence not dismissible. -->
+<Dialog
+  open
+  presentation="bare"
+  backdrop="clear"
+  title={m.a11y4_easelBoard()}
+  hideClose
+  guardDismiss={false}
+  dismissible={false}
+  {onclose}
+>
+  <div class="easel">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <span class="board-name">
+        <input
+          value={note.title}
+          placeholder={m.easel_untitledBoard()}
+          oninput={(e) => updateNote(note.id, { title: e.currentTarget.value })}
+          aria-label={m.easel_boardTitle()}
+        />
+      </span>
+      <div class="tools">
+        <Button
+          type="button"
+          loading={busy}
+          title={m.easel_addImage()}
+          onclick={() => fileInput?.click()}
         >
-          {#if item.type === 'image'}
-            <img src={rawSrc(item.fileId)} alt="" draggable="false" />
-          {:else}
-            <div
-              class="text-item"
-              contenteditable="plaintext-only"
-              onpointerdown={(e) => e.stopPropagation()}
-              onblur={(e) => updateItem(item.id, { text: e.currentTarget.textContent ?? '' })}
-              style:color={item.color ??
-                'color-mix(in srgb, var(--color-foreground) 92%, transparent)'}
-            >
-              {item.text}
-            </div>
-          {/if}
-
-          {#if selectedId === item.id}
-            <Button
-              type="button"
-              class="handle rotate"
-              title={m.easel_rotateHoldShiftSnap()}
-              aria-label={m.easel_rotate()}
-              onpointerdown={(e: PointerEvent) => onRotatePointerDown(e, item)}
-            ></Button>
-            <Button
-              type="button"
-              class="handle resize"
-              title={m.easel_resize()}
-              aria-label={m.easel_resize()}
-              onpointerdown={(e: PointerEvent) => onResizePointerDown(e, item)}
-            ></Button>
-            <div class="item-tools" onpointerdown={(e) => e.stopPropagation()}>
-              <Button
-                type="button"
-                title={m.easel_bringToFront()}
-                aria-label={m.easel_bringToFront()}
-                onclick={() => updateItem(item.id, { z: topZ() + 1 })}
-              >
-                <BringToFront size={iconSizes.sm} />
-              </Button>
-              <Button
-                type="button"
-                title={m.easel_sendToBack()}
-                aria-label={m.easel_sendToBack()}
-                onclick={() => updateItem(item.id, { z: 0 })}
-              >
-                <SendToBack size={iconSizes.sm} />
-              </Button>
-              <Button
-                type="button"
-                class="del"
-                title={m.common_delete()}
-                aria-label={m.common_delete()}
-                onclick={() => {
-                  deleteItem(item.id);
-                  selectedId = null;
-                }}
-              >
-                <Trash2 size={iconSizes.sm} />
-              </Button>
-            </div>
-          {/if}
-        </div>
-      {/each}
+          <ImagePlus size={iconSizes.md} />
+          {m.easel_image()}
+        </Button>
+        <Button
+          type="button"
+          title={m.easel_addImageFromUrl()}
+          onclick={() => (urlOpen = !urlOpen)}
+        >
+          <Link2 size={iconSizes.md} />
+          {m.easel_url()}
+        </Button>
+        <Button type="button" title={m.easel_addText()} onclick={addText}
+          ><Type size={iconSizes.md} /> {m.easel_text()}</Button
+        >
+        <Button type="button" title={m.easel_fitToContent()} onclick={fitToContent}>
+          <Maximize size={iconSizes.md} />
+        </Button>
+        <span class="zoom">{Math.round(cam.zoom * 100)}%</span>
+        <Button
+          type="button"
+          class="close"
+          title={m.easel_closeBoardEsc()}
+          aria-label={m.common_close()}
+          onclick={onclose}
+        >
+          <X size={17} />
+        </Button>
+      </div>
     </div>
 
-    {#if easelItems.length === 0}
-      <div class="empty-hint" data-bg="1">
-        {m.easel_emptyHint()}
-      </div>
+    {#if urlOpen}
+      <form
+        class="url-bar"
+        onsubmit={(e) => {
+          e.preventDefault();
+          void submitUrl();
+        }}
+      >
+        <input
+          type="url"
+          placeholder={m.easel_pasteImageUrl()}
+          bind:value={urlValue}
+          aria-label={m.easel_imageUrl()}
+        />
+        <Button type="submit" loading={busy}>{m.common_add()}</Button>
+      </form>
     {/if}
-  </div>
 
-  <input
-    bind:this={fileInput}
-    type="file"
-    accept="image/*"
-    multiple
-    class="hidden-file"
-    onchange={(e) => {
-      void ingestFiles(e.currentTarget.files);
-      e.currentTarget.value = '';
-    }}
-  />
-</div>
+    <!-- Canvas -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+      class="stage"
+      bind:this={stage}
+      onpointerdown={onStagePointerDown}
+      onpointermove={onPointerMove}
+      onpointerup={onPointerUp}
+      onwheel={onWheel}
+      ondragover={(e) => e.preventDefault()}
+      ondrop={onDrop}
+    >
+      <div class="bg-grid" data-bg="1"></div>
+      <div class="world" style:transform={`translate(${cam.x}px, ${cam.y}px) scale(${cam.zoom})`}>
+        {#each easelItems as item (item.id)}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="item"
+            class:selected={selectedId === item.id}
+            style:left={`${item.x}px`}
+            style:top={`${item.y}px`}
+            style:width={`${item.w}px`}
+            style:height={`${item.h}px`}
+            style:z-index={item.z}
+            style:transform={`rotate(${item.rotation}deg)`}
+            onpointerdown={(e) => onItemPointerDown(e, item)}
+          >
+            {#if item.type === 'image'}
+              <img src={rawSrc(item.fileId)} alt="" draggable="false" />
+            {:else}
+              <div
+                class="text-item"
+                contenteditable="plaintext-only"
+                onpointerdown={(e) => e.stopPropagation()}
+                onblur={(e) => updateItem(item.id, { text: e.currentTarget.textContent ?? '' })}
+                style:color={item.color ??
+                  'color-mix(in srgb, var(--color-foreground) 92%, transparent)'}
+              >
+                {item.text}
+              </div>
+            {/if}
+
+            {#if selectedId === item.id}
+              <Button
+                type="button"
+                class="handle rotate"
+                title={m.easel_rotateHoldShiftSnap()}
+                aria-label={m.easel_rotate()}
+                onpointerdown={(e: PointerEvent) => onRotatePointerDown(e, item)}
+              ></Button>
+              <Button
+                type="button"
+                class="handle resize"
+                title={m.easel_resize()}
+                aria-label={m.easel_resize()}
+                onpointerdown={(e: PointerEvent) => onResizePointerDown(e, item)}
+              ></Button>
+              <div class="item-tools" onpointerdown={(e) => e.stopPropagation()}>
+                <Button
+                  type="button"
+                  title={m.easel_bringToFront()}
+                  aria-label={m.easel_bringToFront()}
+                  onclick={() => updateItem(item.id, { z: topZ() + 1 })}
+                >
+                  <BringToFront size={iconSizes.sm} />
+                </Button>
+                <Button
+                  type="button"
+                  title={m.easel_sendToBack()}
+                  aria-label={m.easel_sendToBack()}
+                  onclick={() => updateItem(item.id, { z: 0 })}
+                >
+                  <SendToBack size={iconSizes.sm} />
+                </Button>
+                <Button
+                  type="button"
+                  class="del"
+                  title={m.common_delete()}
+                  aria-label={m.common_delete()}
+                  onclick={() => {
+                    deleteItem(item.id);
+                    selectedId = null;
+                  }}
+                >
+                  <Trash2 size={iconSizes.sm} />
+                </Button>
+              </div>
+            {/if}
+          </div>
+        {/each}
+      </div>
+
+      {#if easelItems.length === 0}
+        <div class="empty-hint" data-bg="1">
+          {m.easel_emptyHint()}
+        </div>
+      {/if}
+    </div>
+
+    <input
+      bind:this={fileInput}
+      type="file"
+      accept="image/*"
+      multiple
+      class="hidden-file"
+      onchange={(e) => {
+        void ingestFiles(e.currentTarget.files);
+        e.currentTarget.value = '';
+      }}
+    />
+  </div>
+</Dialog>
 
 <style>
   .easel {
