@@ -535,10 +535,6 @@
     "components-data-advancedfilterbuilder--nested-groups": {
       "aria-input-field-name": 1
     },
-    "components-data-datatable--filters-and-footer": {
-      "aria-required-children": 1,
-      "aria-required-parent": 7
-    },
     "components-data-datatable--grouped": {
       "color-contrast": 1
     },
