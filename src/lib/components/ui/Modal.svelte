@@ -59,8 +59,7 @@
 
 <Dialog
   bind:open
-  title={header ? undefined : title}
-  labelledBy={header ? headerId : undefined}
+  {...header ? { labelledBy: headerId } : { title }}
   {size}
   {dismissible}
   {dirty}

@@ -13,7 +13,7 @@
     "native-select": 0,
     "raw-icon-size": 90,
     "raw-loading": 31,
-    "a11y-ignore": 84,
+    "a11y-ignore": 79,
     "raw-control-height": 187
   },
   "generatedFor": "decrease-only global ceiling (governed = raw minus reason-coded)"
