@@ -46,3 +46,47 @@ describe('BoardView column heads', () => {
     expect(view.container.querySelector('[title]')).toBeNull();
   });
 });
+
+/**
+ * Spec 146 — the three opt-in abilities an embedded board needs. With the defaults
+ * (first test) the existing boards keep their button cards, their "unset" target
+ * and their fixed-width scrolling columns.
+ */
+describe('BoardView opt-in props (spec 146)', () => {
+  const card = createRawSnippet((row: () => { id: string }) => ({
+    render: () => `<span>${row().id}</span>`,
+  }));
+  const base = {
+    columns: COLUMNS,
+    rows: [{ id: 'x', col: 'a' as string | null }],
+    columnOf: (r: { col: string | null }) => r.col,
+    rowKey: (r: { id: string }) => r.id,
+    card,
+  };
+
+  it('defaults: a button card, no fit class, the trailing unset column when a row needs it', () => {
+    const view = render(BoardView<{ id: string; col: string | null }>, {
+      ...base,
+      rows: ROWS,
+      onopen: () => {},
+      onmove: () => {},
+    });
+    expect(view.container.querySelector('.board')?.classList.contains('is-fit')).toBe(false);
+    expect(view.container.querySelectorAll('button.bcard')).toHaveLength(2);
+    expect(view.container.querySelectorAll('section.bcol')).toHaveLength(3);
+  });
+
+  it('fit + unclassified=false + no onopen: shared width, no unset column, plain cards', () => {
+    const view = render(BoardView<{ id: string; col: string | null }>, {
+      ...base,
+      rows: ROWS,
+      onmove: () => {},
+      fit: true,
+      unclassified: false,
+    });
+    expect(view.container.querySelector('.board')?.classList.contains('is-fit')).toBe(true);
+    expect(view.container.querySelectorAll('section.bcol')).toHaveLength(2);
+    expect(view.container.querySelector('button.bcard')).toBeNull();
+    expect(view.container.querySelector('div.bcard')?.textContent).toBe('x');
+  });
+});

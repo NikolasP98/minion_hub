@@ -1,20 +1,51 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui';
-  import KanbanCol from '$lib/components/tasks/KanbanCol.svelte';
-  import type { KanbanTask } from '$lib/components/tasks/TaskCard.svelte';
-  import { sessionTasksState, loadSessionTasks } from '$lib/state/features/session-tasks.svelte';
+  import BoardView from '$lib/components/data-view/BoardView.svelte';
+  import {
+    sessionTasksState,
+    loadSessionTasks,
+    type SessionTaskData,
+  } from '$lib/state/features/session-tasks.svelte';
   import { createViewPref } from '$lib/components/data-view/view-pref.svelte';
   import * as m from '$lib/paraglide/messages';
   import { toastError } from '$lib/state/ui/toast.svelte';
 
   let { sessionKey, serverId }: { sessionKey: string | null; serverId: string | null } = $props();
 
+  type Status = SessionTaskData['status'];
+  // `id`/`color` are what BoardView reads; the colour is the column's status dot.
   const cols = $derived([
-    { key: 'backlog' as const, label: m.session_kanbanBacklog(), short: 'B' },
-    { key: 'todo' as const, label: m.session_kanbanTodo(), short: 'T' },
-    { key: 'in_progress' as const, label: m.session_kanbanInProgress(), short: 'P' },
-    { key: 'done' as const, label: m.session_kanbanDone(), short: 'D' },
+    {
+      id: 'backlog' as const,
+      label: m.session_kanbanBacklog(),
+      short: 'B',
+      color: 'var(--color-muted-foreground)',
+    },
+    {
+      id: 'todo' as const,
+      label: m.session_kanbanTodo(),
+      short: 'T',
+      color: 'var(--color-accent)',
+    },
+    {
+      id: 'in_progress' as const,
+      label: m.session_kanbanInProgress(),
+      short: 'P',
+      color: 'var(--color-purple)',
+    },
+    {
+      id: 'done' as const,
+      label: m.session_kanbanDone(),
+      short: 'D',
+      color: 'var(--color-success)',
+    },
   ]);
+  const dotColor: Record<Status, string> = {
+    backlog: 'bg-muted-foreground',
+    todo: 'bg-[var(--color-accent)]',
+    in_progress: 'bg-status-thinking animate-[dot-pulse_0.8s_ease_infinite]',
+    done: 'bg-status-running',
+  };
 
   const collapsedPref = createViewPref('kanban-collapsed', ['true', 'false'] as const, 'true');
   const collapsed = $derived(collapsedPref.value === 'true');
@@ -26,11 +57,9 @@
     }
   });
 
-  const allTasks = $derived(
-    (sessionKey ? (sessionTasksState.tasksBySession[sessionKey] ?? []) : []) as KanbanTask[],
-  );
+  const allTasks = $derived(sessionKey ? (sessionTasksState.tasksBySession[sessionKey] ?? []) : []);
 
-  function tasksForStatus(status: KanbanTask['status']) {
+  function tasksForStatus(status: Status) {
     return allTasks.filter((t) => t.status === status);
   }
 
@@ -39,14 +68,14 @@
   const pct = $derived(total > 0 ? Math.round((doneCount / total) * 100) : 0);
 
   const colCounts = $derived(
-    cols.map((c) => ({ short: c.short, count: tasksForStatus(c.key).length })),
+    cols.map((c) => ({ short: c.short, count: tasksForStatus(c.id).length })),
   );
 
-  async function moveTask(taskId: string, newStatus: KanbanTask['status']) {
-    if (!sessionKey) return;
-    const tasks = sessionTasksState.tasksBySession[sessionKey];
-    const task = tasks ? (tasks as KanbanTask[]).find((t) => t.id === taskId) : undefined;
-    if (!task || task.status === newStatus) return;
+  /** One write per move, from the menu or a drop. `false` = refused (BoardView announces it). */
+  async function moveTask(taskId: string, newStatus: Status): Promise<boolean> {
+    if (!sessionKey) return false;
+    const task = sessionTasksState.tasksBySession[sessionKey]?.find((t) => t.id === taskId);
+    if (!task || task.status === newStatus) return false;
 
     // Optimistic update, snapshot so a failed PATCH can revert the column.
     const prevStatus = task.status;
@@ -67,8 +96,10 @@
       } catch {
         task.status = prevStatus;
         toastError('Failed to move task', 'The task status could not be updated.');
+        return false;
       }
     }
+    return true;
   }
 </script>
 
@@ -115,15 +146,28 @@
   {#if !collapsed}
     <div id="session-kanban-panel">
       {#if total > 0}
-        <div class="grid grid-cols-4">
-          {#each cols as col (col.key)}
-            <KanbanCol
-              status={col.key}
-              label={col.label}
-              tasks={tasksForStatus(col.key)}
-              onDropTask={(taskId) => moveTask(taskId, col.key)}
-            />
-          {/each}
+        <div class="sk-board">
+          <BoardView
+            columns={cols}
+            rows={allTasks}
+            columnOf={(task) => task.status}
+            rowKey={(task) => task.id}
+            rowLabel={(task) => task.title}
+            onmove={(task, columnId) => moveTask(task.id, columnId as Status)}
+            fit
+            unclassified={false}
+          >
+            {#snippet card(task)}
+              <span class="flex items-center gap-[var(--space-1)]">
+                <span class="w-1.5 h-1.5 rounded-full shrink-0 {dotColor[task.status]}"></span>
+                <span class="text-foreground font-medium truncate flex-1 min-w-0">{task.title}</span
+                >
+              </span>
+              {#if task.description}
+                <span class="sk-desc truncate">{task.description}</span>
+              {/if}
+            {/snippet}
+          </BoardView>
         </div>
       {:else}
         <div class="px-3 py-3 text-xs text-muted-strong text-center">
@@ -133,3 +177,16 @@
     </div>
   {/if}
 </div>
+
+<style>
+  /* The board is a strip above the session monitor: columns scroll inside this cap. */
+  .sk-board {
+    display: flex;
+    max-height: 15rem;
+    padding: var(--space-3);
+  }
+  .sk-desc {
+    color: var(--color-text-tertiary);
+    font-size: var(--font-size-telemetry);
+  }
+</style>
