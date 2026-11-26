@@ -5,9 +5,15 @@
  * period/bucket), so a bad spec is a 400 naming the field at write time
  * instead of a blank block at render time.
  */
-import { blockSpecSchema, type BlockSpec } from '$lib/sandbox/blocks/schema';
+import {
+  blockSpecSchema,
+  type BlockSpec,
+  type DataBlockSpec,
+  type FilterSpec,
+  type Listens,
+} from '$lib/sandbox/blocks/schema';
 import { findColumn, findDataset, type ColumnType, type Dataset } from './datasets';
-import { SandboxQueryError } from './query-compiler';
+import { fitsColumn, SandboxQueryError } from './query-compiler';
 
 function requireColumn(dataset: Dataset, name: string, field: string, types?: ColumnType[]) {
   const column = findColumn(dataset, name);
@@ -38,6 +44,97 @@ function requireMetric(dataset: Dataset, metric: { fn: string; col: string }, fi
   );
 }
 
+/** Same limit as `where` in `/api/sandbox/query` (spec 150 R10). */
+const MAX_WHERE = 20;
+
+/** Where entries a block's own filters, date window and connections can add to one query. */
+function whereBudget(spec: DataBlockSpec, dataset: Dataset, listens: Listens): number {
+  const own = (spec.source.filters?.length ?? 0) + (spec.source.period ? 2 : 0);
+  const connected = listens.reduce(
+    (total, l) => total + (findColumn(dataset, l.col)?.type === 'timestamp' ? 2 : 1),
+    0,
+  );
+  return own + connected;
+}
+
+/**
+ * Connections (spec 150): each names a block column that exists and is not
+ * personal data, one per value name, and the block's own conditions plus its
+ * connections must fit one data request. Cross-element problems (no filter
+ * publishes the name, wrong kind) are NOT refused here: see `wiring.ts`.
+ */
+export function validateListens(spec: DataBlockSpec, listens: Listens | undefined): void {
+  if (!listens?.length) return;
+  const dataset = findDataset(spec.source.dataset);
+  if (!dataset) throw new SandboxQueryError('unknown dataset', 'spec.source.dataset');
+  const seen = new Set<string>();
+  listens.forEach((l, i) => {
+    const field = `spec.listens.${i}`;
+    if (seen.has(l.var)) {
+      throw new SandboxQueryError(
+        `duplicate connection to ${JSON.stringify(l.var)}`,
+        `${field}.var`,
+      );
+    }
+    seen.add(l.var);
+    const column = requireColumn(dataset, l.col, `${field}.col`);
+    if (column.pii) {
+      throw new SandboxQueryError(
+        `column ${JSON.stringify(l.col)} is personal data and cannot be connected`,
+        `${field}.col`,
+      );
+    }
+  });
+  const total = whereBudget(spec, dataset, listens);
+  if (total > MAX_WHERE) {
+    throw new SandboxQueryError(
+      `filters, date range and connections add up to ${total} conditions; the limit is ${MAX_WHERE}`,
+      'spec.listens',
+    );
+  }
+}
+
+const FILTER_DEFAULT_KIND = {
+  date_range: 'date',
+  select: 'select',
+  multi_select: 'multi',
+} as const;
+
+function validateFilter(spec: FilterSpec): void {
+  const picker = spec.control !== 'date_range';
+  if (!picker && spec.options) {
+    throw new SandboxQueryError('a date filter takes no options', 'spec.options');
+  }
+  if (picker) {
+    if (!spec.options) throw new SandboxQueryError('a picker needs options', 'spec.options');
+    const dataset = findDataset(spec.options.dataset);
+    if (!dataset) throw new SandboxQueryError('unknown dataset', 'spec.options.dataset');
+    const column = requireColumn(dataset, spec.options.col, 'spec.options.col');
+    const d = spec.default;
+    const candidates = d?.kind === 'select' ? [d.value] : d?.kind === 'multi' ? d.values : [];
+    for (const value of candidates) {
+      if (!fitsColumn(column.type, value)) {
+        throw new SandboxQueryError(
+          `default ${JSON.stringify(value)} does not fit ${column.type} column ${JSON.stringify(column.name)}`,
+          'spec.default',
+        );
+      }
+    }
+    if (column.pii) {
+      throw new SandboxQueryError(
+        `column ${JSON.stringify(spec.options.col)} is personal data and cannot be a choice list`,
+        'spec.options.col',
+      );
+    }
+  }
+  if (spec.default && spec.default.kind !== FILTER_DEFAULT_KIND[spec.control]) {
+    throw new SandboxQueryError(
+      `default of kind ${spec.default.kind} does not fit a ${spec.control} filter`,
+      'spec.default',
+    );
+  }
+}
+
 /** Parses the shape, then checks every named column against the registry. */
 export function validateBlockSpec(raw: unknown): BlockSpec {
   const parsed = blockSpecSchema.safeParse(raw);
@@ -47,6 +144,10 @@ export function validateBlockSpec(raw: unknown): BlockSpec {
     throw new SandboxQueryError(`invalid ${path}: ${issue?.message ?? 'bad block'}`, path);
   }
   const spec = parsed.data;
+  if (spec.type === 'filter') {
+    validateFilter(spec);
+    return spec;
+  }
   const dataset = findDataset(spec.source.dataset);
   if (!dataset) throw new SandboxQueryError('unknown dataset', 'spec.source.dataset');
 
@@ -88,5 +189,6 @@ export function validateBlockSpec(raw: unknown): BlockSpec {
       requireMetric(dataset, spec.source.metric, 'spec.source.metric');
       break;
   }
+  validateListens(spec, spec.listens);
   return spec;
 }

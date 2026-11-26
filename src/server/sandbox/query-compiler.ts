@@ -11,6 +11,7 @@
  * - `org_id = $n` is always present (RLS in `withOrgCore` is the other half).
  */
 import { sql, type SQL } from 'drizzle-orm';
+import { UUID_RE } from './uuid';
 import {
   columnExpr,
   findColumn,
@@ -109,8 +110,81 @@ function escapeLikePattern(value: unknown): string {
   return String(value).replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
-function condition(expr: SQL, entry: { col: string; op: Op; value?: unknown }): SQL {
+const NUMBER_RE = /^-?\d+(\.\d+)?$/;
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATETIME_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))?$/;
+
+/** A real calendar day: `2026-02-30` and `2026-99-99` are refused (Postgres would 500). */
+function realDay(y: string, m: string, d: string): boolean {
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return (
+    date.getUTCFullYear() === Number(y) &&
+    date.getUTCMonth() === Number(m) - 1 &&
+    date.getUTCDate() === Number(d)
+  );
+}
+
+/** `YYYY-MM-DD` or an ISO 8601 datetime, both on a real day and a real time. */
+function isTimestamp(value: string): boolean {
+  const day = DAY_RE.exec(value);
+  if (day) return realDay(day[1], day[2], day[3]);
+  const t = DATETIME_RE.exec(value);
+  if (!t) return false;
+  return (
+    realDay(t[1], t[2], t[3]) &&
+    Number(t[4]) < 24 &&
+    Number(t[5]) < 60 &&
+    (t[6] === undefined || Number(t[6]) < 60) &&
+    (t[8] === undefined || (Number(t[8]) < 24 && Number(t[9]) < 60))
+  );
+}
+
+/**
+ * A comparison value must fit its column BEFORE it reaches Postgres: a bad
+ * uuid / number / date is otherwise a 22P02 → 500 instead of the 400 a caller
+ * can fix (spec 150 R5). `null` is refused: say `isNull` instead.
+ */
+export function fitsColumn(type: ColumnType, value: unknown): boolean {
+  switch (type) {
+    case 'uuid':
+      return typeof value === 'string' && UUID_RE.test(value);
+    case 'number':
+      return (
+        (typeof value === 'number' && Number.isFinite(value)) ||
+        (typeof value === 'string' && NUMBER_RE.test(value))
+      );
+    case 'boolean':
+      return typeof value === 'boolean' || value === 'true' || value === 'false';
+    case 'timestamp':
+      return typeof value === 'string' && isTimestamp(value);
+    case 'text':
+      return typeof value === 'string' || typeof value === 'number';
+  }
+}
+
+function checkValue(column: DatasetColumn, value: unknown, i: number): void {
+  if (value === null) {
+    throw new SandboxQueryError("value null is not allowed; use op 'isNull'", `where.${i}.value`);
+  }
+  if (!fitsColumn(column.type, value)) {
+    throw new SandboxQueryError(
+      `value ${JSON.stringify(value)} does not fit ${column.type} column ${JSON.stringify(column.name)}`,
+      `where.${i}.value`,
+    );
+  }
+}
+
+function condition(
+  expr: SQL,
+  entry: { col: string; op: Op; value?: unknown },
+  column: DatasetColumn,
+  i: number,
+): SQL {
   const { op, value } = entry;
+  if (op === 'eq' || op === 'neq' || op === 'gt' || op === 'gte' || op === 'lt' || op === 'lte') {
+    checkValue(column, value, i);
+  }
   switch (op) {
     case 'eq':
       return sql`${expr} = ${value}`;
@@ -133,6 +207,7 @@ function condition(expr: SQL, entry: { col: string; op: Op; value?: unknown }): 
       if (value.length > MAX_IN_VALUES) {
         throw new SandboxQueryError(`op 'in' accepts at most ${MAX_IN_VALUES} values`, 'where');
       }
+      for (const item of value) checkValue(column, item, i);
       return sql`${expr} in (${sql.join(
         value.map((item) => sql`${item}`),
         sql`, `,
@@ -142,6 +217,7 @@ function condition(expr: SQL, entry: { col: string; op: Op; value?: unknown }): 
       if (!Array.isArray(value) || value.length !== 2) {
         throw new SandboxQueryError("op 'between' needs a [from, to] value", 'where');
       }
+      for (const item of value) checkValue(column, item, i);
       return sql`${expr} between ${value[0]} and ${value[1]}`;
     }
     // Case-insensitive on purpose: the owner's example is `name starts with "S"`.
@@ -285,11 +361,11 @@ export function compile(
     query = sql`${query} and ${sql.raw(scope.ownerScope.column)} = ${scope.ownerScope.profileId}`;
   }
 
-  for (const entry of spec.where ?? []) {
+  for (const [i, entry] of (spec.where ?? []).entries()) {
     if (!OPS.includes(entry?.op)) throw new SandboxQueryError('unknown op', 'where');
     const column = requireColumn(dataset, entry.col, 'where');
     guardPii(column, 'where');
-    query = sql`${query} and ${condition(sql.raw(columnExpr(column)), entry)}`;
+    query = sql`${query} and ${condition(sql.raw(columnExpr(column)), entry, column, i)}`;
   }
 
   if (grouped) {

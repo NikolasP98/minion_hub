@@ -377,6 +377,106 @@ describe('compile — named 400s', () => {
   });
 });
 
+describe('compile — bookings service name (spec 150 FR-015)', () => {
+  it('projects fin_products.name through the registry-owned left join', () => {
+    const out = render({ dataset: 'scheduling.bookings', select: ['service_name'] });
+    expect(out.sql).toContain('p.name as "service_name"');
+    expect(out.sql).toContain(
+      'left join fin_products p on p.id = t.product_id and p.org_id = t.org_id',
+    );
+  });
+});
+
+describe('compile — value forms per column type (spec 150 R5)', () => {
+  const where = (dataset: string, col: string, op: Op, value: unknown) =>
+    render({ dataset, where: [{ col, op, value }] });
+  const UUID = '0b6a3f9e-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
+
+  it('accepts a fitting value for every column type', () => {
+    expect(() => where('pos.tickets', 'shift_id', 'eq', UUID)).not.toThrow();
+    expect(() => where('pos.tickets', 'total', 'gte', 5)).not.toThrow();
+    expect(() => where('pos.tickets', 'total', 'gte', '-5.25')).not.toThrow();
+    expect(() => where('pos.tickets', 'submitted_at', 'gte', '2026-11-01')).not.toThrow();
+    expect(() =>
+      where('pos.tickets', 'submitted_at', 'lt', '2026-11-01T05:00:00.000Z'),
+    ).not.toThrow();
+    expect(() => where('pos.tickets', 'status', 'eq', 'void')).not.toThrow();
+    expect(() => where('pos.tickets', 'status', 'in', ['void', 'submitted'])).not.toThrow();
+    expect(() =>
+      where('pos.tickets', 'submitted_at', 'between', ['2026-11-01', '2026-11-30']),
+    ).not.toThrow();
+  });
+
+  it('keeps what production custom elements send (regression)', () => {
+    expect(() => where('pos.tickets', 'submitted_at', 'gte', '2026-11-01T00:00:00Z')).not.toThrow();
+    expect(() => where('pos.tickets', 'submitted_at', 'lte', '2026-11-30T23:59:59Z')).not.toThrow();
+    expect(() =>
+      where('pos.tickets', 'submitted_at', 'lt', '2026-11-30T23:59:59.999+05:30'),
+    ).not.toThrow();
+    expect(() => where('pos.tickets', 'submitted_at', 'gte', '2026-11-01T08:30')).not.toThrow();
+    expect(() => where('pos.tickets', 'status', 'eq', 'submitted')).not.toThrow();
+    expect(() => where('finance.products', 'name', 'eq', 'Insumos Internos')).not.toThrow();
+  });
+
+  it('refuses impossible dates and loose strings Date.parse would accept', () => {
+    for (const bad of [
+      '2026-99-99',
+      '2026-02-30',
+      '1',
+      '2026',
+      'Nov 1 2026',
+      '2026-11-01T25:00:00Z',
+      '2026-11-01T10:61:00Z',
+      '2026-11-01 10:00:00',
+      '2026-11-01T10:00:00+25:00',
+    ]) {
+      expect(() => where('pos.tickets', 'submitted_at', 'gte', bad), bad).toThrow(
+        SandboxQueryError,
+      );
+    }
+  });
+
+  it('refuses a value that does not fit, naming where.<i>.value', () => {
+    const field = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (e) {
+        return (e as SandboxQueryError).field;
+      }
+      return null;
+    };
+    expect(field(() => where('pos.tickets', 'shift_id', 'eq', 'nope'))).toBe('where.0.value');
+    expect(field(() => where('pos.tickets', 'total', 'gt', 'abc'))).toBe('where.0.value');
+    expect(field(() => where('pos.tickets', 'total', 'gt', Infinity))).toBe('where.0.value');
+    expect(field(() => where('pos.tickets', 'submitted_at', 'gte', 'not a date'))).toBe(
+      'where.0.value',
+    );
+    expect(field(() => where('pos.tickets', 'status', 'eq', null))).toBe('where.0.value');
+    expect(field(() => where('pos.tickets', 'status', 'eq', { a: 1 }))).toBe('where.0.value');
+    expect(field(() => where('pos.tickets', 'shift_id', 'in', [UUID, 'nope']))).toBe(
+      'where.0.value',
+    );
+    expect(field(() => where('pos.tickets', 'total', 'between', [1, 'x']))).toBe('where.0.value');
+  });
+
+  it('indexes the field by the clause position', () => {
+    expect(() =>
+      render({
+        dataset: 'pos.tickets',
+        where: [
+          { col: 'status', op: 'eq', value: 'void' },
+          { col: 'total', op: 'gt', value: 'abc' },
+        ],
+      }),
+    ).toThrow(expect.objectContaining({ field: 'where.1.value' }));
+  });
+
+  it('leaves like/startsWith/isNull unchecked', () => {
+    expect(() => where('pos.tickets', 'total', 'like', 'abc')).not.toThrow();
+    expect(() => where('pos.tickets', 'total', 'isNull', undefined)).not.toThrow();
+  });
+});
+
 describe('registry', () => {
   it('has no dataset for an unknown id', () => {
     expect(findDataset('crm.salaries')).toBeUndefined();

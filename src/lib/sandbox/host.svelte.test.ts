@@ -156,3 +156,32 @@ it.each(['success', 'failure'] as const)(
     }
   },
 );
+
+describe('createSandboxHost wiring (spec 150)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const report = { publishers: [], blocks: {}, duplicates: [] };
+
+  it('keeps the wiring of every load and hands it to the publication', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ elements: [], wiring: report })),
+    );
+    const publish = vi.fn(() => true);
+    const host = createSandboxHost([], { begin: vi.fn(), publish });
+    expect(host.wiring).toBeNull();
+    expect(await host.load()).toBe(true);
+    expect(host.wiring).toEqual(report);
+    expect(publish).toHaveBeenCalledWith([], report, undefined);
+  });
+
+  it('starts from the server-loaded wiring and falls back to null when a reply has none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ elements: [] })),
+    );
+    const host = createSandboxHost([], undefined, report);
+    expect(host.wiring).toEqual(report);
+    await host.load();
+    expect(host.wiring).toBeNull();
+  });
+});

@@ -6,6 +6,7 @@ import { executeTool, getTools } from '$lib/assistant/model-context';
 const TOOL_NAMES = [
   'sandbox.arrange',
   'sandbox.block_chart',
+  'sandbox.block_filter',
   'sandbox.block_kpi',
   'sandbox.block_list',
   'sandbox.block_table',
@@ -15,6 +16,7 @@ const TOOL_NAMES = [
   'sandbox.preview',
   'sandbox.remove_element',
   'sandbox.upsert_element',
+  'sandbox.wire',
 ];
 
 function jsonResponse(body: unknown) {
@@ -286,8 +288,117 @@ describe('read tools tolerate either response envelope', () => {
       jsonResponse({ elements: [{ id: 'e1', title: 'T', w: 2, h: 1, html: 'dropped' }] }),
     );
     expect(JSON.parse(await executeTool('sandbox.list_elements', {})).elements).toEqual([
-      { id: 'e1', title: 'T', w: 2, h: 1, datasets: [], chart: null },
+      { id: 'e1', title: 'T', w: 2, h: 1, datasets: [], chart: null, listens: [], problems: [] },
     ]);
+  });
+});
+
+describe('synced pages (spec 150)', () => {
+  const save = () => fetchMock.mockResolvedValue(jsonResponse({ element: { id: 'f1' } }));
+
+  test('sandbox.block_filter writes a filter spec without a grid size', async () => {
+    save();
+    registerSandboxTools({ signal: controller.signal });
+    const out = JSON.parse(
+      await executeTool('sandbox.block_filter', {
+        title: 'Period',
+        var: 'period',
+        control: 'date_range',
+        default: { kind: 'date', range: 'last_30d' },
+      }),
+    );
+    expect(out.id).toBe('f1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/sandbox/elements');
+    expect(JSON.parse(init.body)).toEqual({
+      title: 'Period',
+      spec: {
+        v: 1,
+        type: 'filter',
+        var: 'period',
+        control: 'date_range',
+        default: { kind: 'date', range: 'last_30d' },
+      },
+    });
+  });
+
+  test('a bad filter returns the grammar error instead of calling the API', async () => {
+    registerSandboxTools({ signal: controller.signal });
+    const out = JSON.parse(
+      await executeTool('sandbox.block_filter', { title: 'x', var: 'Bad', control: 'date_range' }),
+    );
+    expect(out.error).toContain('invalid var');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('a block tool accepts listens and an update without listens sends none (server keeps them)', async () => {
+    save();
+    registerSandboxTools({ signal: controller.signal });
+    const listens = [{ var: 'period', col: 'submitted_at' }];
+    const kpi = {
+      title: 'Sales',
+      source: { dataset: 'pos.tickets', metric: { fn: 'sum', col: 'total' } },
+    };
+    await executeTool('sandbox.block_kpi', { ...kpi, listens });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).spec.listens).toEqual(listens);
+    await executeTool('sandbox.block_kpi', { ...kpi, id: 'k1', tone: 'info' });
+    const [url, init] = fetchMock.mock.calls[1];
+    expect(url).toBe('/api/sandbox/elements/k1');
+    expect(JSON.parse(init.body).spec).not.toHaveProperty('listens');
+  });
+
+  test('sandbox.wire PATCHes only the connections', async () => {
+    save();
+    registerSandboxTools({ signal: controller.signal });
+    const listens = [{ var: 'period', col: 'submitted_at' }];
+    await executeTool('sandbox.wire', { id: 'k1', listens });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/sandbox/elements/k1');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body)).toEqual({ listens });
+    const bad = JSON.parse(
+      await executeTool('sandbox.wire', { id: 'k1', listens: [{ var: 'Bad', col: 'x' }] }),
+    );
+    expect(bad.error).toContain('invalid listens');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('list_elements returns the wiring report next to the elements', async () => {
+    registerSandboxTools({ signal: controller.signal });
+    const wiring = {
+      publishers: [],
+      duplicates: [],
+      blocks: {
+        k1: {
+          bindings: [],
+          problems: [{ var: 'gone', code: 'no_publisher', detail: 'no filter publishes "gone"' }],
+        },
+      },
+    };
+    const spec = {
+      v: 1,
+      type: 'kpi',
+      source: { dataset: 'pos.tickets', metric: { fn: 'count', col: '*' } },
+      listens: [{ var: 'gone', col: 'status' }],
+    };
+    fetchMock.mockResolvedValue(
+      jsonResponse({ elements: [{ id: 'k1', title: 'K', w: 1, h: 1, spec }], wiring }),
+    );
+    const out = JSON.parse(await executeTool('sandbox.list_elements', {}));
+    expect(out.wiring).toEqual(wiring);
+    expect(out.elements[0]).toMatchObject({
+      id: 'k1',
+      listens: [{ var: 'gone', col: 'status' }],
+      problems: wiring.blocks.k1.problems,
+    });
+  });
+
+  test('arrange reports filter ids in failed and never PATCHes them', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ element: { id: 'x' } }));
+    registerSandboxTools({ signal: controller.signal, isFilter: (id) => id === 'f1' });
+    const out = JSON.parse(await executeTool('sandbox.arrange', { order: ['f1', 'a'] }));
+    expect(out).toEqual({ updated: 1, failed: ['f1'] });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(['/api/sandbox/elements/a']);
   });
 });
 

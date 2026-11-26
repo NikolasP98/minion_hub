@@ -9,6 +9,7 @@ import type { InvocationCapability } from '$lib/assistant/accepted-runs';
  */
 import type { LayoutUpdate } from './canvas';
 import type { BlockSpec } from './blocks/schema';
+import type { WiringReport } from './wiring-types';
 
 export interface SandboxElementRecord {
   id: string;
@@ -66,10 +67,17 @@ export function createSandboxHost(
   initial: SandboxElementRecord[] = [],
   publication?: {
     begin: () => void;
-    publish: (elements: SandboxElementRecord[], capability?: InvocationCapability) => boolean;
+    publish: (
+      elements: SandboxElementRecord[],
+      wiring: WiringReport | null,
+      capability?: InvocationCapability,
+    ) => boolean;
   },
+  initialWiring: WiringReport | null = null,
 ) {
   let elements = $state<SandboxElementRecord[]>(initial);
+  /** The server's wiring report for these elements; null = unavailable (blocks with connections fail closed). */
+  let wiring = $state<WiringReport | null>(initialWiring);
   let loading = $state(false);
   let error = $state<string | null>(null);
   /** Per-element render nonce — `reload(id)` bumps it to rebuild the srcdoc. */
@@ -133,13 +141,18 @@ export function createSandboxHost(
       const res = await fetch(ELEMENTS_URL, { headers: { accept: 'application/json' }, signal });
       if (!current() || generation !== loadGeneration) return false;
       if (!res.ok) throw new Error(`could not load elements (${res.status})`);
-      const body = (await res.json()) as { elements?: SandboxElementRecord[] };
+      const body = (await res.json()) as {
+        elements?: SandboxElementRecord[];
+        wiring?: WiringReport;
+      };
       if (!current() || generation !== loadGeneration) return false;
       const next = body.elements ?? [];
       // Snapshot and model summary are published in the same synchronous turn.
-      const acknowledged = publication?.publish(next, capability) ?? !capability;
+      const nextWiring = body.wiring ?? null;
+      const acknowledged = publication?.publish(next, nextWiring, capability) ?? !capability;
       if (capability && !acknowledged) return false;
       elements = next;
+      wiring = nextWiring;
       error = null;
       return true;
     } catch (err) {
@@ -170,6 +183,9 @@ export function createSandboxHost(
   return {
     get elements() {
       return elements;
+    },
+    get wiring() {
+      return wiring;
     },
     get loading() {
       return loading;

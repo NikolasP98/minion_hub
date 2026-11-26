@@ -277,6 +277,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
       seriesIndex: number;
       rescheduledFromId: string;
       source: string;
+      productId: string;
     }> = {},
   ): Promise<string> {
     const id = matrixUuid(matrixId);
@@ -285,7 +286,7 @@ export async function seed(ctx: SeedContext): Promise<void> {
       insert into sched_bookings (
         id, org_id, uid, event_type_id, resource_id, start_time, end_time, status, title,
         crm_contact_id, party_id, invoice_id, kind_id, source, rescheduled_from_id,
-        package_grant_id, payment_plan_id, series_id, series_index
+        package_grant_id, payment_plan_id, series_id, series_index, product_id
       ) values (
         ${id}, ${ORG_BUSINESS}, ${humanId('BK', matrixId)}, ${overrides.eventTypeId ?? EVENT_TYPE_PLAIN},
         ${overrides.resourceId ?? RESOURCE_LIMA}, ${start.toISOString()}, ${end.toISOString()},
@@ -293,15 +294,20 @@ export async function seed(ctx: SeedContext): Promise<void> {
         ${overrides.crmContactId ?? null}, ${overrides.partyId ?? null}, ${overrides.invoiceId ?? null},
         ${overrides.kindId === undefined ? KIND_DEFAULT : overrides.kindId}, ${overrides.source ?? 'internal'},
         ${overrides.rescheduledFromId ?? null}, ${overrides.packageGrantId ?? null},
-        ${overrides.paymentPlanId ?? null}, ${overrides.seriesId ?? null}, ${overrides.seriesIndex ?? null}
+        ${overrides.paymentPlanId ?? null}, ${overrides.seriesId ?? null}, ${overrides.seriesIndex ?? null},
+        ${overrides.productId ?? null}
       )
-      on conflict (id) do update set status = excluded.status
+      on conflict (id) do update set status = excluded.status, product_id = excluded.product_id
     `;
     register(matrixId, { table: 'sched_bookings', where: { id } });
     return id;
   }
 
-  for (const [matrixId, status] of BOOKING_STATUSES) await booking(matrixId, { status });
+  // Synced pages (spec 150 FR-015): the first three carry a catalog service so
+  // `scheduling.bookings.service_name` has values for the service picker.
+  for (const [i, [matrixId, status]] of BOOKING_STATUSES.entries()) {
+    await booking(matrixId, { status, ...(i < 3 ? { productId: PRODUCT_SERVICE_PLAIN } : {}) });
+  }
 
   // Recurring course, three FUTURE occurrences INSIDE the current work week
   // (Mon/Wed/Fri) — required by /pos/appointments' default 'workweek' view

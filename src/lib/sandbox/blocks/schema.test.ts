@@ -4,7 +4,10 @@ import {
   CHART_PRESETS,
   FORMATS,
   RANGES,
+  blockSpecSchema,
   blockToolSchemas,
+  filterToolSchema,
+  isDataBlock,
   parseBlockSpec,
 } from './schema';
 
@@ -88,5 +91,71 @@ describe('block grammar (spec 049)', () => {
     expect(out.w).toBe(2);
     expect(out.spec).toMatchObject({ v: 1, type: 'list', format: 'money' });
     expect(out.spec.type === 'list' && out.spec.source.limit).toBe(8);
+  });
+});
+
+describe('filters and connections (spec 150)', () => {
+  const filter = { v: 1, type: 'filter', var: 'period', control: 'date_range' };
+
+  it('keeps BLOCK_KINDS and the block tools data-only', () => {
+    expect([...BLOCK_KINDS]).toEqual(['kpi', 'chart', 'table', 'list']);
+    expect(blockToolSchemas().map((t) => t.kind)).toEqual([...BLOCK_KINDS]);
+  });
+
+  it('parses a filter with a default and narrows with isDataBlock', () => {
+    const spec = blockSpecSchema.parse({ ...filter, default: { kind: 'date', range: 'last_30d' } });
+    expect(spec.type).toBe('filter');
+    expect(isDataBlock(spec)).toBe(false);
+    expect(isDataBlock(blockSpecSchema.parse(kpi))).toBe(true);
+    expect(isDataBlock(null)).toBe(false);
+  });
+
+  it('accepts select / multi defaults and caps a multi at 100 values', () => {
+    expect(() =>
+      blockSpecSchema.parse({
+        v: 1,
+        type: 'filter',
+        var: 'status',
+        control: 'multi_select',
+        options: { dataset: 'pos.tickets', col: 'status' },
+        default: { kind: 'multi', values: ['void'] },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      blockSpecSchema.parse({
+        ...filter,
+        default: { kind: 'multi', values: Array.from({ length: 101 }, (_, i) => String(i)) },
+      }),
+    ).toThrow();
+  });
+
+  it('refuses a value name that is not a short lowercase word', () => {
+    for (const bad of ['Period', '1x', 'a-b', '', 'x'.repeat(33)]) {
+      expect(() => blockSpecSchema.parse({ ...filter, var: bad }), bad).toThrow();
+    }
+    expect(() => blockSpecSchema.parse({ ...filter, var: 'x'.repeat(32) })).not.toThrow();
+  });
+
+  it('accepts listens on every data kind, at most 6, and has no default', () => {
+    const listens = [{ var: 'period', col: 'submitted_at' }];
+    const spec = blockSpecSchema.parse({ ...kpi, listens });
+    expect(spec.type === 'kpi' && spec.listens).toEqual(listens);
+    const plain = blockSpecSchema.parse(kpi);
+    expect('listens' in plain).toBe(false);
+    const seven = Array.from({ length: 7 }, (_, i) => ({ var: `v${i}`, col: 'total' }));
+    expect(() => blockSpecSchema.parse({ ...kpi, listens: seven })).toThrow();
+    expect(() => blockSpecSchema.parse({ ...kpi, listens: [{ var: 'Bad', col: 'x' }] })).toThrow();
+  });
+
+  it('derives the filter tool from the grammar: envelope id + title, no w/h', () => {
+    const tool = filterToolSchema();
+    const schema = tool.inputSchema as { required?: string[]; properties: Record<string, unknown> };
+    expect(Object.keys(schema.properties)).toEqual(
+      expect.arrayContaining(['id', 'title', 'var', 'control', 'options', 'default']),
+    );
+    expect(schema.properties).not.toHaveProperty('w');
+    expect(schema.required).toEqual(expect.arrayContaining(['title', 'var', 'control']));
+    const parsed = tool.parse({ title: 'Period', var: 'period', control: 'date_range' });
+    expect(parsed.spec).toMatchObject({ v: 1, type: 'filter', var: 'period' });
   });
 });
