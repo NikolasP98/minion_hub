@@ -9,6 +9,8 @@
 
   type Option = { value: string; label: string };
 
+  // The × is named after what it removes: its own label plus the chip's label, by id.
+  const uid = $props.id();
   let {
     label,
     kind,
@@ -47,7 +49,7 @@
   <Popover bind:open placement="bottom">
     {#snippet trigger()}
       <span class="fchip-trigger chip-label">
-        <span class="fchip-label">{label}:</span>
+        <span class="fchip-label" id="{uid}-label">{label}:</span>
         <span class="fchip-summary">{summary(kind, value, options)}</span>
         <ChevronDown size={iconSizes.xs} class="fchip-chev {open ? 'flip' : ''}" />
       </span>
@@ -70,7 +72,9 @@
     variant="ghost"
     size="xs"
     class="fchip-x chip-x"
+    id="{uid}-x"
     aria-label={m.data_table_filter_remove()}
+    aria-labelledby="{uid}-x {uid}-label"
     onclick={onRemove}
   >
     <X size={iconSizes.xs} />

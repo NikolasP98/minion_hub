@@ -105,6 +105,14 @@ const RULES = {
     // One hit per suppressed rule: `svelte-ignore a11y_a, a11y_b` counts two.
     re: /(?<=svelte-ignore[^\n]*)\ba11y_[a-z_]+/g,
   },
+  'icon-button-unlabelled': {
+    desc: 'icon-only <Button> without aria-label / aria-labelledby / title — a screen reader hears only "button" (spec 152)',
+    test: (file) => /\.svelte$/.test(file),
+    // A <Button> whose only child is one self-closing icon component (it takes `size=`).
+    // Attribute values may hold `>` inside braces (`onclick={() => x}`), hence the brace groups.
+    re: /<Button\b(?<attrs>(?:[^>{]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*)>\s*<[A-Z][\w.]*\b(?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*?\bsize=(?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*\/>\s*<\/Button>/g,
+    filter: (match) => !/\baria-label(?:ledby)?\b|\btitle=|\{\.\.\./.test(match.groups.attrs),
+  },
   'raw-control-height': {
     desc: 'raw 20–48px height outside ui/ — use a --control-height-* token',
     test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),

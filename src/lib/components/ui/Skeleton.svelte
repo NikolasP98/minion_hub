@@ -5,6 +5,9 @@
     width?: string;
     height?: string;
     rounded?: string;
+    /** Announced as a status ("Loading…"). Without it the placeholder is hidden from
+     *  assistive technology; label ONE placeholder per loading region, not every bar. */
+    label?: string;
   }
 </script>
 
@@ -16,6 +19,7 @@
     width = '100%',
     height = '12px',
     rounded = 'rounded',
+    label,
   }: SkeletonProps = $props();
 </script>
 
@@ -27,6 +31,7 @@
 >
   <SharedSkeleton
     shape="rect"
+    {label}
     class={`h-full w-full [&>[data-part='skeleton-line']]:!h-full [&>[data-part='skeleton-line']]:!min-h-0 ${cls}`}
   />
 </span>

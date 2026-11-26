@@ -23,7 +23,7 @@ describe('async tag selection', () => {
       onchange: () => new Promise<boolean>((resolve) => (finish = resolve)),
     });
     await tick();
-    await fireEvent.click(view.getByRole('button', { name: 'Remove tag' }));
+    await fireEvent.click(view.getByRole('button', { name: /^Remove tag \S/ }));
     await tick();
     expect(view.container.querySelector('.tag-chip-name')).toBeNull();
     expect(document.querySelector('.tags-field')?.getAttribute('aria-busy')).toBe('true');
@@ -46,13 +46,13 @@ describe('async tag selection', () => {
       onchange: failure,
     });
     await tick();
-    await fireEvent.click(view.getByRole('button', { name: 'Remove tag' }));
+    await fireEvent.click(view.getByRole('button', { name: /^Remove tag \S/ }));
     await tick();
     await waitFor(() =>
       expect(view.container.querySelector('.tag-chip-name')?.textContent).toBe('Alpha'),
     );
     await tick();
-    await fireEvent.click(view.getByRole('button', { name: 'Remove tag' }));
+    await fireEvent.click(view.getByRole('button', { name: /^Remove tag \S/ }));
     await tick();
     await waitFor(() => expect(toastError).toHaveBeenCalledTimes(2));
     expect(view.container.querySelector('.tag-chip-name')).toBeNull();
