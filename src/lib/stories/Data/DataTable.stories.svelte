@@ -108,6 +108,10 @@
     { value: 'status', label: 'Status' },
     { value: 'active', label: 'Active' },
   ];
+  // "Controls in cells": what each control and the row did, so keyboard activation is visible.
+  let cellLog = $state<string[]>([]);
+  let cellChecked = $state(new Set<string>());
+  const logCell = (what: string) => (cellLog = [...cellLog, what]);
   const groupBy = $derived({
     of: (row: Row) => String(row[groupValue as 'status' | 'active']),
     label: (key: string, rs: Row[]) => `${key} · ${rs.length}`,
@@ -252,6 +256,51 @@
     <DataTable {...args} />
   {/snippet}
 </Story>
+
+<!-- A button, a link and a checkbox inside cells must answer to Enter and Space; Enter on the
+     row itself (focus on the grid) still opens the row. -->
+<Story name="Controls in cells" args={{ data: rows.slice(0, 3) }}>
+  {#snippet template(args)}
+    <p data-cell-log class="text-xs text-muted-foreground">Log: {cellLog.join(', ') || '—'}</p>
+    <DataTable
+      {...args}
+      columns={[
+        { key: 'code', label: 'Code', width: 110 },
+        { key: 'name', label: 'Action' },
+        { key: 'note', label: 'Link' },
+        { key: 'active', label: 'Reviewed' },
+      ]}
+      cells={{ name: buttonCell, note: linkCell, active: checkboxCell }}
+      onRowClick={(row) => logCell(`row ${row.code}`)}
+    />
+  {/snippet}
+</Story>
+
+{#snippet buttonCell(row: Row)}
+  <Button variant="ghost" size="xs" onclick={() => logCell(`button ${row.code}`)}>Revoke</Button>
+{/snippet}
+{#snippet linkCell(row: Row)}
+  <a
+    href="#details-{row.code}"
+    onclick={(e) => {
+      e.preventDefault();
+      logCell(`link ${row.code}`);
+    }}>Details</a
+  >
+{/snippet}
+{#snippet checkboxCell(row: Row)}
+  <input
+    type="checkbox"
+    aria-label="Reviewed {row.code}"
+    checked={cellChecked.has(row.id)}
+    onchange={() => {
+      const next = new Set(cellChecked);
+      if (!next.delete(row.id)) next.add(row.id);
+      cellChecked = next;
+      logCell(`checkbox ${row.code}`);
+    }}
+  />
+{/snippet}
 
 <Story name="RowActions" args={{ rowActionsMode: 'always', rowActionsWidth: 96 }}>
   {#snippet template(args)}

@@ -840,8 +840,16 @@
   const interactiveTarget = (target: EventTarget | null) =>
     target instanceof Element &&
     !!target.closest(
-      'button, a, input, select, textarea, [contenteditable="true"], [role="button"], [role="checkbox"]',
+      'button, a, input, select, textarea, [contenteditable=""], [contenteditable="true"], [role="button"], [role="link"], [role="checkbox"], [role="switch"], [role="menuitem"]',
     );
+  /** Focus is on a control INSIDE the grid (a button, link or checkbox in a cell). The row
+   *  hotkeys for Enter and Space stand down then: the hotkey engine prevents a key before
+   *  its callback runs, which left every such control dead to the keyboard. */
+  let cellControlFocused = $state(false);
+  function trackCellControl(event: FocusEvent) {
+    cellControlFocused =
+      event.type === 'focusin' && event.target !== wrapperEl && interactiveTarget(event.target);
+  }
   function activateRow(row: T, event: MouseEvent) {
     if (interactiveTarget(event.target) || editing || customOpen) return;
     onRowActivate?.(row, { source: 'double-click' });
@@ -2450,7 +2458,7 @@
           const fr = flatRows[focusedIndex];
           if (fr && !interactiveTarget(document.activeElement)) onRowClick?.(rowView(fr));
         },
-        options: { enabled: !sel && !onRowActivate },
+        options: { enabled: !sel && !onRowActivate && !cellControlFocused },
       },
       {
         hotkey: 'Space',
@@ -2459,7 +2467,7 @@
           const fr = flatRows[focusedIndex];
           if (fr) toggleRow(fr.id);
         },
-        options: { enabled: !sel && !onRowActivate },
+        options: { enabled: !sel && !onRowActivate && !cellControlFocused },
       },
     ];
   });
@@ -3751,6 +3759,8 @@
     bind:this={wrapperEl}
     onscroll={onTableScroll}
     onkeydown={onGridKeydown}
+    onfocusin={trackCellControl}
+    onfocusout={trackCellControl}
     oncopy={onGridCopy}
     onpaste={onGridPaste}
     {@attach gridAttachment}
