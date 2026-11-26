@@ -193,10 +193,12 @@
   /* Forced colours (Windows contrast themes): author colours and shadows are dropped, so
      the ring is always drawn, in the system highlight colour, opt-outs included. */
   @media (forced-colors: active) {
+    /* !important: the shared controls switch the outline off with a utility class and
+       rely on a shadow, which forced colours removes. */
     :focus-visible,
     .focus-ring-none:focus-visible {
-      outline: 2px solid Highlight;
-      outline-offset: 2px;
+      outline: 2px solid Highlight !important;
+      outline-offset: 2px !important;
     }
   }
 

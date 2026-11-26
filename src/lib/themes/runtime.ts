@@ -57,8 +57,14 @@ export function applyTheme(p: ThemePreset, accentValue: string) {
   root.style.setProperty('--color-on-accent', onAccent);
   // The focus ring and link text take the accent's hue but must be readable on every
   // surface of the theme (spec 153): 3:1 for the ring, 4.5:1 for text.
-  root.style.setProperty('--color-focus-ring', readableAccentFor(p, accentValue, 3));
+  const focusRing = readableAccentFor(p, accentValue, 3);
+  root.style.setProperty('--color-focus-ring', focusRing);
   root.style.setProperty('--color-link', readableAccentFor(p, accentValue, 4.5));
+  // The shared controls (Button, Input, Select, …) draw focus with `--shadow-focus`. The
+  // token is a 3px glow of the accent at 30–35 % opacity: 1.4–1.6:1 against the page on
+  // every theme. Make it a solid ring in the readable colour, with the same 2px gap as
+  // the global outline so it is also visible around a button filled with the accent.
+  root.style.setProperty('--shadow-focus', `0 0 0 2px var(--color-canvas), 0 0 0 4px ${focusRing}`);
 
   if (p.id === 'voxelized') {
     root.style.setProperty('--vx-glow-cyan', '0, 240, 255');
