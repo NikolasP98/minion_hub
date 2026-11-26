@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { getBranding } from '$lib/branding.svelte';
   import { diceBearAvatarUrl } from '$lib/utils/avatar';
   import * as m from '$lib/paraglide/messages';
@@ -145,13 +146,16 @@
   }
 </script>
 
-<!-- TODO(handoff): HC-028 hand-rolled wizard modal; migrate to the shared Dialog. Not mechanical: multi-step wizard with its own step chrome and no Escape path at all. See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
-<!-- Modal backdrop -->
-<div
-  class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-bg)_70%,transparent)] flex items-center justify-center p-4"
-  role="dialog"
-  aria-modal="true"
-  aria-label="Create Marketplace Agent"
+<!-- A real modal dialog (spec 152): the page behind is inert, Escape and a click outside
+     close (there was no Escape path before), focus returns. `bare` keeps the wizard's own
+     surface and step chrome. -->
+<Dialog
+  open
+  presentation="bare"
+  title={m.marketplace_wizardTitle()}
+  hideClose
+  guardDismiss={false}
+  onclose={onClose}
 >
   <div class="surface-2 rounded-xl w-full max-w-lg max-h-[90vh] flex flex-col shadow-2xl">
     <!-- Header -->
@@ -548,4 +552,4 @@
       {/if}
     </div>
   </div>
-</div>
+</Dialog>
