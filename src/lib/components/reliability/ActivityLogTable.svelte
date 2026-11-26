@@ -425,9 +425,18 @@
     {#if showTimeline}
       <!-- Prefer the supplied chart (Event Timeline) over the built-in scatter. -->
       {#if timelineOptions}
-        <Chart options={timelineOptions} height={timelineHeight} onItemClick={onTimelineClick} />
+        <Chart
+          options={timelineOptions}
+          height={timelineHeight}
+          onItemClick={onTimelineClick}
+          ariaLabel={m.reliability_eventTimeline()}
+        />
       {:else}
-        <Chart options={chartOptions} height="160px" />
+        <Chart
+          options={chartOptions}
+          height="160px"
+          ariaLabel={m.chart_name_activity_events_over_time()}
+        />
       {/if}
     {/if}
 

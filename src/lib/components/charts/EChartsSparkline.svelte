@@ -7,12 +7,19 @@
     color,
     glow = false,
     chartStyle = 'area' as SparklineStyle,
+    ariaLabel,
+    decorative,
   }: {
     bins: number[];
     color: string;
     glow?: boolean;
     chartStyle?: SparklineStyle;
-  } = $props();
+  } &
+    /** A sparkline is either named (it is the only place the trend is shown) or decorative
+     *  (the figure next to it already says it). One of the two is required. */
+    (
+      { ariaLabel: string; decorative?: never } | { decorative: true; ariaLabel?: never }
+    ) = $props();
 
   let container: HTMLDivElement;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -109,4 +116,11 @@
   });
 </script>
 
-<div bind:this={container} class="w-full h-[20px]" data-dense></div>
+<div
+  bind:this={container}
+  class="w-full h-[20px]"
+  data-dense
+  role={decorative ? undefined : 'img'}
+  aria-label={decorative ? undefined : ariaLabel}
+  aria-hidden={decorative ? 'true' : undefined}
+></div>

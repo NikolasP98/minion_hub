@@ -120,7 +120,13 @@
     </div>
     <div class="rounded-lg border border-border bg-card p-4 space-y-3">
       <div class="text-primary">
-        <Sparkline values={trendValues} width={1000} height={120} strokeWidth={2} />
+        <Sparkline
+          values={trendValues}
+          width={1000}
+          height={120}
+          strokeWidth={2}
+          ariaLabel={m.costs_dailySpend()}
+        />
       </div>
       <!-- Date labels (every other day to reduce noise) -->
       <div class="flex justify-between t-telemetry text-muted-foreground px-1">

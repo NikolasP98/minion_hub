@@ -59,7 +59,7 @@
     />
   {/if}
   {#if bins.length > 1}
-    <div class="kpi-trend"><Sparkline {bins} {color} /></div>
+    <div class="kpi-trend"><Sparkline decorative {bins} {color} /></div>
   {/if}
 </div>
 

@@ -3,11 +3,18 @@
     bins,
     color = 'var(--color-accent)',
     glow = false,
+    ariaLabel,
+    decorative,
   }: {
     bins: number[];
     color?: string;
     glow?: boolean;
-  } = $props();
+  } &
+    /** A sparkline is either named (it is the only place the trend is shown) or decorative
+     *  (the figure next to it already says it). One of the two is required. */
+    (
+      { ariaLabel: string; decorative?: never } | { decorative: true; ariaLabel?: never }
+    ) = $props();
 
   const uid = $props.id();
 
@@ -83,7 +90,12 @@
   let fillColorBottom = $derived(withAlpha(color, 0));
 </script>
 
-<div class="w-full h-[20px]">
+<div
+  class="w-full h-[20px]"
+  role={decorative ? undefined : 'img'}
+  aria-label={decorative ? undefined : ariaLabel}
+  aria-hidden={decorative ? 'true' : undefined}
+>
   <svg
     width="100%"
     height="100%"

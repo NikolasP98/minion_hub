@@ -196,12 +196,12 @@
   {:else if id === 'chart-spend'}
     <div class="card">
       <div class="card-h">{m.ads_chart_spend_title()}</div>
-      <Chart options={spendOpts} height="280px" />
+      <Chart options={spendOpts} height="280px" ariaLabel={m.ads_chart_spend_title()} />
     </div>
   {:else if id === 'chart-campaign'}
     <div class="card">
       <div class="card-h">{m.ads_chart_campaign_title()}</div>
-      <Chart options={campaignOpts} height="280px" />
+      <Chart options={campaignOpts} height="280px" ariaLabel={m.ads_chart_campaign_title()} />
     </div>
   {:else if id === 'posts'}
     <div class="card">

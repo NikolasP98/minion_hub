@@ -413,13 +413,19 @@
           onValueChange={(v) => (mode = v as 'period' | 'cumulative')}
         />
       </div>
-      <Chart options={revenueOpts} height="330px" {onLegendToggle} notMergeUpdate={false} />
+      <Chart
+        options={revenueOpts}
+        height="330px"
+        {onLegendToggle}
+        notMergeUpdate={false}
+        ariaLabel={m.fin_chart_revenue_area()}
+      />
       <p class="chart-note">{m.fin_chart_deduct_note()}</p>
     </div>
   {:else if id === 'avgticket'}
     <div class="card">
       <div class="card-h">{m.fin_chart_avg_ticket()}</div>
-      <Chart options={avgTicketOpts} height="270px" />
+      <Chart options={avgTicketOpts} height="270px" ariaLabel={m.fin_chart_avg_ticket()} />
     </div>
   {:else if id === 'products'}
     <div class="card">
@@ -435,12 +441,12 @@
           onValueChange={(v) => (prodMode = v as 'revenue' | 'qty')}
         />
       </div>
-      <Chart options={topProductsOpts} height="330px" />
+      <Chart options={topProductsOpts} height="330px" ariaLabel={m.fin_chart_top_products()} />
     </div>
   {:else if id === 'clients'}
     <div class="card">
       <div class="card-h">{m.fin_chart_top_clients()}</div>
-      <Chart options={topClientsOpts} height="330px" />
+      <Chart options={topClientsOpts} height="330px" ariaLabel={m.fin_chart_top_clients()} />
     </div>
   {/if}
 {/snippet}

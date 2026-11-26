@@ -7,7 +7,9 @@
     LineSeriesOption,
     BarSeriesOption,
   } from 'echarts';
+  import { Button } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
+  import { formatDate } from '$lib/utils/format';
 
   let {
     options,
@@ -34,10 +36,9 @@
      *  Requires stable series names across renders or the changed series re-intros. */
     notMergeUpdate?: boolean;
     /** Accessible name for the chart, used as the `role="img"` label and the
-     *  data-table disclosure's caption. Pass a specific label describing what
-     *  the chart shows (e.g. "Monthly customer-sentiment trend") — falls back
-     *  to a generic translated "Chart" when omitted. */
-    ariaLabel?: string;
+     *  data-table disclosure's caption. Required: say what the chart shows
+     *  (e.g. "Monthly customer-sentiment trend"), translated. */
+    ariaLabel: string;
     /** Header for the category (first) column of the nonvisual data table.
      *  Falls back to a generic translated "Category" when omitted. */
     tableCategoryLabel?: string;
@@ -67,7 +68,7 @@
   // pick it up.
   let prefersReducedMotion = $state(false);
 
-  const resolvedAriaLabel = $derived(ariaLabel ?? m.a11y0_chartRegion());
+  const resolvedAriaLabel = $derived(ariaLabel);
   const resolvedCategoryLabel = $derived(tableCategoryLabel ?? m.a11y0_chartTableCategory());
 
   type Axis = { type?: string; data?: unknown[]; axisLabel?: { formatter?: unknown } };
@@ -101,16 +102,50 @@
     return value;
   }
 
-  // TODO(handoff): dataset/encode, tuple points, mixed category axes and non-Cartesian
-  // charts need explicit alternatives; never infer a misleading table. Root tracks
-  // consumer completion in .planning/phases/13-ui-qualification/13-CANVAS-COVERAGE.md.
-  const accessibleTable = $derived.by(() => {
-    const series = Array.isArray(options.series)
-      ? options.series
-      : options.series
-        ? [options.series]
-        : [];
+  /** One cell of the data table. `item` is what a click on the same mark hands to
+   *  `onItemClick`; with a handler the cell is a button that does the same. */
+  type AltCell = { text: string | number; item?: Record<string, unknown>; label?: string };
+  type AltTable = { head: string[]; rows: AltCell[][]; total?: number };
+  const MAX_POINT_ROWS = 200;
+
+  const seriesList = $derived(
+    Array.isArray(options.series) ? options.series : options.series ? [options.series] : [],
+  );
+  /** A series name as the legend shows it: a chart may keep a stable id as the name and give
+   *  the visible label through `legend.formatter`. */
+  function shownName(name: string): string {
+    const legend = Array.isArray(options.legend) ? options.legend[0] : options.legend;
+    const formatter = (legend as { formatter?: unknown } | undefined)?.formatter;
+    if (typeof formatter === 'string') return formatter.replace('{name}', name);
+    if (typeof formatter === 'function') {
+      try {
+        const text: unknown = formatter(name);
+        if (typeof text === 'string' && text.trim()) return text;
+      } catch {
+        /* a broken formatter must not hide the series */
+      }
+    }
+    return name;
+  }
+  // An unnamed series is "Value" when it is the only one (the chart's own name says what it
+  // measures) and numbered when there are several.
+  const nameOf = (item: SeriesOption, index: number) =>
+    typeof item.name === 'string' && item.name.trim()
+      ? shownName(item.name)
+      : seriesList.length === 1
+        ? m.chart_table_value()
+        : m.a11y0_chartSeriesN({ index: index + 1 });
+
+  // TODO(handoff): dataset/encode, mixed category axes and chart kinds without a builder
+  // below (radar, gauge, graph, treemap: none in use) still get no table; never infer a
+  // misleading one. Root tracks consumer completion in
+  // .planning/phases/13-ui-qualification/13-CANVAS-COVERAGE.md.
+  const accessibleTable = $derived.by((): AltTable | null => {
+    const series = seriesList;
     if (!series.length) return null;
+    if (series.every((item) => item.type === 'pie')) return pieTable();
+    if (series.length === 1 && series[0].type === 'sankey') return sankeyTable();
+    if (series.every((item) => item.type === 'scatter')) return scatterTable();
     const cartesian = series.filter(
       (item): item is LineSeriesOption | BarSeriesOption =>
         item.type === 'line' || item.type === 'bar',
@@ -153,28 +188,216 @@
         return null;
     }
     return {
-      columns: cartesian.map((item, index) =>
-        typeof item.name === 'string' && item.name.trim()
-          ? item.name
-          : m.a11y0_chartSeriesN({ index: index + 1 }),
-      ),
-      rows: categories.map((category, index) => ({
-        category: formatAxis(categoryAxis, category!, index),
-        values: cartesian.map((item) => {
-          const value = pointValue(Array.isArray(item.data) ? item.data[index] : null);
-          if (value === null || value === '-') return '—';
-          return formatAxis(
-            axisAt(
-              horizontal ? options.xAxis : options.yAxis,
-              horizontal ? item.xAxisIndex : item.yAxisIndex,
-            ),
-            value,
-            index,
-          );
-        }),
-      })),
+      head: [resolvedCategoryLabel, ...cartesian.map(nameOf)],
+      rows: categories.map((category, index) => {
+        const label = formatAxis(categoryAxis, category!, index);
+        return [
+          { text: label },
+          ...cartesian.map((item, seriesIndex): AltCell => {
+            const raw = pointValue(Array.isArray(item.data) ? item.data[index] : null);
+            if (raw === null || raw === '-') return { text: '—' };
+            const text = formatAxis(
+              axisAt(
+                horizontal ? options.xAxis : options.yAxis,
+                horizontal ? item.xAxisIndex : item.yAxisIndex,
+              ),
+              raw,
+              index,
+            );
+            const seriesName = nameOf(item, seriesIndex);
+            return {
+              text,
+              label: `${seriesName}, ${label}: ${text}`,
+              item: {
+                componentType: 'series',
+                seriesType: item.type,
+                seriesIndex,
+                seriesName: item.name,
+                name: String(category),
+                dataIndex: index,
+                value: raw,
+              },
+            };
+          }),
+        ];
+      }),
     };
   });
+
+  function pieTable(): AltTable | null {
+    if (seriesList.length !== 1) return null;
+    const item = seriesList[0];
+    if (item.type !== 'pie' || !Array.isArray(item.data)) return null;
+    const slices = item.data.map((point) => ({
+      name: point && typeof point === 'object' && 'name' in point ? String(point.name ?? '') : '',
+      value: pointValue(point),
+    }));
+    if (slices.some((slice) => !slice.name || typeof slice.value !== 'number')) return null;
+    const total = slices.reduce((sum, slice) => sum + (slice.value as number), 0);
+    return {
+      head: [resolvedCategoryLabel, nameOf(item, 0), m.chart_table_share()],
+      rows: slices.map((slice, dataIndex) => {
+        const percent = total ? Math.round(((slice.value as number) / total) * 1000) / 10 : 0;
+        return [
+          {
+            text: slice.name,
+            label: `${slice.name}: ${slice.value}`,
+            item: {
+              componentType: 'series',
+              seriesType: 'pie',
+              seriesIndex: 0,
+              seriesName: item.name,
+              name: slice.name,
+              dataIndex,
+              value: slice.value,
+              percent,
+            },
+          },
+          { text: slice.value as number },
+          { text: `${percent}%` },
+        ];
+      }),
+    };
+  }
+
+  function sankeyTable(): AltTable | null {
+    const item = seriesList[0] as SeriesOption & {
+      links?: unknown;
+      edges?: unknown;
+      label?: { formatter?: unknown };
+    };
+    const links = (item.links ?? item.edges) as
+      { source?: unknown; target?: unknown; value?: unknown }[] | undefined;
+    if (!Array.isArray(links) || !links.length) return null;
+    if (links.some((link) => typeof link.source !== 'string' || typeof link.target !== 'string'))
+      return null;
+    // A node's visible text is its label formatter's, when the caller set one.
+    const shown = (name: string): string => {
+      const formatter = item.label?.formatter;
+      if (typeof formatter === 'function') {
+        try {
+          const text: unknown = formatter({ name, dataType: 'node' });
+          if (typeof text === 'string' && text.trim()) return text;
+        } catch {
+          /* fall through to the raw name */
+        }
+      }
+      return name;
+    };
+    const node = (name: string): AltCell => ({
+      text: shown(name),
+      label: shown(name),
+      item: { componentType: 'series', seriesType: 'sankey', dataType: 'node', name },
+    });
+    return {
+      head: [m.chart_table_from(), m.chart_table_to(), m.chart_table_value()],
+      rows: links.map((link) => [
+        node(link.source as string),
+        node(link.target as string),
+        { text: pointValue(link.value) ?? '—' },
+      ]),
+    };
+  }
+
+  function scatterTable(): AltTable | null {
+    const rows: AltCell[][] = [];
+    let total = 0;
+    for (const [seriesIndex, item] of seriesList.entries()) {
+      if (item.type !== 'scatter' || !Array.isArray(item.data) || item.encode) return null;
+      if (item.coordinateSystem !== undefined && item.coordinateSystem !== 'cartesian2d')
+        return null;
+      const xAxis = axisAt(options.xAxis, item.xAxisIndex);
+      const yAxis = axisAt(options.yAxis, item.yAxisIndex);
+      const seriesName = nameOf(item, seriesIndex);
+      for (const [dataIndex, point] of item.data.entries()) {
+        const tuple =
+          point && typeof point === 'object' && !Array.isArray(point) && 'value' in point
+            ? point.value
+            : point;
+        if (!Array.isArray(tuple) || tuple.length < 2) return null;
+        total += 1;
+        if (rows.length >= MAX_POINT_ROWS) continue;
+        const pointName =
+          point && typeof point === 'object' && !Array.isArray(point) && 'name' in point
+            ? String(point.name ?? '')
+            : '';
+        const cell = (axis: Axis | undefined, value: unknown) => {
+          let plain = pointValue(value);
+          if (plain === null) return '—';
+          // On a category axis a number is the position of the category, not a value.
+          if (axis?.type === 'category' && typeof plain === 'number')
+            plain = pointValue(axis.data?.[plain]) ?? plain;
+          if (axis?.type === 'time' && typeof axis.axisLabel?.formatter !== 'function')
+            return formatDate(plain, { dateStyle: 'medium', timeStyle: 'short' });
+          return formatAxis(axis, plain, dataIndex);
+        };
+        const x = cell(xAxis, tuple[0]);
+        const y = cell(yAxis, tuple[1]);
+        const first = pointName ? `${seriesName}: ${pointName}` : seriesName;
+        rows.push([
+          {
+            text: first,
+            label: `${first}, ${x}, ${y}`,
+            item: {
+              componentType: 'series',
+              seriesType: 'scatter',
+              seriesIndex,
+              seriesName: item.name,
+              name: pointName,
+              dataIndex,
+              value: tuple,
+              data: point,
+            },
+          },
+          { text: x },
+          { text: y },
+        ]);
+      }
+    }
+    if (!rows.length) return null;
+    const axisName = (axes: EChartsOption['xAxis'] | EChartsOption['yAxis'], fallback: string) => {
+      const name = (axisAt(axes) as { name?: unknown } | undefined)?.name;
+      return typeof name === 'string' && name.trim() ? name : fallback;
+    };
+    return {
+      head: [
+        m.chart_table_series(),
+        axisName(options.xAxis, m.chart_table_x()),
+        axisName(options.yAxis, m.chart_table_y()),
+      ],
+      rows,
+      total,
+    };
+  }
+
+  // The legend's keyboard twin: one toggle per legend entry, shown while it has focus.
+  const legendNames = $derived.by((): string[] => {
+    const legend = Array.isArray(options.legend) ? options.legend[0] : options.legend;
+    if (!legend || legend.show === false) return [];
+    const listed = (legend as { data?: unknown[] }).data;
+    const names = Array.isArray(listed)
+      ? listed.map((entry) =>
+          typeof entry === 'string' ? entry : (entry as { name?: unknown } | null)?.name,
+        )
+      : seriesList.length === 1 && seriesList[0].type === 'pie' && Array.isArray(seriesList[0].data)
+        ? seriesList[0].data.map((point) =>
+            point && typeof point === 'object' && 'name' in point ? point.name : undefined,
+          )
+        : seriesList.map((item) => item.name);
+    return [...new Set(names.filter((name): name is string => typeof name === 'string' && !!name))];
+  });
+  let hiddenSeries = $state<Record<string, boolean>>({});
+  $effect(() => {
+    const legend = Array.isArray(options.legend) ? options.legend[0] : options.legend;
+    const selected = (legend as { selected?: Record<string, boolean> } | undefined)?.selected;
+    hiddenSeries = Object.fromEntries(
+      Object.entries(selected ?? {}).map(([name, on]) => [name, !on]),
+    );
+  });
+  function toggleSeries(name: string) {
+    // The engine answers with `legendselectchanged`, the same event a legend click sends.
+    chart?.dispatchAction({ type: 'legendToggleSelect', name });
+  }
 
   function applyDefaults(opts: EChartsOption): EChartsOption {
     const reduced = prefersReducedMotion;
@@ -278,12 +501,15 @@
     };
   }
 
-  // TODO(handoff): clickable filter and legend consumers still need keyboard action
-  // parity; track .planning/phases/13-ui-qualification/13-CANVAS-COVERAGE.md.
   // Stable engine subscriptions read the current callback props, including removal.
   const handleItemClick = (params: unknown) => onItemClick?.(params);
-  const handleLegendToggle = (params: unknown) =>
-    onLegendToggle?.(params as { name: string; selected: Record<string, boolean> });
+  const handleLegendToggle = (params: unknown) => {
+    const event = params as { name: string; selected: Record<string, boolean> };
+    hiddenSeries = Object.fromEntries(
+      Object.entries(event.selected ?? {}).map(([name, on]) => [name, !on]),
+    );
+    onLegendToggle?.(event);
+  };
 
   onMount(() => {
     let disposed = false;
@@ -362,15 +588,43 @@
   });
 </script>
 
+{#snippet altCell(cell: AltCell)}
+  {#if onItemClick && cell.item}
+    <Button
+      variant="ghost"
+      size="xs"
+      aria-label={cell.label}
+      onclick={() => onItemClick?.(cell.item)}>{cell.text}</Button
+    >
+  {:else}
+    {cell.text}
+  {/if}
+{/snippet}
+
 <div class="chart-a11y-wrap">
-  <div
-    bind:this={container}
-    class={className}
-    style="width:100%;height:{height};{style}"
-    data-dense
-    role="img"
-    aria-label={resolvedAriaLabel}
-  ></div>
+  <div class="chart-box">
+    <div
+      bind:this={container}
+      class={className}
+      style="width:100%;height:{height};{style}"
+      data-dense
+      role="img"
+      aria-label={resolvedAriaLabel}
+    ></div>
+    {#if legendNames.length}
+      <!-- Keyboard twin of the canvas legend: out of sight until it has focus. -->
+      <div class="chart-series" role="group" aria-label={m.chart_series_toggle()}>
+        {#each legendNames as name (name)}
+          <Button
+            variant="secondary"
+            size="xs"
+            aria-pressed={!hiddenSeries[name]}
+            onclick={() => toggleSeries(name)}>{shownName(name)}</Button
+          >
+        {/each}
+      </div>
+    {/if}
+  </div>
   {#if accessibleTable}
     <details class="chart-alt">
       <summary class="t-caption">{m.a11y0_chartDataTable()}</summary>
@@ -388,8 +642,7 @@
           <caption class="sr-only">{resolvedAriaLabel}</caption>
           <thead>
             <tr>
-              <th scope="col">{resolvedCategoryLabel}</th>
-              {#each accessibleTable.columns as column, i (i)}
+              {#each accessibleTable.head as column, i (i)}
                 <th scope="col">{column}</th>
               {/each}
             </tr>
@@ -397,14 +650,25 @@
           <tbody>
             {#each accessibleTable.rows as row, i (i)}
               <tr>
-                <th scope="row">{row.category}</th>
-                {#each row.values as value, i (i)}
-                  <td>{value}</td>
+                {#each row as cell, ci (ci)}
+                  {#if ci === 0}
+                    <th scope="row">{@render altCell(cell)}</th>
+                  {:else}
+                    <td>{@render altCell(cell)}</td>
+                  {/if}
                 {/each}
               </tr>
             {/each}
           </tbody>
         </table>
+        {#if accessibleTable.total && accessibleTable.total > accessibleTable.rows.length}
+          <p class="t-caption">
+            {m.chart_table_truncated({
+              shown: accessibleTable.rows.length,
+              total: accessibleTable.total,
+            })}
+          </p>
+        {/if}
       </div>
     </details>
   {/if}
@@ -420,6 +684,36 @@
 
   .chart-alt-viewport {
     overflow-x: auto;
+  }
+
+  .chart-box {
+    position: relative;
+  }
+
+  .chart-series {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    padding: var(--space-1);
+    background: var(--color-surface-1);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+
+  .chart-series:not(:focus-within) {
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .chart-series :global([aria-pressed='false']) {
+    color: var(--color-text-secondary);
+    text-decoration: line-through;
   }
 
   .chart-alt {
