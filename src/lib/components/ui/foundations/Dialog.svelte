@@ -231,14 +231,14 @@
         }
       }
     } else if (element.open && !closing) {
-      closing = true;
+      // `bare` has no exit animation, so there is no `animationend` to wait for: close now.
+      // (Waiting left the palette open as a modal layer over the page.)
+      if (presentation === 'bare') finishClose();
+      else closing = true;
     }
   });
 
-  // Fires for both the enter and exit CSS animations on `.dialog-content`;
-  // only the exit one should trigger the real native close.
-  function handleContentAnimationEnd(event: AnimationEvent) {
-    if (!closing || event.target !== event.currentTarget) return;
+  function finishClose() {
     closing = false;
     const element = dialogElement;
     if (element?.open) {
@@ -247,6 +247,13 @@
       releaseModalState();
       element.close();
     }
+  }
+
+  // Fires for both the enter and exit CSS animations on `.dialog-content`;
+  // only the exit one should trigger the real native close.
+  function handleContentAnimationEnd(event: AnimationEvent) {
+    if (!closing || event.target !== event.currentTarget) return;
+    finishClose();
   }
 
   function handleCancel(event: Event) {

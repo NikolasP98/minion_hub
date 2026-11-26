@@ -56,13 +56,15 @@ describe('CommandPalette (spec 152)', () => {
       opener,
       press: async (key) => {
         if (key !== 'Escape') return;
+        // No `animationend` is dispatched here on purpose: the palette's surface has no exit
+        // animation, so the dialog must close without waiting for one.
         dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
-        await settle();
-        dialog.querySelector('.dialog-content')?.dispatchEvent(new Event('animationend'));
         await settle();
       },
     });
     expect(palette.open).toBe(false);
+    expect(dialog.open).toBe(false);
+    expect(document.querySelector('dialog[open]')).toBeNull();
     opener.remove();
   });
 
