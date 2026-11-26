@@ -115,6 +115,26 @@
   {#snippet template(args)}<Chart {...args} />{/snippet}
 </Story>
 
+<!-- A chart may keep a stable id as a series name and show its label through the legend's
+     formatter (finances revenue: `net-band`). The toggles and the table read the label. -->
+<Story
+  name="Legend labels from a formatter"
+  args={{
+    options: {
+      ...axis,
+      tooltip: { trigger: 'axis' },
+      legend: { formatter: (name: string) => (name === 'net-band' ? 'Net revenue' : name) },
+      series: [
+        { type: 'line', name: 'Taxes', stack: 'all', areaStyle: {}, data: returns },
+        { type: 'line', name: 'net-band', stack: 'all', areaStyle: {}, data: sales },
+      ],
+    },
+    notMergeUpdate: false,
+  }}
+>
+  {#snippet template(args)}<Chart {...args} />{/snippet}
+</Story>
+
 <Story
   name="Stacked bar"
   args={{
