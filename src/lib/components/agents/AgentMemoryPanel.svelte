@@ -326,7 +326,7 @@
   <!-- Semantic scatter (pgvector only) -->
   <div class="rounded-lg border border-border bg-card/40 relative" style="height: 200px">
     {#if points.length > 1}
-      <Chart options={scatterOptions} height="200px" />
+      <Chart options={scatterOptions} height="200px" ariaLabel={m.chart_name_memory_map()} />
     {:else}
       <div
         class="absolute inset-0 flex items-center justify-center text-[length:var(--font-size-caption)] text-muted"

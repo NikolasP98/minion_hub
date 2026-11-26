@@ -167,7 +167,7 @@
         >
           {m.reliability_latencyTrend()}
         </span>
-        <Chart options={chartOptions} height="200px" />
+        <Chart options={chartOptions} height="200px" ariaLabel={m.reliability_latencyTrend()} />
       </div>
     {/if}
 

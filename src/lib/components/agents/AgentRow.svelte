@@ -209,6 +209,7 @@
           : 'hidden group-hover:block opacity-60'}"
       >
         <EChartsSparkline
+          decorative
           bins={rotatedBins}
           color={accentColor}
           glow={hasActive}

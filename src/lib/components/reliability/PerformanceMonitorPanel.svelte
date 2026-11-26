@@ -296,7 +296,13 @@
             {m.reliability_performanceTrend()}
           </h3>
         </header>
-        <div class="px-3 py-2"><Chart options={trendOptions} height="260px" /></div>
+        <div class="px-3 py-2">
+          <Chart
+            options={trendOptions}
+            height="260px"
+            ariaLabel={m.reliability_performanceTrend()}
+          />
+        </div>
       </section>
     {/if}
 

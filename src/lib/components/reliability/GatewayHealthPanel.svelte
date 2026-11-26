@@ -290,7 +290,11 @@
     <div>
       {#if chronological.length >= 2}
         <div class="px-4 pt-3 pb-1">
-          <Chart options={chartOptions} height="200px" />
+          <Chart
+            options={chartOptions}
+            height="200px"
+            ariaLabel={m.chart_name_gateway_health_trend()}
+          />
         </div>
       {/if}
     </div>

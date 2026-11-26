@@ -172,6 +172,7 @@
 
       <div class="h-10 mb-3 -mx-1">
         <EChartsSparkline
+          ariaLabel={m.chart_name_agent_activity_trend()}
           bins={rotatedBins}
           color="var(--color-accent)"
           glow={activeCount > 0}

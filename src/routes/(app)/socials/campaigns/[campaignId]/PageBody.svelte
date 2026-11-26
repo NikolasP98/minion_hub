@@ -251,7 +251,7 @@
 
     <div class="card">
       <div class="card-h">{m.ads_chart_spend_title()}</div>
-      <Chart options={spendOpts} height="240px" />
+      <Chart options={spendOpts} height="240px" ariaLabel={m.ads_chart_spend_title()} />
     </div>
 
     <div class="card">

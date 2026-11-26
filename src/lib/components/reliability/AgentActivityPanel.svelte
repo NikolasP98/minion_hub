@@ -543,7 +543,11 @@
           >
         </div>
         {#if proactivity.total > 0}
-          <Chart options={proactivityChart} height="180px" />
+          <Chart
+            options={proactivityChart}
+            height="180px"
+            ariaLabel={m.reliability_proactiveVsReactiveRuns()}
+          />
         {:else}
           <div
             class="flex items-center justify-center h-[180px] text-muted-strong text-[length:var(--font-size-label)]"
@@ -563,7 +567,11 @@
           >
         </div>
         {#if tools.top.length > 0}
-          <Chart options={toolChart} height="180px" />
+          <Chart
+            options={toolChart}
+            height="180px"
+            ariaLabel={m.reliability_toolUsage({ count: fmt(tools.total) })}
+          />
         {:else}
           <div
             class="flex items-center justify-center h-[180px] text-muted-strong text-[length:var(--font-size-label)]"

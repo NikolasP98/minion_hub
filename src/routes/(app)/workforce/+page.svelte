@@ -236,7 +236,12 @@
           </div>
           {#if trendValues.length > 1}
             <div class="text-primary shrink-0 mt-1" title={m.a11y0_dailySpendTrend()}>
-              <Sparkline values={trendValues} width={120} height={32} />
+              <Sparkline
+                values={trendValues}
+                width={120}
+                height={32}
+                ariaLabel={m.a11y0_dailySpendTrend()}
+              />
             </div>
           {/if}
         </div>
