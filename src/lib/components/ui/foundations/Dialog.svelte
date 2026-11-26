@@ -42,6 +42,9 @@
     /** Set false to skip the discard-confirmation entirely (rare: a dialog
      *  that is always safe to lose, e.g. a pure filter/search surface). */
     guardDismiss?: boolean;
+    /** `clear` = no dim or blur behind the dialog: for a small prompt anchored on a canvas,
+     *  where the user must keep seeing what it refers to. Still modal. */
+    backdrop?: 'dim' | 'clear';
     onclose?: (reason: DialogCloseReason) => void;
     header?: Snippet;
     children?: Snippet;
@@ -65,6 +68,7 @@
     initialFocus,
     dirty = false,
     guardDismiss = true,
+    backdrop = 'dim',
     onclose,
     header,
     children,
@@ -300,6 +304,7 @@
   data-placement={presentation === 'sheet' ? placement : undefined}
   data-size={size}
   data-variant={variant}
+  data-backdrop={backdrop === 'clear' ? 'clear' : undefined}
   data-closing={closing || undefined}
   {role}
   aria-modal="true"
@@ -411,6 +416,11 @@
   .dialog-positioner::backdrop {
     background: color-mix(in srgb, var(--color-canvas, var(--color-bg)) 62%, transparent);
     backdrop-filter: blur(3px);
+  }
+
+  .dialog-positioner[data-backdrop='clear']::backdrop {
+    background: transparent;
+    backdrop-filter: none;
   }
 
   .dialog-positioner[data-size='sm'] {
