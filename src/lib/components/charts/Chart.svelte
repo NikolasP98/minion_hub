@@ -111,10 +111,30 @@
   const seriesList = $derived(
     Array.isArray(options.series) ? options.series : options.series ? [options.series] : [],
   );
+  /** A series name as the legend shows it: a chart may keep a stable id as the name and give
+   *  the visible label through `legend.formatter`. */
+  function shownName(name: string): string {
+    const legend = Array.isArray(options.legend) ? options.legend[0] : options.legend;
+    const formatter = (legend as { formatter?: unknown } | undefined)?.formatter;
+    if (typeof formatter === 'string') return formatter.replace('{name}', name);
+    if (typeof formatter === 'function') {
+      try {
+        const text: unknown = formatter(name);
+        if (typeof text === 'string' && text.trim()) return text;
+      } catch {
+        /* a broken formatter must not hide the series */
+      }
+    }
+    return name;
+  }
+  // An unnamed series is "Value" when it is the only one (the chart's own name says what it
+  // measures) and numbered when there are several.
   const nameOf = (item: SeriesOption, index: number) =>
     typeof item.name === 'string' && item.name.trim()
-      ? item.name
-      : m.a11y0_chartSeriesN({ index: index + 1 });
+      ? shownName(item.name)
+      : seriesList.length === 1
+        ? m.chart_table_value()
+        : m.a11y0_chartSeriesN({ index: index + 1 });
 
   // TODO(handoff): dataset/encode, mixed category axes and chart kinds without a builder
   // below (radar, gauge, graph, treemap: none in use) still get no table; never infer a
@@ -215,11 +235,7 @@
     if (slices.some((slice) => !slice.name || typeof slice.value !== 'number')) return null;
     const total = slices.reduce((sum, slice) => sum + (slice.value as number), 0);
     return {
-      head: [
-        resolvedCategoryLabel,
-        typeof item.name === 'string' && item.name.trim() ? item.name : m.chart_table_value(),
-        m.chart_table_share(),
-      ],
+      head: [resolvedCategoryLabel, nameOf(item, 0), m.chart_table_share()],
       rows: slices.map((slice, dataIndex) => {
         const percent = total ? Math.round(((slice.value as number) / total) * 1000) / 10 : 0;
         return [
@@ -603,7 +619,7 @@
             variant="secondary"
             size="xs"
             aria-pressed={!hiddenSeries[name]}
-            onclick={() => toggleSeries(name)}>{name}</Button
+            onclick={() => toggleSeries(name)}>{shownName(name)}</Button
           >
         {/each}
       </div>

@@ -76,7 +76,13 @@ describe('real mounted Chart data and semantics', () => {
   });
   it('uses the given name, a translated category default and numbered unnamed series', () => {
     const { container } = render(Chart, {
-      options: { ...line, series: [{ type: 'line', data: [1] }] },
+      options: {
+        ...line,
+        series: [
+          { type: 'line', data: [1] },
+          { type: 'line', data: [2] },
+        ],
+      },
       ariaLabel: 'Orders',
     });
     expect(container.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Orders');
@@ -556,6 +562,46 @@ describe('Chart: tables for pie, sankey and scatter, and keyboard actions', () =
     toggle({ name: 'Sales', selected: { Sales: false, Costs: false } });
     await vi.waitFor(() => expect(sales.getAttribute('aria-pressed')).toBe('false'));
     expect(onLegendToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it('labels a series as the legend does when the chart keeps a stable id as its name', async () => {
+    const { container } = render(Chart, {
+      ariaLabel: 'Revenue',
+      onItemClick: vi.fn(),
+      options: {
+        ...line,
+        legend: { formatter: (name: string) => (name === 'net-band' ? 'Net revenue' : name) },
+        series: [
+          { name: 'net-band', type: 'line', data: [1, 2] },
+          { name: 'Taxes', type: 'line', data: [1, 2] },
+        ],
+      },
+    });
+    await ready();
+    expect(texts(container, '[role="group"] button')).toEqual(['Net revenue', 'Taxes']);
+    expect(texts(container, 'thead th')).toEqual(['Category', 'Net revenue', 'Taxes']);
+    // The guard: with a legend formatter, the raw id is never what a person reads or hears.
+    const read = [
+      ...texts(container, '[role="group"] button'),
+      ...texts(container, 'thead th'),
+      ...[...container.querySelectorAll('table button')].map((b) => b.getAttribute('aria-label')),
+    ];
+    expect(read.length).toBeGreaterThan(5);
+    for (const text of read) expect(text).not.toContain('net-band');
+    // The engine still gets the id.
+    container.querySelector<HTMLButtonElement>('[role="group"] button')!.click();
+    expect(engine.dispatchAction).toHaveBeenCalledWith({
+      type: 'legendToggleSelect',
+      name: 'net-band',
+    });
+  });
+
+  it('heads a single unnamed series "Value", not "Series 1"', () => {
+    const { container } = render(Chart, {
+      ariaLabel: 'Top products',
+      options: { ...line, series: [{ type: 'bar', data: [3, 4] }] },
+    });
+    expect(texts(container, 'thead th')).toEqual(['Category', 'Value']);
   });
 
   it('shows no toggles when the chart has no legend', () => {
