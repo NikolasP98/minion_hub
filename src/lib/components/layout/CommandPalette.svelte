@@ -159,7 +159,7 @@
         type="text"
         role="combobox"
         aria-label={m.command_searchPlaceholder()}
-        aria-expanded="true"
+        aria-expanded={flatCommands.length > 0}
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={flatCommands.length ? optionId(palette.selectedIndex) : undefined}
@@ -176,18 +176,21 @@
     </div>
 
     <!-- Results -->
-    <div
-      id={listId}
-      class="max-h-72 overflow-y-auto py-2"
-      role="listbox"
-      aria-label={m.command_searchPlaceholder()}
-    >
-      {#if flatCommands.length === 0}
-        <div class="px-4 py-8 text-center text-sm text-muted">
+    {#if flatCommands.length === 0}
+      <!-- Not an empty listbox (a listbox must own options): a status the screen reader reads. -->
+      <div class="py-2">
+        <div class="px-4 py-8 text-center text-sm text-muted" role="status">
           {m.command_noResults()}
         </div>
-      {:else}
-        {@const flatIdx = { value: 0 }}
+      </div>
+    {:else}
+      {@const flatIdx = { value: 0 }}
+      <div
+        id={listId}
+        class="max-h-72 overflow-y-auto py-2"
+        role="listbox"
+        aria-label={m.command_searchPlaceholder()}
+      >
         {#each groups as group}
           <div class="px-3 pt-2 pb-1">
             <span
@@ -234,8 +237,8 @@
             </div>
           {/each}
         {/each}
-      {/if}
-    </div>
+      </div>
+    {/if}
 
     <!-- Footer hint -->
     <div
