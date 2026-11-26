@@ -139,6 +139,7 @@
 <Dialog
   bind:open={palette.open}
   presentation="bare"
+  align="top"
   title={m.shortcuts_commandPaletteName()}
   hideClose
   guardDismiss={false}
