@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { recordPathSegment } from '$lib/utils/record-path';
   import { iconSizes, Button } from '$lib/components/ui';
   import { normalizeButtonProps } from '$lib/components/users/button-props';
@@ -212,14 +213,6 @@
     }
   }
 
-  function handleOverlayClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
-  }
-
   // ── Derived: is Next/Create disabled? ────────────────────────────────────
   const isNextDisabled = $derived.by(() => {
     if (api.value === 0) return !canAdvanceStep0;
@@ -233,16 +226,17 @@
   createHotkey('Mod+Enter', handleNextOrCreate, () => ({ enabled: !isNextDisabled }));
 </script>
 
-<!-- TODO(handoff): HC-028 hand-rolled wizard modal; migrate to the shared Dialog. Not mechanical: multi-step chrome, Mod+Enter hotkey and step-scoped outside-click policy. See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
-<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-<div
-  class="overlay"
-  role="dialog"
-  aria-modal="true"
-  aria-label={m.builder_newAgent()}
-  tabindex="-1"
-  onclick={handleOverlayClick}
-  onkeydown={handleKeydown}
+<!-- A real modal dialog (spec 152): the page behind is inert, Escape and a click outside
+     close, focus returns. `bare` keeps the wizard's own surface and step chrome. While the
+     agent is being created it cannot be dismissed. -->
+<Dialog
+  open
+  presentation="bare"
+  title={m.builder_newAgent()}
+  hideClose
+  guardDismiss={false}
+  dismissible={!creating}
+  onclose={onClose}
 >
   <div class="modal">
     <!-- Header -->
@@ -352,21 +346,10 @@
       </div>
     </div>
   </div>
-</div>
+</Dialog>
 
 <style>
   /* ── Overlay ─────────────────────────────────────────────────────────── */
-  .overlay {
-    position: fixed;
-    inset: 0;
-    z-index: var(--layer-debug);
-    background: color-mix(in srgb, var(--color-canvas) 60%, transparent);
-    backdrop-filter: blur(4px);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   /* ── Modal ───────────────────────────────────────────────────────────── */
   .modal {
     position: relative;

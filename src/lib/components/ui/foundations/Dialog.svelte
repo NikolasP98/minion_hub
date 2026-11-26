@@ -45,6 +45,9 @@
     /** `clear` = no dim or blur behind the dialog: for a small prompt anchored on a canvas,
      *  where the user must keep seeing what it refers to. Still modal. */
     backdrop?: 'dim' | 'clear';
+    /** `bare` only: `top` sits near the top of the screen (the command palette); the default
+     *  centres the caller's surface like any other dialog. */
+    align?: 'center' | 'top';
     onclose?: (reason: DialogCloseReason) => void;
     header?: Snippet;
     children?: Snippet;
@@ -69,6 +72,7 @@
     dirty = false,
     guardDismiss = true,
     backdrop = 'dim',
+    align = 'center',
     onclose,
     header,
     children,
@@ -305,6 +309,7 @@
   data-size={size}
   data-variant={variant}
   data-backdrop={backdrop === 'clear' ? 'clear' : undefined}
+  data-align={presentation === 'bare' && align === 'top' ? 'top' : undefined}
   data-closing={closing || undefined}
   {role}
   aria-modal="true"
@@ -438,9 +443,8 @@
 
   /* `bare`: sits where the command palette always sat (below the top edge), and the caller's
      own panel is the surface. */
-  .dialog-positioner[data-presentation='bare'] {
+  .dialog-positioner[data-presentation='bare'][data-align='top'] {
     margin-top: clamp(var(--space-12), 15dvh, 10rem);
-    max-width: min(calc(100% - (2 * var(--space-page-gutter, 16px))), 32rem);
   }
   .dialog-positioner[data-presentation='bare'] .dialog-content {
     border: 0;
@@ -450,7 +454,19 @@
     overflow: visible;
   }
   .dialog-positioner[data-presentation='bare'] .dialog-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     padding: 0;
+  }
+  /* Only the caller's surface takes the pointer: a click beside a surface narrower than
+     the dialog's width lands on the dialog itself and counts as a click outside. */
+  .dialog-positioner[data-presentation='bare'] .dialog-content,
+  .dialog-positioner[data-presentation='bare'] .dialog-body {
+    pointer-events: none;
+  }
+  .dialog-positioner[data-presentation='bare'] .dialog-body > :global(*) {
+    pointer-events: auto;
   }
 
   .dialog-content {
