@@ -192,6 +192,73 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
   });
 });
 
+// The grid's row hotkeys for Enter and Space are document-scoped and the hotkey engine
+// prevents a key BEFORE its callback runs. With focus on a control inside a cell that left
+// the control dead to the keyboard (found on production 2026-11-26: "Revoke" in the API
+// keys table). The test presses the key and checks the browser is still allowed to act on
+// it; it does not fake the click.
+describe('DataTable: controls inside cells keep Enter and Space', () => {
+  const controls = createRawSnippet<[Row]>(() => ({
+    render: () =>
+      `<span><button type="button" data-cell-button>Revoke</button><a href="#x" data-cell-link>Details</a><input type="checkbox" data-cell-checkbox aria-label="Reviewed" /></span>`,
+  }));
+  const press = (el: Element, key: string) => {
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    el.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+
+  const CellControlsTable = DataTable as Component<
+    DataTableProps<Row> & {
+      cells: Record<string, ReturnType<typeof createRawSnippet<[Row]>>>;
+      onRowClick: (row: Row) => void;
+    }
+  >;
+  async function mount(onRowClick = vi.fn()) {
+    const view = render(CellControlsTable, {
+      props: {
+        data: rows,
+        columns,
+        getRowId: (r: Row) => r.id,
+        cells: { [String(columns[0].key)]: controls },
+        onRowClick,
+      },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelector('tbody tr[data-row-index]')).not.toBeNull(),
+    );
+    const grid = view.container.querySelector<HTMLElement>('.dt-scroll')!;
+    return { ...view, grid, onRowClick };
+  }
+
+  it('does not prevent Enter or Space on a button, a link or a checkbox in a cell', async () => {
+    const { container, onRowClick, unmount } = await mount();
+    for (const selector of ['[data-cell-button]', '[data-cell-link]', '[data-cell-checkbox]']) {
+      const control = container.querySelector<HTMLElement>(selector)!;
+      control.focus();
+      await Promise.resolve();
+      expect(document.activeElement, selector).toBe(control);
+      expect(press(control, 'Enter'), `${selector} Enter`).toBe(false);
+      expect(press(control, ' '), `${selector} Space`).toBe(false);
+    }
+    expect(onRowClick).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('Enter on the grid itself still opens the focused row', async () => {
+    const { container, grid, onRowClick, unmount } = await mount();
+    // Leaving a cell control hands the keys back to the row.
+    container.querySelector<HTMLElement>('[data-cell-button]')!.focus();
+    grid.focus();
+    await Promise.resolve();
+    press(grid, 'ArrowDown'); // moves the row focus onto the first row
+    await Promise.resolve();
+    expect(press(grid, 'Enter')).toBe(true);
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+});
+
 describe('DataTable handoff marker block', () => {
   // Covers the server-mode block (spec 2026-08-13 §S4): in server mode, a
   // header sort click must delegate to `server.onQuery` instead of sorting
