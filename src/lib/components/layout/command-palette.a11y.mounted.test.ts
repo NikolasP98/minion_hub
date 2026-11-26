@@ -78,4 +78,14 @@ describe('CommandPalette (spec 152)', () => {
     await assertPattern(dialog, 'combobox', { skip: ['escape-closes'] });
     opener.remove();
   });
+
+  it('with no results shows a status, not an empty listbox', async () => {
+    const { opener, dialog } = await openPalette();
+    palette.query = 'zzzz-no-such-command';
+    await settle();
+    expect(dialog.querySelector('[role="listbox"]')).toBeNull();
+    expect(dialog.querySelector('[role="status"]')?.textContent?.trim()).toBeTruthy();
+    expect(dialog.querySelector('[role="combobox"]')?.getAttribute('aria-expanded')).toBe('false');
+    opener.remove();
+  });
 });
