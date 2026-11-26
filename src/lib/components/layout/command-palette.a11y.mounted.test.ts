@@ -56,13 +56,15 @@ describe('CommandPalette (spec 152)', () => {
       opener,
       press: async (key) => {
         if (key !== 'Escape') return;
+        // No `animationend` is dispatched here on purpose: the palette's surface has no exit
+        // animation, so the dialog must close without waiting for one.
         dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
-        await settle();
-        dialog.querySelector('.dialog-content')?.dispatchEvent(new Event('animationend'));
         await settle();
       },
     });
     expect(palette.open).toBe(false);
+    expect(dialog.open).toBe(false);
+    expect(document.querySelector('dialog[open]')).toBeNull();
     opener.remove();
   });
 
@@ -74,6 +76,16 @@ describe('CommandPalette (spec 152)', () => {
     expect(input.getAttribute('aria-activedescendant')).toBe(options[0].id);
     // Escape closes the whole dialog (proved above), not just a popup: the list is always open.
     await assertPattern(dialog, 'combobox', { skip: ['escape-closes'] });
+    opener.remove();
+  });
+
+  it('with no results shows a status, not an empty listbox', async () => {
+    const { opener, dialog } = await openPalette();
+    palette.query = 'zzzz-no-such-command';
+    await settle();
+    expect(dialog.querySelector('[role="listbox"]')).toBeNull();
+    expect(dialog.querySelector('[role="status"]')?.textContent?.trim()).toBeTruthy();
+    expect(dialog.querySelector('[role="combobox"]')?.getAttribute('aria-expanded')).toBe('false');
     opener.remove();
   });
 });
