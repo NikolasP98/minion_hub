@@ -76,3 +76,24 @@ describe('global ceilings', { timeout: 30_000 }, () => {
     expect(run('--ci', '--strict-global').status).toBe(0);
   });
 });
+
+describe('icon-button-unlabelled (spec 152)', { timeout: 30_000 }, () => {
+  it('counts an icon-only Button with no accessible name, and nothing else', () => {
+    const { root, run } = fixture();
+    writeFileSync(
+      join(root, 'src/icons.svelte'),
+      [
+        // The one offender: the arrow function's `>` must not end the tag early.
+        '<Button variant="ghost" onclick={() => go(1)}><X size={14} /></Button>',
+        '<Button aria-label={m.close()} onclick={() => go()}><X size={14} /></Button>',
+        '<Button aria-labelledby="a b"><X size={14} /></Button>',
+        '<Button title="Close"><X size={14} /></Button>',
+        '<Button {...rest}><X size={14} /></Button>',
+        '<Button><X size={14} /> Close</Button>',
+        '<Button class="card"><SellableCard row={s} /></Button>',
+      ].join('\n'),
+    );
+    expect(run('--update-baseline').status).toBe(0);
+    expect(run().stdout).toMatch(/icon-button-unlabelled\s+1\b/);
+  });
+});

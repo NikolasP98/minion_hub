@@ -15,6 +15,8 @@
   import { Button, iconSizes } from '$lib/components/ui';
   import * as m from '$lib/paraglide/messages';
 
+  // The × is named after what it removes: its own label plus the chip's label, by id.
+  const uid = $props.id();
   let {
     name,
     color = null,
@@ -57,12 +59,18 @@
 >
   <span class="tag-chip-label chip-label">
     {#if children}{@render children()}{/if}
-    <span class="tag-chip-name">{name}</span>
+    <span class="tag-chip-name" id="{uid}-label">{name}</span>
     {#if origin}<span class="tag-chip-origin">{originLabel[origin]()}</span>{/if}
   </span>
   {#if onremove}
-    <Button variant="ghost" size="sm" class="chip-x" onclick={onremove} aria-label={m.tags_remove()}
-      ><X size={iconSizes.xs} /></Button
+    <Button
+      variant="ghost"
+      size="sm"
+      class="chip-x"
+      id="{uid}-x"
+      aria-label={m.tags_remove()}
+      aria-labelledby="{uid}-x {uid}-label"
+      onclick={onremove}><X size={iconSizes.xs} /></Button
     >
   {/if}
 </span>

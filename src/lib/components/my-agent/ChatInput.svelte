@@ -33,6 +33,8 @@
     onstop?: () => void;
   }
 
+  // The × is named after what it removes: its own label plus the chip's label, by id.
+  const uid = $props.id();
   let {
     onsubmit,
     ownerKey = null,
@@ -389,11 +391,13 @@
         {#each chips as chip, i (i)}
           <span class="chip" title={chip.text}>
             <span class="chip-ic" aria-hidden="true">{dragContextIcon(chip.kind)}</span>
-            <span class="chip-label">{chip.label}</span>
+            <span class="chip-label" id="{uid}-chip-{i}">{chip.label}</span>
             <Button
               type="button"
               class="chip-x"
+              id="{uid}-chip-{i}-x"
               aria-label={m.chat_removeContext()}
+              aria-labelledby="{uid}-chip-{i}-x {uid}-chip-{i}"
               onclick={() => removeChip(i)}
             >
               <X size={iconSizes.xs} />
@@ -407,11 +411,13 @@
       {#each refs as r (r.id)}
         <span class="ref-pill" data-kind={r.char === '/' ? 'skill' : 'mention'}>
           <span class="ref-ic" aria-hidden="true">{r.icon}</span>
-          <span class="ref-label">{r.label}</span>
+          <span class="ref-label" id="{uid}-ref-{r.id}">{r.label}</span>
           <Button
             type="button"
             class="chip-x"
+            id="{uid}-ref-{r.id}-x"
             aria-label={m.chat_removeContext()}
+            aria-labelledby="{uid}-ref-{r.id}-x {uid}-ref-{r.id}"
             onclick={() => removeRef(r.id)}
           >
             <X size={iconSizes.xs} />
