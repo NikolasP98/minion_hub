@@ -849,66 +849,53 @@
   "pages": {
     "/account @ compact-390:coarse": {
       "color-contrast": 1,
-      "document-title": 1,
       "label-content-name-mismatch": 1
     },
     "/account/connections @ compact-390:coarse": {
-      "color-contrast": 3,
-      "document-title": 1
+      "color-contrast": 3
     },
     "/account/home @ compact-390:coarse": {
       "color-contrast": 3
     },
     "/account/security @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents @ compact-390:coarse": {
       "aria-required-parent": 1,
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents/autonomous @ compact-390:coarse": "unmeasured",
     "/agents/autonomous/[id] @ compact-390:coarse": {
-      "color-contrast": 5,
-      "document-title": 1
+      "color-contrast": 5
     },
     "/agents/builder @ compact-390:coarse": {
       "color-contrast": 1,
       "label-content-name-mismatch": 1
     },
     "/agents/builder/[id] @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents/workshop @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents/workshop/[id] @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents/workshop/compare @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents/workshop/groupchat @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/agents/workshop/leaderboard @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/brains @ compact-390:coarse": {
       "aria-prohibited-attr": 1,
-      "color-contrast": 3,
-      "document-title": 1
+      "color-contrast": 3
     },
     "/brains/[id] @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/brains/agents @ compact-390:coarse": {
       "color-contrast": 6
@@ -924,17 +911,14 @@
       "label-content-name-mismatch": 1
     },
     "/changelog @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/channels @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/channels/[id] @ compact-390:coarse": "unmeasured",
     "/channels/gmail @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/cloud @ compact-390:coarse": {
       "button-name": 1,
@@ -959,7 +943,6 @@
     },
     "/crm/[contactId] @ compact-390:coarse": {
       "aria-tooltip-name": 1,
-      "button-name": 1,
       "color-contrast": 2,
       "select-name": 1
     },
@@ -997,20 +980,16 @@
     },
     "/flow-editor @ compact-390:coarse": {
       "color-contrast": 2,
-      "document-title": 1,
       "label-content-name-mismatch": 2
     },
     "/flow-editor/[id] @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/flow-editor/master/[id] @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/flow-editor/skills/[id] @ compact-390:coarse": {
       "color-contrast": 1,
-      "document-title": 1,
       "label": 1
     },
     "/home @ compact-390:coarse": {
@@ -1018,62 +997,51 @@
       "label-content-name-mismatch": 1
     },
     "/home/settings @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/killswitches @ compact-390:coarse": "unmeasured",
     "/marketplace @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/marketplace/agents @ compact-390:coarse": {
       "color-contrast": 1,
-      "document-title": 1,
       "nested-interactive": 1
     },
     "/marketplace/agents/[slug] @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/marketplace/hooks @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/marketplace/mcp-servers @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/marketplace/plugins @ compact-390:coarse": {
       "color-contrast": 1,
-      "document-title": 1,
       "select-name": 2
     },
     "/marketplace/tools @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/memberships @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/notifications @ compact-390:coarse": "unmeasured",
     "/notifications/daily @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/onboarding @ compact-390:coarse": "unmeasured",
     "/orgs @ compact-390:coarse": "unmeasured",
     "/orgs/plans @ compact-390:coarse": "unmeasured",
     "/overview @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/plugins/[id] @ compact-390:coarse": "unmeasured",
     "/pos/accounts @ compact-390:coarse": {
       "color-contrast": 2
     },
     "/pos/appointments @ compact-390:coarse": {
-      "color-contrast": 3
+      "color-contrast": 2
     },
     "/pos/appointments/new @ compact-390:coarse": {
       "color-contrast": 3
@@ -1086,8 +1054,7 @@
       "color-contrast": 2
     },
     "/pos/funnel @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/pos/history @ compact-390:coarse": {
       "color-contrast": 1
@@ -1105,8 +1072,7 @@
     },
     "/pulse @ compact-390:coarse": "unmeasured",
     "/reliability @ compact-390:coarse": {
-      "color-contrast": 4,
-      "document-title": 1
+      "color-contrast": 4
     },
     "/sales @ compact-390:coarse": {
       "color-contrast": 2,
@@ -1116,8 +1082,7 @@
       "color-contrast": 1
     },
     "/sandbox @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/scheduling @ compact-390:coarse": {
       "color-contrast": 3
@@ -1146,22 +1111,18 @@
       "color-contrast": 3
     },
     "/sessions @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/sessions/[sessionKey]/debug @ compact-390:coarse": "unmeasured",
     "/settings @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/settings/appearance @ compact-390:coarse": {
       "aria-input-field-name": 2,
-      "color-contrast": 4,
-      "document-title": 1
+      "color-contrast": 3
     },
     "/settings/backups @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/settings/developers @ compact-390:coarse": {
       "color-contrast": 1
@@ -1171,36 +1132,30 @@
       "color-contrast": 1
     },
     "/settings/notifications @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/settings/organizations @ compact-390:coarse": "unmeasured",
     "/settings/plugins @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/settings/provision @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/settings/pulse @ compact-390:coarse": "unmeasured",
     "/settings/record-locks @ compact-390:coarse": {
       "color-contrast": 1
     },
     "/settings/roles @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/settings/tables @ compact-390:coarse": {
       "color-contrast": 1
     },
     "/settings/team @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/settings/workflows @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/socials @ compact-390:coarse": {
       "color-contrast": 2
@@ -1234,7 +1189,6 @@
       "color-contrast": 1
     },
     "/stock/items @ compact-390:coarse": {
-      "button-name": 1,
       "color-contrast": 1
     },
     "/stock/items/[id] @ compact-390:coarse": {
@@ -1254,87 +1208,68 @@
     },
     "/tools/[id] @ compact-390:coarse": {
       "aria-input-field-name": 1,
-      "color-contrast": 3,
-      "document-title": 1
+      "color-contrast": 3
     },
     "/users @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/users/join-requests @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     },
     "/work @ compact-390:coarse": {
       "color-contrast": 1,
-      "document-title": 1,
       "select-name": 3
     },
     "/workforce @ compact-390:coarse": "unmeasured",
     "/workforce/activity @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/agents/[id] @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/approvals @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/costs @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/goals @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/inbox @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/issues @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/issues/[id] @ compact-390:coarse": "unmeasured",
     "/workforce/org @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/portfolios @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/portfolios/[id] @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/projects @ compact-390:coarse": {
       "color-contrast": 1
     },
     "/workforce/projects/[id] @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/projects/[id]/pipelines @ compact-390:coarse": "unmeasured",
     "/workforce/reliability @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/settings @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/settings/agents @ compact-390:coarse": {
-      "color-contrast": 2,
-      "document-title": 1
+      "color-contrast": 2
     },
     "/workforce/welcome @ compact-390:coarse": {
-      "color-contrast": 1,
-      "document-title": 1
+      "color-contrast": 1
     }
   },
   "pageScenarios": ["compact-390:coarse"]
