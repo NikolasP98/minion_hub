@@ -86,7 +86,8 @@ async function mount() {
   const trigger = (id: string) =>
     wrap(id).querySelector<HTMLElement>('[data-scope="menu"][data-part="trigger"]')!;
   const column = (id: string) => wrap(id).closest('section')!.getAttribute('aria-label');
-  const live = () => view.container.querySelector<HTMLElement>('[aria-live="polite"]')!;
+  // The board speaks through the shared announcer ($lib/a11y/announce), not a region of its own.
+  const live = () => document.querySelector<HTMLElement>('[data-announcer="polite"]')!;
   return { view, wrap, trigger, column, live };
 }
 

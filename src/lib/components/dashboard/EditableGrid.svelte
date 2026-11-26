@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { announce } from '$lib/a11y/announce';
   import { Button, Dropdown, iconSizes } from '$lib/components/ui';
   import { browser } from '$app/environment';
   import { page } from '$app/state';
@@ -72,7 +73,6 @@
   let savingDefault = $state(false);
   let savedDefaultAt = $state(0);
   let saveState = $state<'idle' | 'local-only' | 'error' | 'unknown' | 'checked'>('idle');
-  let announce = $state('');
   let compact = $state(false);
   let generation = 0;
   $effect(() => {
@@ -153,7 +153,7 @@
     } catch {
       if (saveState !== 'unknown') saveState = 'local-only';
     }
-    announce = m.dash_layout_reset();
+    announce(m.dash_layout_reset());
   }
   async function saveAsDefault() {
     if (
@@ -258,7 +258,7 @@
       );
     }
     persist(next);
-    announce =
+    announce(
       command === 'visibility'
         ? next.hidden?.includes(key)
           ? m.design_hide({ label: itemLabel(key) })
@@ -268,7 +268,8 @@
             position: next.order.indexOf(key) + 1,
             width: next.span[key].w,
             height: next.span[key].h,
-          });
+          }),
+    );
     await tick();
     gridEl
       ?.querySelector<HTMLElement>(`[data-grid-id="${CSS.escape(key)}"] .eg-menu button`)
@@ -362,7 +363,6 @@
   </div>
 </div>
 
-<div class="sr-only" aria-live="polite">{announce}</div>
 {#if saveState !== 'idle'}
   <div class="eg-status t-caption" role="status">
     {saveState === 'unknown'

@@ -8,7 +8,12 @@
    * "Move to…" menu (the baseline path: keyboard and tap) and drags between
    * columns as the pointer enhancement (native HTML5 drag) — both perform the
    * same single write. After a move the card keeps focus in its new column and
-   * a polite live region says what happened (HC-015).
+   * the shared announcer says what happened (HC-015).
+   *
+   * Keyboard drag (spec 152): Space on a card picks it up (Enter too when the
+   * card has nothing to open), Left / Right choose the column, Space or Enter
+   * drops, Escape cancels. Cards have no order inside a column, so Up / Down
+   * do nothing.
    *
    * Opt-in for boards that are not a full page (spec 146, the session task
    * board): `fit` shares the width between the columns instead of scrolling
@@ -23,6 +28,7 @@
   import { ArrowRightLeft } from 'lucide-svelte';
   import { Button, Dropdown, EmptyState, Tooltip, iconSizes } from '$lib/components/ui';
   import { observeTruncation } from '$lib/components/ui/truncation';
+  import { announce } from '$lib/a11y/announce';
   import * as m from '$lib/paraglide/messages';
 
   let {
@@ -115,11 +121,91 @@
   const columnLabel = (id: string | null) =>
     columns.find((c) => c.id === id)?.label ?? unclassifiedLabel;
   let board = $state<HTMLElement | null>(null);
-  let announce = $state('');
+
+  const uid = $props.id();
+  const hintId = `${uid}-keyboard-hint`;
+  /** Keyboard drag: the picked-up card and the column it is held over. */
+  let held = $state<{ key: string; target: string | null } | null>(null);
+  /** Space also clicks a button; the click that follows a pick-up or drop is swallowed. */
+  let swallowClick = false;
+  const targets = $derived<(string | null)[]>([
+    ...columns.map((c) => c.id),
+    ...(unclassified ? [null] : []),
+  ]);
+  /** A row's column as the board shows it (an unknown id sits in "unset"). */
+  const shownColumn = (row: T) => {
+    const id = columnOf(row);
+    return id !== null && columns.some((c) => c.id === id) ? id : null;
+  };
+  function release(row: T, cancelled: boolean) {
+    held = null;
+    over = undefined;
+    if (cancelled) announce(m.board_move_cancelled({ label: rowLabel(row) }), 'assertive');
+  }
+  function cardKeydown(e: KeyboardEvent, row: T) {
+    if (!onmove || !(e.target as HTMLElement).closest('.bcard')) return;
+    const key = rowKey(row);
+    const label = rowLabel(row);
+    if (held?.key !== key) {
+      if (e.key !== ' ' && !(e.key === 'Enter' && !onopen)) return;
+      e.preventDefault();
+      swallowClick = true;
+      const target = shownColumn(row);
+      held = { key, target };
+      over = target;
+      announce(m.board_picked_up({ label, column: columnLabel(target) }), 'assertive');
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowLeft':
+      case 'ArrowRight': {
+        e.preventDefault();
+        const i = targets.indexOf(held.target) + (e.key === 'ArrowRight' ? 1 : -1);
+        const target = targets[Math.min(targets.length - 1, Math.max(0, i))];
+        held = { key, target };
+        over = target;
+        announce(m.board_over_column({ label, column: columnLabel(target) }), 'assertive');
+        return;
+      }
+      // TODO(handoff): Up / Down should reorder inside the column (owner decision 2026-11-20),
+      // but boards store no order within a column: it needs an order field and an `onreorder`
+      // write. Ledger item 17, meta proposals/2026-11-20-hub-accessibility-program.md.
+      case 'ArrowUp':
+      case 'ArrowDown':
+        e.preventDefault();
+        return;
+      case ' ':
+      case 'Enter': {
+        e.preventDefault();
+        swallowClick = true;
+        const target = held.target;
+        const stays = target === shownColumn(row);
+        release(row, stays);
+        if (!stays) void moveTo(row, target);
+        return;
+      }
+      case 'Escape':
+        e.preventDefault();
+        e.stopPropagation();
+        release(row, true);
+        return;
+    }
+  }
+  function cardClickCapture(e: MouseEvent) {
+    if (!swallowClick) return;
+    swallowClick = false;
+    // Only the click a Space / Enter press synthesises (detail 0), never a real pointer click.
+    if (e.detail === 0 && (e.target as HTMLElement).closest('.bcard')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }
   /** ONE write, whatever opened it (menu or drop); then the card keeps focus in
    *  its new column and the live region says so. */
   async function moveTo(row: T, id: string | null) {
     const key = rowKey(row);
+    // A keyboard drag ends on the card; a menu move ends on the menu trigger, as before.
+    const fromCard = !!document.activeElement?.closest('.bcard');
     let ok: boolean;
     try {
       ok = (await onmove?.(row, id)) !== false;
@@ -127,14 +213,15 @@
       ok = false;
     }
     const label = rowLabel(row);
-    announce = ok
-      ? m.board_moved_to({ label, column: columnLabel(id) })
-      : m.board_move_failed({ label });
+    announce(
+      ok ? m.board_moved_to({ label, column: columnLabel(id) }) : m.board_move_failed({ label }),
+    );
     await tick();
     // The card's own button when it has one, else its "Move to…" trigger.
+    const card = fromCard ? '.bcard[tabindex], ' : '';
     board
       ?.querySelector<HTMLElement>(
-        `[data-row-key="${CSS.escape(key)}"] :is(button.bcard, a.bcard, [data-scope="menu"][data-part="trigger"])`,
+        `[data-row-key="${CSS.escape(key)}"] :is(${card}button.bcard, a.bcard, [data-scope="menu"][data-part="trigger"])`,
       )
       ?.focus({ preventScroll: true });
   }
@@ -178,7 +265,7 @@
     bind:this={board}
     data-component="board-view"
   >
-    <div class="sr-only" aria-live="polite">{announce}</div>
+    {#if onmove}<span id={hintId} class="sr-only">{m.board_keyboard_hint()}</span>{/if}
     {#each [...columns.map( (c) => ({ ...c, key: c.id as string | null }) ), ...(showUnclassified ? [{ id: null, key: null, label: unclassifiedLabel, color: null }] : [])] as col (col.key)}
       {@const titleKey = col.key ?? '\u0000'}
       <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -215,16 +302,40 @@
             <RecordContextMenu actions={cardActions(row)}>
               <div
                 class="bcard-wrap"
-                class:is-dragging={dragging === row}
+                class:is-dragging={dragging === row || held?.key === rowKey(row)}
                 data-row-key={rowKey(row)}
                 draggable={!!onmove}
+                onkeydown={(e: KeyboardEvent) => cardKeydown(e, row)}
+                onclickcapture={cardClickCapture}
+                onfocusout={(e: FocusEvent) => {
+                  const wrap = e.currentTarget as HTMLElement;
+                  if (held?.key === rowKey(row) && !wrap.contains(e.relatedTarget as Node | null))
+                    release(row, true);
+                }}
                 ondragstart={(e: DragEvent) => dragStart(e, row)}
                 ondragend={() => ((dragging = null), (over = undefined))}
               >
                 {#if onopen}
-                  <Button variant="ghost" size="sm" class="bcard" onclick={() => onopen?.(row)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="bcard"
+                    aria-describedby={onmove ? hintId : undefined}
+                    onclick={() => onopen?.(row)}
+                  >
                     {@render card(row)}
                   </Button>
+                {:else if onmove}
+                  <!-- Nothing to open: the card itself is the pick-up control. -->
+                  <div
+                    class="bcard bcard-static"
+                    role="button"
+                    tabindex="0"
+                    aria-pressed={held?.key === rowKey(row)}
+                    aria-describedby={hintId}
+                  >
+                    {@render card(row)}
+                  </div>
                 {:else}
                   <div class="bcard bcard-static">{@render card(row)}</div>
                 {/if}
