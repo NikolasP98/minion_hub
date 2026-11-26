@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { iconSizes, Button } from '$lib/components/ui';
 
   import * as m from '$lib/paraglide/messages';
@@ -102,116 +103,129 @@
 
 {#if note}
   {@const current = note}
-  <!-- TODO(handoff): HC-028 claims aria-modal="true" without a native modal (no inert background, no Tab trap, no focus return). Full-screen mode, not a dialog: either open through the shared Dialog or drop the modal claim. See spec-hc028-overlay-dialog-contract.md DELTA 3. -->
-  <div class="zen" role="dialog" aria-modal="true" aria-label={m.note_focusMode()}>
-    <div class="zen-header">
-      <!-- Spec 043: polish and transcription are AI; not rendered without the plan. -->
-      {#if current.kind === 'note' && hasFeature('ai')}
-        <div class="zen-polish-wrap">
-          <Button
-            type="button"
-            class="zen-polish {polishMenuOpen ? 'on' : ''}"
-            title={m.note_polishTitle()}
-            aria-haspopup="menu"
-            aria-expanded={polishMenuOpen}
-            onclick={() => (polishMenuOpen = !polishMenuOpen)}
-          >
-            <Wand2 size={iconSizes.sm} />
-            {m.note_polish()}
-          </Button>
-          {#if polishMenuOpen}
-            <div use:floatingLayer class="zen-polish-pop">
-              <PolishMenu
-                onpick={(intent) => void runPolish(current, intent)}
-                onclose={() => (polishMenuOpen = false)}
-              />
-            </div>
+  <!-- A real modal (spec 152): the page behind is inert and focus returns when focus mode
+       closes. Full-screen surface, so the shared dialog is `bare` with a clear backdrop.
+       Escape stays with this component (polish menu first, then minimise). -->
+  <Dialog
+    open
+    presentation="bare"
+    backdrop="clear"
+    title={m.note_focusMode()}
+    hideClose
+    guardDismiss={false}
+    dismissible={false}
+    {onclose}
+  >
+    <div class="zen">
+      <div class="zen-header">
+        <!-- Spec 043: polish and transcription are AI; not rendered without the plan. -->
+        {#if current.kind === 'note' && hasFeature('ai')}
+          <div class="zen-polish-wrap">
+            <Button
+              type="button"
+              class="zen-polish {polishMenuOpen ? 'on' : ''}"
+              title={m.note_polishTitle()}
+              aria-haspopup="menu"
+              aria-expanded={polishMenuOpen}
+              onclick={() => (polishMenuOpen = !polishMenuOpen)}
+            >
+              <Wand2 size={iconSizes.sm} />
+              {m.note_polish()}
+            </Button>
+            {#if polishMenuOpen}
+              <div use:floatingLayer class="zen-polish-pop">
+                <PolishMenu
+                  onpick={(intent) => void runPolish(current, intent)}
+                  onclose={() => (polishMenuOpen = false)}
+                />
+              </div>
+            {/if}
+          </div>
+          <TranscribeButton
+            allowTab={true}
+            detectedLang={() => detected}
+            onfinal={(t) => blocksRef?.handleFinal(t)}
+            oninterim={(t) => blocksRef?.handleInterim(t)}
+            onpolish={() => blocksRef?.polishFocused()}
+            ondiscard={() => blocksRef?.discardFocused()}
+            hasPending={() => blocksRef?.hasPendingFocused() ?? false}
+          />
+        {/if}
+        {#if current.kind === 'note'}
+          <ZenSettingsMenu />
+        {/if}
+        <Button
+          type="button"
+          class="zen-min"
+          title={m.note_minimizeTitle()}
+          aria-label={m.note_minimize()}
+          onclick={onclose}
+        >
+          <Minimize2 size={18} />
+        </Button>
+      </div>
+
+      <div class="zen-stage">
+        <div class="zen-title-row">
+          {#if current.kind === 'note'}
+            <NoteIconButton
+              icon={current.icon ?? ''}
+              size={26}
+              onpick={(v) => setNoteIcon(current.id, v)}
+            />
+          {/if}
+          <input
+            class="zen-title"
+            placeholder={m.common_title?.()}
+            value={current.title}
+            oninput={(e) => updateNote(current.id, { title: e.currentTarget.value })}
+            aria-label={m.common_title?.()}
+          />
+        </div>
+
+        <div class="zen-body" id={`note-${current.id}`}>
+          {#if current.kind === 'todo'}
+            <TodoChecklist note={current} large />
+          {:else}
+            <NoteBlocks
+              bind:this={blocksRef}
+              note={current}
+              onopeneasel={(block) => (easelBlock = { note: current, block })}
+            />
           {/if}
         </div>
-        <TranscribeButton
-          allowTab={true}
-          detectedLang={() => detected}
-          onfinal={(t) => blocksRef?.handleFinal(t)}
-          oninterim={(t) => blocksRef?.handleInterim(t)}
-          onpolish={() => blocksRef?.polishFocused()}
-          ondiscard={() => blocksRef?.discardFocused()}
-          hasPending={() => blocksRef?.hasPendingFocused() ?? false}
-        />
+
+        <div class="zen-images">
+          <NoteImageStrip note={current} onopen={(src) => (lightboxSrc = src)} />
+        </div>
+      </div>
+
+      {#if current.kind === 'note' && txPrefs.showMeta}
+        <!-- Top-left meta: word count + detected language. -->
+        <div class="zen-meta">
+          <span>{m.note_words({ count: wordCount })}</span>
+          {#if detected}
+            <span class="zen-meta-sep">·</span>
+            <span>{LANG_LABELS[detected]()}</span>
+          {/if}
+        </div>
       {/if}
-      {#if current.kind === 'note'}
-        <ZenSettingsMenu />
+      {#if current.kind === 'note' && txPrefs.showHints}
+        <!-- Subtle hotkey helpers; chips light up while their modifier is held. -->
+        <div class="zen-hints" aria-hidden="true">
+          {#each HOTKEY_HINTS as hint (hint.combo)}
+            <span
+              class="zen-hint"
+              class:hot={(hint.group === 'alt' && heldAlt) || (hint.group === 'mod' && heldMod)}
+            >
+              <kbd>{hint.combo}</kbd>
+              {hint.label()}
+            </span>
+          {/each}
+        </div>
       {/if}
-      <Button
-        type="button"
-        class="zen-min"
-        title={m.note_minimizeTitle()}
-        aria-label={m.note_minimize()}
-        onclick={onclose}
-      >
-        <Minimize2 size={18} />
-      </Button>
     </div>
-
-    <div class="zen-stage">
-      <div class="zen-title-row">
-        {#if current.kind === 'note'}
-          <NoteIconButton
-            icon={current.icon ?? ''}
-            size={26}
-            onpick={(v) => setNoteIcon(current.id, v)}
-          />
-        {/if}
-        <input
-          class="zen-title"
-          placeholder={m.common_title?.()}
-          value={current.title}
-          oninput={(e) => updateNote(current.id, { title: e.currentTarget.value })}
-          aria-label={m.common_title?.()}
-        />
-      </div>
-
-      <div class="zen-body" id={`note-${current.id}`}>
-        {#if current.kind === 'todo'}
-          <TodoChecklist note={current} large />
-        {:else}
-          <NoteBlocks
-            bind:this={blocksRef}
-            note={current}
-            onopeneasel={(block) => (easelBlock = { note: current, block })}
-          />
-        {/if}
-      </div>
-
-      <div class="zen-images">
-        <NoteImageStrip note={current} onopen={(src) => (lightboxSrc = src)} />
-      </div>
-    </div>
-
-    {#if current.kind === 'note' && txPrefs.showMeta}
-      <!-- Top-left meta: word count + detected language. -->
-      <div class="zen-meta">
-        <span>{m.note_words({ count: wordCount })}</span>
-        {#if detected}
-          <span class="zen-meta-sep">·</span>
-          <span>{LANG_LABELS[detected]()}</span>
-        {/if}
-      </div>
-    {/if}
-    {#if current.kind === 'note' && txPrefs.showHints}
-      <!-- Subtle hotkey helpers; chips light up while their modifier is held. -->
-      <div class="zen-hints" aria-hidden="true">
-        {#each HOTKEY_HINTS as hint (hint.combo)}
-          <span
-            class="zen-hint"
-            class:hot={(hint.group === 'alt' && heldAlt) || (hint.group === 'mod' && heldMod)}
-          >
-            <kbd>{hint.combo}</kbd>
-            {hint.label()}
-          </span>
-        {/each}
-      </div>
-    {/if}
-  </div>
+  </Dialog>
 {/if}
 
 <ImageLightbox src={lightboxSrc} onclose={() => (lightboxSrc = null)} />
