@@ -25,6 +25,7 @@ vi.mock('$lib/state/ui/toast.svelte', async (orig) => ({
 }));
 
 afterEach(() => {
+  for (const el of document.querySelectorAll('[data-announcer]')) el.remove(); // one region per page: start each test silent
   toast.error.mockClear();
   cleanup();
   vi.restoreAllMocks();
@@ -91,7 +92,10 @@ const highlighted = () => {
   return id ? document.getElementById(id) : null;
 };
 type Mounted = { container: HTMLElement };
-const live = (view: Mounted) => view.container.querySelector<HTMLElement>('[aria-live="polite"]')!;
+// The board speaks through the shared announcer ($lib/a11y/announce), one region per page.
+const live = (_view: Mounted) => ({
+  textContent: document.querySelector('[data-announcer="polite"]')?.textContent ?? '',
+});
 const subjectWrap = (view: Mounted) =>
   view.container.querySelector<HTMLElement>(`[data-row-key="${SUBJECT.id}"]`)!;
 const columnOf = (el: HTMLElement) => el.closest('section')!.getAttribute('aria-label');
