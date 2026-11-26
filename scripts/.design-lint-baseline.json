@@ -15,6 +15,7 @@
     "raw-loading": 31,
     "a11y-ignore": 77,
     "icon-button-unlabelled": 0,
+    "bare-outline-none": 15,
     "raw-control-height": 187
   },
   "generatedFor": "decrease-only global ceiling (governed = raw minus reason-coded)"

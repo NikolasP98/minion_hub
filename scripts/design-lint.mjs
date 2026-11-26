@@ -113,6 +113,14 @@ const RULES = {
     re: /<Button\b(?<attrs>(?:[^>{]|\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\})*)>\s*<[A-Z][\w.]*\b(?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*?\bsize=(?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*\/>\s*<\/Button>/g,
     filter: (match) => !/\baria-label(?:ledby)?\b|\btitle=|\{\.\.\./.test(match.groups.attrs),
   },
+  'bare-outline-none': {
+    desc: '`outline-none` with no focus style or `focus-ring-none` opt-out on the same line — the element loses its focus ring (spec 153)',
+    test: (file) => /\.svelte$/.test(file),
+    // Line-based: a replacement (`focus:…`, `focus-visible:…`, `focus-within:…`) or the
+    // named opt-out must sit in the same class string. The baseline is the text fields
+    // whose focus indicator is the text cursor; it may only go down.
+    re: /^(?!.*(?:focus-visible:|focus-within:|focus:|focus-ring-none)).*\boutline-none\b.*$/gm,
+  },
   'raw-control-height': {
     desc: 'raw 20–48px height outside ui/ — use a --control-height-* token',
     test: (file) => /\.(svelte|css)$/.test(file) && !PRIMITIVE_DIR.test(file),
