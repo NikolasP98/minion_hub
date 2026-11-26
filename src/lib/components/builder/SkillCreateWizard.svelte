@@ -47,10 +47,14 @@
 </script>
 
 <!-- HC-028: mounted by the parent `{#if showSkillWizard}`; the shared native
-     <dialog> contract owns modality, Escape, backdrop dismissal and focus return. -->
+     <dialog> contract owns modality, Escape, backdrop dismissal and focus return.
+     While the skill is being created it cannot be dismissed (Escape, backdrop, ×):
+     closing then would drop the result of a request that is still running. -->
 <Dialog
   dirty={name !== '' || description !== '' || emoji !== '📖'}
   open={true}
+  dismissible={!creating}
+  hideClose={creating}
   labelledBy="skill-wizard-title"
   size="md"
   onclose={onClose}
