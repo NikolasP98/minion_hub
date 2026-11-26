@@ -191,6 +191,11 @@
         return;
     }
   }
+  /** The suppression ends with the key press that started it: a browser that fires no click
+   *  for a prevented Space must not leave the NEXT Enter on the card swallowed. */
+  function cardKeyup() {
+    if (swallowClick) setTimeout(() => (swallowClick = false));
+  }
   function cardClickCapture(e: MouseEvent) {
     if (!swallowClick) return;
     swallowClick = false;
@@ -306,6 +311,7 @@
                 data-row-key={rowKey(row)}
                 draggable={!!onmove}
                 onkeydown={(e: KeyboardEvent) => cardKeydown(e, row)}
+                onkeyup={cardKeyup}
                 onclickcapture={cardClickCapture}
                 onfocusout={(e: FocusEvent) => {
                   const wrap = e.currentTarget as HTMLElement;

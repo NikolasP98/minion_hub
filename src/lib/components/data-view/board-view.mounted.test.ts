@@ -190,5 +190,15 @@ describe('BoardView keyboard drag (spec 152)', () => {
     expect(document.querySelector('.bcard-wrap.is-dragging')).not.toBeNull();
     await fireEvent.click(el, { detail: 0 }); // the click Space synthesises on a button
     expect(opened).toEqual(['Task one']);
+
+    // Chrome fires no click for a prevented Space. Once the key is released, the next
+    // Enter (a keyboard click, detail 0) must open the record again.
+    await key(el, 'Escape');
+    await key(el, ' ');
+    await fireEvent.keyUp(el, { key: ' ' });
+    await key(el, 'Escape');
+    await new Promise((r) => setTimeout(r, 5));
+    await fireEvent.click(el, { detail: 0 });
+    expect(opened).toEqual(['Task one', 'Task one']);
   });
 });
