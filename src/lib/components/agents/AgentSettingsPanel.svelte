@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { iconSizes, Button, Spinner } from '$lib/components/ui';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import { ui } from '$lib/state/ui/ui.svelte';
@@ -194,14 +195,7 @@
     ui.agentSettingsOpen = false;
   }
 
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) close();
-  }
   const backdropKeys = buttonKeys();
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') close();
-  }
 
   const hasContent = $derived(visibleGroups.length > 0 || bindingEntries.length > 0);
 
@@ -223,27 +217,33 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<!-- TODO(handoff): HC-028 hand-rolled drawer; migrate to the shared Sheet. Not mechanical: 680px two-column layout vs the Sheet's fixed 28rem width, and the window-level Escape listener closes it even when a nested Zag menu owns the key. See spec-hc028-overlay-dialog-contract.md DELTA 2. -->
-<!-- Backdrop -->
-<div
-  class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)] backdrop-blur-[2px] cursor-pointer"
-  role="button"
-  tabindex="-1"
-  aria-label={m.common_close()}
-  onclick={handleBackdropClick}
-  onkeydown={(e) => (e.key === 'Escape' ? close() : backdropKeys.onkeydown(e))}
-  onkeyup={backdropKeys.onkeyup}
+<!-- A real modal (spec 152): the page behind is inert, Escape closes, focus returns. The
+     680px two-column drawer keeps its own backdrop and panel (the shared Sheet is 28rem),
+     so the shared dialog is `bare` with a clear backdrop. -->
+<Dialog
+  open
+  presentation="bare"
+  backdrop="clear"
+  title={m.settings_configureAgent({ name: displayName })}
+  hideClose
+  guardDismiss={false}
+  onclose={close}
 >
-  <!-- Panel — two-column drawer -->
+  <!-- Backdrop -->
   <div
-    class="absolute top-0 right-0 h-full w-[680px] max-w-full bg-bg2 border-l border-border flex flex-col shadow-2xl"
-    role="dialog"
+    class="fixed inset-0 z-[var(--layer-modal)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)] backdrop-blur-[2px] cursor-pointer"
+    role="button"
     tabindex="-1"
-    aria-label="Agent settings for {agentId}"
-    onclick={(e) => e.stopPropagation()}
-    onkeydown={(e) => e.stopPropagation()}
+    aria-label={m.common_close()}
+    onclick={close}
+    onkeydown={backdropKeys.onkeydown}
+    onkeyup={backdropKeys.onkeyup}
+  ></div>
+  <!-- Panel — two-column drawer, a sibling of the backdrop (it used to sit inside it and
+       stop every click and key from reaching it). Same layer as the backdrop and later in
+       the DOM, so it paints above it. -->
+  <div
+    class="fixed top-0 right-0 z-[var(--layer-modal)] h-full w-[680px] max-w-full bg-bg2 border-l border-border flex flex-col shadow-2xl"
   >
     <!-- Header -->
     <div class="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-border">
@@ -531,4 +531,4 @@
       {/if}
     {/if}
   </div>
-</div>
+</Dialog>
