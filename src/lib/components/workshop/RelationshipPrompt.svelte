@@ -33,7 +33,11 @@
 
   // Escape and a click outside belong to the shared Dialog (native `cancel` / backdrop).
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') handleSubmit();
+    if (e.key !== 'Enter') return;
+    // The submit closes the prompt and focus moves back at once; without this the rest of
+    // the same key press lands on whatever got focus (a button would be activated).
+    e.preventDefault();
+    handleSubmit();
   }
 </script>
 

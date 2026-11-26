@@ -44,8 +44,11 @@ describe('RelationshipPrompt (spec 152)', () => {
     await fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSubmit).not.toHaveBeenCalled();
     await fireEvent.input(input, { target: { value: '  reports to ' } });
-    await fireEvent.keyDown(input, { key: 'Enter' });
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    input.dispatchEvent(enter);
     expect(onSubmit).toHaveBeenCalledWith('reports to');
+    // Prevented, so the rest of the key press cannot activate what focus returns to.
+    expect(enter.defaultPrevented).toBe(true);
   });
 
   it('a submit is not also reported as a cancel when the prompt goes away', async () => {
