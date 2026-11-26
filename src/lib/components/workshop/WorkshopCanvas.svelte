@@ -1149,24 +1149,28 @@
     if (hitId) {
       const inst = workshopState.agents[hitId];
       if (inst) {
-        contextMenu = {
+        const next = {
           instanceId: hitId,
           agentName: resolveAgentName(inst.agentId),
           x: e.clientX,
           y: e.clientY,
         };
+        // After this right-click has finished: the menu closes on a right-click outside
+        // itself, and would take the one that opens it for one.
+        setTimeout(() => (contextMenu = next));
       }
     } else {
       const hitElementId = hitTestElementAtWorld(worldPos.x, worldPos.y);
       if (hitElementId) {
         const el = workshopState.elements[hitElementId];
         if (el) {
-          elementContextMenu = {
+          const next = {
             instanceId: hitElementId,
             label: el.label,
             x: e.clientX,
             y: e.clientY,
           };
+          setTimeout(() => (elementContextMenu = next));
         }
       }
     }
@@ -1567,20 +1571,29 @@
     const nearby = getNearbyAgentsList(instanceId);
     const behavior = workshopState.agents[instanceId]?.behavior ?? 'stationary';
     return [
+      // Offline it is a plain disabled row: a parent row cannot be disabled, and its
+      // submenu would still start a conversation.
       {
         id: 'conversation',
         label: m.workshop_startConversationWith(),
         icon: MessagesSquare,
         disabled: !conn.connected,
-        children: nearby.length
-          ? nearby.flatMap((agent) => [
-              { id: `banter:${agent.instanceId}`, label: `${agent.name}: ${m.workshop_chatNow()}` },
-              {
-                id: `topic:${agent.instanceId}`,
-                label: `${agent.name}: ${m.workshop_customTopic()}`,
-              },
-            ])
-          : [{ id: 'nobody', label: m.workshop_noNearbyAgents(), disabled: true }],
+        ...(conn.connected
+          ? {
+              children: nearby.length
+                ? nearby.flatMap((agent) => [
+                    {
+                      id: `banter:${agent.instanceId}`,
+                      label: `${agent.name}: ${m.workshop_chatNow()}`,
+                    },
+                    {
+                      id: `topic:${agent.instanceId}`,
+                      label: `${agent.name}: ${m.workshop_customTopic()}`,
+                    },
+                  ])
+                : [{ id: 'nobody', label: m.workshop_noNearbyAgents(), disabled: true }],
+            }
+          : {}),
       },
       {
         id: 'assignTask',

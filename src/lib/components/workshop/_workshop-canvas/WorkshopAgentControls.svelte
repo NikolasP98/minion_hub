@@ -50,6 +50,7 @@
   const STEP = 16;
   let moving = $state<{ kind: Kind; id: string; name: string } | null>(null);
   let moveSlot = $state<HTMLElement | null>(null);
+  let list = $state<HTMLElement | null>(null);
 
   function agentItems(agent: Entry): DropdownItem[] {
     const others = agents.filter((other) => other.id !== agent.id);
@@ -97,6 +98,12 @@
     if (!done) return;
     moving = null;
     onmoveend?.(commit);
+    // The move control goes away: focus returns to the menu it came from, if it is still
+    // inside the list (not when the move ended because focus went elsewhere).
+    if (!list || list.contains(document.activeElement) || document.activeElement === document.body)
+      void tick().then(() =>
+        list?.querySelector<HTMLElement>(`[data-more="${CSS.escape(done.id)}"] button`)?.focus(),
+      );
     announce(
       commit
         ? m.workshop_kbMoved({ name: done.name })
@@ -132,7 +139,7 @@
     </span>
   {/if}
   <!-- The menu stays mounted while its item moves: it is closing as the move starts. -->
-  <span hidden={isMoving}>
+  <span hidden={isMoving} data-more={entry.id}>
     <Dropdown {items} onSelect={(value) => void pick(kind, entry, value)}>
       {#snippet trigger()}
         <span class="more"
@@ -146,7 +153,7 @@
 {/snippet}
 
 {#if agents.length > 0 || elements.length > 0}
-  <details class="agent-controls">
+  <details class="agent-controls" bind:this={list}>
     <summary class="t-label">{m.nav_agents()} ({agents.length})</summary>
     {#if agents.length > 0}
       <ul aria-label={m.nav_agents()}>

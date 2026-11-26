@@ -81,6 +81,12 @@ describe('workshop list: keyboard path for the canvas', () => {
     expect(calls.onmoveend).toHaveBeenCalledWith(true);
     expect(calls.onmoveend).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(said()).toBe('Ada moved'));
+    // Focus does not fall to the page: it is back on the menu the move came from.
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'More actions: Ada' }),
+      ),
+    );
   });
 
   it('drops the item where it is when focus leaves the move control', async () => {
