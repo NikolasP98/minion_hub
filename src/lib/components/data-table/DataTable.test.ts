@@ -2006,3 +2006,193 @@ it('isolates column layouts and sanitizes stale/invalid stored values', async ()
   b.unmount();
   cleanup();
 });
+
+// Spec 154 (a11y S5): the table is ONE Tab stop; cells and the controls inside them are
+// reached with the keyboard (arrows move the active cell, Enter acts on what is in it).
+describe('DataTable: keyboard cell cursor (grid pattern)', () => {
+  type Wide = { id: string; name: string; city: string };
+  const wideRows: Wide[] = [
+    { id: '1', name: 'Alpha', city: 'Lima' },
+    { id: '2', name: 'Beta', city: 'Cusco' },
+    { id: '3', name: 'Gamma', city: 'Piura' },
+  ];
+  const wideCols: DataColumn<Wide>[] = [
+    { key: 'name', label: 'Name' },
+    { key: 'city', label: 'City' },
+  ];
+  const one = createRawSnippet<[Wide]>(() => ({
+    render: () => `<button type="button" data-one>Revoke</button>`,
+  }));
+  const several = createRawSnippet<[Wide]>(() => ({
+    render: () =>
+      `<span><button type="button" data-first>Edit</button><button type="button" data-second>Delete</button></span>`,
+  }));
+  const CursorTable = DataTable as Component<
+    DataTableProps<Wide> & {
+      selectable?: boolean;
+      cells?: Record<string, ReturnType<typeof createRawSnippet<[Wide]>>>;
+      rowActions?: ReturnType<typeof createRawSnippet<[Wide]>>;
+      onRowClick?: (row: Wide) => void;
+    }
+  >;
+  const key = (el: Element, k: string, init: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent('keydown', {
+      key: k,
+      bubbles: true,
+      cancelable: true,
+      ...init,
+    });
+    el.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  async function mount(props: Record<string, unknown> = {}) {
+    const view = render(CursorTable, {
+      props: { data: wideRows, columns: wideCols, getRowId: (r: Wide) => r.id, ...props },
+    });
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(3),
+    );
+    await settle(); // the tab-stop observer runs after the rows mount
+    const grid = view.container.querySelector<HTMLElement>('[role="grid"]')!;
+    const active = () => document.getElementById(grid.getAttribute('aria-activedescendant') ?? '');
+    return { ...view, grid, active };
+  }
+
+  it('conforms to the grid pattern with a checkbox column, cell controls and row actions', async () => {
+    const { grid, unmount } = await mount({
+      selectable: true,
+      cells: { city: one },
+      rowActions: several,
+    });
+    const { assertPattern } = await import('$lib/a11y/assert-pattern');
+    await assertPattern(grid, 'grid');
+    unmount();
+    cleanup();
+  });
+
+  it('is one Tab stop: every control inside a cell leaves the Tab order', async () => {
+    const { grid, unmount } = await mount({ selectable: true, cells: { city: one } });
+    const inside = [
+      ...grid.querySelectorAll<HTMLElement>('th button, td button, th [role="separator"]'),
+    ];
+    expect(inside.length).toBeGreaterThan(4);
+    for (const el of inside)
+      expect(el.getAttribute('tabindex'), el.outerHTML.slice(0, 60)).toBe('-1');
+    expect(grid.getAttribute('tabindex')).toBe('0');
+    unmount();
+    cleanup();
+  });
+
+  it('reaches the header with the keyboard and Enter sorts, with an announcement', async () => {
+    const { grid, active, unmount } = await mount();
+    grid.focus();
+    key(grid, 'Home', { ctrlKey: true });
+    await settle();
+    expect(active()?.getAttribute('role')).toBe('columnheader');
+    expect(active()?.textContent).toContain('Name');
+    key(grid, 'Enter');
+    await settle();
+    expect(active()?.getAttribute('aria-sort')).toBe('ascending');
+    expect(document.querySelector('[data-announcer="polite"]')?.textContent).toContain('Name');
+    key(grid, 'ArrowDown');
+    await settle();
+    expect(active()?.getAttribute('role')).toBe('gridcell');
+    unmount();
+    cleanup();
+  });
+
+  it('Enter activates the only control of a cell and enters a cell with several', async () => {
+    const clicked = vi.fn();
+    const { grid, container, active, unmount } = await mount({
+      cells: { city: one },
+      rowActions: several,
+    });
+    container.querySelector('[data-one]')!.addEventListener('click', clicked);
+    grid.focus();
+    key(grid, 'ArrowDown'); // row mode: first row
+    await settle();
+    key(grid, 'End'); // the row-actions cell
+    await settle();
+    key(grid, 'ArrowLeft'); // the city cell with one button
+    await settle();
+    expect(active()?.querySelector('[data-one]')).not.toBeNull();
+    expect(key(grid, 'Enter')).toBe(true);
+    expect(clicked).toHaveBeenCalledTimes(1);
+
+    key(grid, 'ArrowRight');
+    await settle();
+    key(grid, 'Enter');
+    const first = container.querySelector<HTMLElement>('[data-first]')!;
+    const second = container.querySelector<HTMLElement>('[data-second]')!;
+    expect(document.activeElement).toBe(first);
+    // Tab walks the cell's controls, then hands focus back to the grid.
+    expect(key(first, 'Tab')).toBe(true);
+    expect(document.activeElement).toBe(second);
+    expect(key(second, 'Tab')).toBe(true);
+    expect(document.activeElement).toBe(grid);
+    // Escape from inside a cell returns at once.
+    first.focus();
+    key(first, 'Escape');
+    expect(document.activeElement).toBe(grid);
+    unmount();
+    cleanup();
+  });
+
+  it('leaves the arrow keys to a control inside a cell', async () => {
+    const { grid, container, unmount } = await mount({ cells: { city: one } });
+    grid.focus();
+    key(grid, 'ArrowDown');
+    await settle();
+    const before = grid.getAttribute('aria-activedescendant');
+    const button = container.querySelector<HTMLElement>('[data-one]')!;
+    button.focus();
+    await settle();
+    expect(key(button, 'ArrowDown')).toBe(false);
+    expect(key(button, 'j')).toBe(false);
+    await settle();
+    expect(grid.getAttribute('aria-activedescendant')).toBe(before);
+    unmount();
+    cleanup();
+  });
+
+  it('Tab leaves a table that is not editable, even with an active cell', async () => {
+    const { grid, unmount } = await mount();
+    grid.focus();
+    key(grid, 'ArrowRight');
+    await settle();
+    expect(grid.getAttribute('aria-activedescendant')).toContain('-cell-');
+    expect(key(grid, 'Tab')).toBe(false);
+    unmount();
+    cleanup();
+  });
+
+  it('on an editable table Tab moves to the next cell and leaves at the end of the row', async () => {
+    const { grid, unmount } = await mount({
+      columns: wideCols.map((c) => ({ ...c, editable: true })),
+      onSaveRow: async () => true,
+    });
+    grid.focus();
+    key(grid, 'ArrowRight'); // first cell
+    await settle();
+    expect(key(grid, 'Tab')).toBe(true);
+    await settle();
+    expect(grid.getAttribute('aria-activedescendant')).toContain('-city');
+    expect(key(grid, 'Tab')).toBe(false); // last cell of the row: the browser moves on
+    unmount();
+    cleanup();
+  });
+
+  it('Enter on a cell without controls opens the row', async () => {
+    const onRowClick = vi.fn();
+    const { grid, unmount } = await mount({ onRowClick });
+    grid.focus();
+    key(grid, 'ArrowRight');
+    await settle();
+    key(grid, 'Enter');
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    expect(onRowClick.mock.calls[0][0].id).toBe('1');
+    unmount();
+    cleanup();
+  });
+});

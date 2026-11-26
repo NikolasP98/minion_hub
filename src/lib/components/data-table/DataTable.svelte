@@ -183,6 +183,7 @@
   import { browser } from '$app/environment';
   import { density as shellDensity, tableDensityFor } from '$lib/state/ui/density.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { announce } from '$lib/a11y/announce';
   import { languageTag } from '$lib/paraglide/runtime';
   import {
     ArrowUp,
@@ -1911,6 +1912,15 @@
     const cap = Math.max(1, Math.trunc(maxSort));
     sort = next.length > cap ? next.slice(next.length - cap) : next;
     requery();
+    const last = sort.at(-1);
+    const col = last && columns.find((c) => c.key === last.key);
+    announce(
+      !last || !col
+        ? m.data_table_sort_cleared()
+        : last.dir === 'asc'
+          ? m.data_table_sorted_asc({ column: colLabel(col) })
+          : m.data_table_sorted_desc({ column: colLabel(col) }),
+    );
   }
   function setSort(c: DataColumn<T>, dir: 'asc' | 'desc', append = false) {
     if (c.sortable === false) return;
@@ -2384,6 +2394,7 @@
   let focusedIndex = $state(-1);
   function focusRow(i: number) {
     if (flatRows.length === 0) return;
+    kOff = null;
     focusedIndex = Math.max(0, Math.min(i, flatRows.length - 1));
     // Bring the target into the virtualizer's rendered range first (it may not
     // be mounted yet), then settle with a DOM scrollIntoView once it measures.
@@ -2394,10 +2405,6 @@
         ?.scrollIntoView({ block: 'nearest' });
     });
   }
-  function moveFocus(delta: number) {
-    if (focusedIndex < 0) focusRow(delta >= 0 ? 0 : flatRows.length - 1);
-    else focusRow(focusedIndex + delta);
-  }
 
   // Table-wrapper hotkeys — element-scoped (never global), so a page-level
   // Mod+A/Escape/etc. outside the table keeps native behavior. Bare keys
@@ -2407,6 +2414,7 @@
   // inline-editing a cell.
   const gridAttachment = createHotkeysAttachment(() => {
     if (!gridMode) return [];
+    const rowKeys = !sel && !cellMode && !cellControlFocused;
     const danger = bulkOn ? bulkActions?.find((a) => a.danger) : undefined;
     return [
       {
@@ -2420,19 +2428,24 @@
           emitSelection(new Set());
           copiedRowIds = null;
         },
-        options: { enabled: selectable && selectedIds.size > 0, stopPropagation: false },
+        options: {
+          enabled: selectable && selectedIds.size > 0 && !cellControlFocused,
+          stopPropagation: false,
+        },
       },
       {
         hotkey: 'Delete',
         callback: () => {
           if (danger && selectedIds.size > 0) runBulk(danger);
         },
+        options: { enabled: !cellControlFocused },
       },
       {
         hotkey: 'Backspace',
         callback: () => {
           if (danger && selectedIds.size > 0) runBulk(danger);
         },
+        options: { enabled: !cellControlFocused },
       },
       {
         hotkey: '/',
@@ -2448,17 +2461,19 @@
       // ArrowUp/ArrowDown/Enter/Space before `onGridKeydown`'s own cell-nav
       // cases (`moveSel`/`startEdit`) ever saw them, even though the callback
       // itself correctly no-opped. Cell selection must fully own these keys.
-      { hotkey: 'ArrowDown', callback: () => moveFocus(1), options: { enabled: !sel } },
-      { hotkey: 'J', callback: () => moveFocus(1), options: { enabled: !sel } },
-      { hotkey: 'ArrowUp', callback: () => moveFocus(-1), options: { enabled: !sel } },
-      { hotkey: 'K', callback: () => moveFocus(-1), options: { enabled: !sel } },
+      // They also stand down in cell mode (`onGridKeydown` owns the keys there) and while a
+      // control inside a cell has focus (the key belongs to that control).
+      { hotkey: 'ArrowDown', callback: () => moveCursor(1, 0), options: { enabled: rowKeys } },
+      { hotkey: 'J', callback: () => moveCursor(1, 0), options: { enabled: rowKeys } },
+      { hotkey: 'ArrowUp', callback: () => moveCursor(-1, 0), options: { enabled: rowKeys } },
+      { hotkey: 'K', callback: () => moveCursor(-1, 0), options: { enabled: rowKeys } },
       {
         hotkey: 'Enter',
         callback: () => {
           const fr = flatRows[focusedIndex];
           if (fr && !interactiveTarget(document.activeElement)) onRowClick?.(rowView(fr));
         },
-        options: { enabled: !sel && !onRowActivate && !cellControlFocused },
+        options: { enabled: rowKeys && !onRowActivate },
       },
       {
         hotkey: 'Space',
@@ -2467,24 +2482,9 @@
           const fr = flatRows[focusedIndex];
           if (fr) toggleRow(fr.id);
         },
-        options: { enabled: !sel && !onRowActivate && !cellControlFocused },
+        options: { enabled: rowKeys && !onRowActivate },
       },
     ];
-  });
-
-  const activeDescendant = $derived.by(() => {
-    if (!gridMode) return undefined;
-    const row = flatRows[sel?.b.r ?? focusedIndex];
-    if (
-      !row ||
-      !(rowVirt
-        ? rowVirt.getVirtualItems().some((item) => item.index === row.itemIndex)
-        : !virtualizeOn)
-    )
-      return undefined;
-    return sel
-      ? `${instanceId}-cell-${encodeURIComponent(row.id)}-${encodeURIComponent(visibleColumns[sel.b.c]?.key ?? '')}`
-      : `${instanceId}-row-${encodeURIComponent(row.id)}`;
   });
 
   // ── Cell editing (Notion-style select/edit + Excel fill handle) ────────────
@@ -2502,6 +2502,253 @@
   let editVal = $state('');
   /** rowId → draft overlay shown while a save is in flight (visual feedback = trust). */
   let pending = $state(new Map<string, EditDraft>());
+
+  // ── Keyboard cell cursor (spec 154) ─────────────────────────────────────────
+  // The wrapper stays the one focus owner and the active position is a cell.
+  // Data rows keep `focusedIndex`; `kOff` holds the positions that are not data
+  // rows (the header, or the flatItems index of a group / expanded row). `kCol`
+  // is the column among the navigable cells; null = row mode. On a data column
+  // the cursor IS `sel`, so edit and copy keys keep one code path.
+  let kOff = $state<'head' | number | null>(null);
+  let kCol = $state<number | null>(null);
+  const dataColOffset = $derived((selectable ? 1 : 0) + (expandEnabled ? 1 : 0));
+  const bodyColCount = $derived(dataColOffset + visibleColumns.length + (rowActions ? 1 : 0));
+  const headColCount = () => bodyColCount + (addColShown ? 1 : 0); // declared below
+  /** A pointer can move the row without going through the cursor: a data row wins. */
+  const offRow = $derived(sel || focusedIndex >= 0 ? null : kOff);
+  const cellMode = $derived(offRow !== null || kCol !== null);
+  const curCol = () => (sel ? sel.b.c + dataColOffset : kCol);
+  /** Id suffix of the navigable cell in column `col`. */
+  function navKey(col: number): string {
+    if (selectable && col === 0) return '@select';
+    if (expandEnabled && col === dataColOffset - 1) return '@expand';
+    const c = visibleColumns[col - dataColOffset];
+    if (c) return encodeURIComponent(c.key);
+    return rowActions && col === dataColOffset + visibleColumns.length ? '@actions' : '@add';
+  }
+  function cursorPos(): 'head' | number | null {
+    if (offRow !== null) return offRow;
+    return flatRows[sel?.b.r ?? focusedIndex]?.itemIndex ?? null;
+  }
+  function setCursor(pos: 'head' | number, col: number | null) {
+    const fi = pos === 'head' ? undefined : flatItems[pos];
+    if (pos !== 'head' && !fi) return;
+    if (!fi || fi.kind !== 'row') {
+      if (customOpen) customOpen = null;
+      sel = null;
+      focusedIndex = -1;
+      kOff = pos;
+      kCol = pos === 'head' ? Math.min(col ?? 0, headColCount() - 1) : col;
+      if (pos !== 'head') rowVirt?.scrollToIndex(pos, { align: 'auto' });
+      return;
+    }
+    kCol = col === null ? null : Math.min(col, bodyColCount - 1);
+    const ci = kCol === null ? -1 : kCol - dataColOffset;
+    if (ci >= 0 && ci < visibleColumns.length && !onRowActivate) selectCell(fi.rowIndex, ci);
+    else {
+      if (customOpen) customOpen = null;
+      sel = null;
+      focusRow(fi.rowIndex);
+    }
+  }
+  function moveCursor(dr: number, dc: number) {
+    const last = flatItems.length - 1;
+    if (last < 0) return;
+    let pos = cursorPos();
+    let col = curCol();
+    if (pos === null) pos = dr < 0 ? last : 0;
+    else if (dr && pos === 'head') pos = dr > 0 ? 0 : 'head';
+    else if (dr && pos !== 'head') {
+      const next = pos + dr;
+      // The header is part of cell navigation only; row mode stops at the first row.
+      pos = next < 0 ? (col === null ? 0 : 'head') : Math.min(last, next);
+    }
+    if (dc) {
+      const max = (pos === 'head' ? headColCount() : bodyColCount) - 1;
+      col = col === null ? (dc > 0 ? 0 : max) : Math.max(0, Math.min(max, col + dc));
+    }
+    setCursor(pos, col);
+  }
+  function cursorTo(where: 'home' | 'end' | 'first' | 'last') {
+    if (flatItems.length === 0) return;
+    if (where === 'first') return setCursor('head', 0);
+    if (where === 'last') return setCursor(flatItems.length - 1, bodyColCount - 1);
+    const pos = cursorPos() ?? 0;
+    const max = (pos === 'head' ? headColCount() : bodyColCount) - 1;
+    setCursor(pos, where === 'home' ? 0 : max);
+  }
+
+  const activeDescendant = $derived.by(() => {
+    if (!gridMode) return undefined;
+    if (offRow === 'head') return `${instanceId}-head-${navKey(kCol ?? 0)}`;
+    const mounted = (itemIndex: number) =>
+      rowVirt ? rowVirt.getVirtualItems().some((item) => item.index === itemIndex) : !virtualizeOn;
+    if (offRow !== null) {
+      const fi = flatItems[offRow];
+      return fi && mounted(offRow)
+        ? `${instanceId}-block-${encodeURIComponent(fi.key)}`
+        : undefined;
+    }
+    const row = flatRows[sel?.b.r ?? focusedIndex];
+    if (!row || !mounted(row.itemIndex)) return undefined;
+    const col = curCol();
+    return col === null
+      ? `${instanceId}-row-${encodeURIComponent(row.id)}`
+      : `${instanceId}-cell-${encodeURIComponent(row.id)}-${navKey(col)}`;
+  });
+  function activeCellEl(): HTMLElement | null {
+    const el = activeDescendant ? document.getElementById(activeDescendant) : null;
+    return el && el.getAttribute('role') !== 'row' ? el : null;
+  }
+  // The active cell shows the focus ring (a selected data cell already has its own
+  // outline) and is scrolled into view. Set from here because the cell may be a
+  // caller's row that mounts later; Svelte does not manage this attribute.
+  $effect(() => {
+    if (!cellMode && !sel) return;
+    const el = activeCellEl();
+    if (!el) return;
+    el.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    if (sel) return;
+    el.setAttribute('data-kactive', '');
+    return () => el.removeAttribute('data-kactive');
+  });
+
+  /** Controls inside cells leave the Tab order: the grid is one Tab stop, its cells are
+   *  reached with the arrow keys and entered with Enter. Re-applied as rows mount, so
+   *  callers' cell snippets need no change. */
+  function gridTabStops(node: HTMLElement) {
+    if (!gridMode) return;
+    const strip = () => {
+      for (const el of node.querySelectorAll<HTMLElement>(
+        ':is(th, td) :is(a[href], button, input, select, textarea, [tabindex]):not([tabindex="-1"])',
+      )) {
+        el.setAttribute('tabindex', '-1');
+        el.setAttribute('data-kstop', '');
+      }
+    };
+    strip();
+    const observer = new MutationObserver(strip);
+    observer.observe(node, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['tabindex'],
+    });
+    return () => observer.disconnect();
+  }
+  function cellControls(cell: Element): HTMLElement[] {
+    const all = [
+      ...cell.querySelectorAll<HTMLElement>(
+        'a[href], button, input, select, textarea, [data-kstop]',
+      ),
+    ].filter(
+      (el) =>
+        !el.matches(':disabled, [aria-disabled="true"], [type="hidden"]') &&
+        !el.closest('[hidden], [inert], [aria-hidden="true"]'),
+    );
+    // A title cell links the same record twice (the title and its open arrow): one control.
+    return all.filter(
+      (el, i) =>
+        !(el instanceof HTMLAnchorElement) ||
+        all.findIndex((o) => o instanceof HTMLAnchorElement && o.href === el.href) === i,
+    );
+  }
+  function cursorRowAction() {
+    const fr = flatRows[sel?.b.r ?? focusedIndex];
+    if (!fr) return;
+    if (onRowActivate) onRowActivate(rowView(fr), { source: 'keyboard' });
+    else onRowClick?.(rowView(fr));
+  }
+  /** Keys of the cell cursor while the grid itself has focus; true = handled. */
+  function onCursorKey(e: KeyboardEvent): boolean {
+    const mod = e.ctrlKey || e.metaKey;
+    const inCells = cellMode || !!sel;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowLeft':
+        if (mod || e.altKey || (e.shiftKey && sel)) return false;
+        moveCursor(0, e.key === 'ArrowRight' ? 1 : -1);
+        return true;
+      case 'ArrowDown':
+      case 'ArrowUp':
+        // Row mode belongs to the hotkey bindings; Shift extends a cell range.
+        if (!inCells || mod || e.altKey || (e.shiftKey && sel)) return false;
+        moveCursor(e.key === 'ArrowDown' ? 1 : -1, 0);
+        return true;
+      case 'Home':
+        cursorTo(mod ? 'first' : 'home');
+        return true;
+      case 'End':
+        cursorTo(mod ? 'last' : 'end');
+        return true;
+      case 'Enter':
+      case 'F2': {
+        if (!inCells) return false;
+        const c = sel ? visibleColumns[sel.b.c] : undefined;
+        if (c && (colEditable(c) || customCellCanEdit(c))) return false; // the editor opens
+        const cell = activeCellEl();
+        const controls = cell ? cellControls(cell) : [];
+        // A header's resize handle is reached with F2 and Tab; it does not turn the
+        // header's one action (sort, filter, add column) into a two-step.
+        const actions = controls.filter((el) => !el.matches('[role="separator"]'));
+        const one = actions.length === 1 ? actions[0] : null;
+        if (
+          one &&
+          e.key === 'Enter' &&
+          one.matches(
+            'a, button, [role="button"], [role="link"], [role="checkbox"], [role="switch"], input[type="checkbox"], input[type="radio"]',
+          )
+        )
+          one.click();
+        else if (controls.length) controls[0].focus();
+        else if (e.key === 'Enter') cursorRowAction();
+        return true;
+      }
+      case ' ': {
+        if (!inCells) return false;
+        const c = sel ? visibleColumns[sel.b.c] : undefined;
+        if (c && colType(c) === 'boolean' && colEditable(c)) return false;
+        const cell = activeCellEl();
+        const controls = cell ? cellControls(cell) : [];
+        const fr = flatRows[sel?.b.r ?? focusedIndex];
+        if (
+          controls.length === 1 &&
+          controls[0].matches('[role="checkbox"], [role="switch"], input[type="checkbox"]')
+        )
+          controls[0].click();
+        else if (selectable && fr) toggleRow(fr.id);
+        else if (onRowActivate && fr) cursorRowAction();
+        else return false;
+        return true;
+      }
+      case 'Escape':
+        if (sel || !cellMode) return false; // a cell selection has its own Escape below
+        kCol = null;
+        if (kOff === 'head') kOff = null;
+        return true;
+    }
+    return false;
+  }
+  /** Keys while focus is on a control inside a cell: Tab walks that cell's controls and
+   *  then returns to the grid; Escape returns at once. */
+  function onCellInnerKey(e: KeyboardEvent): boolean {
+    if (e.defaultPrevented || editing || customOpen || !(e.target instanceof HTMLElement))
+      return false;
+    const cell = e.target.closest('th, td');
+    if (!cell || !wrapperEl?.contains(cell)) return false;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      wrapperEl.focus({ preventScroll: true });
+      return true;
+    }
+    if (e.key !== 'Tab') return false;
+    const list = cellControls(cell);
+    const at = list.indexOf(e.target);
+    if (at < 0) return false;
+    e.preventDefault();
+    (list[at + (e.shiftKey ? -1 : 1)] ?? wrapperEl).focus({ preventScroll: true });
+    return true;
+  }
   /** `${rowId}|${key}` of cells whose last save failed. */
   let failed = $state(new Set<string>());
   let fillTo = $state<number | null>(null);
@@ -2721,6 +2968,8 @@
     // popover, etc.) — only the currently selected cell may hold one open.
     if (customOpen && (customOpen.r !== r || customOpen.c !== c)) customOpen = null;
     sel = extend && sel ? { a: sel.a, b: { r, c } } : { a: { r, c }, b: { r, c } };
+    kOff = null;
+    kCol = c + dataColOffset;
     focusedIndex = r;
     wrapperEl?.focus({ preventScroll: true });
     rowVirt?.scrollToIndex(flatRows[r]?.itemIndex ?? r, { align: 'auto' });
@@ -2857,6 +3106,12 @@
   }
   function onGridKeydown(e: KeyboardEvent) {
     if (!gridMode) return;
+    if (e.target !== wrapperEl) {
+      if (onCellInnerKey(e)) return;
+    } else if (!editing && !customOpen && onCursorKey(e)) {
+      e.preventDefault();
+      return;
+    }
     if (
       onRowActivate &&
       e.target === wrapperEl &&
@@ -2897,9 +3152,14 @@
       case 'ArrowLeft':
         e.preventDefault();
         return moveSel(0, -1, ext);
-      case 'Tab':
+      case 'Tab': {
+        // Spreadsheet Tab only where cells are edited, and only while there is a next cell
+        // in the row: at the row's edge, and everywhere else, Tab leaves the table.
+        const next = sel.b.c + (ext ? -1 : 1);
+        if (!editOn || next < 0 || next >= visibleColumns.length) return;
         e.preventDefault();
         return moveSel(0, ext ? -1 : 1);
+      }
       case 'Enter':
       case 'F2':
         e.preventDefault();
@@ -2912,6 +3172,7 @@
         return;
       case 'Escape':
         sel = null;
+        kCol = null;
         copied = null;
         copiedRowIds = null;
         return;
@@ -3764,6 +4025,7 @@
     oncopy={onGridCopy}
     onpaste={onGridPaste}
     {@attach gridAttachment}
+    {@attach gridTabStops}
   >
     {#if hasError}
       <div class="flex items-center justify-center h-full p-8" role="alert">
@@ -3833,7 +4095,11 @@
             class="text-left t-caption border-b border-[var(--hairline)]"
           >
             {#if selectable}
-              <th role={gridMode ? 'columnheader' : undefined} class="dt-th px-3 py-2">
+              <th
+                role={gridMode ? 'columnheader' : undefined}
+                id={`${instanceId}-head-@select`}
+                class="dt-th px-3 py-2"
+              >
                 <Button
                   variant="ghost"
                   size="xs"
@@ -3849,7 +4115,10 @@
                 </Button>
               </th>
             {/if}
-            {#if expandEnabled}<th role={gridMode ? 'columnheader' : undefined} class="dt-th"
+            {#if expandEnabled}<th
+                role={gridMode ? 'columnheader' : undefined}
+                id={`${instanceId}-head-@expand`}
+                class="dt-th"
               ></th>{/if}
             {#each visibleColumns as c, i (c.key)}
               {@const sortEntry = sortOf(c.key)}
@@ -3859,6 +4128,7 @@
               <!-- svelte-ignore a11y_no_static_element_interactions -->
               <th
                 role={gridMode ? 'columnheader' : undefined}
+                id={`${instanceId}-head-${encodeURIComponent(c.key)}`}
                 data-col={c.key}
                 aria-sort={sort[0]?.key === c.key
                   ? sortEntry?.dir === 'asc'
@@ -3952,17 +4222,23 @@
               </th>
             {/each}
             {#if !hasFill}<th
-                role={gridMode ? 'columnheader' : undefined}
+                role={gridMode ? 'presentation' : undefined}
                 class="dt-th"
                 aria-hidden="true"
               ></th>{/if}
             {#if rowActions}
-              <th role={gridMode ? 'columnheader' : undefined} class="dt-th dt-act"
-                ><span class="sr-only">{m.data_table_row_actions()}</span></th
+              <th
+                role={gridMode ? 'columnheader' : undefined}
+                id={`${instanceId}-head-@actions`}
+                class="dt-th dt-act"><span class="sr-only">{m.data_table_row_actions()}</span></th
               >
             {/if}
             {#if addColShown}
-              <th role={gridMode ? 'columnheader' : undefined} class="dt-th dt-add-col">
+              <th
+                role={gridMode ? 'columnheader' : undefined}
+                id={`${instanceId}-head-@add`}
+                class="dt-th dt-add-col"
+              >
                 <Tooltip label={m.custom_columns_add()} asChild>
                   {#snippet children(p)}
                     <Button
@@ -4019,8 +4295,11 @@
                   data-index={vi.index}
                   {@attach measureRow}
                 >
-                  <td role={gridMode ? 'gridcell' : undefined} colspan={spanAll} class="dt-block"
-                    >{@render expandedContent?.(fi.row)}</td
+                  <td
+                    role={gridMode ? 'gridcell' : undefined}
+                    id={`${instanceId}-block-${encodeURIComponent(fi.key)}`}
+                    colspan={spanAll}
+                    class="dt-block">{@render expandedContent?.(fi.row)}</td
                   >
                 </tr>
               {:else if fi.kind === 'group'}
@@ -4033,6 +4312,7 @@
                 >
                   <td
                     role={gridMode ? 'gridcell' : undefined}
+                    id={`${instanceId}-block-${encodeURIComponent(fi.key)}`}
                     colspan={spanAll}
                     class="dt-group-cell"
                     data-group={fi.group.key}
@@ -4083,7 +4363,11 @@
                     : undefined}
                 >
                   {#if selectable}
-                    <td role={gridMode ? 'gridcell' : undefined} class="px-3 py-2">
+                    <td
+                      role={gridMode ? 'gridcell' : undefined}
+                      id={`${instanceId}-cell-${encodeURIComponent(id)}-@select`}
+                      class="px-3 py-2"
+                    >
                       <Button
                         variant="ghost"
                         size="xs"
@@ -4100,6 +4384,7 @@
                   {#if expandEnabled}
                     <td
                       role={gridMode ? 'gridcell' : undefined}
+                      id={`${instanceId}-cell-${encodeURIComponent(id)}-@expand`}
                       class="dt-tree-cell px-1 py-2 text-center"
                       style="--tree-depth:{fi.depth}"
                     >
@@ -4214,14 +4499,18 @@
                       {/if}
                     </td>
                   {/each}
-                  {#if !hasFill}<td role={gridMode ? 'gridcell' : undefined} aria-hidden="true"
+                  {#if !hasFill}<td role={gridMode ? 'presentation' : undefined} aria-hidden="true"
                     ></td>{/if}
                   {#if rowActions}
                     <!-- Sticky trailing actions cell. The wrapper swallows click
                          and pointerdown so a row action never doubles as a row
                          click (opening a drawer behind the dialog it just opened
                          is the failure every caller hand-guarded against). -->
-                    <td role={gridMode ? 'gridcell' : undefined} class="dt-cell dt-act">
+                    <td
+                      role={gridMode ? 'gridcell' : undefined}
+                      id={`${instanceId}-cell-${encodeURIComponent(id)}-@actions`}
+                      class="dt-cell dt-act"
+                    >
                       <!-- svelte-ignore a11y_no_static_element_interactions -->
                       <!-- svelte-ignore a11y_click_events_have_key_events -->
                       <div
@@ -4234,7 +4523,7 @@
                     </td>
                   {/if}
                   {#if addColShown}<td
-                      role={gridMode ? 'gridcell' : undefined}
+                      role={gridMode ? 'presentation' : undefined}
                       class="dt-cell dt-add-col"
                       aria-hidden="true"
                     ></td>{/if}
@@ -4255,14 +4544,16 @@
                shows, so a column that reads "sum" above also totals below. -->
           <tfoot class="dt-tfoot">
             <tr>
-              {#if selectable}<td role={gridMode ? 'gridcell' : undefined} class="dt-foot-cell"
+              {#if selectable}<td role={gridMode ? 'presentation' : undefined} class="dt-foot-cell"
                 ></td>{/if}
-              {#if expandEnabled}<td role={gridMode ? 'gridcell' : undefined} class="dt-foot-cell"
+              {#if expandEnabled}<td
+                  role={gridMode ? 'presentation' : undefined}
+                  class="dt-foot-cell"
                 ></td>{/if}
               {#each visibleColumns as c, i (c.key)}
                 {@const aggs = aggList(c)}
                 <td
-                  role={gridMode ? 'gridcell' : undefined}
+                  role={gridMode ? 'presentation' : undefined}
                   data-foot-col={c.key}
                   class="dt-foot-cell px-3 py-2 {cellAlign(c.align)}"
                   class:dt-frozen={i < stickyLefts.length}
@@ -4281,17 +4572,17 @@
                 </td>
               {/each}
               {#if !hasFill}<td
-                  role={gridMode ? 'gridcell' : undefined}
+                  role={gridMode ? 'presentation' : undefined}
                   class="dt-foot-cell"
                   aria-hidden="true"
                 ></td>{/if}
               {#if rowActions}<td
-                  role={gridMode ? 'gridcell' : undefined}
+                  role={gridMode ? 'presentation' : undefined}
                   class="dt-foot-cell dt-act"
                   aria-hidden="true"
                 ></td>{/if}
               {#if addColShown}<td
-                  role={gridMode ? 'gridcell' : undefined}
+                  role={gridMode ? 'presentation' : undefined}
                   class="dt-foot-cell dt-add-col"
                   aria-hidden="true"
                 ></td>{/if}
@@ -5352,6 +5643,10 @@
   }
   .dt-cell.dt-sel-focus {
     outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+  }
+  .dt-scroll :global([data-kactive]) {
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
   }
   .dt-cell.dt-fillprev {
