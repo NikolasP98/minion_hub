@@ -165,7 +165,7 @@
     type="button"
     class={comfortable
       ? 'connection-status-button'
-      : 'flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent'}
+      : 'flex items-center justify-center w-4 h-4 -m-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus-ring'}
     aria-label={ariaLabel}
     aria-expanded={open}
   >

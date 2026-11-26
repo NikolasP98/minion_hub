@@ -39,7 +39,11 @@
 
   function parseMeta(raw: string | null): Record<string, unknown> {
     if (!raw) return {};
-    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
   }
 
   function getDisplayName(s: SessionRow): string {
@@ -137,7 +141,7 @@
   <div class="shrink-0 flex flex-col gap-1.5 p-2.5 px-3 border-b border-border">
     <input
       bind:this={searchEl}
-      class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 font-inherit text-xs outline-none focus:border-accent placeholder:text-muted"
+      class="w-full box-border bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 font-inherit text-xs outline-none focus:border-focus-ring placeholder:text-muted"
       type="search"
       placeholder={m.sessions_searchPlaceholder()}
       bind:value={search}
@@ -152,7 +156,10 @@
     {/if}
   </div>
 
-  <div class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border" bind:this={scrollEl}>
+  <div
+    class="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-color-border"
+    bind:this={scrollEl}
+  >
     {#if filtered.length === 0}
       <div class="text-muted text-xs text-center py-6 px-4">{m.sessions_noSessions()}</div>
     {:else if v}
@@ -166,7 +173,11 @@
             style="transform: translateY({item.start}px)"
           >
             {#if row.kind === 'header'}
-              <div class="text-xs font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2">{row.agentId}</div>
+              <div
+                class="text-xs font-bold tracking-[0.08em] uppercase text-muted py-2 px-3 pb-1 border-b border-border bg-bg2"
+              >
+                {row.agentId}
+              </div>
             {:else}
               {@const s = row.s}
               {@const color = statusColor(s.status)}
@@ -177,23 +188,36 @@
                 aria-pressed={selectedKey === s.sessionKey}
               >
                 <span class="flex items-center justify-between gap-1.5">
-                  <span class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{getDisplayName(s)}</span>
+                  <span
+                    class="text-xs font-semibold text-foreground overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0"
+                    >{getDisplayName(s)}</span
+                  >
                   <span
                     class="shrink-0 w-2 h-2 rounded-full
                       {color === 'green' ? 'bg-success shadow-[var(--shadow-status-glow)]' : ''}
                       {color === 'amber' ? 'bg-warning' : ''}
-                      {color === 'grey'  ? 'bg-muted' : ''}"
+                      {color === 'grey' ? 'bg-muted' : ''}"
                   ></span>
                 </span>
                 {#if multiAgent}
                   <span class="flex items-center justify-between gap-1.5">
-                    <span class="font-mono text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0">{s.sessionKey}</span>
-                    <span class="text-xs text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
+                    <span
+                      class="font-mono text-xs text-muted overflow-hidden text-ellipsis whitespace-nowrap flex-1 min-w-0"
+                      >{s.sessionKey}</span
+                    >
+                    <span class="text-xs text-muted whitespace-nowrap shrink-0"
+                      >{relTime(s.updatedAt)}</span
+                    >
                   </span>
                 {:else}
                   <span class="flex items-center justify-between gap-1.5">
-                    <span class="text-xs font-semibold text-accent bg-accent/12 rounded-lg px-2 py-0.5 whitespace-nowrap shrink-0">{s.agentId}</span>
-                    <span class="text-xs text-muted whitespace-nowrap shrink-0">{relTime(s.updatedAt)}</span>
+                    <span
+                      class="text-xs font-semibold text-accent bg-accent/12 rounded-lg px-2 py-0.5 whitespace-nowrap shrink-0"
+                      >{s.agentId}</span
+                    >
+                    <span class="text-xs text-muted whitespace-nowrap shrink-0"
+                      >{relTime(s.updatedAt)}</span
+                    >
                   </span>
                 {/if}
               </Button>

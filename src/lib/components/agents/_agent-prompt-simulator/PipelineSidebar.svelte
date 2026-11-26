@@ -262,7 +262,7 @@
           bind:value={testPrompt}
           rows="2"
           {@attach submitOnModEnter(runTestIfReady)}
-          class="w-full text-[length:var(--font-size-caption)] px-2 py-1.5 rounded border border-border bg-bg1 text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-accent/60 focus:min-h-[80px] transition-[min-height] resize-none font-mono"
+          class="w-full text-[length:var(--font-size-caption)] px-2 py-1.5 rounded border border-border bg-bg1 text-foreground placeholder:text-foreground/30 focus:outline-none focus:border-focus-ring focus:min-h-[80px] transition-[min-height] resize-none font-mono"
           placeholder="Enter a sample message… (⌘↵ to run)"
           disabled={testing}></textarea>
       </label>

@@ -94,7 +94,7 @@
 <button
   bind:this={triggerEl}
   {...api.getTriggerProps()}
-  class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-[var(--radius-md)]"
+  class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-[var(--radius-md)]"
 >
   {@render trigger()}
 </button>
@@ -114,7 +114,7 @@
   <div
     {...api.getContentProps()}
     onkeydowncapture={leaveOnTab}
-    class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 outline-none {cls}"
+    class="min-w-40 surface-3 rounded-[var(--radius-md)] p-1 focus-ring-none {cls}"
   >
     {#each items as it (it.value)}
       {#if it.divider}
@@ -132,7 +132,7 @@
             closeOnSelect: it.closeOnSelect,
           })}
           tabindex={-1}
-          class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-sm text-left no-underline bg-transparent border-none cursor-pointer outline-none transition-colors
+          class="flex w-full items-center gap-2 px-2.5 py-1.5 rounded-[var(--radius-sm)] text-sm text-left no-underline bg-transparent border-none cursor-pointer focus-ring-none transition-colors
             data-[highlighted]:bg-foreground/[0.06]
             data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed
             {it.danger ? 'text-destructive' : 'text-foreground'}"

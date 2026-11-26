@@ -391,7 +391,7 @@
                 type="text"
                 bind:value={editDisplayName.value}
                 onblur={editDisplayName.flush}
-                class="w-full bg-transparent text-base font-bold text-foreground border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors pb-0.5"
+                class="w-full bg-transparent text-base font-bold text-foreground border-b border-transparent hover:border-border focus:border-focus-ring focus:outline-none transition-colors pb-0.5"
                 placeholder={m.myAgent_displayNamePlaceholder()}
                 maxlength={50}
               />
@@ -399,7 +399,7 @@
                 type="text"
                 bind:value={editConversationName.value}
                 onblur={editConversationName.flush}
-                class="w-full bg-transparent text-sm text-muted-foreground border-b border-transparent hover:border-border focus:border-accent focus:outline-none transition-colors pb-0.5"
+                class="w-full bg-transparent text-sm text-muted-foreground border-b border-transparent hover:border-border focus:border-focus-ring focus:outline-none transition-colors pb-0.5"
                 placeholder={m.myAgent_conversationNamePlaceholder()}
               />
             </div>
@@ -440,7 +440,7 @@
             <textarea
               bind:value={editPersonalityText.value}
               onblur={editPersonalityText.flush}
-              class="w-full bg-bg2 border border-border rounded-lg p-3 text-sm text-foreground resize-none focus:outline-none focus:border-accent transition-colors"
+              class="w-full bg-bg2 border border-border rounded-lg p-3 text-sm text-foreground resize-none focus:outline-none focus:border-focus-ring transition-colors"
               rows={4}
               placeholder={m.myAgent_personalityPlaceholder()}
               maxlength={500}></textarea>

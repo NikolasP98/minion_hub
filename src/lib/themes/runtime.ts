@@ -1,4 +1,4 @@
-import { onAccentFor } from './contrast';
+import { onAccentFor, readableAccentFor } from './contrast';
 import type { ThemePreset } from './presets';
 
 // Before the shared semantic preset selector became authoritative, applyTheme
@@ -55,6 +55,10 @@ export function applyTheme(p: ThemePreset, accentValue: string) {
   const onAccent = onAccentFor(accentValue);
   root.style.setProperty('--color-accent', accentValue);
   root.style.setProperty('--color-on-accent', onAccent);
+  // The focus ring and link text take the accent's hue but must be readable on every
+  // surface of the theme (spec 153): 3:1 for the ring, 4.5:1 for text.
+  root.style.setProperty('--color-focus-ring', readableAccentFor(p, accentValue, 3));
+  root.style.setProperty('--color-link', readableAccentFor(p, accentValue, 4.5));
 
   if (p.id === 'voxelized') {
     root.style.setProperty('--vx-glow-cyan', '0, 240, 255');

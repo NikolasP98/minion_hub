@@ -167,13 +167,13 @@
         </p>
         <div class="grid grid-cols-2 gap-3">
           <input
-            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
+            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-focus-ring placeholder:text-muted"
             type="text"
             placeholder={m.bindings_agentIdPlaceholder()}
             bind:value={addAgentId}
           />
           <input
-            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-accent placeholder:text-muted"
+            class="bg-bg2 border border-border rounded-md text-foreground px-2.5 py-1.5 text-xs font-[inherit] outline-none focus:border-focus-ring placeholder:text-muted"
             type="text"
             placeholder={m.bindings_peerIdPlaceholder()}
             bind:value={addPeerId}

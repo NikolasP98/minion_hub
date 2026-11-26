@@ -62,7 +62,7 @@
       bind:value={label}
       onchange={commit}
       required
-      class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+      class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
     />
   </div>
   <div>
@@ -85,7 +85,7 @@
       bind:value={allowFrom}
       onchange={commit}
       placeholder="* or @user1,@user2"
-      class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent"
+      class="w-full bg-bg border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-focus-ring"
     />
   </div>
   <div class="flex items-center gap-2 pt-1">

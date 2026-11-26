@@ -201,7 +201,7 @@
                   <div class="flex items-center gap-1 mt-1">
                     <input
                       type="text"
-                      class="flex-1 rounded border border-border bg-bg px-1.5 py-0.5 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
+                      class="flex-1 rounded border border-border bg-bg px-1.5 py-0.5 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-focus-ring"
                       placeholder={m.pinboard_commentPlaceholder()}
                       bind:value={newCommentText[pin.id]}
                       {@attach submitOnEnter(() => submitComment(pin.id))}
@@ -230,7 +230,7 @@
     <div class="flex items-center gap-2 border-t border-border px-3 py-2">
       <input
         type="text"
-        class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
+        class="flex-1 rounded border border-border bg-bg3 px-2 py-1 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-focus-ring"
         placeholder={m.pinboard_addPlaceholder()}
         bind:value={newPinContent}
         {@attach submitOnEnter(() => handleAdd())}

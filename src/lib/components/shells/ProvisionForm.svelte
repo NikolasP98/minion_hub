@@ -49,7 +49,7 @@
     'rounded-[var(--radius-md)] bg-[var(--elevation-2-bg)] border border-[var(--hairline)] ' +
     'px-3 text-sm text-foreground placeholder:text-muted-strong outline-none ' +
     'transition-[border-color,box-shadow] duration-[var(--duration-fast)] ease-[var(--ease-standard)] ' +
-    'hover:border-[var(--color-border-strong)] focus-visible:border-accent ' +
+    'hover:border-[var(--color-border-strong)] focus-visible:border-focus-ring ' +
     'focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--color-accent)_25%,transparent)]';
 </script>
 

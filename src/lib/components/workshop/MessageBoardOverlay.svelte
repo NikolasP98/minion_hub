@@ -71,7 +71,7 @@
     <!-- Textarea -->
     <div class="p-3">
       <textarea
-        class="w-full min-h-[200px] resize-y rounded border border-border bg-bg3 p-2 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-accent"
+        class="w-full min-h-[200px] resize-y rounded border border-border bg-bg3 p-2 text-xs font-mono text-foreground placeholder:text-muted outline-none focus:border-focus-ring"
         placeholder={m.messageboard_placeholder()}
         bind:value={content}
         oninput={handleInput}></textarea>

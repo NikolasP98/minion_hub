@@ -109,7 +109,7 @@
     <label class="grid grid-cols-[80px_1fr] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_name()}</span>
       <input
-        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent"
+        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-focus-ring"
         bind:value={displayName}
       />
     </label>
@@ -117,14 +117,14 @@
       <span class="text-muted">{m.usersui_email()}</span>
       <input
         type="email"
-        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-accent"
+        class="bg-bg border border-border rounded px-2 py-1 outline-none focus:border-focus-ring"
         bind:value={email}
       />
     </label>
     <label class="grid grid-cols-[80px_1fr_auto] gap-2 items-center text-xs">
       <span class="text-muted">{m.usersui_alias()}</span>
       <div
-        class="flex items-center gap-1 bg-bg border border-border rounded px-2 py-1 focus-within:border-accent"
+        class="flex items-center gap-1 bg-bg border border-border rounded px-2 py-1 focus-within:border-focus-ring"
       >
         <span class="text-muted">@</span>
         <input

@@ -99,7 +99,7 @@
           placeholder={m.join_messagePlaceholder()}
           rows={4}
           maxlength={500}
-          class="min-h-28 w-full resize-y rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-muted-foreground focus-visible:border-accent focus-visible:shadow-[var(--shadow-focus)]"
+          class="min-h-28 w-full resize-y rounded-[var(--radius-md)] border border-border bg-bg px-3 py-2 text-sm leading-relaxed text-foreground outline-none transition-[border-color,box-shadow] duration-[var(--duration-fast)] placeholder:text-muted-foreground focus-visible:border-focus-ring focus-visible:shadow-[var(--shadow-focus)]"
         ></textarea>
       {/snippet}
       <FormField

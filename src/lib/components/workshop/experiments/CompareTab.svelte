@@ -339,7 +339,7 @@
       bind:value={prompt}
       placeholder={m.workshop_exp_prompt_placeholder()}
       rows="4"
-      class="w-full rounded border border-border bg-bg2 p-3 text-sm text-foreground font-mono resize-y focus:border-accent/50 outline-none"
+      class="w-full rounded border border-border bg-bg2 p-3 text-sm text-foreground font-mono resize-y focus:border-focus-ring outline-none"
     ></textarea>
     <details class="text-xs font-mono text-muted">
       <summary class="cursor-pointer select-none">{m.workshop_exp_advanced()}</summary>

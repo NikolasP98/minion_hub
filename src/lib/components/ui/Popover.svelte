@@ -78,7 +78,7 @@
   {...api.getTriggerProps()}
   aria-label={label}
   {disabled}
-  class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-[var(--radius-md)]"
+  class="inline-flex items-center bg-transparent border-none p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-[var(--radius-md)]"
 >
   {@render trigger()}
 </button>
@@ -111,7 +111,7 @@
   <div
     {...api.getContentProps()}
     class:viewport-contained-content={viewportContained}
-    class="outline-none {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
+    class="focus-ring-none {bare ? '' : 'surface-3 rounded-[var(--radius-md)] p-1'} {cls}"
   >
     {@render children()}
   </div>

@@ -1,7 +1,11 @@
 <script lang="ts">
   import { setField } from '$lib/state/config/config.svelte';
 
-  let { path, value, pathSuffix = '' }: {
+  let {
+    path,
+    value,
+    pathSuffix = '',
+  }: {
     path: string;
     value: unknown;
     pathSuffix?: string;
@@ -26,7 +30,11 @@
 
   function toJson(v: unknown): string {
     if (v === undefined || v === null) return '';
-    try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+    try {
+      return JSON.stringify(v, null, 2);
+    } catch {
+      return String(v);
+    }
   }
 
   function onInput(e: Event) {
@@ -50,12 +58,13 @@
 <div class="flex flex-col gap-1">
   <textarea
     class="bg-bg3 border rounded-[var(--radius-sm)] text-foreground py-[var(--space-1)] px-[var(--space-2)] font-mono text-xs outline-none transition-colors resize-y min-h-[calc(var(--space-12)+var(--space-3))]
-      {parseError ? 'border-destructive focus:border-destructive' : 'border-border focus:border-accent'}"
+      {parseError
+      ? 'border-destructive focus:border-destructive'
+      : 'border-border focus:border-focus-ring'}"
     rows="4"
     value={displayText}
     oninput={onInput}
-    spellcheck="false"
-  ></textarea>
+    spellcheck="false"></textarea>
   {#if parseError}
     <p class="text-destructive text-[length:var(--font-size-telemetry)]">{parseError}</p>
   {/if}

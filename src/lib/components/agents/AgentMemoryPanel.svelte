@@ -373,7 +373,7 @@
               bind:value={query}
               onkeydown={(e) => e.key === 'Enter' && runSearch()}
               placeholder={m.memory_searchPlaceholder()}
-              class="px-2 py-1 text-[length:var(--font-size-caption)] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-accent"
+              class="px-2 py-1 text-[length:var(--font-size-caption)] rounded bg-card border border-border text-foreground w-56 focus:outline-none focus:border-focus-ring"
             />
             <Button
               variant="ghost"

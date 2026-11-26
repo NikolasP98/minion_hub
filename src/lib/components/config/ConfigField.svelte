@@ -215,7 +215,7 @@
   }
 
   const inputClass =
-    'bg-bg3 border border-border rounded-md text-foreground py-1 px-2 font-[inherit] text-xs outline-none transition-colors focus:border-accent w-full';
+    'bg-bg3 border border-border rounded-md text-foreground py-1 px-2 font-[inherit] text-xs outline-none transition-colors focus:border-focus-ring w-full';
   const labelClass = 'text-xs text-muted-foreground';
 </script>
 

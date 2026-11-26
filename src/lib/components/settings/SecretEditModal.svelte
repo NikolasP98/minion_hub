@@ -63,7 +63,7 @@
       spellcheck="false"
       disabled={saving}
       placeholder={m.secretEditModal_placeholder()}
-      class="w-full bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-accent disabled:opacity-50"
+      class="w-full bg-background border border-border rounded-[var(--radius-sm)] px-3 py-2 text-sm font-mono text-foreground focus:outline-none focus:border-focus-ring disabled:opacity-50"
     />
   </label>
 
