@@ -154,6 +154,11 @@ export interface SandboxElementInput {
   published?: boolean;
   /** The org API key that wrote it (spec 136); null for a person. */
   writtenByKey?: string;
+  /**
+   * Replace the block's connections in the SAME transaction as the other fields (spec 150):
+   * a refusal (custom element, stale column) writes nothing. Needs `id`.
+   */
+  listens?: Listens;
 }
 
 /** Library rows belong to their creator: nobody else updates or deletes them (spec 014 FR-003). */
@@ -272,7 +277,21 @@ export async function upsertElement(
   const page = input.page ?? 'default';
   const result = await withOrgCore(ctx, async (tx: CoreTx) => {
     let spec = input.spec;
-    if (id && spec && isDataBlock(spec) && spec.listens === undefined) {
+    if (input.listens !== undefined) {
+      if (!id) throw new SandboxQueryError('listens needs the id of an existing block', 'listens');
+      const locked = await lockedListens(tx, ctx, id);
+      if (!locked.found) throw new SandboxQueryError('element not found', 'id', 400);
+      const base = spec ?? locked.spec;
+      if (!base || !isDataBlock(base)) {
+        throw new SandboxQueryError(
+          'only a kpi, chart, table or list block can have connections',
+          'listens',
+        );
+      }
+      spec = { ...base, listens: input.listens };
+      validateListens(spec, spec.listens);
+      assertSize({ ...input, spec });
+    } else if (id && spec && isDataBlock(spec) && spec.listens === undefined) {
       // A spec written without `listens` keeps the stored connections (spec 150 FR-009);
       // the merged result is validated, so a connection a new dataset no longer fits is refused.
       const stored = (await lockedListens(tx, ctx, id)).spec;

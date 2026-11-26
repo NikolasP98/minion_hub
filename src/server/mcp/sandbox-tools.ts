@@ -181,13 +181,15 @@ const tools: McpTool<SandboxToolContext>[] = [
       }
       if (args.id !== undefined) input.id = idArg(args);
       else input.page = pageArg(args);
-      // Connections have their own locked write (spec 150): the other fields land first,
-      // then the connections, so one call can do both.
+      // Connections alone use the locked `setListens` write (spec 150).
       const onlyListens =
         listens !== undefined && Object.keys(args).every((k) => k === 'id' || k === 'listens');
-      const written = onlyListens ? null : await upsertElement(ctx, input);
-      if (listens === undefined) return { element: element(written!) };
-      return { element: element(await setListens(ctx, idArg(args), listens, keyId)) };
+      if (onlyListens) {
+        return { element: element(await setListens(ctx, idArg(args), listens!, keyId)) };
+      }
+      // Fields and connections in ONE transaction: a refused part writes nothing.
+      if (listens !== undefined) input.listens = listens;
+      return { element: element(await upsertElement(ctx, input)) };
     },
   },
   {

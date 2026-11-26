@@ -7,7 +7,7 @@
    */
   import EditableGrid from '$lib/components/dashboard/EditableGrid.svelte';
   import type { GridLayout } from '$lib/components/dashboard/editable-grid';
-  import { byPosition, layoutUpdates } from '$lib/sandbox/canvas';
+  import { byPosition, joinsGrid, layoutUpdates } from '$lib/sandbox/canvas';
   import type { SandboxHost } from '$lib/sandbox/host.svelte';
   import { DRAG_MIME, type ComponentCopy } from '$lib/sandbox/library';
   import {
@@ -32,7 +32,7 @@
   const values = createPageValues(localValues(() => host.wiring?.publishers ?? []));
 
   const filters = $derived(byPosition(host.elements.filter((e) => e.spec?.type === 'filter')));
-  const gridElements = $derived(host.elements.filter((e) => e.spec?.type !== 'filter'));
+  const gridElements = $derived(host.elements.filter(joinsGrid));
   const gridItems = $derived(gridElements.map((e) => ({ id: e.id, w: e.w, h: e.h })));
   const byId = $derived(new Map(gridElements.map((e) => [e.id, e])));
 

@@ -13,7 +13,7 @@ import {
   type Listens,
 } from '$lib/sandbox/blocks/schema';
 import { findColumn, findDataset, type ColumnType, type Dataset } from './datasets';
-import { SandboxQueryError } from './query-compiler';
+import { fitsColumn, SandboxQueryError } from './query-compiler';
 
 function requireColumn(dataset: Dataset, name: string, field: string, types?: ColumnType[]) {
   const column = findColumn(dataset, name);
@@ -110,6 +110,16 @@ function validateFilter(spec: FilterSpec): void {
     const dataset = findDataset(spec.options.dataset);
     if (!dataset) throw new SandboxQueryError('unknown dataset', 'spec.options.dataset');
     const column = requireColumn(dataset, spec.options.col, 'spec.options.col');
+    const d = spec.default;
+    const candidates = d?.kind === 'select' ? [d.value] : d?.kind === 'multi' ? d.values : [];
+    for (const value of candidates) {
+      if (!fitsColumn(column.type, value)) {
+        throw new SandboxQueryError(
+          `default ${JSON.stringify(value)} does not fit ${column.type} column ${JSON.stringify(column.name)}`,
+          'spec.default',
+        );
+      }
+    }
     if (column.pii) {
       throw new SandboxQueryError(
         `column ${JSON.stringify(spec.options.col)} is personal data and cannot be a choice list`,

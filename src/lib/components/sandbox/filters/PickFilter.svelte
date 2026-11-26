@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { X } from 'lucide-svelte';
   import { Button, Combobox, MultiSelectFilter, iconSizes } from '$lib/components/ui';
   import { MAX_MULTI_VALUES, type FilterControl, type PageValue } from '$lib/sandbox/blocks/schema';
@@ -27,8 +28,9 @@
   const sourceKey = $derived(`${options.dataset}|${options.col}`);
 
   $effect(() => {
+    // Keyed on the string only: a host reload hands over new (equal) `options` objects.
     void sourceKey;
-    const source = { dataset: options.dataset, col: options.col };
+    const source = untrack(() => ({ dataset: options.dataset, col: options.col }));
     const controller = new AbortController();
     status = 'loading';
     fetch('/api/sandbox/query', {
@@ -67,9 +69,10 @@
   }
 
   function toggle(key: string) {
-    const picked = raw.get(key);
-    if (picked === undefined) return;
     const current = value?.kind === 'multi' ? value.values : [];
+    // A chosen value outside the top 200 (or gone since) is not in `raw`: fall back to the stored one.
+    const picked = raw.get(key) ?? current.find((v) => String(v) === key);
+    if (picked === undefined) return;
     const has = current.some((v) => String(v) === key);
     if (!has && current.length >= MAX_MULTI_VALUES) return;
     const next = has ? current.filter((v) => String(v) !== key) : [...current, picked];
@@ -117,11 +120,11 @@
     <MultiSelectFilter
       {label}
       allLabel={m.sandbox_filter_all()}
-      options={choices.map((c) => ({
-        value: String(c.value),
-        label: String(c.value),
-        count: c.count,
-      }))}
+      options={[
+        ...choices.map((c) => ({ value: String(c.value), label: String(c.value), count: c.count })),
+        // Chosen values outside the loaded top 200 stay listed so they can be deselected.
+        ...selectedKeys.filter((key) => !raw.has(key)).map((key) => ({ value: key, label: key })),
+      ]}
       selected={new Set(selectedKeys)}
       onToggle={toggle}
       onClear={() => onchange(null)}

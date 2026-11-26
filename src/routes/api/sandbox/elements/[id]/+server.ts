@@ -41,10 +41,11 @@ export const PATCH: RequestHandler = async ({ locals, params, request }) => {
     }
     if (listens !== undefined && spec === undefined) {
       // Connections alone: lock, merge, validate, write (spec 150 FR-009).
-      let element = await setListens(ctx, params.id!, listens);
-      if (Object.keys(body).length > 0) {
-        element = await upsertElement(ctx, { ...body, id: params.id });
-      }
+      // With other fields it is ONE transaction (nothing is written when either part is refused).
+      const element =
+        Object.keys(body).length > 0
+          ? await upsertElement(ctx, { ...body, id: params.id, listens })
+          : await setListens(ctx, params.id!, listens);
       return json({ element });
     }
     const element = await upsertElement(ctx, {

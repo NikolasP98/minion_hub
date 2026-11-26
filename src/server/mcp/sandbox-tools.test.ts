@@ -194,8 +194,10 @@ describe('sandbox tools', () => {
 
     svc.upsertElement.mockResolvedValue(stored);
     await call('sandbox_element_write', { id: 'e1', title: 'New', listens });
+    // fields + connections travel in ONE service call (one transaction)
     expect(svc.upsertElement).toHaveBeenCalledTimes(1);
-    expect(svc.setListens).toHaveBeenCalledTimes(2);
+    expect(svc.upsertElement.mock.lastCall![1]).toMatchObject({ id: 'e1', title: 'New', listens });
+    expect(svc.setListens).toHaveBeenCalledTimes(1);
 
     await expect(call('sandbox_element_write', { listens })).rejects.toBeInstanceOf(ToolFailure);
     await expect(

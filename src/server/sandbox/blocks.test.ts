@@ -131,6 +131,20 @@ describe('filter elements — spec 150 FR-007', () => {
     expect(refused({ ...pick, default: { kind: 'date', range: 'today' } })).toBe('spec.default');
     expect(refused({ ...date, default: { kind: 'date', range: 'last_30d' } })).toBeNull();
   });
+
+  it('refuses a picker default that does not fit the choices column type', () => {
+    const num = { ...pick, options: { dataset: 'pos.tickets', col: 'total' } };
+    expect(refused({ ...num, default: { kind: 'select', value: 'abc' } })).toBe('spec.default');
+    expect(refused({ ...num, default: { kind: 'select', value: 12 } })).toBeNull();
+    expect(
+      refused({
+        ...num,
+        control: 'multi_select',
+        default: { kind: 'multi', values: [1, 'abc'] },
+      }),
+    ).toBe('spec.default');
+    expect(refused({ ...pick, default: { kind: 'select', value: 'void' } })).toBeNull();
+  });
 });
 
 describe('every filter in BLOCK_EXAMPLES compiles (SC-008)', () => {

@@ -8,7 +8,7 @@
   import { reorder } from '$lib/components/dashboard/editable-grid';
   import { addToPage, type ComponentCopy } from '$lib/sandbox/library';
   import { createSandboxHost, type SandboxElementRecord } from '$lib/sandbox/host.svelte';
-  import { byPosition, canvasSummary, layoutUpdates } from '$lib/sandbox/canvas';
+  import { byPosition, canvasSummary, joinsGrid, layoutUpdates } from '$lib/sandbox/canvas';
   import { createPageContextLease } from '$lib/assistant/page-context';
   import * as m from '$lib/paraglide/messages';
   import type { PageData } from './$types';
@@ -38,9 +38,10 @@
   async function addComponent(c: ComponentCopy, beforeId: string | null = null) {
     const created = await addToPage(c);
     await host.load();
-    if (!beforeId || beforeId === created.id) return;
+    // A dropped library filter goes to the filter bar, never into the grid order.
+    if (!joinsGrid(created) || !beforeId || beforeId === created.id) return;
     // Filters live in the filter bar, not the grid: ordering only sees grid elements.
-    const grid = host.elements.filter((e) => e.spec?.type !== 'filter');
+    const grid = host.elements.filter(joinsGrid);
     const order = reorder(
       byPosition(grid).map((e) => e.id),
       created.id,

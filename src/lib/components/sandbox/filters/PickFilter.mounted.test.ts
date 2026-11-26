@@ -2,6 +2,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import PickFilter from './PickFilter.svelte';
+import Fixture from './PickFilter.fixture.svelte';
+import { flushSync } from 'svelte';
 import { assertPattern } from '$lib/a11y/assert-pattern';
 
 afterEach(cleanup);
@@ -116,6 +118,77 @@ describe('PickFilter', () => {
       expect((screen.getByRole('combobox') as HTMLInputElement).disabled).toBe(false),
     );
     await assertPattern(view.container, 'combobox');
+  });
+
+  it('the multi trigger button still carries aria-haspopup / aria-expanded (from the Popover)', async () => {
+    render(PickFilter, {
+      props: {
+        id: 'f',
+        label: 'Status',
+        control: 'multi_select',
+        options,
+        value: null,
+        onchange: vi.fn(),
+      },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const trigger = screen.getByText('Status').closest('button')!;
+    expect(trigger.getAttribute('aria-haspopup')).toBeTruthy();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(trigger);
+    await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+  });
+
+  it('a host reload with unchanged options makes no new choices request and keeps the picker enabled', async () => {
+    const onchange = vi.fn();
+    const view = render(Fixture, {
+      initial: {
+        id: 'f',
+        label: 'Status',
+        control: 'select',
+        options: { ...options },
+        value: null,
+        onchange,
+      },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect((screen.getByRole('combobox') as HTMLInputElement).disabled).toBe(false),
+    );
+    (view.component as unknown as { set: (p: unknown) => void }).set({
+      id: 'f',
+      label: 'Status',
+      control: 'select',
+      options: { ...options },
+      value: null,
+      onchange,
+    });
+    flushSync();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('combobox') as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it('multi: a chosen value outside the loaded choices can still be deselected', async () => {
+    const onchange = vi.fn();
+    render(PickFilter, {
+      props: {
+        id: 'f',
+        label: 'Status',
+        control: 'multi_select',
+        options,
+        value: { kind: 'multi', values: ['submitted', 'legacy'] },
+        onchange,
+      },
+    });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await fireEvent.click(screen.getByText('Status'));
+    await screen.findByRole('option', { name: /submitted/ });
+    // 'legacy' is not among the loaded rows but stays listed, and deselecting it keeps the rest.
+    await fireEvent.click(screen.getByRole('option', { name: /legacy/ }));
+    expect(onchange).toHaveBeenLastCalledWith({ kind: 'multi', values: ['submitted'] });
+    await fireEvent.click(screen.getByRole('option', { name: /submitted/ }));
+    expect(onchange).toHaveBeenLastCalledWith({ kind: 'multi', values: ['legacy'] });
   });
 
   it('shows a calm message when the choices cannot load', async () => {

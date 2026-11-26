@@ -702,4 +702,39 @@ describe('connections write (spec 150 FR-009)', () => {
     );
     await expect(response.json()).resolves.toMatchObject({ field: 'spec.listens.0.var' });
   });
+
+  it('fields + listens are ONE transaction: a custom element refuses before any write', async () => {
+    mocks.execute.mockResolvedValueOnce([stored(null)]);
+    const response = await patch({ title: 'Renamed', html: '<p>x</p>', listens });
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ field: 'listens' });
+    expect(statements().every((s) => !s.sql.includes('update sandbox_elements'))).toBe(true);
+  });
+
+  it('fields + listens: one locked select then ONE update carrying both', async () => {
+    mocks.execute
+      .mockResolvedValueOnce([stored(kpiSpec)])
+      .mockResolvedValueOnce([row({ ...kpiSpec, listens })]);
+    const response = await patch({ title: 'Renamed', listens });
+    expect(response.status).toBe(200);
+    const all = statements();
+    expect(all).toHaveLength(2);
+    expect(all[0].sql).toContain('for update');
+    expect(all[1].sql).toContain('update sandbox_elements set');
+    expect(all[1].params).toContain('Renamed');
+    expect(all[1].params.some((p) => typeof p === 'string' && p.includes('"listens"'))).toBe(true);
+  });
+
+  it('fields + listens: an oversized field refuses before anything is written', async () => {
+    const response = await patch({ js: 'x'.repeat(64 * 1024 + 1), listens });
+    expect(response.status).toBe(400);
+    expect(mocks.execute).not.toHaveBeenCalled();
+  });
+
+  it('a stale connection with other fields writes nothing', async () => {
+    mocks.execute.mockResolvedValueOnce([stored(kpiSpec)]);
+    const response = await patch({ title: 'T', listens: [{ var: 'a', col: 'gone' }] });
+    await expect(response.json()).resolves.toMatchObject({ field: 'spec.listens.0.col' });
+    expect(statements().every((s) => !s.sql.includes('update sandbox_elements'))).toBe(true);
+  });
 });

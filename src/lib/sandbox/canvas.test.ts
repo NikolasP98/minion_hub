@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { canvasSummary, describeElement, layoutUpdates } from './canvas';
+import { canvasSummary, describeElement, joinsGrid, layoutUpdates } from './canvas';
 
 const el = (
   id: string,
@@ -92,6 +92,16 @@ describe('layoutUpdates', () => {
     expect(layoutUpdates([el('a', 0)], { order: ['ghost', 'a'], span: {} })).toEqual([
       { id: 'a', position: 1 },
     ]);
+  });
+});
+
+describe('joinsGrid', () => {
+  test('a filter never joins the grid order; blocks and custom elements do', () => {
+    expect(joinsGrid({ spec: { v: 1, type: 'filter', var: 'p', control: 'date_range' } })).toBe(
+      false,
+    );
+    expect(joinsGrid({ spec: null })).toBe(true);
+    expect(joinsGrid({})).toBe(true);
   });
 });
 

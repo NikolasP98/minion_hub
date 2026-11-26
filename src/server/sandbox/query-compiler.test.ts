@@ -407,6 +407,35 @@ describe('compile — value forms per column type (spec 150 R5)', () => {
     ).not.toThrow();
   });
 
+  it('keeps what production custom elements send (regression)', () => {
+    expect(() => where('pos.tickets', 'submitted_at', 'gte', '2026-11-01T00:00:00Z')).not.toThrow();
+    expect(() => where('pos.tickets', 'submitted_at', 'lte', '2026-11-30T23:59:59Z')).not.toThrow();
+    expect(() =>
+      where('pos.tickets', 'submitted_at', 'lt', '2026-11-30T23:59:59.999+05:30'),
+    ).not.toThrow();
+    expect(() => where('pos.tickets', 'submitted_at', 'gte', '2026-11-01T08:30')).not.toThrow();
+    expect(() => where('pos.tickets', 'status', 'eq', 'submitted')).not.toThrow();
+    expect(() => where('finance.products', 'name', 'eq', 'Insumos Internos')).not.toThrow();
+  });
+
+  it('refuses impossible dates and loose strings Date.parse would accept', () => {
+    for (const bad of [
+      '2026-99-99',
+      '2026-02-30',
+      '1',
+      '2026',
+      'Nov 1 2026',
+      '2026-11-01T25:00:00Z',
+      '2026-11-01T10:61:00Z',
+      '2026-11-01 10:00:00',
+      '2026-11-01T10:00:00+25:00',
+    ]) {
+      expect(() => where('pos.tickets', 'submitted_at', 'gte', bad), bad).toThrow(
+        SandboxQueryError,
+      );
+    }
+  });
+
   it('refuses a value that does not fit, naming where.<i>.value', () => {
     const field = (fn: () => unknown) => {
       try {

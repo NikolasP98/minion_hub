@@ -90,6 +90,9 @@ export function byPosition<T extends ElementLike>(elements: readonly T[]): T[] {
 
 const isFilter = (e: ElementLike) => e.spec?.type === 'filter';
 
+/** Filters live in the filter bar: only these elements take a grid cell, order or size. */
+export const joinsGrid = (e: { spec?: BlockSpec | null }) => e.spec?.type !== 'filter';
+
 function describeFilter(e: ElementLike): string {
   const spec = e.spec;
   if (spec?.type !== 'filter') return '';

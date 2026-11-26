@@ -111,14 +111,41 @@ function escapeLikePattern(value: unknown): string {
 }
 
 const NUMBER_RE = /^-?\d+(\.\d+)?$/;
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATETIME_RE =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-](\d{2}):(\d{2}))?$/;
+
+/** A real calendar day: `2026-02-30` and `2026-99-99` are refused (Postgres would 500). */
+function realDay(y: string, m: string, d: string): boolean {
+  const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  return (
+    date.getUTCFullYear() === Number(y) &&
+    date.getUTCMonth() === Number(m) - 1 &&
+    date.getUTCDate() === Number(d)
+  );
+}
+
+/** `YYYY-MM-DD` or an ISO 8601 datetime, both on a real day and a real time. */
+function isTimestamp(value: string): boolean {
+  const day = DAY_RE.exec(value);
+  if (day) return realDay(day[1], day[2], day[3]);
+  const t = DATETIME_RE.exec(value);
+  if (!t) return false;
+  return (
+    realDay(t[1], t[2], t[3]) &&
+    Number(t[4]) < 24 &&
+    Number(t[5]) < 60 &&
+    (t[6] === undefined || Number(t[6]) < 60) &&
+    (t[8] === undefined || (Number(t[8]) < 24 && Number(t[9]) < 60))
+  );
+}
 
 /**
  * A comparison value must fit its column BEFORE it reaches Postgres: a bad
  * uuid / number / date is otherwise a 22P02 → 500 instead of the 400 a caller
  * can fix (spec 150 R5). `null` is refused: say `isNull` instead.
  */
-function fitsColumn(type: ColumnType, value: unknown): boolean {
+export function fitsColumn(type: ColumnType, value: unknown): boolean {
   switch (type) {
     case 'uuid':
       return typeof value === 'string' && UUID_RE.test(value);
@@ -130,7 +157,7 @@ function fitsColumn(type: ColumnType, value: unknown): boolean {
     case 'boolean':
       return typeof value === 'boolean' || value === 'true' || value === 'false';
     case 'timestamp':
-      return typeof value === 'string' && (DAY_RE.test(value) || !Number.isNaN(Date.parse(value)));
+      return typeof value === 'string' && isTimestamp(value);
     case 'text':
       return typeof value === 'string' || typeof value === 'number';
   }
