@@ -167,7 +167,7 @@
       box-shadow var(--duration-fast) var(--ease-standard);
   }
   .condition-input:focus {
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
     box-shadow: var(--shadow-elevation-1);
   }
   .condition-input.invalid {

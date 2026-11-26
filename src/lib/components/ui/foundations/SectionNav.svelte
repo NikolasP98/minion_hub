@@ -232,7 +232,7 @@
     font: inherit;
   }
   .nav-search input:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
   .visually-hidden {
@@ -299,7 +299,7 @@
     font-weight: var(--font-weight-semibold, 600);
   }
   .nav-item:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 2px;
   }
   .nav-item:disabled,

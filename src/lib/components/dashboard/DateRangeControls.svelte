@@ -338,7 +338,7 @@
   }
   .dr-field input:focus-visible {
     outline: none;
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   .dr-quick {
     position: relative;
@@ -366,7 +366,6 @@
     color: var(--color-text-primary);
   }
   .dr-quick :global(.dr-cfg-btn:focus-visible) {
-    outline: none;
     box-shadow: var(--shadow-focus);
   }
   .dr-menu {

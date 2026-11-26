@@ -230,7 +230,7 @@
   }
   .fre-search:focus {
     outline: none;
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   .fre-date {
     flex: 1;
@@ -245,7 +245,7 @@
   }
   .fre-date:focus {
     outline: none;
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   .fre-list {
     display: flex;

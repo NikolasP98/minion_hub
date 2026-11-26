@@ -112,7 +112,7 @@
   }
   .fam-search:focus {
     outline: none;
-    border-color: var(--color-accent);
+    border-color: var(--color-focus-ring);
   }
   .fam-list {
     display: flex;

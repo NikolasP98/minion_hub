@@ -320,7 +320,7 @@
   }
   .cic-input:focus {
     outline: none;
-    border-color: color-mix(in srgb, var(--color-accent) 50%, var(--hairline));
+    border-color: color-mix(in srgb, var(--color-focus-ring) 50%, var(--hairline));
   }
   .cic-input:disabled {
     opacity: 0.5;

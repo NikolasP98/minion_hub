@@ -361,7 +361,7 @@
   }
   [data-part='titlebar']:focus-visible,
   [data-component='draggable-window']:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: -2px;
   }
   .window-grip {
@@ -413,7 +413,7 @@
   }
   [data-part='titlebar'] button:focus-visible,
   [data-part='resize-handle']:focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid var(--color-focus-ring);
     outline-offset: 1px;
   }
   [data-part='body'] {

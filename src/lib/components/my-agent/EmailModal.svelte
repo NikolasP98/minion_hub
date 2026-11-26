@@ -604,7 +604,7 @@
   }
   .draft:focus {
     outline: none;
-    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+    border-color: color-mix(in srgb, var(--color-focus-ring) 55%, transparent);
   }
   .composer-tools {
     display: flex;
@@ -623,7 +623,7 @@
   }
   .steer:focus {
     outline: none;
-    border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+    border-color: color-mix(in srgb, var(--color-focus-ring) 45%, transparent);
   }
   :global(.ghost-btn) {
     display: inline-flex;

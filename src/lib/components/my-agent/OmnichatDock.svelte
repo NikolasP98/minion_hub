@@ -610,7 +610,7 @@
     outline: none;
   }
   .reply-input:focus {
-    border-color: color-mix(in srgb, var(--color-accent) 50%, transparent);
+    border-color: color-mix(in srgb, var(--color-focus-ring) 50%, transparent);
   }
   .reply-input::placeholder {
     color: color-mix(in srgb, var(--color-foreground) 30%, transparent);

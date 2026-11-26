@@ -129,7 +129,6 @@
     cursor: not-allowed;
   }
   .seg-btn:focus-visible {
-    outline: none;
     box-shadow: var(--shadow-focus);
   }
   /* Divider before a trailing (non-selectable) affordance. */

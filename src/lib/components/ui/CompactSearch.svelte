@@ -72,7 +72,7 @@
   input:focus {
     outline: none;
     background: var(--color-surface-3);
-    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+    border-color: color-mix(in srgb, var(--color-focus-ring) 55%, transparent);
   }
   input:focus-visible {
     box-shadow: var(--shadow-focus);
