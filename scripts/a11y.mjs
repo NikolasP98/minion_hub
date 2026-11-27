@@ -26,6 +26,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -48,6 +49,8 @@ const TAGS_FILE = path.join(ROOT, 'tests', 'ui-audit', 'a11y-tags.json');
 const UNMEASURED = 'unmeasured';
 const WORKSHOP_PORT = 18907;
 const ARIA_PORT = 18908;
+/** The story run takes about 6 minutes in CI; the job's own limit is 25. */
+const STORY_RUN_LIMIT_MS = Number(process.env.A11Y_STORY_RUN_LIMIT_MS) || 11 * 60_000;
 
 /** Pure. */
 export function parseArgs(argv) {
@@ -244,21 +247,38 @@ export function ledgerGate(compare, options, extra = {}) {
 const log = (message) => console.error(`a11y: ${message}`);
 
 /** Run a child; its output goes to OUR stderr so stdout stays one JSON document. */
-function run(command, args, env = {}, scan) {
+function run(command, args, env = {}, scan, limitMs) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: ROOT,
       env: { ...process.env, ...env },
       stdio: ['ignore', 'pipe', 'pipe'],
+      // Its own process group when it has a limit, so the kill also takes its browser.
+      detached: Boolean(limitMs),
     });
     let matched = false;
+    let timedOut = false;
+    // A child that outlives its limit is killed: a hung runner must not eat the whole CI job.
+    const limit =
+      limitMs &&
+      setTimeout(() => {
+        timedOut = true;
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          child.kill('SIGKILL');
+        }
+      }, limitMs);
     for (const stream of [child.stdout, child.stderr])
       stream.on('data', (chunk) => {
         if (scan?.test(String(chunk))) matched = true;
         process.stderr.write(chunk);
       });
-    child.on('error', () => resolve({ code: 127, matched }));
-    child.on('exit', (code) => resolve({ code: code ?? 1, matched }));
+    child.on('error', () => (clearTimeout(limit), resolve({ code: 127, matched, timedOut })));
+    child.on(
+      'exit',
+      (code) => (clearTimeout(limit), resolve({ code: code ?? 1, matched, timedOut })),
+    );
   });
 }
 
@@ -440,10 +460,13 @@ async function stories(options, ledger, tags) {
         'storybook',
         ...(options.stories ? [options.stories] : []),
         '--reporter=json',
-        `--outputFile=${out}`,
+        // Also the plain reporter: it names each story file as it finishes, so a hang shows where.
+        '--reporter=default',
+        `--outputFile.json=${out}`,
       ],
       { STORYBOOK_TESTS: '1' },
       /optimized dependencies changed/,
+      STORY_RUN_LIMIT_MS,
     );
   // On a cold dependency cache Vite re-bundles mid-run and reloads the page: story files fail
   // to import and others are measured half-styled. That run is void; the cache is warm now.
@@ -451,7 +474,17 @@ async function stories(options, ledger, tags) {
   const reuse =
     options.artifacts && path.join(path.resolve(options.artifacts), 'stories-vitest.json');
   if (reuse) return judge(reuse, false);
-  const coldCacheRerun = (await once()).matched;
+  let first = await once();
+  // Seen twice in CI (master ec24b96b, PR #756): the browser runner goes silent and never ends.
+  // A healthy run takes about 6 minutes; a killed one has measured nothing, so it runs again.
+  if (first.timedOut) {
+    log('stories: the story runner hung and was killed after its time limit; running once more');
+    rmSync(out, { force: true });
+    first = await once();
+    if (first.timedOut)
+      return { gate: { status: 'error', message: 'the story runner hung twice (time limit)' } };
+  }
+  const coldCacheRerun = first.matched;
   if (coldCacheRerun) {
     log('stories: the dependency cache was cold (Vite reloaded mid-run); running once more');
     await once();
