@@ -52,6 +52,8 @@ test('data table: default and sorted by name', async ({ page }) => {
   await pin(main, 'datatable-sorted');
 });
 
+// TODO(handoff): this snapshot pins the week view AS IT IS: no grid, row or column roles, a flat
+// run of day labels and buttons (meta proposals/2026-11-20-hub-accessibility-program.md, item 24).
 test('booking calendar: default week', async ({ page }) => {
   const main = await open(page, 'calendar');
   await expect(main.getByText('Carla Mendoza').first()).toBeVisible();
