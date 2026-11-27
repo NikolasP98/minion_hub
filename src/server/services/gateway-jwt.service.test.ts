@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   insertGatewaySigningKey: vi.fn(),
   openSecret: vi.fn(),
   sealSecret: vi.fn(),
+  getPersonalAssistantId: vi.fn(),
 }));
 
 vi.mock('$env/dynamic/private', () => ({
@@ -28,6 +29,10 @@ vi.mock('./gateway-signing-key.repository', () => ({
   insertGatewaySigningKey: mocks.insertGatewaySigningKey,
 }));
 
+vi.mock('./personal-agent.service', () => ({
+  getPersonalAssistantId: mocks.getPersonalAssistantId,
+}));
+
 vi.mock('@minion-stack/db/pg', () => ({
   openSecret: mocks.openSecret,
   sealSecret: mocks.sealSecret,
@@ -37,6 +42,7 @@ describe('gateway JWT issuance', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasCanonicalMembership.mockResolvedValue(true);
+    mocks.getPersonalAssistantId.mockResolvedValue(null);
   });
 
   test('reads identity and signing material without depending on PostgREST', async () => {
@@ -183,4 +189,68 @@ describe('spec 045 issuance claims', () => {
       expect(() => gatewayAudience(url)).toThrow();
     },
   );
+});
+
+describe("spec 117: the token names the caller's own assistant", () => {
+  async function issueWith(assigned: string[]) {
+    const { exportJWK, generateKeyPair, decodeJwt } = await import('jose');
+    const { privateKey } = await generateKeyPair('EdDSA', { extractable: true });
+    mocks.openSecret.mockReturnValue(JSON.stringify(await exportJWK(privateKey)));
+    mocks.listActiveGatewaySigningKeys.mockResolvedValue([
+      { kid: 'k', alg: 'EdDSA', public_jwk: {}, private_ciphertext: 'c', private_iv: 'i' },
+    ]);
+    mocks.hasCanonicalMembership.mockResolvedValue(true);
+    mocks.loadCanonicalProfile.mockResolvedValue({ id: 'u', role: 'user' });
+    const rows = assigned.map((agentId) => ({ agentId }));
+    const db = {
+      select: () => ({ from: () => ({ innerJoin: () => ({ where: async () => rows }) }) }),
+    };
+    const { issueGatewayJwt } = await import('./gateway-jwt.service');
+    const result = await issueGatewayJwt({ tenantId: 'org-a', db } as never, 'u');
+    return decodeJwt(result.token).agentIds;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test('an assistant whose id matches the user id is added', async () => {
+    mocks.getPersonalAssistantId.mockResolvedValue('personal-u');
+    expect(await issueWith([])).toEqual(['personal-u']);
+    // Looked up for this caller only.
+    expect(mocks.getPersonalAssistantId).toHaveBeenCalledWith('u');
+  });
+
+  test('a legacy assistant id is used as stored, never derived from the user id', async () => {
+    mocks.getPersonalAssistantId.mockResolvedValue('personal-legacy-1234');
+    expect(await issueWith([])).toEqual(['personal-legacy-1234']);
+  });
+
+  test('the assistant id is lower-cased the way the gateway normalises agent ids', async () => {
+    mocks.getPersonalAssistantId.mockResolvedValue('Personal-Legacy-ABC');
+    expect(await issueWith([])).toEqual(['personal-legacy-abc']);
+  });
+
+  test('no assistant leaves the list as today', async () => {
+    mocks.getPersonalAssistantId.mockResolvedValue(null);
+    expect(await issueWith([])).toEqual([]);
+    expect(await issueWith(['agent-a'])).toEqual(['agent-a']);
+  });
+
+  test('explicit assignments are kept and the assistant is added once', async () => {
+    mocks.getPersonalAssistantId.mockResolvedValue('personal-u');
+    expect(await issueWith(['agent-a', 'personal-u'])).toEqual(['agent-a', 'personal-u']);
+    expect(await issueWith(['agent-a'])).toEqual(['agent-a', 'personal-u']);
+  });
+
+  test("a failing lookup keeps today's list, logs, and still issues the token", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.getPersonalAssistantId.mockRejectedValue(new Error('pool down'));
+    try {
+      expect(await issueWith(['agent-a'])).toEqual(['agent-a']);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });

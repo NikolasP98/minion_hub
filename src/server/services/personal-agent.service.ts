@@ -3,6 +3,7 @@ import { error as httpError } from '@sveltejs/kit';
 import { personalAgents, profiles } from '@minion-stack/db/pg';
 import { newId } from '$server/db/utils';
 import { getDb } from '$server/db/client';
+import { getCoreDb } from '$server/db/pg-client';
 import { assignAgentToUser } from './user-agents.service';
 import { resolveGatewayId, resolveServerId } from '$server/services/gateway.pg.service';
 import type { CoreCtx } from '$server/auth/core-ctx';
@@ -169,6 +170,19 @@ export async function getPersonalAgent(
     .limit(1);
 
   return rows[0] ? reshape(rows[0], userId) : null;
+}
+
+/**
+ * The stored agent id of this profile's personal assistant, or null. Never derive
+ * it as `personal-<userId>`: legacy rows keep a different id (spec 117 A7).
+ */
+export async function getPersonalAssistantId(profileId: string): Promise<string | null> {
+  const [row] = await getCoreDb()
+    .select({ agentId: personalAgents.agentId })
+    .from(personalAgents)
+    .where(eq(personalAgents.profileId, profileId))
+    .limit(1);
+  return row?.agentId ?? null;
 }
 
 export async function updatePersonalAgent(
