@@ -138,12 +138,13 @@ jobs:
           node node_modules/playwright/cli.js install chromium
 
       # A cold bundler cache voids a story run (the command then runs the stories twice);
-      # keeping it warm between runs saves that second pass.
+      # keeping it warm between runs saves that second pass. The key also covers the story
+      # configs, so a changed prebundle list (optimizeDeps.include) saves a fresh cache.
       - name: Restore the story dependency cache
         uses: actions/cache@v4
         with:
           path: node_modules/.cache/storybook
-          key: a11y-story-deps-${{ hashFiles('bun.lock') }}
+          key: a11y-story-deps-${{ hashFiles('bun.lock', 'vitest.config.ts', '.storybook/**') }}
 
       - name: Accessibility gates (suppressions, patterns, specs, stories)
         env:

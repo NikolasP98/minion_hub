@@ -475,9 +475,10 @@ async function stories(options, ledger, tags) {
     options.artifacts && path.join(path.resolve(options.artifacts), 'stories-vitest.json');
   if (reuse) return judge(reuse, false);
   let first = await once();
-  // TODO(handoff): cause unknown (meta proposals/2026-11-20-hub-accessibility-program.md, item 25).
-  // Seen twice in CI (master ec24b96b, PR #756): the browser runner goes silent and never ends.
-  // A healthy run takes about 6 minutes; a killed one has measured nothing, so it runs again.
+  // Both CI hangs (master ec24b96b, PR #756) went silent right after Vite's mid-run
+  // "optimized dependencies changed. reloading" (a story newly reached @zag-js/steps, which the
+  // cached prebundle lacked; now in vitest.config.ts optimizeDeps.include). The kill + one re-run
+  // stays as a backstop: a killed run has measured nothing.
   if (first.timedOut) {
     log('stories: the story runner hung and was killed after its time limit; running once more');
     rmSync(out, { force: true });
@@ -487,7 +488,10 @@ async function stories(options, ledger, tags) {
   }
   const coldCacheRerun = first.matched;
   if (coldCacheRerun) {
-    log('stories: the dependency cache was cold (Vite reloaded mid-run); running once more');
+    log(
+      'stories: Vite reloaded mid-run (see "dependency optimized:" above); running once more.' +
+        ' Add that dependency to optimizeDeps.include in vitest.config.ts to stop this.',
+    );
     await once();
   }
   return judge(out, coldCacheRerun);
