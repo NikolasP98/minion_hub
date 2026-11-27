@@ -235,6 +235,7 @@
   </PageHeader>
 
   <DataTable
+    ariaLabel={m.stock_items_title()}
     class="flex-1 min-h-0"
     tableId="stock.items"
     idColumn={{ value: (it) => it.code }}

@@ -351,6 +351,7 @@
     {/if}
   {/snippet}
   <DataTable
+    ariaLabel={m.team_tab_timeoff()}
     class="requests"
     {columns}
     data={rows}

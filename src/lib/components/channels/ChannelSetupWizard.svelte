@@ -299,7 +299,7 @@
           type="button"
           class="absolute right-0.5 top-1/2 -translate-y-1/2"
           onclick={() => (revealToken = !revealToken)}
-          aria-label={revealToken ? 'Hide token' : 'Show token'}
+          aria-label={revealToken ? m.a11y_hide_token() : m.a11y_show_token()}
         >
           {#if revealToken}<EyeOff size={iconSizes.sm} />{:else}<Eye size={iconSizes.sm} />{/if}
         </Button>

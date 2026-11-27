@@ -180,6 +180,7 @@
                 _num: i + 1,
               }))}
               <DataTable
+                ariaLabel={m.table_name_orchestration_tasks()}
                 variant="plain"
                 data={tasks}
                 columns={taskColumns}

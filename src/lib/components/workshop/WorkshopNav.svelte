@@ -37,4 +37,4 @@
   );
 </script>
 
-<SideNav {items} {activeId} ariaLabel="Workshop" header={m.nav_workshop()} />
+<SideNav {items} {activeId} ariaLabel={m.nav_workshop()} header={m.nav_workshop()} />

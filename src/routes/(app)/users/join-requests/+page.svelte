@@ -142,7 +142,7 @@
             : { kind: 'ready' }}
           compact
         >
-          <ul class="request-list" aria-label="Pending join requests">
+          <ul class="request-list" aria-label={m.a11y_pending_join_requests()}>
             {#each data.requests as request (request.id)}
               <li class="request-row">
                 <div class="request-copy">
@@ -249,7 +249,7 @@
             : { kind: 'ready' }}
           compact
         >
-          <ul class="link-list" aria-label="Active join links">
+          <ul class="link-list" aria-label={m.a11y_active_join_links()}>
             {#each data.links as link (link.id)}
               <li class="link-row">
                 <span class="link-meta">

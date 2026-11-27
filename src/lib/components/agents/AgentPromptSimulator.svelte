@@ -562,7 +562,7 @@
         variant="ghost"
         type="button"
         class="lg:hidden absolute inset-0 z-[var(--layer-navigation)] bg-[color-mix(in_srgb,var(--color-canvas)_40%,transparent)]"
-        aria-label="Close sections"
+        aria-label={m.a11y_close_sections()}
         onclick={() => (railOpenMobile = false)}
       ></Button>
       <div
@@ -725,7 +725,7 @@
           variant="ghost"
           type="button"
           class="absolute inset-0 z-[var(--layer-sticky)] bg-transparent cursor-default"
-          aria-label="Close inspector"
+          aria-label={m.a11y_close_inspector()}
           onclick={closeInspector}
         ></Button>
         <aside
@@ -743,7 +743,7 @@
               type="button"
               class="text-muted hover:text-foreground transition-colors cursor-pointer text-sm leading-none px-1"
               onclick={closeInspector}
-              aria-label="Close"
+              aria-label={m.common_close()}
             >
               ✕
             </Button>

@@ -243,7 +243,7 @@
       type="button"
       onclick={() => togglePalette()}
       class="flex items-center justify-center w-9 h-[var(--control-height-lg)] rounded-lg text-muted hover:text-foreground hover:bg-bg3 transition-all duration-[var(--duration-fast)]"
-      aria-label="Open command palette"
+      aria-label={m.a11y_open_command_palette()}
       title="Command palette"
     >
       <Search size={18} />

@@ -155,6 +155,7 @@
   <h2 id="record-locks-external-title" class="t-title">{m.record_locks_external_title()}</h2>
   <Card padding="none">
     <DataTable
+      ariaLabel={m.record_locks_external_title()}
       variant="plain"
       data={groups}
       {columns}

@@ -92,6 +92,7 @@
       data: rows,
       columns,
       getRowId: (row: Row) => row.id,
+      ariaLabel: 'Products',
       height: '28rem',
       onRowClick: fn(),
       onSelectionChange: fn(),

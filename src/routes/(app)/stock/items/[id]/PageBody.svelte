@@ -1017,6 +1017,7 @@
         <p class="t-caption">{m.stock_item_consumed_by_empty()}</p>
       {:else}
         <DataTable
+          ariaLabel={m.stock_item_consumed_by_title()}
           variant="plain"
           data={data.consumedBy}
           columns={consumedByColumns}
@@ -1056,6 +1057,7 @@
       {:else}
         <div class="stock-table">
           <DataTable
+            ariaLabel={m.stock_item_stock_title()}
             variant="plain"
             data={valuationRows}
             columns={stockColumns}
@@ -1119,6 +1121,7 @@
           </p>
         {/if}
         <DataTable
+          ariaLabel={m.stock_item_ledger_title()}
           variant="plain"
           data={ledgerRows}
           columns={ledgerColumns}

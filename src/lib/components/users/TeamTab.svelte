@@ -372,7 +372,7 @@
             {#snippet trigger()}
               <span
                 class="inline-flex items-center justify-center text-muted hover:text-foreground transition-colors p-1 rounded-md hover:bg-bg2"
-                aria-label="Actions"
+                aria-label={m.users_actions()}
               >
                 <MoreVertical size={iconSizes.sm} aria-hidden="true" />
               </span>
@@ -380,6 +380,7 @@
           </Dropdown>
         {/snippet}
         <DataTable
+          ariaLabel={m.users_team()}
           variant="plain"
           data={users}
           columns={rosterColumns}
@@ -481,6 +482,7 @@
                 </Button>
               {/snippet}
               <DataTable
+                ariaLabel={m.a11y_active_join_links()}
                 variant="plain"
                 data={joinLinks}
                 columns={joinLinkColumns}
@@ -545,6 +547,7 @@
                 </div>
               {/snippet}
               <DataTable
+                ariaLabel={m.a11y_pending_join_requests()}
                 variant="plain"
                 data={pendingRequests}
                 columns={joinRequestColumns}

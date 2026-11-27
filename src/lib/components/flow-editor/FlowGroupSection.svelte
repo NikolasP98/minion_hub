@@ -113,7 +113,7 @@
           onclick={onRenameGroup}
           class="p-1.5 rounded text-muted hover:text-foreground hover:bg-bg3"
           title="Rename group"
-          aria-label="Rename group"><Pencil size={iconSizes.sm} /></Button
+          aria-label={m.a11y_rename_group()}><Pencil size={iconSizes.sm} /></Button
         >
         <Button
           variant="ghost"
@@ -121,7 +121,7 @@
           onclick={onDeleteGroup}
           class="p-1.5 rounded text-muted hover:text-[var(--color-danger-fg)] hover:bg-bg3"
           title="Delete group"
-          aria-label="Delete group"><Trash2 size={iconSizes.sm} /></Button
+          aria-label={m.agentGroup_delete()}><Trash2 size={iconSizes.sm} /></Button
         >
       {/if}
     </div>

@@ -21,6 +21,7 @@ const Table = DataTable as Component<{
   data: Row[];
   columns: { key: string; label: string }[];
   getRowId: (row: Row) => string;
+  ariaLabel?: string;
   selectable: boolean;
   variant: 'plain';
   tagScope: 'crm';

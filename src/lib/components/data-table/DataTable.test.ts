@@ -109,6 +109,8 @@ type DataTableProps<T> = {
   data: T[];
   columns: DataColumn<T>[];
   getRowId: (row: T) => string;
+  // Required by the component; the tests' tables do not need a name.
+  ariaLabel?: string;
 };
 type ServerMode = import('./DataTable.svelte').ServerMode;
 
@@ -147,7 +149,7 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
       { data: rows, error: new Error('boom') },
     ]) {
       const { container, unmount } = render(RowDataTable, {
-        props: { columns, getRowId: (r: Row) => r.id, ...props },
+        props: { columns, getRowId: (r: Row) => r.id, ariaLabel: 'Customers', ...props },
       });
       const el = wrapper(container);
       expect(el.getAttribute('role')).toBeNull();
@@ -158,7 +160,7 @@ describe('DataTable DOM mount (browser=true row virtualization)', () => {
       unmount();
     }
     const { container, unmount } = render(RowDataTable, {
-      props: { data: rows, columns, getRowId: (r: Row) => r.id },
+      props: { data: rows, columns, getRowId: (r: Row) => r.id, ariaLabel: 'Customers' },
     });
     await waitFor(() => expect(container.querySelector('tbody tr[data-row-index]')).not.toBeNull());
     const el = wrapper(container);
@@ -2048,7 +2050,13 @@ describe('DataTable: keyboard cell cursor (grid pattern)', () => {
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
   async function mount(props: Record<string, unknown> = {}) {
     const view = render(CursorTable, {
-      props: { data: wideRows, columns: wideCols, getRowId: (r: Wide) => r.id, ...props },
+      props: {
+        data: wideRows,
+        columns: wideCols,
+        getRowId: (r: Wide) => r.id,
+        ariaLabel: 'Customers',
+        ...props,
+      },
     });
     await waitFor(() =>
       expect(view.container.querySelectorAll('tbody tr[data-row-index]').length).toBe(3),

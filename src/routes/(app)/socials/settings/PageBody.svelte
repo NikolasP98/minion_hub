@@ -364,6 +364,7 @@
           <p class="t-caption mt-3">{m.ads_sync_history_empty()}</p>
         {:else}
           <DataTable
+            ariaLabel={m.ads_sync_card()}
             class="mt-3"
             height="22rem"
             columns={jobColumns}

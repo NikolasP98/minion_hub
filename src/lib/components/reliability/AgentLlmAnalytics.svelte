@@ -521,7 +521,7 @@
                 type="button"
                 onclick={() => clearFilter(dim)}
                 class="rounded-full"
-                aria-label={`Clear ${dim} filter ${val}`}
+                aria-label={m.a11y_clear_filter_value({ dim, val })}
               >
                 <span class="opacity-70">{dim}:</span>
                 <span class="font-semibold">{val}</span>

@@ -99,6 +99,7 @@
 <div class="shift-detail">
   <PaymentSummaryTable {total} {methodTotals} {expected} {counted} />
   <DataTable
+    ariaLabel={m.pos_history_tab_tickets()}
     class="shift-table"
     columns={ticketColumns}
     data={tickets}

@@ -32,6 +32,8 @@ const EXCEPTIONS = join(root, 'scripts', 'design-lint-exceptions.json');
 
 const COLOR_ALLOW = [/app\.css$/, /themes\/presets\.ts$/, /themes\/.*\.ts$/];
 const PRIMITIVE_DIR = /lib\/components\/ui\//;
+// Stories, tests and fixtures are not shipped UI: their literal labels are sample content.
+const NOT_PRODUCT = /\.stories\.svelte$|\/stories\/|\.(test|spec)\.|fixture|harness|\/_test\//i;
 
 const RULES = {
   'raw-color': {
@@ -120,6 +122,19 @@ const RULES = {
     // named opt-out must sit in the same class string. The baseline is the text fields
     // whose focus indicator is the text cursor; it may only go down.
     re: /^(?!.*(?:focus-visible:|focus-within:|focus:|focus-ring-none)).*\boutline-none\b.*$/gm,
+  },
+  'hardcoded-a11y-name': {
+    desc: 'literal aria-label / ariaLabel / alt text — route it through paraglide so a screen reader reads it in the UI language (spec 155)',
+    test: (file) => /\.svelte$/.test(file) && !NOT_PRODUCT.test(file),
+    // A quoted value with at least one letter. `{expression}` values and `alt=""` are fine.
+    re: /(?<![\w-])(?:aria-label|ariaLabel|alt)="(?=[^"{]*\p{L})[^"{]*"/gu,
+  },
+  'hardcoded-hint-text': {
+    desc: 'literal title / placeholder text — visible copy that is not translated (spec 155); the count may only go down',
+    test: (file) => /\.svelte$/.test(file) && !NOT_PRODUCT.test(file),
+    // Three letters in a row = a word. Format examples (YYYY-MM-DD, HH:mm) are not copy.
+    re: /(?<![\w-])(?:title|placeholder)="(?=[^"{]*\p{L}{3})[^"{]*"/gu,
+    filter: (match) => !/="[YMDHhmsAaPp:\-\/. ]+"$/.test(match[0]),
   },
   'raw-control-height': {
     desc: 'raw 20–48px height outside ui/ — use a --control-height-* token',

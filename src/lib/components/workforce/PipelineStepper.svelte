@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   // Extracted verbatim from workforce/issues/[id]/+page.svelte so the pipeline
   // builder's live preview renders the SAME stepper as the issue page.
   export type StepState = 'done' | 'current' | 'pending';
@@ -20,10 +21,10 @@
     >
       <span>{step.label}</span>
       {#if step.who}<span class="opacity-75">· {step.who}</span>{/if}
-      {#if step.state === 'done'}<span aria-label="done">✓</span>{/if}
+      {#if step.state === 'done'}<span aria-label={m.misc_done()}>✓</span>{/if}
       {#if step.state === 'current'}<span
           class="inline-block size-1.5 rounded-full bg-info animate-pulse"
-          aria-label="current step"
+          aria-label={m.a11y_current_step()}
         ></span>{/if}
     </li>
   {/each}

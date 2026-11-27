@@ -513,7 +513,9 @@
     getRowLabel?: (row: T) => string;
     /** Grid preserves spreadsheet selection/copy; table opts into native reading semantics. */
     interactionMode?: 'table' | 'grid';
-    ariaLabel?: string;
+    /** What the table lists ("API keys", "Customers"), translated. Required: a page with two
+     *  tables called "Table" tells a screen-reader user nothing. */
+    ariaLabel: string;
     addLabel?: string;
     onAdd?: () => void;
     /** When provided, the + button opens this menu instead of calling onAdd. */
@@ -4007,7 +4009,7 @@
     class:dt-dragging={dragging}
     tabindex={gridMode ? 0 : undefined}
     role={gridRole ? 'grid' : undefined}
-    aria-label={gridRole ? (ariaLabel ?? m.data_view_table()) : undefined}
+    aria-label={gridRole ? ariaLabel : undefined}
     aria-rowcount={gridRole ? flatItems.length + 1 : undefined}
     aria-colcount={gridRole
       ? visibleColumns.length +
@@ -4066,6 +4068,7 @@
     {:else}
       <table
         role={gridMode ? 'presentation' : undefined}
+        aria-label={gridMode ? undefined : ariaLabel}
         bind:this={tableEl}
         class="dt-table text-sm"
         class:dragging={hdrDrag?.active}

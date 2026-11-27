@@ -123,6 +123,7 @@
     </div>
   {:else}
     <DataTable
+      ariaLabel={m.ads_nav_posts()}
       class="flex-1 min-h-0"
       {columns}
       data={posts}

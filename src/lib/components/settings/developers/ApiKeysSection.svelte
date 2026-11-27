@@ -226,6 +226,7 @@
   </div>
   <Card padding="none">
     <DataTable
+      ariaLabel={m.settings_developers_keys_title()}
       variant="plain"
       data={keys}
       {columns}

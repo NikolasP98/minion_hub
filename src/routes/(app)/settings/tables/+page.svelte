@@ -228,6 +228,7 @@
   </PageHeader>
   <div class="flex-1 min-h-0 p-4 tables-page">
     <DataTable
+      ariaLabel={m.settings_tables_title()}
       data={rows}
       {columns}
       getRowId={(r) => r.id}
@@ -262,6 +263,7 @@
       >
     </div>
     <DataTable
+      ariaLabel={m.settings_tables_col_fields()}
       variant="plain"
       data={fieldRows(def)}
       columns={fieldColumns}

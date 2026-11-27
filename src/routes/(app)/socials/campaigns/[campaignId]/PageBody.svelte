@@ -257,6 +257,7 @@
     <div class="card">
       <div class="card-h">{m.ads_campaign_detail_ads_title()}</div>
       <DataTable
+        ariaLabel={m.ads_campaign_detail_ads_title()}
         height="24rem"
         columns={adColumns}
         data={campaign.ads}
@@ -305,6 +306,7 @@
       <div class="card-h">{m.ads_campaign_leads_title()} · {fmtInt(leads.length)}</div>
       <p class="card-sub">{m.ads_campaign_leads_desc()}</p>
       <DataTable
+        ariaLabel={m.ads_campaign_leads_title()}
         height="24rem"
         columns={leadColumns}
         data={leads}

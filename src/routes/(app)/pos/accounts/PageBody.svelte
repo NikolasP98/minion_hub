@@ -173,6 +173,7 @@
        once the resume step has a home that is not the till. See meta
        proposals/2026-09-13-pos-packages-plans-s1-followups.md §30. -->
   <DataTable
+    ariaLabel={m.pos_nav_accounts()}
     class="flex-1 min-h-0"
     {columns}
     data={data.accounts}

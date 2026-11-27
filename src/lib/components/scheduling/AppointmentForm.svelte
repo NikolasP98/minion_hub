@@ -673,6 +673,7 @@
           </Button>
         {/snippet}
         <DataTable
+          ariaLabel={m.sched_detail_services()}
           variant="plain"
           data={pickedTypes}
           columns={visibleSvcColumns}

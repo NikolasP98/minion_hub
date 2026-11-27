@@ -254,6 +254,7 @@
       <div class="period-group">
         <div class="table-wrap">
           <DataTable
+            ariaLabel={m.fin_purchases_title()}
             variant="plain"
             data={data.purchases}
             {columns}

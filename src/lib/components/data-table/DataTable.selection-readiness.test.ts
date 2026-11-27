@@ -19,6 +19,7 @@ type Props = {
   data: Row[];
   columns: DataColumn<Row>[];
   getRowId: (row: Row) => string;
+  ariaLabel?: string;
   selectable: boolean;
   searchable?: boolean;
   variant: 'plain';

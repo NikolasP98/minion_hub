@@ -20,7 +20,7 @@
     </span>
   {/if}
   <span class="flex-1"></span>
-  <Button variant="ghost" class="close-btn" onclick={onClose} aria-label="Close">
+  <Button variant="ghost" class="close-btn" onclick={onClose} aria-label={m.common_close()}>
     <X size={iconSizes.md} />
   </Button>
 </div>
