@@ -193,7 +193,7 @@
             </div>{/snippet}</FormField
         >
         {#each analyses[variable.id]?.diagnostics ?? [] as diagnostic, diagnosticIndex (`${diagnostic.code}:${diagnostic.from}:${diagnostic.to}:${diagnosticIndex}`)}
-          <p class="form-error" role="alert">{diagnosticMessage(diagnostic)}</p>
+          <p class="form-error" role="status">{diagnosticMessage(diagnostic)}</p>
         {/each}
       </article>
     {/each}

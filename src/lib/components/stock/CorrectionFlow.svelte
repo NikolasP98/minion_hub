@@ -335,7 +335,7 @@
   {/each}
 
   {#if storageBlocked}
-    <p class="t-caption corr-err" role="alert">{m.stock_corr_storage()}</p>
+    <p class="t-caption corr-err">{m.stock_corr_storage()}</p>
   {:else if !blocked}
     <FormField label={m.stock_corr_reason_label()} helper={m.stock_corr_reason_hint()} required>
       {#snippet children(control)}
@@ -393,7 +393,7 @@
         {#if !preview.eligible}
           <p class="t-label corr-err">{m.stock_corr_blocked_title()}</p>
           {#each preview.blockers as code (code)}
-            <p class="t-caption corr-err" role="alert">{message(code)}</p>
+            <p class="t-caption corr-err">{message(code)}</p>
           {/each}
         {/if}
       </section>

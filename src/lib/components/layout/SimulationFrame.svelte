@@ -1,8 +1,14 @@
 <script lang="ts">
   import type { RoleSimulationState } from '$lib/role-simulation';
   import * as m from '$lib/paraglide/messages';
+  import { announce } from '$lib/a11y/announce';
   let { state: simulation }: { state: RoleSimulationState } = $props();
   let frame = $state<HTMLDivElement>();
+  // Said once when a simulation starts (and again when the role changes).
+  $effect(() => {
+    if (simulation.active)
+      announce(m.roleSimulation_active({ role: simulation.roleName ?? simulation.roleKey ?? '' }));
+  });
 
   // Native dialogs paint in the browser's top layer, above every z-index.
   // A manual popover keeps the perimeter there too; lift it again whenever
@@ -52,9 +58,6 @@
     data-role-simulation-frame
     aria-hidden="true"
   ></div>
-  <span role="status" aria-live="polite" class="sr-only">
-    {m.roleSimulation_active({ role: simulation.roleName ?? simulation.roleKey ?? '' })}
-  </span>
 {/if}
 
 <style>

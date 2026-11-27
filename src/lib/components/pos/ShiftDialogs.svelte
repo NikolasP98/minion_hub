@@ -239,7 +239,7 @@
     <div class="form">
       {#if totals === 'error'}
         <div class="totals-failed">
-          <p role="alert">{m.pos_shift_totals_failed()}</p>
+          <p role="status">{m.pos_shift_totals_failed()}</p>
           <Button type="button" size="sm" onclick={loadTotals}>{m.common_retry()}</Button>
         </div>
       {/if}

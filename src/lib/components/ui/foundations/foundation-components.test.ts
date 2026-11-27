@@ -52,7 +52,9 @@ describe('composition foundations', () => {
       props: { state: { kind: 'unavailable', title: 'Gateway offline' } },
     }).body;
     expect(error).toContain('data-state="error"');
-    expect(error).toContain('role="alert"');
+    // A failed load is announced without interrupting: nothing the user just did caused it.
+    expect(error).toContain('role="status"');
+    expect(error).not.toContain('role="alert"');
     expect(unavailable).toContain('data-state="unavailable"');
     expect(unavailable).toContain('Gateway offline');
   });

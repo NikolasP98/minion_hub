@@ -76,7 +76,6 @@
     <div class="flex flex-col gap-3">
       <p
         class="rounded-[var(--radius-md)] border border-[color-mix(in_srgb,var(--color-destructive)_30%,transparent)] bg-[color-mix(in_srgb,var(--color-destructive)_10%,transparent)] px-3 py-2 text-sm text-destructive"
-        role="alert"
       >
         {m.reset_invalidToken()}
       </p>

@@ -263,7 +263,7 @@
           )}>{m.asyncAction_reload()}</Button
       >{/if}
     {#each pulse.receipts as receipt (receipt.proposalId)}<PulseReceipt {receipt} />{/each}
-    {#if feedError}<p class="t-caption error" role="alert">{feedError}</p>{/if}
+    {#if feedError}<p class="t-caption error" role="status">{feedError}</p>{/if}
     {#if refreshPending}
       <Button
         variant="secondary"

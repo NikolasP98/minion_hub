@@ -6,7 +6,7 @@
 </script>
 
 {#if issue}
-  <span class="warning t-caption" role="alert">{m.pos_plan_schedule_invalid()}</span>
+  <span class="warning t-caption" role="status">{m.pos_plan_schedule_invalid()}</span>
 {/if}
 
 <style>

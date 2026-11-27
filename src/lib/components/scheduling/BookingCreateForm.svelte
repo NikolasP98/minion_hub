@@ -477,7 +477,7 @@
   {#if slotsLoading}
     <p class="t-caption">{m.sched_book_loading()}</p>
   {:else if slotError}
-    <div class="slot-error" role="alert">
+    <div class="slot-error" role="status">
       <p class="t-caption danger">{slotError}</p>
       <Button variant="outline" size="sm" onclick={loadSlots}>{m.common_retry()}</Button>
     </div>

@@ -73,7 +73,9 @@
   </label>
   <div data-part="control">{@render children(controlProps)}</div>
   {#if error}
-    <p id={errorId} data-part="error" role="alert">{error}</p>
+    <!-- Tied to the control (aria-describedby / aria-errormessage): read with the field,
+         announced politely when it appears. The form's own submit error is the alert. -->
+    <p id={errorId} data-part="error" role="status">{error}</p>
   {/if}
   {#if helper}
     <p id={helperId} data-part="helper">{helper}</p>

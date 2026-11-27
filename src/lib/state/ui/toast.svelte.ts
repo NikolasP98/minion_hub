@@ -1,4 +1,5 @@
 import * as toast from '@zag-js/toast';
+import { announce } from '$lib/a11y/announce';
 
 export const toaster = toast.createStore({
   placement: 'top-end',
@@ -7,6 +8,27 @@ export const toaster = toast.createStore({
   gap: 12,
   offsets: { top: '64px', right: '12px', left: 'auto', bottom: 'auto' },
 });
+
+// Every toast is SPOKEN through the shared announcer, not by the toast region: the
+// announcer exists before the (deferred) Toaster mounts, so an early toast is not lost, and
+// an error can interrupt while the rest waits its turn. Patched on the store so the helpers
+// below and the few direct `toaster.create` callers share it.
+function say(options: Partial<toast.Options>) {
+  const text = [options.title, options.description]
+    .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
+    .join('. ');
+  if (text) announce(text, options.type === 'error' ? 'assertive' : 'polite');
+}
+const createToast = toaster.create.bind(toaster);
+toaster.create = (options) => {
+  say(options);
+  return createToast(options);
+};
+const updateToast = toaster.update.bind(toaster);
+toaster.update = (id, options) => {
+  say(options);
+  return updateToast(id, options);
+};
 
 type ToastOverrides = Partial<toast.Options>;
 
@@ -54,10 +76,7 @@ export async function toastAsync<T>(
     const value = await promise;
     const outcome = messages.getOutcome(value);
 
-    const duration =
-      outcome.type === 'error' ? 8000
-      : outcome.type === 'warning' ? 6000
-      : 4000;
+    const duration = outcome.type === 'error' ? 8000 : outcome.type === 'warning' ? 6000 : 4000;
 
     toaster.update(id, {
       type: outcome.type,

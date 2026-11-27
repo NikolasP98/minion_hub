@@ -5,6 +5,7 @@
   import { FormField } from '$lib/components/ui/foundations';
   import TagChip from '$lib/components/tags/TagChip.svelte';
   import * as m from '$lib/paraglide/messages';
+  import { announce } from '$lib/a11y/announce';
   import { languageTag } from '$lib/paraglide/runtime';
   import {
     CUSTOM_PROPERTY_COLORS,
@@ -119,7 +120,6 @@
   let primaryVariableId = $state('');
   let initialFormulaSnapshot = $state('');
   let initialPresentationSnapshot = $state('');
-  let variableAnnouncement = $state('');
   let legacyRepair = $state<Exclude<LegacyFormulaEditorProjection, { state: 'ready' }> | null>(
     null,
   );
@@ -1126,7 +1126,7 @@
       {:else if type === 'formula'}
         <section class="formula-block">
           {#if legacyRepair}
-            <div class="formula-load-error" role="alert">
+            <div class="formula-load-error">
               <span>
                 {legacyRepair.state === 'restricted'
                   ? m.custom_columns_formula_legacy_restricted()
@@ -1155,12 +1155,11 @@
             diagnosticMessage={formulaDiagnostic}
             onchange={updateVariableDrafts}
             onanalysis={updateVariableAnalysis}
-            onannounce={(message) => (variableAnnouncement = message)}
+            onannounce={(message) => announce(message)}
           />
-          <p class="sr-only" aria-live="polite">{variableAnnouncement}</p>
           {#if formulaCatalogBusy}<p class="t-caption">{m.custom_columns_formula_loading()}</p>{/if}
           {#if formulaCatalogError}
-            <div class="formula-load-error" role="alert">
+            <div class="formula-load-error" role="status">
               <span>{formulaCatalogError}</span>
               <Button
                 variant="ghost"
@@ -1286,7 +1285,7 @@
                 (editing?.variablesRestricted ?? false)}
               onchange={(next) => (presentation = next)}
             />
-            {#if !presentationValid()}<p class="form-error" role="alert">
+            {#if !presentationValid()}<p class="form-error" role="status">
                 {m.custom_columns_format_invalid()}
               </p>{/if}
           {/if}

@@ -1062,13 +1062,10 @@
 
   <PageBody padding="compact" scroll="region">
     {#if cartStorageError}
-      <div class="banner storage-banner" role="alert">{cartStorageError}</div>
+      <div class="banner storage-banner" role="status">{cartStorageError}</div>
     {/if}
     {#if paymentPolicyState !== 'idle'}
-      <div
-        class="banner policy-banner"
-        role={paymentPolicyState === 'loading' ? 'status' : 'alert'}
-      >
+      <div class="banner policy-banner" role="status">
         <span>
           {paymentPolicyState === 'loading'
             ? m.pos_payment_policy_refreshing()
@@ -1084,7 +1081,7 @@
       </div>
     {/if}
     {#if sellSession.hydrated && cartProjectionError}
-      <div class="banner projection-banner" role="alert">
+      <div class="banner projection-banner" role="status">
         <span>{cartProjectionError}</span>
         {#if partyId}
           <Button size="xs" variant="outline" onclick={retryCartProjection}>

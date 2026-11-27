@@ -116,7 +116,7 @@
   {/snippet}
 
   {#if status === 'failed' || status === 'unavailable'}
-    <div class="health-alert" role="alert">
+    <div class="health-alert" role="status">
       <strong>{m.notif_healthRefreshFailed()}</strong>
       <span>
         {value ? m.notif_healthRefreshFailedStale() : m.notif_healthRefreshFailedEmpty()}

@@ -397,7 +397,7 @@
 
       {#if identityBlocking}
         {#each missing as k (k)}
-          <p class="alert t-caption" role="alert">{requirementText[k]()}</p>
+          <p class="alert t-caption">{requirementText[k]()}</p>
         {/each}
       {:else if !phone}
         <p class="note t-caption">{m.pos_customer_phone_reminder_hint()}</p>

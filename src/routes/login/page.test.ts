@@ -96,7 +96,7 @@ describe('development QA login', () => {
     render(LoginPage);
 
     await fireEvent.click(screen.getByRole('switch', { name: /Use a QA profile|Usar un perfil/i }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await screen.findByRole('status')).textContent).toMatch(
       /could not be loaded|No se pudieron/i,
     );
     await fireEvent.click(screen.getByRole('button', { name: /Retry|Reintentar/i }));

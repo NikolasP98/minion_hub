@@ -207,7 +207,7 @@
     {#if data.error}
       <div
         class="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm"
-        role="alert"
+        role="status"
       >
         <div class="flex items-start gap-3">
           {#if data.errorKind === 'unreachable'}

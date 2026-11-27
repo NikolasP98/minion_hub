@@ -97,7 +97,7 @@
     {@render retryButton()}
   </p>
 {:else if kind === 'partial'}
-  <div class="cs-banner" data-component="collection-state" data-state={kind} role="alert">
+  <div class="cs-banner" data-component="collection-state" data-state={kind} role="status">
     <p>{m.data_view_state_partial({ what: message ?? '' })}</p>
     {@render retryButton()}
   </div>

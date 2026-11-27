@@ -285,7 +285,7 @@
       {#if qaLoading}
         <p class="t-caption" role="status">{m.login_qa_loading()}</p>
       {:else if qaLoadError}
-        <div class="flex items-center justify-between gap-3" role="alert">
+        <div class="flex items-center justify-between gap-3" role="status">
           <span class="t-caption text-destructive">{m.login_qa_load_failed()}</span>
           <Button type="button" variant="ghost" size="sm" onclick={() => void loadQaProfiles(true)}>
             {m.asyncAction_retry()}

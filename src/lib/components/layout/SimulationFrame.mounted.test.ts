@@ -40,7 +40,10 @@ describe('simulation viewport perimeter', () => {
     const frame = document.querySelector('[data-role-simulation-frame]')!;
     expect(frame.getAttribute('aria-hidden')).toBe('true');
     expect(frame.getAttribute('popover')).toBe('manual');
-    expect(screen.getByRole('status').textContent).toContain('Viewer');
+    // Said through the shared announcer (spec 155), not a status region of its own.
+    await waitFor(() =>
+      expect(document.querySelector('[data-announcer="polite"]')?.textContent).toContain('Viewer'),
+    );
     expect(screen.queryByRole('button')).toBeNull();
     const dialog = document.createElement('dialog');
     document.body.append(dialog);

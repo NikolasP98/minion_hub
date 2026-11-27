@@ -90,7 +90,7 @@
         />
       {/if}
       {#if refusal}
-        <p class="error" role="alert">{refusal}</p>
+        <p class="error">{refusal}</p>
       {/if}
       <Button type="submit" variant="primary" size="touch" class="w-full" disabled={!orgId}>
         {m.oauth_authorize_approve()}
@@ -103,7 +103,7 @@
     </form>
   {:else}
     <p class="t-body">{m.oauth_authorize_invalid_hint()}</p>
-    {#if refusal}<p class="error" role="alert">{refusal}</p>{/if}
+    {#if refusal}<p class="error">{refusal}</p>{/if}
   {/if}
 </PublicTaskShell>
 

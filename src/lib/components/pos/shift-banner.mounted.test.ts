@@ -112,14 +112,14 @@ describe('mounted shift close dialog', () => {
     const dialog = await openClose();
 
     await waitFor(() =>
-      expect(dialog.getByRole('alert').textContent).toContain(m.pos_shift_totals_failed()),
+      expect(dialog.getByRole('status').textContent).toContain(m.pos_shift_totals_failed()),
     );
     expect(confirmButton(dialog).disabled).toBe(true);
     expect(context.invalidate).not.toHaveBeenCalled();
 
     await fireEvent.click(dialog.getByRole('button', { name: m.common_retry() }));
     await waitFor(() => expect(confirmButton(dialog).disabled).toBe(false));
-    expect(dialog.queryByRole('alert')).toBeNull();
+    expect(dialog.queryByRole('status')).toBeNull();
   });
 
   it('closes the dialog and resyncs when the shift was already closed elsewhere', async () => {
