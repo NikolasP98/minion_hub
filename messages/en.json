@@ -381,6 +381,8 @@
   "automation_notifications_title": "Notifications",
   "automation_org_config_desc": "Applies pending organization configuration changes.",
   "automation_org_config_title": "Org config",
+  "automation_pulse_desc": "Advances the Pulse assistant: delivers due pulses and digests and clears expired payloads. Does nothing until the operator configures it.",
+  "automation_pulse_title": "Pulse",
   "automation_reminders_desc": "Sends appointment reminders as they come due.",
   "automation_reminders_title": "Booking reminders",
   "automation_retention_desc": "Prunes reliability events past their retention window.",

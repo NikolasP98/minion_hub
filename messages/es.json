@@ -381,6 +381,8 @@
   "automation_notifications_title": "Notificaciones",
   "automation_org_config_desc": "Aplica los cambios pendientes de configuracion de la organizacion.",
   "automation_org_config_title": "Configuracion de organizacion",
+  "automation_pulse_desc": "Hace avanzar el asistente Pulse: envía los avisos y resúmenes pendientes y borra los datos vencidos. No hace nada hasta que el operador lo configure.",
+  "automation_pulse_title": "Pulse",
   "automation_reminders_desc": "Envia recordatorios de citas cuando corresponde.",
   "automation_reminders_title": "Recordatorios de citas",
   "automation_retention_desc": "Elimina eventos de fiabilidad fuera de su ventana de retencion.",
