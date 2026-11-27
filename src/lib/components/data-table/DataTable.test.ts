@@ -912,7 +912,9 @@ describe('T1 · loading and error states', () => {
       },
     });
     await waitFor(() => expect(container.querySelector('[role="status"]')).toBeTruthy());
-    expect(container.querySelector('[role="status"]')!.textContent).toContain('gateway unreachable');
+    expect(container.querySelector('[role="status"]')!.textContent).toContain(
+      'gateway unreachable',
+    );
     expect(container.querySelector('tbody')).toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retries).toEqual([1]);
