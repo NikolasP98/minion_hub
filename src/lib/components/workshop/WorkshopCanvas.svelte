@@ -52,10 +52,10 @@
     resumeInterruptedConversations,
     type WorkshopMessage,
   } from '$lib/workshop/gateway-bridge';
-  import ContextMenu from './ContextMenu.svelte';
+  import { ContextMenu, type ContextMenuItem } from '$lib/components/ui';
+  import { ExternalLink, Footprints, ListTodo, MessagesSquare, Trash2 } from 'lucide-svelte';
   import RelationshipPrompt from './RelationshipPrompt.svelte';
   import ConversationSidebar from './ConversationSidebar.svelte';
-  import ElementContextMenu from './ElementContextMenu.svelte';
   import PinboardOverlay from './PinboardOverlay.svelte';
   import MessageBoardOverlay from './MessageBoardOverlay.svelte';
   import InboxOverlay from './InboxOverlay.svelte';
@@ -106,6 +106,7 @@
   } from '$lib/workshop/pixel/characters';
   import type { OfficeLayout } from '$lib/workshop/pixel/types';
   import * as m from '$lib/paraglide/messages';
+  import { announce } from '$lib/a11y/announce';
 
   // ---------------------------------------------------------------------------
   // PixiJS state (not reactive - managed imperatively within onMount)
@@ -1048,22 +1049,7 @@
     canvasContainer.style.cursor = 'default';
 
     if (isDraggingAgent && draggedInstanceId) {
-      const pos = physics.getAgentPosition(draggedInstanceId);
-      if (pos) {
-        const inst = workshopState.agents[draggedInstanceId];
-        if (inst) {
-          inst.position = { x: pos.x, y: pos.y };
-          inst.homePosition = { x: pos.x, y: pos.y };
-        }
-      }
-
-      const inst = workshopState.agents[draggedInstanceId];
-      if (inst && (inst.behavior === 'wander' || inst.behavior === 'patrol')) {
-        physics.makeAgentDynamic(draggedInstanceId);
-      }
-
-      sendFsmEvent(draggedInstanceId, 'putDown');
-      autoSave();
+      settleAgent(draggedInstanceId);
 
       // A clean click (no drag) selects the agent → floating action bar.
       // (Right-click still opens the full menu directly.)
@@ -1135,37 +1121,8 @@
 
     // Pixel mode: integer zoom with pivot-preserving pan adjustment
     if (workshopState.settings.viewMode === 'pixel' && pixelCanvas && pixelOffice) {
-      const oldZoom = pixelOfficeState.settings.zoomLevel;
-      const newZoom = e.deltaY > 0 ? Math.max(1, oldZoom - 1) : Math.min(8, oldZoom + 1);
-      if (newZoom === oldZoom) return;
-
       const rect = pixelCanvas.getBoundingClientRect();
-      const cursorX = e.clientX - rect.left;
-      const cursorY = e.clientY - rect.top;
-      const cw = pixelCanvas.width;
-      const ch = pixelCanvas.height;
-      const layout = pixelOffice.layout;
-      const TP = 16;
-
-      // Compute the old and new centering offsets
-      const oldMapW = layout.cols * TP * oldZoom;
-      const oldMapH = layout.rows * TP * oldZoom;
-      const newMapW = layout.cols * TP * newZoom;
-      const newMapH = layout.rows * TP * newZoom;
-      const oldBaseX = Math.floor((cw - oldMapW) / 2);
-      const oldBaseY = Math.floor((ch - oldMapH) / 2);
-      const newBaseX = Math.floor((cw - newMapW) / 2);
-      const newBaseY = Math.floor((ch - newMapH) / 2);
-
-      // World point under cursor: worldX = (cursorX - oldBaseX - pixelPanX) / oldZoom
-      // After zoom: cursorX = newBaseX + newPanX + worldX * newZoom
-      // newPanX = cursorX - newBaseX - worldX * newZoom
-      const worldX = (cursorX - oldBaseX - pixelPanX) / oldZoom;
-      const worldY = (cursorY - oldBaseY - pixelPanY) / oldZoom;
-      pixelPanX = Math.round(cursorX - newBaseX - worldX * newZoom);
-      pixelPanY = Math.round(cursorY - newBaseY - worldY * newZoom);
-
-      pixelOfficeState.settings.zoomLevel = newZoom;
+      pixelZoomAt(e.clientX - rect.left, e.clientY - rect.top, e.deltaY > 0 ? -1 : 1);
       return;
     }
 
@@ -1192,24 +1149,28 @@
     if (hitId) {
       const inst = workshopState.agents[hitId];
       if (inst) {
-        contextMenu = {
+        const next = {
           instanceId: hitId,
           agentName: resolveAgentName(inst.agentId),
           x: e.clientX,
           y: e.clientY,
         };
+        // After this right-click has finished: the menu closes on a right-click outside
+        // itself, and would take the one that opens it for one.
+        setTimeout(() => (contextMenu = next));
       }
     } else {
       const hitElementId = hitTestElementAtWorld(worldPos.x, worldPos.y);
       if (hitElementId) {
         const el = workshopState.elements[hitElementId];
         if (el) {
-          elementContextMenu = {
+          const next = {
             instanceId: hitElementId,
             label: el.label,
             x: e.clientX,
             y: e.clientY,
           };
+          setTimeout(() => (elementContextMenu = next));
         }
       }
     }
@@ -1229,26 +1190,19 @@
     }
   }
 
-  function handlePixelDrop(e: DragEvent) {
+  /** Puts a palette item on the pixel office at a position inside the pixel canvas. */
+  function placePixel(screenX: number, screenY: number, agentRaw?: string, elementRaw?: string) {
     if (!pixelCanvas || !pixelOffice) return;
-    e.preventDefault();
-
     // Elements are not supported in pixel mode
-    if (e.dataTransfer?.getData('application/workshop-element')) return;
-
-    const raw = e.dataTransfer?.getData('application/workshop-agent');
-    if (!raw) return;
+    if (elementRaw || !agentRaw) return;
 
     let agentData: { id: string; name?: string; emoji?: string; description?: string };
     try {
-      agentData = JSON.parse(raw);
+      agentData = JSON.parse(agentRaw);
     } catch {
       return;
     }
 
-    const rect = pixelCanvas.getBoundingClientRect();
-    const screenX = e.clientX - rect.left;
-    const screenY = e.clientY - rect.top;
     const worldPos = pixelScreenToWorld(screenX, screenY);
 
     // Convert world coords to tile
@@ -1266,17 +1220,14 @@
     autoSave();
   }
 
-  async function handleDrop(e: DragEvent) {
-    // Pixel mode has its own drop handler (tile-based, no physics/PixiJS)
-    if (workshopState.settings.viewMode === 'pixel') {
-      return handlePixelDrop(e);
-    }
-
-    if (!canvasContainer) return;
-    e.preventDefault();
-
-    // Handle element drops
-    const elementRaw = e.dataTransfer?.getData('application/workshop-element');
+  /** Puts a palette item on the canvas at a position inside the canvas container. Both the
+   *  pointer drop and the keyboard "add to canvas" end here. */
+  async function placeClassic(
+    screenX: number,
+    screenY: number,
+    agentRaw?: string,
+    elementRaw?: string,
+  ) {
     if (elementRaw) {
       let data: { type: ElementType; label: string };
       try {
@@ -1285,9 +1236,6 @@
         return;
       }
 
-      const rect = canvasContainer.getBoundingClientRect();
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
       const worldPos = screenToWorldAware(screenX, screenY);
 
       pushUndoCheckpoint();
@@ -1307,8 +1255,7 @@
       return;
     }
 
-    const raw = e.dataTransfer?.getData('application/workshop-agent');
-    if (!raw) return;
+    if (!agentRaw) return;
 
     let agentData: {
       id: string;
@@ -1317,14 +1264,11 @@
       description?: string;
     };
     try {
-      agentData = JSON.parse(raw);
+      agentData = JSON.parse(agentRaw);
     } catch {
       return;
     }
 
-    const rect = canvasContainer.getBoundingClientRect();
-    const screenX = e.clientX - rect.left;
-    const screenY = e.clientY - rect.top;
     const worldPos = screenToWorldAware(screenX, screenY);
 
     pushUndoCheckpoint();
@@ -1348,6 +1292,236 @@
       );
     }
 
+    autoSave();
+  }
+
+  async function handleDrop(e: DragEvent) {
+    const target = workshopState.settings.viewMode === 'pixel' ? pixelCanvas : canvasContainer;
+    if (!target) return;
+    e.preventDefault();
+    const rect = target.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+    const agentRaw = e.dataTransfer?.getData('application/workshop-agent');
+    const elementRaw = e.dataTransfer?.getData('application/workshop-element');
+    // Pixel mode has its own placement (tile-based, no physics/PixiJS)
+    if (workshopState.settings.viewMode === 'pixel')
+      return placePixel(screenX, screenY, agentRaw, elementRaw);
+    return placeClassic(screenX, screenY, agentRaw, elementRaw);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Keyboard path (spec 154): the list, the palette and the toolbar call the same
+  // functions the pointer handlers do.
+  // ---------------------------------------------------------------------------
+
+  const viewCentre = () => {
+    const target = workshopState.settings.viewMode === 'pixel' ? pixelCanvas : canvasContainer;
+    const rect = target?.getBoundingClientRect();
+    return rect ? { x: rect.width / 2, y: rect.height / 2, rect } : null;
+  };
+
+  /** Palette "add to canvas": lands at the centre of the view, each one a step further so
+   *  several in a row do not stack. */
+  let addSteps = 0;
+  function handleAddEvent(e: Event) {
+    const detail = (e as CustomEvent<{ agent?: string; element?: string; name?: string }>).detail;
+    const centre = viewCentre();
+    if (!detail || !centre) return;
+    const step = (addSteps++ % 6) * 28;
+    if (workshopState.settings.viewMode === 'pixel') {
+      if (detail.element) return announce(m.workshop_kbNoElementsInPixel());
+      placePixel(centre.x + step, centre.y + step, detail.agent, detail.element);
+    } else void placeClassic(centre.x + step, centre.y + step, detail.agent, detail.element);
+    if (detail.name) announce(m.workshop_kbAdded({ name: detail.name }));
+  }
+
+  /** One pixel-office zoom step around a point of the pixel canvas (wheel and buttons). */
+  function pixelZoomAt(cursorX: number, cursorY: number, direction: 1 | -1) {
+    if (!pixelCanvas || !pixelOffice) return;
+    const oldZoom = pixelOfficeState.settings.zoomLevel;
+    const newZoom = direction < 0 ? Math.max(1, oldZoom - 1) : Math.min(8, oldZoom + 1);
+    if (newZoom === oldZoom) return;
+
+    const cw = pixelCanvas.width;
+    const ch = pixelCanvas.height;
+    const layout = pixelOffice.layout;
+    const TP = 16;
+
+    // Compute the old and new centering offsets
+    const oldMapW = layout.cols * TP * oldZoom;
+    const oldMapH = layout.rows * TP * oldZoom;
+    const newMapW = layout.cols * TP * newZoom;
+    const newMapH = layout.rows * TP * newZoom;
+    const oldBaseX = Math.floor((cw - oldMapW) / 2);
+    const oldBaseY = Math.floor((ch - oldMapH) / 2);
+    const newBaseX = Math.floor((cw - newMapW) / 2);
+    const newBaseY = Math.floor((ch - newMapH) / 2);
+
+    // World point under cursor: worldX = (cursorX - oldBaseX - pixelPanX) / oldZoom
+    // After zoom: cursorX = newBaseX + newPanX + worldX * newZoom
+    // newPanX = cursorX - newBaseX - worldX * newZoom
+    const worldX = (cursorX - oldBaseX - pixelPanX) / oldZoom;
+    const worldY = (cursorY - oldBaseY - pixelPanY) / oldZoom;
+    pixelPanX = Math.round(cursorX - newBaseX - worldX * newZoom);
+    pixelPanY = Math.round(cursorY - newBaseY - worldY * newZoom);
+
+    pixelOfficeState.settings.zoomLevel = newZoom;
+  }
+
+  const ZOOM_STEP = 250; // a quarter of the zoom range per press (wheel units)
+  function zoomView(how: 'in' | 'out' | 'reset') {
+    const centre = viewCentre();
+    if (!centre) return;
+    if (workshopState.settings.viewMode === 'pixel') {
+      if (how === 'reset') {
+        pixelPanX = 0;
+        pixelPanY = 0;
+      } else pixelZoomAt(centre.x, centre.y, how === 'in' ? 1 : -1);
+      return;
+    }
+    workshopState.camera =
+      how === 'reset'
+        ? { x: 0, y: 0, zoom: 1 }
+        : applyZoom(
+            workshopState.camera,
+            how === 'in' ? -ZOOM_STEP : ZOOM_STEP,
+            centre.x,
+            centre.y,
+          );
+    syncCamera();
+    autoSave();
+  }
+  function handleZoomEvent(e: Event) {
+    zoomView((e as CustomEvent<'in' | 'out' | 'reset'>).detail);
+  }
+  function panView(dx: number, dy: number) {
+    if (workshopState.settings.viewMode === 'pixel') {
+      pixelPanX += dx;
+      pixelPanY += dy;
+      return;
+    }
+    workshopState.camera = applyPan(workshopState.camera, dx, dy);
+    syncCamera();
+    autoSave();
+  }
+  const PAN_STEP = 48;
+  /** Keys while the canvas itself has focus: arrows pan, plus and minus zoom. */
+  function handleCanvasKeydown(e: KeyboardEvent) {
+    if (e.target !== e.currentTarget || e.ctrlKey || e.metaKey || e.altKey) return;
+    const pan: Record<string, [number, number]> = {
+      ArrowLeft: [PAN_STEP, 0],
+      ArrowRight: [-PAN_STEP, 0],
+      ArrowUp: [0, PAN_STEP],
+      ArrowDown: [0, -PAN_STEP],
+    };
+    if (pan[e.key]) panView(...pan[e.key]);
+    else if (e.key === '+' || e.key === '=') zoomView('in');
+    else if (e.key === '-') zoomView('out');
+    else if (e.key === '0') zoomView('reset');
+    else return;
+    e.preventDefault();
+  }
+
+  /** Makes a canvas surface a keyboard-operable view: one Tab stop that pans and zooms.
+   *  Set from an action because the surface is an ARIA `application` (a widget with its
+   *  own keys), which the compiler's static role table does not count as interactive. */
+  function viewKeys(node: HTMLElement) {
+    node.tabIndex = 0;
+    node.setAttribute('role', 'application');
+    node.setAttribute('aria-label', m.workshop_canvasAriaLabel());
+    node.setAttribute('aria-describedby', 'workshop-canvas-keys');
+    node.addEventListener('keydown', handleCanvasKeydown);
+    return { destroy: () => node.removeEventListener('keydown', handleCanvasKeydown) };
+  }
+
+  /** The agent rests where it was put: same end as a pointer drag. */
+  function settleAgent(instanceId: string) {
+    const pos = physics.getAgentPosition(instanceId);
+    const inst = workshopState.agents[instanceId];
+    if (pos && inst) {
+      inst.position = { x: pos.x, y: pos.y };
+      inst.homePosition = { x: pos.x, y: pos.y };
+    }
+    if (inst && (inst.behavior === 'wander' || inst.behavior === 'patrol')) {
+      physics.makeAgentDynamic(instanceId);
+    }
+    sendFsmEvent(instanceId, 'putDown');
+    autoSave();
+  }
+
+  type Movable = 'agent' | 'element';
+  let kbMove: { kind: Movable; id: string; from: { x: number; y: number } } | null = null;
+  function kbPosition(kind: Movable, id: string) {
+    return kind === 'agent'
+      ? (physics.getAgentPosition(id) ?? workshopState.agents[id]?.position)
+      : workshopState.elements[id]?.position;
+  }
+  function kbPlace(kind: Movable, id: string, x: number, y: number) {
+    if (kind === 'agent') {
+      physics.setAgentPosition(id, x, y);
+      renderer.updateSpritePosition(id, x, y);
+    } else {
+      physics.setElementPosition(id, x, y);
+      renderer.updateElementSpritePosition(id, x, y);
+      updateElementPosition(id, x, y);
+    }
+  }
+  function kbMoveStart(kind: Movable, id: string) {
+    const pos = kbPosition(kind, id);
+    if (!pos) return;
+    kbMove = { kind, id, from: { x: pos.x, y: pos.y } };
+    if (kind === 'agent') {
+      sendFsmEvent(id, 'pickUp');
+      physics.makeAgentKinematic(id);
+    }
+  }
+  function kbMoveBy(dx: number, dy: number) {
+    if (!kbMove) return;
+    const pos = kbPosition(kbMove.kind, kbMove.id);
+    if (pos) kbPlace(kbMove.kind, kbMove.id, pos.x + dx, pos.y + dy);
+  }
+  function kbMoveEnd(commit: boolean) {
+    const move = kbMove;
+    if (!move) return;
+    kbMove = null;
+    if (!commit) kbPlace(move.kind, move.id, move.from.x, move.from.y);
+    if (move.kind === 'agent') settleAgent(move.id);
+    else autoSave();
+  }
+  function kbLink(fromId: string, toId: string) {
+    const fromInst = workshopState.agents[fromId];
+    const toInst = workshopState.agents[toId];
+    const centre = viewCentre();
+    if (!fromInst || !toInst || !centre) return;
+    relationshipPrompt = {
+      fromId,
+      toId,
+      fromName: resolveAgentName(fromInst.agentId),
+      toName: resolveAgentName(toInst.agentId),
+      x: centre.rect.left + centre.x,
+      y: centre.rect.top + centre.y,
+    };
+  }
+  /** An element's overlay takes focus when it opens (its Escape handler is on its own layer)
+   *  and gives it back to what opened it when it closes. */
+  function overlayFocus(host: HTMLElement) {
+    const opener = document.activeElement as HTMLElement | null;
+    host.querySelector<HTMLElement>('[tabindex="-1"], button, input, textarea')?.focus();
+    return () => {
+      const active = document.activeElement;
+      if (opener?.isConnected && (!active || active === document.body || host.contains(active)))
+        opener.focus();
+    };
+  }
+  function openElement(instanceId: string) {
+    const el = workshopState.elements[instanceId];
+    if (el) activeOverlay = { elementId: instanceId, type: el.type };
+  }
+  function removeElementFromCanvas(instanceId: string) {
+    renderer.removeElementSprite(instanceId);
+    physics.removeElementBody(instanceId);
+    removeElement(instanceId);
     autoSave();
   }
 
@@ -1401,6 +1575,75 @@
     const next = cur === 'stationary' ? 'wander' : cur === 'wander' ? 'patrol' : 'stationary';
     handleSelectedAction('setBehavior', next);
   }
+
+  // Both right-click menus are the house context menu: arrows walk the rows, Enter and
+  // Space pick, Right opens a submenu, Escape closes and hands focus back.
+  function agentMenuItems(instanceId: string): ContextMenuItem[] {
+    const nearby = getNearbyAgentsList(instanceId);
+    const behavior = workshopState.agents[instanceId]?.behavior ?? 'stationary';
+    return [
+      // Offline it is a plain disabled row: a parent row cannot be disabled, and its
+      // submenu would still start a conversation.
+      {
+        id: 'conversation',
+        label: m.workshop_startConversationWith(),
+        icon: MessagesSquare,
+        disabled: !conn.connected,
+        ...(conn.connected
+          ? {
+              children: nearby.length
+                ? nearby.flatMap((agent) => [
+                    {
+                      id: `banter:${agent.instanceId}`,
+                      label: `${agent.name}: ${m.workshop_chatNow()}`,
+                    },
+                    {
+                      id: `topic:${agent.instanceId}`,
+                      label: `${agent.name}: ${m.workshop_customTopic()}`,
+                    },
+                  ])
+                : [{ id: 'nobody', label: m.workshop_noNearbyAgents(), disabled: true }],
+            }
+          : {}),
+      },
+      {
+        id: 'assignTask',
+        label: m.workshop_assignTask(),
+        icon: ListTodo,
+        disabled: !conn.connected,
+      },
+      {
+        id: 'behavior',
+        label: m.workshop_behavior(),
+        icon: Footprints,
+        children: (
+          [
+            ['stationary', m.workshop_behaviorStationary()],
+            ['wander', m.workshop_behaviorWander()],
+            ['patrol', m.workshop_behaviorPatrol()],
+          ] as const
+        ).map(([value, label]) => ({
+          id: `behavior:${value}`,
+          label,
+          selection: 'radio' as const,
+          checked: behavior === value,
+        })),
+      },
+      { id: 'remove', label: m.workshop_removeFromCanvas(), icon: Trash2, danger: true },
+    ];
+  }
+  function selectAgentMenuItem(item: ContextMenuItem) {
+    const [action, value] = item.id.split(':');
+    if (action === 'banter') handleContextAction('quickBanter', { targetInstanceId: value });
+    else if (action === 'topic')
+      handleContextAction('startConversation', { targetInstanceId: value });
+    else if (action === 'behavior') handleContextAction('setBehavior', value);
+    else handleContextAction(action);
+  }
+  const elementMenuItems = (): ContextMenuItem[] => [
+    { id: 'open', label: m.workshop_open(), icon: ExternalLink },
+    { id: 'remove', label: m.workshop_removeFromCanvas(), icon: Trash2, danger: true },
+  ];
 
   function handleContextAction(
     action: string,
@@ -1467,17 +1710,8 @@
     if (!elementContextMenu) return;
     const { instanceId } = elementContextMenu;
 
-    if (action === 'open') {
-      const el = workshopState.elements[instanceId];
-      if (el) {
-        activeOverlay = { elementId: instanceId, type: el.type };
-      }
-    } else if (action === 'remove') {
-      renderer.removeElementSprite(instanceId);
-      physics.removeElementBody(instanceId);
-      removeElement(instanceId);
-      autoSave();
-    }
+    if (action === 'open') openElement(instanceId);
+    else if (action === 'remove') removeElementFromCanvas(instanceId);
 
     elementContextMenu = null;
   }
@@ -1656,6 +1890,8 @@
       window.addEventListener('workshop:reload', handleReload);
       window.addEventListener('keydown', handleUndoKey);
       window.addEventListener('workshop:undo', doUndo);
+      window.addEventListener('workshop:add', handleAddEvent);
+      window.addEventListener('workshop:zoom', handleZoomEvent);
     }
 
     function handleReload() {
@@ -1698,6 +1934,8 @@
         window.removeEventListener('workshop:reload', handleReload);
         window.removeEventListener('keydown', handleUndoKey);
         window.removeEventListener('workshop:undo', doUndo);
+        window.removeEventListener('workshop:add', handleAddEvent);
+        window.removeEventListener('workshop:zoom', handleZoomEvent);
         stopSimulation();
         clearConversationRopes();
         physics.destroyPhysics();
@@ -1721,19 +1959,30 @@
   }
 </script>
 
-<!-- TODO(handoff): Full Workshop composition/camera and keyboard relationship/element
-  editing remain unqualified; isolated pixel lifecycle and Pixi decoration fixtures
-  do not establish all business simulation or canvas task equivalence.
-  See meta proposals/2026-09-08-platform-qc-remediation.md (Workshop accessibility). -->
+<!-- TODO(handoff): in the pixel view a character can be dragged to another seat with the
+  pointer only (the list's Move is for the classic views). See meta
+  proposals/2026-11-20-hub-accessibility-program.md, item 19. -->
 <div class="flex-1 relative overflow-hidden">
   <WorkshopAgentControls
     agents={Object.values(workshopState.agents).map((agent) => ({
       id: agent.instanceId,
       name: resolveAgentName(agent.agentId),
     }))}
+    elements={Object.values(workshopState.elements).map((element) => ({
+      id: element.instanceId,
+      name: element.label,
+    }))}
+    movable={workshopState.settings.viewMode !== 'pixel'}
     selectedId={selectedInstanceId}
     connected={conn.connected}
     onselect={selectAgent}
+    onmovestart={kbMoveStart}
+    onmoveby={kbMoveBy}
+    onmoveend={kbMoveEnd}
+    onlink={kbLink}
+    onopen={openElement}
+    onremove={(kind, id) =>
+      kind === 'agent' ? removeAgentFromCanvas(id) : removeElementFromCanvas(id)}
     onassign={(id) => {
       const agent = workshopState.agents[id];
       if (agent)
@@ -1767,9 +2016,11 @@
     </div>
   {/if}
 
+  <p id="workshop-canvas-keys" class="sr-only">{m.workshop_kbCanvasKeys()}</p>
   <!-- PixiJS canvas mounts here via the pixiCanvas action -->
   <div
     use:pixiCanvas
+    use:viewKeys
     class="w-full h-full"
     role="region"
     aria-label={m.workshop_canvasAriaLabel()}
@@ -1786,6 +2037,7 @@
   <canvas
     bind:this={pixelCanvas}
     class="absolute inset-0 z-10 bg-[#1a1a2e] w-full h-full"
+    use:viewKeys
     style="display: none; image-rendering: pixelated; cursor: grab;"
     onpointerdown={handlePointerDown}
     onpointermove={handlePointerMove}
@@ -1859,15 +2111,12 @@
   <!-- Context Menu -->
   {#if contextMenu}
     <ContextMenu
-      instanceId={contextMenu.instanceId}
-      agentName={contextMenu.agentName}
       x={contextMenu.x}
       y={contextMenu.y}
-      nearbyAgents={getNearbyAgentsList(contextMenu.instanceId)}
-      currentBehavior={workshopState.agents[contextMenu.instanceId]?.behavior ?? 'stationary'}
-      isConnected={conn.connected}
-      onClose={() => (contextMenu = null)}
-      onAction={handleContextAction}
+      label={contextMenu.agentName}
+      items={agentMenuItems(contextMenu.instanceId)}
+      onselect={selectAgentMenuItem}
+      onclose={() => (contextMenu = null)}
     />
   {/if}
 
@@ -1898,31 +2147,43 @@
 
   <!-- Element Context Menu -->
   {#if elementContextMenu}
-    <ElementContextMenu
-      label={elementContextMenu.label}
+    <ContextMenu
       x={elementContextMenu.x}
       y={elementContextMenu.y}
-      onClose={() => (elementContextMenu = null)}
-      onAction={handleElementContextAction}
+      label={elementContextMenu.label}
+      items={elementMenuItems()}
+      onselect={(item) => handleElementContextAction(item.id)}
+      onclose={() => (elementContextMenu = null)}
     />
   {/if}
 
   <!-- Element Overlays -->
   {#if activeOverlay}
-    {#if activeOverlay.type === 'pinboard'}
-      <PinboardOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {:else if activeOverlay.type === 'messageboard'}
-      <MessageBoardOverlay
-        elementId={activeOverlay.elementId}
-        onClose={() => (activeOverlay = null)}
-      />
-    {:else if activeOverlay.type === 'inbox'}
-      <InboxOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {:else if activeOverlay.type === 'rulebook'}
-      <RulebookOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {:else if activeOverlay.type === 'portal'}
-      <PortalOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
-    {/if}
+    <!-- TODO(handoff): the five element overlays are hand-built layers, not the shared Dialog
+      (no focus trap, a backdrop with a button role). `overlayFocus` below only takes focus in
+      and gives it back. See meta proposals/2026-11-20-hub-accessibility-program.md, item 21. -->
+    <div class="contents" {@attach overlayFocus}>
+      {#if activeOverlay.type === 'pinboard'}
+        <PinboardOverlay
+          elementId={activeOverlay.elementId}
+          onClose={() => (activeOverlay = null)}
+        />
+      {:else if activeOverlay.type === 'messageboard'}
+        <MessageBoardOverlay
+          elementId={activeOverlay.elementId}
+          onClose={() => (activeOverlay = null)}
+        />
+      {:else if activeOverlay.type === 'inbox'}
+        <InboxOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
+      {:else if activeOverlay.type === 'rulebook'}
+        <RulebookOverlay
+          elementId={activeOverlay.elementId}
+          onClose={() => (activeOverlay = null)}
+        />
+      {:else if activeOverlay.type === 'portal'}
+        <PortalOverlay elementId={activeOverlay.elementId} onClose={() => (activeOverlay = null)} />
+      {/if}
+    </div>
   {/if}
 
   <!-- Task Prompt Dialog -->
