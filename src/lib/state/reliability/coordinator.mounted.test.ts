@@ -14,6 +14,11 @@ import {
   resetReliability,
   setReliabilityQueryKeys,
 } from './reliability.svelte';
+
+// The harness prints its data in <output> elements, which are status regions too.
+const failed = (view: { container: HTMLElement }) => [
+  ...view.container.querySelectorAll('.async-state[role="status"]'),
+];
 const methods = ['summary', 'events', 'timeline', 'flow', 'usage', 'activity', 'perf'].map(
   (name) => `reliability.${name}`,
 );
@@ -104,12 +109,12 @@ describe('mounted production reliability coordinator', () => {
     expect(view.getByText(/Filters work for this visit/)).toBeTruthy();
     fail = true;
     await fireEvent.click(view.getByRole('button', { name: 'Refresh metrics' }));
-    await waitFor(() => expect(view.getAllByRole('alert')).toHaveLength(8));
+    await waitFor(() => expect(failed(view)).toHaveLength(8));
     expect(reliability.summary?.total).toBe(4);
     expect(view.container.textContent).not.toContain('Private transport detail');
     fail = false;
     await fireEvent.click(view.getAllByRole('button', { name: 'Retry' })[0]);
-    await waitFor(() => expect(view.queryAllByRole('alert')).toHaveLength(0));
+    await waitFor(() => expect(failed(view)).toHaveLength(0));
     expect(request).toHaveBeenCalledTimes(24);
   });
   it('retires live timers on query switch and unmount without serializing new reads behind an old batch', async () => {
@@ -248,7 +253,7 @@ it.each(['range', 'filter'] as const)(
 it('renders failed notices for malformed successful responses without a route exception', async () => {
   const { owner } = connect(vi.fn(async () => ({ malformed: true })));
   const view = render(Harness, { owner, query });
-  await waitFor(() => expect(view.getAllByRole('alert')).toHaveLength(8));
+  await waitFor(() => expect(failed(view)).toHaveLength(8));
   expect(view.getByTestId('all-data').textContent).toBe('[null,null,[],null,null,null,null,null]');
   expect(view.getAllByRole('button', { name: 'Retry' })).toHaveLength(8);
 });
@@ -262,14 +267,14 @@ it('retries all eight gateway reads on the performance tab while the toolbar onl
     }),
   );
   const view = render(Harness, { owner, query, activeTab: 'performance' });
-  await waitFor(() => expect(view.getAllByRole('alert')).toHaveLength(8));
+  await waitFor(() => expect(failed(view)).toHaveLength(8));
   expect(request).toHaveBeenCalledTimes(8);
   await fireEvent.click(view.getByRole('button', { name: 'Refresh metrics' }));
   expect(view.getByTestId('performance-refresh').textContent).toBe('1');
   expect(request).toHaveBeenCalledTimes(8);
   fail = false;
   await fireEvent.click(view.getAllByRole('button', { name: 'Retry' })[7]);
-  await waitFor(() => expect(view.queryAllByRole('alert')).toHaveLength(0));
+  await waitFor(() => expect(failed(view)).toHaveLength(0));
   expect(request).toHaveBeenCalledTimes(16);
   expect(
     request.mock.calls

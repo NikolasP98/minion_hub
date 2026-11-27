@@ -155,12 +155,12 @@ describe('mounted marketplace catalog queries', () => {
         ),
     );
     const view = await mount();
-    expect((await view.findByRole('alert')).textContent).toContain(
+    expect((await view.findByRole('status')).textContent).toContain(
       'Catalog temporarily unavailable',
     );
     await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
     await view.findByText('Synthetic recovered');
-    expect(view.queryByRole('alert')).toBeNull();
+    expect(view.queryByRole('status')).toBeNull();
   });
   it('renders detail provider failure as retryable error rather than not found', async () => {
     vi.stubGlobal(
@@ -175,7 +175,7 @@ describe('mounted marketplace catalog queries', () => {
         ),
     );
     const view = await mount(true);
-    expect((await view.findByRole('alert')).textContent).toContain('temporarily unavailable');
+    expect((await view.findByRole('status')).textContent).toContain('temporarily unavailable');
     expect(view.queryByText('Agent not found')).toBeNull();
     await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
     await view.findByRole('heading', { name: 'Synthetic agent-a', level: 1 });

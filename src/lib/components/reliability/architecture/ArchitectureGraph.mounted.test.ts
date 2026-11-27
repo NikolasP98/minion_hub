@@ -88,11 +88,11 @@ it('mounts the production architecture controller and repairs a failed read with
     }),
   );
   const view = render(ArchitectureGraph, { actorId: 'actor', orgId: 'org' });
-  await waitFor(() => expect(view.getByRole('alert')).toBeTruthy());
+  await waitFor(() => expect(view.getByRole('status')).toBeTruthy());
   expect(view.container.textContent).not.toContain('private provider detail');
   fail = false;
   await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
-  await waitFor(() => expect(view.queryByRole('alert')).toBeNull());
+  await waitFor(() => expect(view.queryByRole('status')).toBeNull());
   expect(view.container.querySelector('canvas')).toBeTruthy();
   await waitFor(() => expect(graph.renderer.setGraph).toHaveBeenCalled());
 
