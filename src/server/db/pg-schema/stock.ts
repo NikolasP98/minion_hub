@@ -190,6 +190,7 @@ export const stkLedger = pgTable(
     valuationRate: numeric('valuation_rate').notNull(),
     valueDelta: numeric('value_delta').notNull(),
     postedAt: timestamp('posted_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('stk_ledger_org_item_posted_idx').on(t.orgId, t.itemId, t.postedAt),
