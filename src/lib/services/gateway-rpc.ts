@@ -22,6 +22,8 @@ let channelStatusSink: ((status: object) => void) | null = null;
 // so chat-rpc.ts can call it too without a static import cycle.
 const gwDiagQueue: { phase: string; detail: Record<string, unknown> }[] = [];
 function gwFlush(): boolean {
+  // The retry timer can outlive the page (a test page torn down): nothing left to send to.
+  if (typeof window === 'undefined') return true;
   const ph = (window as Window & { posthog?: { capture?: (e: string, p?: object) => void } })
     .posthog;
   if (!ph?.capture) return false;
