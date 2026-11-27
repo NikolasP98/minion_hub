@@ -95,9 +95,12 @@ export const MODULE_MANIFEST = {
   // manifest entry via longest-prefix match. No toggleId: pulse has no
   // isModuleEnabled call, only the per-route `tenant.kind === 'business'`
   // 404 (pulse/+page.server.ts:18, settings/pulse/+page.server.ts:18).
+  // Switched off for every org until work on it resumes (owner decision 2026-11-20): no kind
+  // is listed, so the central guard answers 404 for both prefixes. Restore `['personal']` and
+  // drop 'pulse' from personal.hiddenModules in org-kind.ts to bring it back.
   pulse: {
     appPrefixes: ['/pulse', '/settings/pulse'],
-    kinds: ['personal'],
+    kinds: [],
   },
   // pos/stock/workforce: org-kind.ts hides these for personal orgs, but
   // (per the routing-simplification spec's problem statement) that's

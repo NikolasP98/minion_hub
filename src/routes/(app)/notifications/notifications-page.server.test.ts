@@ -5,6 +5,7 @@ const boundary = vi.hoisted(() => ({
   ctx: vi.fn(),
   canReview: true,
   canPulse: true,
+  pulseOn: true,
   inbox: vi.fn(),
   join: vi.fn(),
 }));
@@ -18,6 +19,13 @@ vi.mock('$server/auth/dataset-ctx', async () => ({
 vi.mock('$server/services/rbac.service', () => ({
   hasOrgCapability: async (_locals: unknown, module: string) =>
     module === 'users' ? boundary.canReview : boundary.canPulse,
+}));
+// Pulse is switched off for every org kind (org-kind.ts). These tests guard the owner-scoped
+// reader and its gates, which must hold again the day Pulse returns, so the policy is a switch here.
+vi.mock('$lib/org-kind', async (original) => ({
+  ...(await original<typeof import('$lib/org-kind')>()),
+  isModuleVisibleForKind: (moduleId: string, kind: string) =>
+    moduleId === 'pulse' ? boundary.pulseOn && kind === 'personal' : true,
 }));
 vi.mock('$server/services/join/requests.service', () => ({ listPendingRequests: boundary.join }));
 vi.mock('$server/services/inbox/inbox.service', () => ({ listFeed: boundary.inbox }));
@@ -84,5 +92,9 @@ describe('actual notifications SSR with owner-scoped Pulse reader', () => {
     boundary.canPulse = true;
     expect((await invoke('business')).pulseProposals).toEqual([]);
     expect((await invoke('business')).requests).toHaveLength(1);
+    boundary.pulseOn = false;
+    expect((await invoke()).pulseProposals).toEqual([]);
+    expect((await invoke()).requests).toHaveLength(1);
+    boundary.pulseOn = true;
   });
 });

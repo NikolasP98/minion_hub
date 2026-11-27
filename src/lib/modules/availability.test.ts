@@ -64,9 +64,9 @@ describe('resolveModuleForPath', () => {
 });
 
 describe('isModuleAvailable — kind matrix (org-kind.ts ORG_KIND_POLICY, S3/WP1 DELIBERATE expansion)', () => {
-  test('pulse: hidden for business, visible for personal', () => {
+  test('pulse: unavailable for both kinds (switched off until work on it resumes)', () => {
     expect(isModuleAvailable('pulse', { kind: 'business', moduleStates: {} })).toBe(false);
-    expect(isModuleAvailable('pulse', { kind: 'personal', moduleStates: {} })).toBe(true);
+    expect(isModuleAvailable('pulse', { kind: 'personal', moduleStates: {} })).toBe(false);
   });
 
   test('pos/stock/workforce: hidden for personal, visible for business', () => {

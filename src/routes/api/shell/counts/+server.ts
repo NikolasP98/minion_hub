@@ -7,6 +7,7 @@ import { hasOrgCapability, requireOrgCapability } from '$server/services/rbac.se
 import { unreadCount } from '$server/services/inbox/inbox.service';
 import { countPendingRequests } from '$server/services/join/requests.service';
 import { countPending } from '$server/services/pulse.service';
+import { isModuleVisibleForKind } from '$lib/org-kind';
 import { countPosPendingWork } from '$server/services/pos-accounts.service';
 
 /**
@@ -37,6 +38,8 @@ export const GET: RequestHandler = async ({ locals }) => {
       return countPendingRequests(ctx.tenantId);
     })().catch(() => null),
     (async () => {
+      // Pulse is switched off (org-kind policy): skip its count query instead of running it per poll.
+      if (!isModuleVisibleForKind('pulse', locals.orgKind)) return null;
       await requireOrgCapability(locals, 'pulse', 'view');
       const ctx = await requireCoreCtx(locals);
       return countPending(ctx);

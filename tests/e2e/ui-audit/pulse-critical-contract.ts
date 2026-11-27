@@ -12,7 +12,9 @@ export const PULSE_CRITICAL_TITLES = ['en', 'es'].flatMap((locale) => [
   `DIGEST3 ${locale} page reconciles unknown feedback using reads only`,
   `DIGEST4 ${locale} page hides other-owner digest and preserves owner freshness`,
   `DIGEST5 ${locale} page reconnects one actual scheduled SQL card without producing a write`,
-  ...['page', 'popup'].map(
+  // The 'popup' surface is not listed while Pulse is switched off (org-kind.ts): the notifications
+  // popup no longer shows Pulse. Add 'popup' back here and in the journeys spec when Pulse returns.
+  ...['page'].map(
     (surface) =>
       `PULSE3 ${locale} ${surface} uses real approval controls and reads scheduled receipt on reconnect`,
   ),

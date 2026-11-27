@@ -48,8 +48,11 @@ describe('isAppRouteBlocked — locale + longest-prefix composition (R6: canonic
   test('/settings/pulse (localized) still resolves to pulse via longest-prefix, not a bare /settings', () => {
     const business = { kind: 'business' as const, moduleStates: {} };
     const personal = { kind: 'personal' as const, moduleStates: {} };
+    // blocked for both kinds only because it resolves to pulse; a bare /settings stays open
     expect(isAppRouteBlocked(canonicalPath('/es/settings/pulse'), business)).toBe(true);
-    expect(isAppRouteBlocked(canonicalPath('/settings/pulse'), personal)).toBe(false);
+    expect(isAppRouteBlocked(canonicalPath('/es/settings/pulse'), personal)).toBe(true);
+    expect(isAppRouteBlocked(canonicalPath('/es/settings'), personal)).toBe(false);
+    expect(isAppRouteBlocked(canonicalPath('/es/settings'), business)).toBe(false);
   });
 });
 
@@ -74,9 +77,10 @@ describe('isAppRouteBlocked — org-kind restrictions', () => {
     expect(isAppRouteBlocked('/settings/pulse', ctx)).toBe(true);
   });
 
-  test('personal org: /pulse passes', () => {
+  test('personal org: /pulse and /settings/pulse 404 too (Pulse switched off for every org)', () => {
     const ctx = { kind: 'personal' as const, moduleStates: {} };
-    expect(isAppRouteBlocked('/pulse', ctx)).toBe(false);
+    expect(isAppRouteBlocked('/pulse', ctx)).toBe(true);
+    expect(isAppRouteBlocked('/settings/pulse', ctx)).toBe(true);
   });
 
   // S3/WP1 (specs/2026-07-22-personal-org-differentiation-spec.md R1): DELIBERATE
@@ -175,8 +179,6 @@ describe('isAppRouteBlocked — plan features (spec 043)', () => {
     '/reliability',
     '/plugins',
     '/settings/plugins',
-    '/pulse',
-    '/settings/pulse',
     '/marketplace',
   ];
   const premium = ['ai', 'ai.chat', 'ai.proactive', 'marketplace'];
@@ -187,10 +189,21 @@ describe('isAppRouteBlocked — plan features (spec 043)', () => {
     expect(
       isAppRouteBlocked(`${path}/x`, { kind: 'business', moduleStates: {}, features: [] }),
     ).toBe(true);
-    // personal kind so /pulse is kind-available; /workforce is business-only, so check it with business.
+    // personal kind so the route is kind-available; /workforce is business-only, so check it with business.
     const kind = path === '/workforce' ? 'business' : 'personal';
     expect(isAppRouteBlocked(path, { kind, moduleStates: {}, features: premium })).toBe(false);
   });
+  // Pulse is the only ai.proactive route and is switched off for every kind, so it is blocked
+  // even on Premium; the plan-feature branch for these paths becomes observable again when Pulse
+  // returns. Plan-feature logic itself stays covered by the AI_PREFIXES test.each above.
+  test.each(['/pulse', '/settings/pulse'])(
+    '%s: blocked on every plan while Pulse is off',
+    (path) => {
+      for (const features of [[], premium])
+        for (const kind of ['personal', 'business'] as const)
+          expect(isAppRouteBlocked(path, { kind, moduleStates: {}, features })).toBe(true);
+    },
+  );
   test('Base keeps channels, settings, the flow editor and business modules', () => {
     const base = { kind: 'business' as const, moduleStates: {}, features: [] };
     for (const p of [

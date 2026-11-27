@@ -41,13 +41,13 @@ describe('getSections — core nav taxonomy', () => {
 });
 
 describe('personal-org nav gating', () => {
-  it('hides pos/stock/workforce for personal orgs, adds /pulse', () => {
+  it('hides pos/stock/workforce and Pulse for personal orgs', () => {
     const secs = getDynamicPluginsSections([], {}, 'personal');
     const hrefs = secs.flatMap((s) => s.items.map((i) => i.href));
     expect(hrefs).not.toContain('/pos');
     expect(hrefs).not.toContain('/stock');
     expect(hrefs).not.toContain('/workforce');
-    expect(hrefs).toContain('/pulse');
+    expect(hrefs).not.toContain('/pulse');
   });
 
   it('keeps them for business orgs', () => {
@@ -120,14 +120,15 @@ describe('getNavSections — personal org regrouping (R2)', () => {
     category: 'creative' as const,
   };
 
-  it('merges Pulse + My Work into a single "My Space" group with Home/Overview', () => {
+  it('merges My Work into a single "My Space" group with Home/Overview (Pulse is switched off)', () => {
     const secs = getNavSections('personal', [], {});
     const mySpace = secs.find((s) => s.id === 'organization');
     expect(mySpace?.label).toBe('My Space');
     expect(mySpace?.items.map((i) => i.href)).toEqual(
-      expect.arrayContaining(['/home', '/overview', '/pulse', '/work']),
+      expect.arrayContaining(['/home', '/overview', '/work']),
     );
-    expect(mySpace?.items).toHaveLength(5);
+    expect(mySpace?.items.map((i) => i.href)).not.toContain('/pulse');
+    expect(mySpace?.items).toHaveLength(4);
     // no separate "plugins:my-space" section leaks through
     expect(secs.find((s) => s.id === 'plugins:my-space')).toBeUndefined();
   });
