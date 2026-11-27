@@ -57,8 +57,8 @@
       type="button"
       onclick={back.go}
       class="back-link"
-      title="Back to Agents"
-      aria-label="Back to Agents"
+      title={m.a11y_back_to_agents()}
+      aria-label={m.a11y_back_to_agents()}
     >
       <ArrowLeft size={iconSizes.md} />
     </Button>

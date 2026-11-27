@@ -223,6 +223,7 @@
         <p class="t-caption">{m.stock_low_stock_empty()}</p>
       {:else}
         <DataTable
+          ariaLabel={m.stock_low_stock_title()}
           variant="plain"
           data={data.lowStock}
           columns={lowStockColumns}
@@ -251,6 +252,7 @@
           {#if !recentFull}{m.stock_mv_unavailable()}{/if}
         </p>
         <DataTable
+          ariaLabel={m.stock_recent_title()}
           variant="plain"
           data={recentRows}
           columns={recentColumns}

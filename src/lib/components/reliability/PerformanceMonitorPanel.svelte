@@ -352,6 +352,7 @@
         <span class="text-xs text-muted-strong">{formatTime(row.lastSeenAt)}</span>
       {/snippet}
       <DataTable
+        ariaLabel={m.table_name_route_performance()}
         class="flex-1 min-h-0"
         data={snapshot.routes}
         columns={routeColumns}

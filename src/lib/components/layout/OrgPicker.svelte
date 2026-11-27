@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { invalidateAll } from '$app/navigation';
   import { page } from '$app/state';
   import { conn } from '$lib/state/gateway';
@@ -111,13 +112,18 @@
       {#if switchingTo}
         <Spinner size="xs" class="shrink-0 opacity-80" />
       {:else if activeKind === 'personal'}
-        <User size={iconSizes.xs} class="shrink-0 opacity-70" role="img" aria-label="Personal" />
+        <User
+          size={iconSizes.xs}
+          class="shrink-0 opacity-70"
+          role="img"
+          aria-label={m.shared_optionPersonal()}
+        />
       {:else}
         <Building2
           size={iconSizes.xs}
           class="shrink-0 opacity-70"
           role="img"
-          aria-label="Business"
+          aria-label={m.onboarding_orgKindBusiness()}
         />
       {/if}
       <span class="flex-1 overflow-hidden text-ellipsis text-left">{currentName}</span>
@@ -153,14 +159,14 @@
                 size={iconSizes.xs}
                 class="shrink-0 opacity-70"
                 role="img"
-                aria-label="Personal"
+                aria-label={m.shared_optionPersonal()}
               />
             {:else}
               <Building2
                 size={iconSizes.xs}
                 class="shrink-0 opacity-70"
                 role="img"
-                aria-label="Business"
+                aria-label={m.onboarding_orgKindBusiness()}
               />
             {/if}
             <span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"

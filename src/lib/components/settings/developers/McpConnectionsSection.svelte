@@ -99,6 +99,7 @@
   <p class="t-body muted">{m.settings_mcp_hint()}</p>
   <Card padding="none">
     <DataTable
+      ariaLabel={m.settings_mcp_title()}
       variant="plain"
       data={connections}
       {columns}

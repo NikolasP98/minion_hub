@@ -293,6 +293,7 @@
 
         {#if activeView === 'table'}
           <DataTable
+            ariaLabel={m.pos_history_tab_shifts()}
             class="flex-1 min-h-0"
             variant="plain"
             columns={shiftColumns}

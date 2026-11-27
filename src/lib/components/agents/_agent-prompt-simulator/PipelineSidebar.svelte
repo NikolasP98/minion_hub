@@ -201,7 +201,7 @@
       {/each}
     </div>
   {:else if hasSections}
-    <div class="flex-1 py-1" role="listbox" aria-label="Prompt sections">
+    <div class="flex-1 py-1" role="listbox" aria-label={m.a11y_prompt_sections()}>
       {#if groupMode === 'layer'}
         {#each layerGroups as group (group.id)}
           {@const groupChars = group.rows.reduce((a, s) => a + sizeOf(s), 0)}
@@ -357,8 +357,8 @@
         {isOff
         ? 'opacity-100 text-[var(--color-warning-fg)]'
         : 'opacity-0 group-hover/row:opacity-100 text-foreground/40 hover:text-foreground'}"
-      title={isOff ? 'Enable section' : 'Disable section'}
-      aria-label={isOff ? 'Enable section' : 'Disable section'}
+      title={isOff ? m.a11y_enable_section() : m.a11y_disable_section()}
+      aria-label={isOff ? m.a11y_enable_section() : m.a11y_disable_section()}
       onclick={() => onToggleSection(section.id, !isOff)}
     >
       {isOff ? '○' : '●'}

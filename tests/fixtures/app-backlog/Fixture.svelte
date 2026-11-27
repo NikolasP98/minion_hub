@@ -76,6 +76,7 @@
   </div>
   {#if module === 'crm'}
     <DataTable
+      ariaLabel="Rows"
       variant="plain"
       storageKey="fixture-customers"
       data={[

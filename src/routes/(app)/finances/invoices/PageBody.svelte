@@ -124,6 +124,7 @@
   </PageHeader>
 
   <DataTable
+    ariaLabel={m.fin_invoices_title()}
     class="flex-1 min-h-0"
     {columns}
     data={filtered}

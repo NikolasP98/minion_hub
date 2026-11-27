@@ -438,6 +438,7 @@
         <!-- The correction sits at the end of its row, always visible: staff must
              not have to hover to find it. -->
         <DataTable
+          ariaLabel={m.pos_ticket_section_lines()}
           variant="plain"
           data={data.lines}
           columns={lineColumns}
@@ -485,6 +486,7 @@
         <section class="card">
           <header class="card-h"><span>{m.pos_ticket_section_payments()}</span></header>
           <DataTable
+            ariaLabel={m.pos_ticket_section_payments()}
             variant="plain"
             data={data.payments}
             columns={paymentColumns}

@@ -17,6 +17,7 @@
 >
 {#if visible}
   <DataTable
+    ariaLabel="Rows"
     variant={registered ? 'plain' : 'full'}
     virtualize={false}
     storageKey={registered ? 'fixture' : undefined}

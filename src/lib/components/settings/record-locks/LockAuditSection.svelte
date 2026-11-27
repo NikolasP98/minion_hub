@@ -117,6 +117,7 @@
   <h2 id="record-locks-audit-title" class="t-title">{m.record_locks_audit_title()}</h2>
   <Card padding="none">
     <DataTable
+      ariaLabel={m.record_locks_audit_title()}
       variant="plain"
       data={events}
       {columns}

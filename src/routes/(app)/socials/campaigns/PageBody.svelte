@@ -211,6 +211,7 @@
     </div>
   {:else}
     <DataTable
+      ariaLabel={m.ads_nav_campaigns()}
       class="flex-1 min-h-0"
       {columns}
       data={campaigns}

@@ -97,3 +97,44 @@ describe('icon-button-unlabelled (spec 152)', { timeout: 30_000 }, () => {
     expect(run().stdout).toMatch(/icon-button-unlabelled\s+1\b/);
   });
 });
+
+describe('hardcoded-a11y-name and hardcoded-hint-text (spec 155)', { timeout: 30_000 }, () => {
+  it('counts literal accessible names, and only in product files', () => {
+    const { root, run } = fixture();
+    writeFileSync(
+      join(root, 'src/labels.svelte'),
+      [
+        // Three offenders: a literal label, a literal label prop, a literal alt.
+        '<button aria-label="Close">x</button>',
+        '<Nav ariaLabel="Account" />',
+        '<img alt="Screenshot" src={a} />',
+        // Translated, empty, or not text: fine.
+        '<button aria-label={m.close()}>x</button>',
+        '<img alt="" src={a} />',
+        '<div data-aria-label="x"></div>',
+      ].join('\n'),
+    );
+    // The same literals in a story are sample content.
+    writeFileSync(join(root, 'src/labels.stories.svelte'), '<button aria-label="Close">x</button>');
+    expect(run('--update-baseline').status).toBe(0);
+    expect(run().stdout).toMatch(/hardcoded-a11y-name\s+3\b/);
+  });
+
+  it('counts literal title and placeholder copy, not format examples', () => {
+    const { root, run } = fixture();
+    writeFileSync(
+      join(root, 'src/hints.svelte'),
+      [
+        // Two offenders.
+        '<button title="Delete forever">x</button>',
+        '<input placeholder="Your name" />',
+        // A format example, a translated value, and a one-letter unit: fine.
+        '<input placeholder="YYYY-MM-DD" />',
+        '<input placeholder={m.name()} />',
+        '<input placeholder="22" />',
+      ].join('\n'),
+    );
+    expect(run('--update-baseline').status).toBe(0);
+    expect(run().stdout).toMatch(/hardcoded-hint-text\s+2\b/);
+  });
+});

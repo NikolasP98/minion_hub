@@ -334,6 +334,7 @@
           {int(totals.instagram)}
         </p>
         <DataTable
+          ariaLabel={m.pos_funnel_customers_title()}
           variant="plain"
           {columns}
           cells={{

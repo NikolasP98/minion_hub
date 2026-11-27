@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { iconSizes } from '$lib/components/ui';
   // Cross-module Connections panel — Minion's port of ERPNext's declarative
   // form dashboard (customer_dashboard.py): related-record counts per module,
@@ -36,8 +37,8 @@
                 <a
                   class="new-btn"
                   href={it.newHref}
-                  title="New {it.label}"
-                  aria-label="New {it.label}"
+                  title={m.a11y_new_item({ name: it.label })}
+                  aria-label={m.a11y_new_item({ name: it.label })}
                 >
                   <Plus size={iconSizes.xs} />
                 </a>

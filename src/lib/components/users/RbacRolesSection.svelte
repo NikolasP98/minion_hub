@@ -926,7 +926,7 @@
                   value={lvl}
                   options={LEVEL_OPTIONS}
                   disabled={!editable || saving === mod}
-                  aria-label={`${rm.label} access level`}
+                  aria-label={m.a11y_module_access_level({ name: rm.label })}
                   onchange={(v) => setModuleLevel(rm, String(v))}
                 />
 
@@ -1203,7 +1203,7 @@
         value={selectedKey}
         options={roles.map((r) => ({ value: r.key, label: r.name }))}
         disabled={policyBusy}
-        aria-label="Select role"
+        aria-label={m.a11y_select_role()}
         onchange={(v) => (selectedKey = String(v))}
       />
     </div>
@@ -1338,7 +1338,7 @@
               id="permission-group-tabs"
               size="sm"
               bind:value={activeTab}
-              aria-label="Permission groups"
+              aria-label={m.a11y_permission_groups()}
               tabs={[
                 {
                   value: 'business',

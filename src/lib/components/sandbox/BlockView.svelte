@@ -143,7 +143,7 @@
   {:else if data.kind === 'chart' && spec.type === 'chart'}
     <ChartBlock {spec} {title} rows={data.rows} />
   {:else if data.kind === 'table' && spec.type === 'table'}
-    <TableBlock {spec} rows={data.rows} />
+    <TableBlock {spec} {title} rows={data.rows} />
   {:else if data.kind === 'list' && spec.type === 'list'}
     <ListBlock {spec} rows={data.rows} />
   {/if}

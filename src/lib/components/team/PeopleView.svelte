@@ -501,6 +501,7 @@
 />
 <div class="people">
   <DataTable
+    ariaLabel={m.team_tab_people()}
     class="min-h-0"
     tableId="team.people"
     titleColumn={{ key: 'name', href: (r) => `?person=${r.id}` }}

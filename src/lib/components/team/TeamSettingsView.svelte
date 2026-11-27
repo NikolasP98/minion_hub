@@ -424,6 +424,7 @@
         {/if}
       {/snippet}
       <DataTable
+        ariaLabel={m.team_settings_holidays()}
         columns={holidayColumns}
         data={holidays}
         getRowId={(h) => h.id}
@@ -498,6 +499,7 @@
 
   <section class="block" aria-labelledby="al-title">
     <DataTable
+      ariaLabel={m.team_settings_allocations()}
       columns={allocColumns}
       data={allocRows}
       getRowId={(a) => a.id}

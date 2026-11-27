@@ -357,6 +357,7 @@
       </div>
     {:else}
       <DataTable
+        ariaLabel={m.agent_tabMemory()}
         variant="plain"
         data={tableRows}
         columns={memoryColumns}

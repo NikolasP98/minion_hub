@@ -33,4 +33,4 @@
   const activeId = $derived(items.find((i) => isActive(i.id, i.href ?? ''))?.id);
 </script>
 
-<SideNav {items} {activeId} ariaLabel="Account" header={m.account_nav_header()} />
+<SideNav {items} {activeId} ariaLabel={m.nav_account()} header={m.account_nav_header()} />

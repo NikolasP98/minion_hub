@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { appLocale } from '$lib/utils/format';
   import { FUNNEL_ORDER, funnelStageColor } from './crm-funnel';
   import { funnelStageLabel } from './crm-i18n';
@@ -53,7 +54,7 @@
   class="ribbon"
   class:stacked
   role="img"
-  aria-label="Marketing funnel breakdown"
+  aria-label={m.a11y_marketing_funnel_breakdown()}
 >
   {#each segments as s, i (s.id)}
     {@const color = funnelStageColor(s.id)}

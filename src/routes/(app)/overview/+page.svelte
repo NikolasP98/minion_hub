@@ -142,7 +142,7 @@
         />
 
         <FormFieldset legend="Color">
-          <div class="choice-grid" aria-label="Area color">
+          <div class="choice-grid" aria-label={m.a11y_area_color()}>
             {#each AREA_COLORS as color (color)}
               <Button
                 variant={newColor === color ? 'outline' : 'ghost'}
@@ -159,7 +159,7 @@
         </FormFieldset>
 
         <FormFieldset legend="Icon">
-          <div class="choice-grid" aria-label="Area icon">
+          <div class="choice-grid" aria-label={m.a11y_area_icon()}>
             {#each AREA_ICON_KEYS as iconKey (iconKey)}
               {@const Icon = iconByName(iconKey)}
               <Button
@@ -285,7 +285,7 @@
 
   <PageBody padding="none" scroll="none" class="overview-stage">
     <div class="overview-layout" data-editing={editing ? 'true' : undefined}>
-      <section class="graph-stage" aria-label="Organization relationship graph">
+      <section class="graph-stage" aria-label={m.a11y_organization_graph()}>
         <OverviewGraph
           {org}
           areas={data.areas}

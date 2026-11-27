@@ -90,7 +90,7 @@
     data-no-capture
     class="fixed inset-0 !h-auto z-[var(--layer-command)] cursor-default"
     onclick={minimizeReport}
-    aria-label="Minimize bug reporter"
+    aria-label={m.a11y_minimize_bug_reporter()}
     tabindex={-1}
   ></Button>
 
@@ -113,7 +113,7 @@
           size="xs"
           onclick={minimizeReport}
           class="text-muted hover:text-foreground transition-colors p-0.5 rounded"
-          aria-label="Minimize"
+          aria-label={m.floatingAssistant_minimize()}
           title="Minimize (ESC)"
         >
           <Minimize2 size={iconSizes.sm} />
@@ -123,7 +123,7 @@
           size="xs"
           onclick={cancelReport}
           class="text-muted hover:text-destructive transition-colors p-0.5 rounded"
-          aria-label="Discard report"
+          aria-label={m.a11y_discard_report()}
           title="Discard (ESC ESC)"
         >
           <X size={iconSizes.md} />
@@ -164,13 +164,17 @@
           <div class="flex flex-wrap gap-2">
             {#each bugReporter.pastedImages as img, i}
               <div class="relative group w-20 h-20 rounded-lg overflow-hidden border border-border">
-                <img src={img} alt="Pasted {i + 1}" class="w-full h-full object-cover" />
+                <img
+                  src={img}
+                  alt={m.a11y_pasted_image({ number: i + 1 })}
+                  class="w-full h-full object-cover"
+                />
                 <Button
                   variant="ghost"
                   size="xs"
                   onclick={() => removePastedImage(i)}
                   class="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-bg/80 text-muted hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                  aria-label="Remove image"
+                  aria-label={m.noteImageStrip_removeImage()}
                 >
                   <X size={iconSizes.xs} />
                 </Button>
@@ -290,7 +294,7 @@
       size="xs"
       onclick={restoreReport}
       class="flex items-center gap-2 px-4 py-2.5 hover:bg-bg3/50 transition-colors"
-      aria-label="Restore bug report"
+      aria-label={m.a11y_restore_bug_report()}
     >
       <Bug size={iconSizes.md} class="text-accent" />
       <span class="text-xs font-medium text-foreground">Bug Draft</span>
@@ -305,7 +309,7 @@
       size="xs"
       onclick={cancelReport}
       class="px-2.5 py-2.5 text-muted hover:text-destructive hover:bg-bg3/50 transition-colors border-l border-border"
-      aria-label="Discard report"
+      aria-label={m.a11y_discard_report()}
       title="Discard"
     >
       <X size={iconSizes.sm} />

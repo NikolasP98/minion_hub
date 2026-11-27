@@ -87,7 +87,7 @@
           variant="ghost"
           size="xs"
           type="button"
-          aria-label={`Remove ${roleName}`}
+          aria-label={m.common_removeNamed({ name: roleName })}
           disabled={lastOwner}
           title={lastOwner ? m.users_cannotRemoveLastOwner() : undefined}
           class="flex items-center justify-center w-3.5 h-3.5 rounded-sm hover:bg-bg3 cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
