@@ -62,6 +62,13 @@
     e.dataTransfer!.effectAllowed = 'copy';
   }
 
+  /** Keyboard twin of the drag: a click that comes from Enter or Space (never from the
+   *  pointer, which drags) asks the canvas to place the item at the centre of the view. */
+  function addByKey(e: MouseEvent, detail: { agent?: string; element?: string; name: string }) {
+    if (e.detail !== 0) return;
+    window.dispatchEvent(new CustomEvent('workshop:add', { detail }));
+  }
+
   function onElementDragStart(e: DragEvent, type: ElementType, label: string) {
     e.dataTransfer?.setData('application/workshop-element', JSON.stringify({ type, label }));
     e.dataTransfer!.effectAllowed = 'copy';
@@ -114,6 +121,7 @@
             {agent}
             count={instanceCounts[agent.id]}
             onDragStart={(e) => onDragStart(e, agent)}
+            onAdd={(e, name) => addByKey(e, { agent: JSON.stringify(agent), name })}
           />
         {/each}
       </div>
@@ -122,7 +130,11 @@
       {/if}
       <div class="flex flex-wrap gap-1.5 {collapsed ? 'justify-center' : ''}">
         {#each availableAgents as agent (agent.id)}
-          <WorkshopAgentPill {agent} onDragStart={(e) => onDragStart(e, agent)} />
+          <WorkshopAgentPill
+            {agent}
+            onDragStart={(e) => onDragStart(e, agent)}
+            onAdd={(e, name) => addByKey(e, { agent: JSON.stringify(agent), name })}
+          />
         {/each}
       </div>
     {/if}
@@ -143,6 +155,12 @@
             class="w-8 h-[var(--control-height-md)] rounded border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors text-sm"
             draggable="true"
             ondragstart={(e: DragEvent) => onElementDragStart(e, et.type, et.label)}
+            onclick={(e: MouseEvent) =>
+              addByKey(e, {
+                element: JSON.stringify({ type: et.type, label: et.label }),
+                name: et.label,
+              })}
+            aria-label={m.workshop_kbAddToCanvas({ name: et.label })}
             title={et.label}
           >
             {et.icon}

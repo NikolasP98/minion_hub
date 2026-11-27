@@ -103,7 +103,8 @@
     // What had focus before the menu took it (the element a keyboard user opened it from).
     const opener = document.activeElement as HTMLElement | null;
     const menu = root;
-    menu.querySelector<HTMLElement>(ROW_SELECTOR)?.focus();
+    // The first row that can take it: a disabled first row would leave focus outside the menu.
+    (rowsIn(menu).find((r) => !r.hasAttribute('disabled')) ?? menu).focus();
     return () => {
       // Give focus back only if the menu still holds it (or lost it by closing); a click
       // elsewhere that closed the menu keeps the focus it chose.
@@ -129,7 +130,14 @@
   async function openSubmenu(item: ContextMenuItem, depth: number, parent: HTMLElement) {
     openAt(depth, item.id);
     await tick();
-    parent.parentElement?.querySelector<HTMLElement>(`[role="menu"] ${ROW_SELECTOR}`)?.focus();
+    // The submenu is the parent row's sibling. Not `[role="menu"] <row>` from the wrapper:
+    // a browser matches that against ancestors outside the wrapper too, so the parent row
+    // itself (a row inside the root menu) was the first match and focus never moved in.
+    const sub = parent.parentElement?.querySelector<HTMLElement>(':scope > [role="menu"]');
+    if (sub)
+      rowsIn(sub)
+        .find((r) => !r.hasAttribute('disabled'))
+        ?.focus();
   }
 
   /** Closes the DEEPEST open submenu and returns focus to the row that opened

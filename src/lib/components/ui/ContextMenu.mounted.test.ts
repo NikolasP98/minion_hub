@@ -28,6 +28,18 @@ function open(overrides: Partial<{ x: number; y: number; items: ContextMenuItem[
 }
 
 describe('ContextMenu', () => {
+  it('focuses the first ENABLED row: a disabled first row cannot take focus', async () => {
+    open({
+      items: [
+        { id: 'offline', label: 'Solo en línea', disabled: true },
+        { id: 'remove', label: 'Quitar' },
+      ],
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Quitar' })),
+    );
+  });
+
   it('opens at the pointer and focuses its first row', async () => {
     const { menu } = open();
     expect(menu.style.left).toBe('100px');

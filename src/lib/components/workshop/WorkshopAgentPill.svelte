@@ -1,10 +1,12 @@
 <script lang="ts">
   import { Button, Tooltip } from '$lib/components/ui';
   import { agentDisplayName, agentAvatarUrl } from '$lib/utils/agent-display';
+  import * as m from '$lib/paraglide/messages';
 
   let {
     agent,
     onDragStart,
+    onAdd,
     count,
   }: {
     agent: {
@@ -15,6 +17,8 @@
       identity?: { name?: string } | null;
     };
     onDragStart: (e: DragEvent) => void;
+    /** Activation of the pill; the palette acts on it only when it came from the keyboard. */
+    onAdd?: (e: MouseEvent, name: string) => void;
     count?: number;
   } = $props();
 
@@ -30,6 +34,8 @@
       class="w-9 h-[var(--control-height-lg)] rounded-full border border-border bg-bg3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing hover:border-accent transition-colors overflow-hidden"
       draggable="true"
       ondragstart={onDragStart}
+      onclick={(e: MouseEvent) => onAdd?.(e, displayName)}
+      aria-label={m.workshop_kbAddToCanvas({ name: displayName })}
     >
       {#if agent.emoji}
         <span class="text-lg leading-none">{agent.emoji}</span>

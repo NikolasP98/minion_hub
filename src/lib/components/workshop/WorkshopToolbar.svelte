@@ -11,6 +11,9 @@
   } from '$lib/state/workshop/workshop.svelte';
   import { banterBudget } from '$lib/state/workshop/banter-budget.svelte';
   import Undo2 from 'lucide-svelte/icons/undo-2';
+  import ZoomIn from 'lucide-svelte/icons/zoom-in';
+  import ZoomOut from 'lucide-svelte/icons/zoom-out';
+  import Maximize from 'lucide-svelte/icons/maximize';
   import MessageCircle from 'lucide-svelte/icons/message-circle';
   import MessageCircleOff from 'lucide-svelte/icons/message-circle-off';
   import { iconSizes, Button } from '$lib/components/ui';
@@ -32,6 +35,10 @@
 
   function requestUndo() {
     window.dispatchEvent(new Event('workshop:undo'));
+  }
+  // The canvas listens for this, as it does for undo: the toolbar is mounted beside it.
+  function requestZoom(detail: 'in' | 'out' | 'reset') {
+    window.dispatchEvent(new CustomEvent('workshop:zoom', { detail }));
   }
 
   const banterEnabled = $derived(workshopState.settings.idleBanterEnabled);
@@ -94,6 +101,23 @@
   >
     <Undo2 size={iconSizes.sm} />
   </Button>
+
+  <div class="w-px h-[var(--control-height-xs)] bg-border shrink-0"></div>
+
+  <!-- Zoom: the wheel's keyboard and touch equivalent -->
+  {#each [['out', m.workshop_zoomOut(), ZoomOut], ['in', m.workshop_zoomIn(), ZoomIn], ['reset', m.workshop_reset(), Maximize]] as const as [how, label, Icon] (how)}
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      onclick={() => requestZoom(how)}
+      title={label}
+      aria-label={label}
+      class="shrink-0 rounded border border-border text-muted transition-colors hover:bg-bg3 hover:text-foreground"
+    >
+      <Icon size={iconSizes.sm} />
+    </Button>
+  {/each}
 
   <div class="w-px h-6 bg-border shrink-0"></div>
 
