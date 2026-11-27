@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   /**
    * AgentAvatarStack — overlapping circular chips showing which agents reference
    * a section. Idle: stacked with -ml overlap (compact). Hover the group:
@@ -43,7 +44,7 @@
 
   function monogram(label: string): string {
     const m = label.trim().match(/[\p{L}\p{N}]/gu);
-    return m ? m[0].toUpperCase() : "?";
+    return m ? m[0].toUpperCase() : '?';
   }
 </script>
 
@@ -52,14 +53,10 @@
     class="avatar-stack group relative inline-flex items-center"
     style="--chip-size: {size}px;"
     role="group"
-    aria-label={`${agents.length} agents`}
+    aria-label={m.a11y_agent_count({ count: agents.length })}
   >
     {#each visible as agent, i (agent.agentId)}
-      <div
-        class="chip relative"
-        style="z-index: {visible.length - i};"
-        title={agent.label}
-      >
+      <div class="chip relative" style="z-index: {visible.length - i};" title={agent.label}>
         {#if agent.avatarUrl}
           <img src={agent.avatarUrl} alt="" />
         {:else if agent.emoji}
@@ -73,11 +70,17 @@
       </div>
     {/each}
     {#if overflow > 0}
-      <div class="chip overflow" title={agents.slice(max).map((a) => a.label).join(", ")}>
+      <div
+        class="chip overflow"
+        title={agents
+          .slice(max)
+          .map((a) => a.label)
+          .join(', ')}
+      >
         <span class="mono">+{overflow}</span>
         <span class="tooltip surface-3">
           {#each agents.slice(max) as a, i}
-            {a.label}{i < overflow - 1 ? ", " : ""}
+            {a.label}{i < overflow - 1 ? ', ' : ''}
           {/each}
         </span>
       </div>
@@ -106,7 +109,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: margin-left 280ms var(--ease-standard),
+    transition:
+      margin-left 280ms var(--ease-standard),
       transform 180ms var(--ease-standard),
       box-shadow 180ms var(--ease-standard);
   }
@@ -162,7 +166,8 @@
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 140ms var(--ease-standard),
+    transition:
+      opacity 140ms var(--ease-standard),
       transform 140ms var(--ease-standard);
     z-index: var(--layer-debug);
     max-width: 240px;

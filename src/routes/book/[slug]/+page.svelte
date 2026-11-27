@@ -206,7 +206,7 @@
   size="medium"
 >
   {#if data.eventTypes.length > 0}
-    <ol class="mb-5 flex items-center" aria-label="Booking progress">
+    <ol class="mb-5 flex items-center" aria-label={m.a11y_booking_progress()}>
       {#each steps as progressStep, index (progressStep.key)}
         <li
           class="flex min-w-0 flex-1 items-center"

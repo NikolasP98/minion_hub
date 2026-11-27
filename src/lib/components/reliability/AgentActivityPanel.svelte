@@ -608,6 +608,7 @@
         </div>
         <div class="overflow-x-auto">
           <DataTable
+            ariaLabel={m.reliability_toolOutcomes()}
             variant="plain"
             data={toolOutcomes.byTool}
             columns={outcomeColumns}

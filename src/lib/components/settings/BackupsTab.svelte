@@ -495,6 +495,7 @@
             </div>
           {/snippet}
           <DataTable
+            ariaLabel={m.backup_snapshots()}
             variant="plain"
             data={snapshots}
             columns={snapshotColumns}

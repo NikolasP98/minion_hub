@@ -136,6 +136,7 @@
             <p class="t-caption">{m.stock_commitments_empty()}</p>
           {:else}
             <DataTable
+              ariaLabel={m.stock_nav_commitments()}
               variant="plain"
               data={data.open}
               columns={openColumns}
@@ -169,6 +170,7 @@
             <p class="t-caption">{m.stock_commitments_empty()}</p>
           {:else}
             <DataTable
+              ariaLabel={m.stock_commitments_realized()}
               variant="plain"
               data={data.realized}
               columns={realizedColumns}

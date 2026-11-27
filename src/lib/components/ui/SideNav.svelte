@@ -162,7 +162,9 @@
               >{/if}
             {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span
               >{/if}
-            {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"
+            {#if item.dot && !active}<span
+                class="set-dot shrink-0"
+                aria-label={m.misc_unsavedChanges()}
               ></span>{/if}
           </a>
         {:else}
@@ -185,7 +187,9 @@
               >{/if}
             {#if item.badge != null}<span class="set-badge hidden xl:inline">{item.badge}</span
               >{/if}
-            {#if item.dot && !active}<span class="set-dot shrink-0" aria-label="unsaved changes"
+            {#if item.dot && !active}<span
+                class="set-dot shrink-0"
+                aria-label={m.misc_unsavedChanges()}
               ></span>{/if}
           </button>
         {/if}

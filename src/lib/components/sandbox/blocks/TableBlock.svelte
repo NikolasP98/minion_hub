@@ -9,10 +9,12 @@
 
   interface Props {
     spec: TableSpec;
+    /** The block's title: the table's accessible name. */
+    title: string;
     rows: QueryResult;
   }
 
-  let { spec, rows }: Props = $props();
+  let { spec, title, rows }: Props = $props();
 
   type Row = Record<string, unknown> & { __id: string };
 
@@ -63,7 +65,14 @@
   {#if data.length === 0}
     <p class="t-caption table-empty">{m.sandbox_block_empty()}</p>
   {:else}
-    <DataTable variant="plain" {data} {columns} getRowId={(row) => row.__id} {cell} />
+    <DataTable
+      variant="plain"
+      {data}
+      {columns}
+      getRowId={(row) => row.__id}
+      {cell}
+      ariaLabel={title}
+    />
   {/if}
 </div>
 

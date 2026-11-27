@@ -190,7 +190,7 @@
   class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg)_40%,transparent)]"
   role="button"
   tabindex="-1"
-  aria-label="Close"
+  aria-label={m.common_close()}
   onclick={handleBackdropClick}
   onkeydown={(e) => (e.key === 'Escape' ? onClose() : backdropKeys.onkeydown(e))}
   onkeyup={backdropKeys.onkeyup}

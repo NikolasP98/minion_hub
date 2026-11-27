@@ -93,7 +93,7 @@
         size="sm"
         class="-ml-1"
         onclick={back.go}
-        aria-label="Back to tickets"
+        aria-label={m.a11y_back_to_tickets()}
       >
         <ArrowLeft size={iconSizes.md} />
       </Button>

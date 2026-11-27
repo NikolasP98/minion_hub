@@ -126,6 +126,7 @@
 {/snippet}
 
 <DataTable
+  ariaLabel={m.sched_bookings_title()}
   {columns}
   bind:filters
   bind:advanced

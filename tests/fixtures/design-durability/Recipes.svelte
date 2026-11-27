@@ -159,6 +159,7 @@
             </div>
             {#if active === 'table'}
               <DataTable
+                ariaLabel="Rows"
                 variant="plain"
                 data={rows}
                 {columns}

@@ -291,6 +291,7 @@
         <div class="card">
           <div class="card-h">{sec.title}</div>
           <DataTable
+            ariaLabel={sec.title}
             variant="plain"
             data={data.lines.filter((l) => isOut(l) === sec.out)}
             columns={exchangeColumns}
@@ -322,7 +323,13 @@
              inside its card at <780px, and sticky `thead` in every other
              plain-variant table — is still owed. See
              proposals/2026-09-25-hub-stock-inline-tags-uom-overflow.md. -->
-        <DataTable variant="plain" data={data.lines} columns={lineColumns} getRowId={(l) => l.id}>
+        <DataTable
+          variant="plain"
+          data={data.lines}
+          columns={lineColumns}
+          getRowId={(l) => l.id}
+          ariaLabel={m.stock_entry_lines_title()}
+        >
           {#snippet cell(row: LineRow, col: DataColumn<LineRow>)}
             {#if col.key === 'qty'}
               <span class="tabular-nums">{formatNumber(Number(row.qty))}</span>

@@ -22,7 +22,7 @@
 <div
   class="pointer-events-none absolute bottom-6 left-1/2 z-[var(--layer-navigation)] -translate-x-1/2"
   role="toolbar"
-  aria-label="Flow actions"
+  aria-label={m.a11y_flow_actions()}
 >
   <div
     class="pointer-events-auto flex items-center gap-1.5 rounded-full border border-border/80 bg-bg2/90 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-md"
@@ -32,7 +32,7 @@
       variant="ghost"
       onclick={toggleHistory}
       title="Run history"
-      aria-label="Run history"
+      aria-label={m.flownode_runHistory()}
       aria-pressed={flowEditorState.historyOpen}
       class="flex h-[var(--control-height-md)] w-8 items-center justify-center rounded-full border transition-colors
         {flowEditorState.historyOpen

@@ -20,6 +20,7 @@
 </script>
 
 <DataTable
+  ariaLabel="Rows"
   data={rows}
   {columns}
   getRowId={(row) => row.id}

@@ -21,6 +21,7 @@
   Replace projection
 </Button>
 <DataTable
+  ariaLabel="Rows"
   variant="plain"
   {data}
   {columns}

@@ -472,6 +472,7 @@
     <!-- Event table -->
     <div class="border-t border-border flex-1 min-h-0 log-pane">
       <DataTable
+        ariaLabel={m.reliability_activityLog()}
         class="h-full"
         data={categoryFiltered}
         {columns}

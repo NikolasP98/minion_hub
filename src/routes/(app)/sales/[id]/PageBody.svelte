@@ -76,7 +76,13 @@
     subtitle={`${o.humanId ?? 'Order'} · created ${relativeTime(o.createdAt)}`}
   >
     {#snippet leading()}
-      <Button variant="ghost" size="sm" class="-ml-1" onclick={back.go} aria-label="Back to sales">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="-ml-1"
+        onclick={back.go}
+        aria-label={m.a11y_back_to_sales()}
+      >
         <ArrowLeft size={iconSizes.md} />
       </Button>
     {/snippet}

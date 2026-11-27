@@ -288,6 +288,7 @@
 
   <PageBody padding="none" scroll="none">
     <DataTable
+      ariaLabel={m.doors_title()}
       class="flex-1 min-h-0"
       {columns}
       data={data.doors}

@@ -553,6 +553,7 @@
         </BoardView>
       {:else}
         <DataTable
+          ariaLabel={m.pos_catalog_title()}
           class="flex-1 min-h-0"
           {columns}
           data={sellables}

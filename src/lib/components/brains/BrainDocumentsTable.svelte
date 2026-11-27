@@ -160,6 +160,7 @@
       </div>
     {/snippet}
     <DataTable
+      ariaLabel={m.brains_metric_documents()}
       variant="plain"
       data={documents}
       {columns}

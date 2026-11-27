@@ -383,6 +383,7 @@
       {#if !isFull}{m.stock_mv_unavailable()}{/if}
     </p>
     <DataTable
+      ariaLabel={m.stock_nav_entries()}
       class="flex-1 min-h-0"
       tableId="stock.entries"
       idColumn={{ value: (e) => idLabel(e) }}
@@ -434,6 +435,7 @@
           {:else}
             <p class="lines-msg">{m.stock_mv_valuation_unverified()}</p>
             <DataTable
+              ariaLabel={m.stock_entry_lines_title()}
               variant="plain"
               class="lines-tbl"
               data={e.lines}

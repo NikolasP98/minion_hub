@@ -998,6 +998,7 @@
   {/if}
   {#if collectionShowsRows(readState)}
     <DataTable
+      ariaLabel={m.crm_nav_customers()}
       class="flex-1 min-h-0"
       tableId="crm.customers"
       titleColumn={{ key: 'name', href: (c) => `/crm/${c.contact_id}` }}

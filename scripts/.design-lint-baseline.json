@@ -16,6 +16,8 @@
     "a11y-ignore": 77,
     "icon-button-unlabelled": 0,
     "bare-outline-none": 15,
+    "hardcoded-a11y-name": 0,
+    "hardcoded-hint-text": 74,
     "raw-control-height": 187
   },
   "generatedFor": "decrease-only global ceiling (governed = raw minus reason-coded)"

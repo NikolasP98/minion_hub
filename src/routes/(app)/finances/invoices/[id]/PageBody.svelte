@@ -528,7 +528,13 @@
         {#if items.length > 0}
           <section class="doc-sec">
             <header class="panel-h">{m.fin_invoice_items()}</header>
-            <DataTable variant="plain" data={items} columns={lineColumns} getRowId={(l) => l.id}>
+            <DataTable
+              variant="plain"
+              data={items}
+              columns={lineColumns}
+              getRowId={(l) => l.id}
+              ariaLabel={m.fin_invoice_items()}
+            >
               {#snippet cell(row: InvoiceLine, col: DataColumn<InvoiceLine>)}
                 {#if col.key === 'unitPrice'}
                   {formatMoney(row.unitPrice, inv.currency ?? 'PEN')}
@@ -547,6 +553,7 @@
           <section class="doc-sec">
             <header class="panel-h">{m.fin_invoice_payments()}</header>
             <DataTable
+              ariaLabel={m.fin_invoice_payments()}
               variant="plain"
               data={payments}
               columns={paymentColumns}
@@ -737,7 +744,7 @@
                   variant="ghost"
                   size="sm"
                   class="invoice-line-remove"
-                  aria-label="Remove line"
+                  aria-label={m.a11y_remove_line()}
                   onclick={() => removePreviewLine(i)}
                 >
                   <Trash2 size={iconSizes.sm} />

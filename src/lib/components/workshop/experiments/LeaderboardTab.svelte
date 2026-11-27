@@ -106,6 +106,7 @@
     <p class="text-xs font-mono text-muted italic">{m.workshop_exp_leaderboard_empty()}</p>
   {:else}
     <DataTable
+      ariaLabel={m.workshop_exp_leaderboard_title()}
       variant="plain"
       data={rows}
       {columns}

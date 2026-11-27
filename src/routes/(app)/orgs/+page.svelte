@@ -29,7 +29,7 @@
           }
         : { kind: 'ready' }}
     >
-      <ul class="organization-list" aria-label="Organizations">
+      <ul class="organization-list" aria-label={m.breadcrumb_orgs()}>
         {#each data.orgs as organization (organization.id)}
           <li class="organization-row">
             <span class="organization-mark" aria-hidden="true">

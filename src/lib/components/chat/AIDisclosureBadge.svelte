@@ -1,4 +1,5 @@
 <script lang="ts">
+  import * as m from '$lib/paraglide/messages';
   import { Button } from '$lib/components/ui';
   import { onMount } from 'svelte';
 
@@ -48,8 +49,8 @@
     class="ai-disclosure__toggle w-3 h-3 flex items-center justify-center rounded-sm
       hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring
       transition-all duration-[var(--duration-fast)]"
-    title={collapsed ? 'Show AI disclosure' : 'Collapse AI disclosure'}
-    aria-label={collapsed ? 'Show AI disclosure' : 'Collapse AI disclosure'}
+    title={collapsed ? m.a11y_show_ai_disclosure() : m.a11y_collapse_ai_disclosure()}
+    aria-label={collapsed ? m.a11y_show_ai_disclosure() : m.a11y_collapse_ai_disclosure()}
     aria-expanded={!collapsed}
     onclick={toggle}
   >

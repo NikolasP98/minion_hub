@@ -226,7 +226,7 @@
   class="surface-1 hidden md:flex flex-col shrink-0 {widthCls} h-full border-r border-[var(--hairline)] transition-[width] duration-[var(--duration-normal)] ease-[var(--ease-standard)] z-[var(--layer-navigation,20)] {collapsed
     ? 'is-collapsed'
     : ''}"
-  aria-label="Primary"
+  aria-label={m.nav_primaryAria()}
 >
   {#if collapsed}
     <span class="sr-only">{getBranding().fullName}</span>
