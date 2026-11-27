@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import { buttonKeys } from '$lib/a11y/button-keys';
   import {
     workshopState,
@@ -77,14 +78,7 @@
     }
   }
 
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
-  const backdropKeys = buttonKeys();
-
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
-  }
+  const titleId = $props.id();
 
   function toggleRow(itemId: string) {
     if (expandedItemId === itemId) {
@@ -184,21 +178,21 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<div
-  class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg)_40%,transparent)]"
-  role="button"
-  tabindex="-1"
-  aria-label={m.common_close()}
-  onclick={handleBackdropClick}
-  onkeydown={(e) => (e.key === 'Escape' ? onClose() : backdropKeys.onkeydown(e))}
-  onkeyup={backdropKeys.onkeyup}
+<!-- Escape, a click outside, the focus trap and focus return belong to the shared Dialog.
+     `clear`: the canvas stays visible behind the panel, as it always did. -->
+<Dialog
+  open
+  presentation="bare"
+  backdrop="clear"
+  labelledBy={titleId}
+  hideClose
+  guardDismiss={false}
+  onclose={onClose}
 >
   <div class="w-full max-w-lg rounded-lg border border-border bg-bg2 shadow-xl font-mono">
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border px-4 py-2">
-      <span class="text-xs text-foreground font-semibold">{m.inbox_title()}</span>
+      <span id={titleId} class="text-xs text-foreground font-semibold">{m.inbox_title()}</span>
       <div class="flex items-center gap-2">
         <Button
           variant="outline"
@@ -431,4 +425,4 @@
       </div>
     {/if}
   </div>
-</div>
+</Dialog>
