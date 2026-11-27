@@ -93,6 +93,7 @@
       title: m.automation_finance_daily_title,
       desc: m.automation_finance_daily_desc,
     },
+    pulse: { title: m.automation_pulse_title, desc: m.automation_pulse_desc },
     dni: { title: m.automation_dni_title, desc: m.automation_dni_desc },
     meta_sync: { title: m.automation_meta_sync_title, desc: m.automation_meta_sync_desc },
     email_ledger: { title: m.automation_email_ledger_title, desc: m.automation_email_ledger_desc },
