@@ -1,5 +1,4 @@
 - main:
-  - status
   - group "Calendar view":
     - button "Day"
     - button "Week" [pressed]
