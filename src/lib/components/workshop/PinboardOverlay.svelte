@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { buttonKeys } from '$lib/a11y/button-keys';
+  import Dialog from '$lib/components/ui/foundations/Dialog.svelte';
   import {
     workshopState,
     addPinboardItem,
@@ -77,25 +77,24 @@
     return 'text-muted';
   }
 
-  function handleBackdropClick(e: MouseEvent) {
-    if (e.target === e.currentTarget) onClose();
-  }
-  const backdropKeys = buttonKeys();
+  const titleId = $props.id();
 </script>
 
-<div
-  class="fixed inset-0 z-[var(--layer-modal)] flex items-center justify-center bg-[color-mix(in_srgb,var(--color-bg)_40%,transparent)]"
-  role="button"
-  tabindex="-1"
-  aria-label={m.common_close()}
-  onclick={handleBackdropClick}
-  onkeydown={(e) => (e.key === 'Escape' ? onClose() : backdropKeys.onkeydown(e))}
-  onkeyup={backdropKeys.onkeyup}
+<!-- Escape, a click outside, the focus trap and focus return belong to the shared Dialog.
+     `clear`: the canvas stays visible behind the panel, as it always did. -->
+<Dialog
+  open
+  presentation="bare"
+  backdrop="clear"
+  labelledBy={titleId}
+  hideClose
+  guardDismiss={false}
+  onclose={onClose}
 >
   <div class="w-full max-w-lg rounded-lg border border-border bg-bg2 shadow-xl">
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border px-4 py-2">
-      <span class="text-xs font-mono text-foreground font-semibold">
+      <span id={titleId} class="text-xs font-mono text-foreground font-semibold">
         {m.pinboard_title({ label: element?.label ?? '' })}
         <span class="text-muted font-normal ml-1"
           >({pins.length === 1
@@ -246,4 +245,4 @@
       </Button>
     </div>
   </div>
-</div>
+</Dialog>

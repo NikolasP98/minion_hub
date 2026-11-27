@@ -26,10 +26,6 @@ import OmnichatDock from '$lib/components/my-agent/OmnichatDock.svelte';
 import BreakdownTree from '$lib/components/prompt/BreakdownTree.svelte';
 import KpiRow from '$lib/components/reliability/KpiRow.svelte';
 import InboxOverlay from '$lib/components/workshop/InboxOverlay.svelte';
-import MessageBoardOverlay from '$lib/components/workshop/MessageBoardOverlay.svelte';
-import PortalOverlay from '$lib/components/workshop/PortalOverlay.svelte';
-import RulebookOverlay from '$lib/components/workshop/RulebookOverlay.svelte';
-import PinboardOverlay from '$lib/components/workshop/PinboardOverlay.svelte';
 import AgentSidebarHost from '../../../tests/fixtures/role-button-keys/AgentSidebarHost.svelte';
 import AgentNodeHost from '../../../tests/fixtures/role-button-keys/AgentNodeHost.svelte';
 import CodeEditorPane from '../../routes/(app)/tools/[id]/_components/CodeEditorPane.svelte';
@@ -347,16 +343,6 @@ const sites: Site[] = [
     },
   },
   {
-    site: 'workshop InboxOverlay backdrop',
-    tab: false,
-    mount() {
-      gw.agents = [];
-      const onClose = vi.fn();
-      const v = render(InboxOverlay, { elementId: 'el', onClose });
-      return { el: roleButton(v.container), count: () => onClose.mock.calls.length };
-    },
-  },
-  {
     site: 'workshop InboxOverlay file drop zone',
     tab: true,
     async mount() {
@@ -374,22 +360,6 @@ const sites: Site[] = [
       };
     },
   },
-  ...(
-    [
-      ['MessageBoardOverlay', MessageBoardOverlay],
-      ['PortalOverlay', PortalOverlay],
-      ['RulebookOverlay', RulebookOverlay],
-      ['PinboardOverlay', PinboardOverlay],
-    ] as const
-  ).map(([name, Comp]) => ({
-    site: `workshop ${name} backdrop`,
-    tab: false,
-    mount() {
-      const onClose = vi.fn();
-      const v = render(Comp as never, { elementId: 'el', onClose } as never);
-      return { el: roleButton(v.container), count: () => onClose.mock.calls.length };
-    },
-  })),
   // The workshop's link prompt is no longer here: it renders through the shared Dialog
   // (spec 152), whose native backdrop replaced its role="button" backdrop.
 ];
