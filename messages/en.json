@@ -1405,6 +1405,7 @@
   "conn_connected": "Connected",
   "conn_connecting": "Connecting…",
   "conn_notConnected": "Disconnected",
+  "conn_restarting": "Restarting",
   "connectionBanner_disconnected": "Server disconnected",
   "connectionBanner_manageHosts": "Manage hosts",
   "connectionBanner_rawReason": "raw server reason",
