@@ -1,0 +1,15 @@
+- dialog "Command palette":
+  - combobox "Search pages, agents, actions..." [expanded]
+  - text: Esc
+  - listbox "Search pages, agents, actions...":
+    - text: Pages
+    - option "My home Page" [selected]
+    - option "Home Page"
+    - option "Overview Page"
+    - option "Sandbox Page"
+    - option "Notifications Page"
+    - option "Changelog Page"
+    - option "Settings Page"
+    - text: Actions
+    - option "Open Settings"
+  - text: ↑↓ navigate ↵ select esc close

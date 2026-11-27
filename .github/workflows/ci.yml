@@ -101,8 +101,8 @@ jobs:
         run: bun run qa:check-baseline
 
   # Spec 137 (accessibility gates, program S0). The backend-free gates of `bun run a11y`:
-  # the svelte-ignore a11y_* ratchet, assertPattern tests, the chart-canvas and workshop
-  # accessibility specs, and one axe pass per component story against the decrease-only
+  # the svelte-ignore a11y_* ratchet, assertPattern tests, the chart-canvas, workshop and
+  # aria-snapshot accessibility specs, and one axe pass per component story against the decrease-only
   # ledger (tests/ui-audit/a11y-ledger.json). The page gate runs in qa-stack, which has the stack.
   a11y:
     runs-on: ubuntu-latest
