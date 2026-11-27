@@ -145,7 +145,7 @@
   {#if !canManage}
     <p class="t-caption muted">{m.doors_followup_no_permission()}</p>
   {:else if loadError}
-    <p class="t-caption muted" role="alert">{m.doors_followup_load_error()}</p>
+    <p class="t-caption muted" role="status">{m.doors_followup_load_error()}</p>
   {:else if view}
     <div class="fields">
       <p class="t-caption muted">{m.doors_followup_desc()}</p>

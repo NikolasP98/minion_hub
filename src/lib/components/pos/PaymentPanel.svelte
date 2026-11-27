@@ -177,7 +177,7 @@
             onclick={() => removeRow(i)}><X size={iconSizes.xs} /></Button
           >
           {#if issue}
-            <span class="row-error" role="alert">
+            <span class="row-error" role="status">
               {issue === 'invalid_tender'
                 ? m.pos_money_invalid_tender()
                 : m.pos_money_invalid_amount()}

@@ -147,7 +147,7 @@ describe('Pulse proposal edit readiness', () => {
       const editor = screen.getByLabelText('Arguments') as HTMLTextAreaElement;
       await fireEvent.input(editor, { target: { value: '{"title":"Retained draft"}' } });
       rejectWrite(new TypeError('reply lost'));
-      await screen.findByRole('alert');
+      await screen.findByRole('status');
       const save = screen.getByRole('button', { name: /^save$/i });
       expect(save.hasAttribute('disabled')).toBe(true);
       await fireEvent.click(save);
@@ -160,7 +160,7 @@ describe('Pulse proposal edit readiness', () => {
       await fireEvent.click(reload);
       await vi.waitFor(() => expect(save.hasAttribute('disabled')).toBe(false));
       expect(editor.value).toBe('{"title":"Retained draft"}');
-      expect(screen.getByRole('alert').textContent).toMatch(/outcome unknown/i);
+      expect(screen.getByRole('status').textContent).toMatch(/outcome unknown/i);
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(invalidate).toHaveBeenCalledTimes(2);
       expect(runtime.attention).toHaveLength(1);
@@ -201,7 +201,7 @@ describe('Pulse proposal edit readiness', () => {
     expect(invalidate).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Arguments')).toBe(replacement);
     expect(replacement.value).toBe('{"title":"Organization B draft"}');
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -215,7 +215,7 @@ describe('Pulse proposal edit readiness', () => {
     const view = render(PulsePage, { props: { data: { proposals: [proposal] } } });
     await fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await screen.findByRole('alert');
+    await screen.findByRole('status');
     let finishRead!: () => void;
     invalidate.mockImplementationOnce(
       () =>
@@ -237,7 +237,7 @@ describe('Pulse proposal edit readiness', () => {
     await tick();
     expect(screen.getByLabelText('Arguments')).toBe(replacement);
     expect(replacement.value).toBe('{"title":"Organization B draft"}');
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('button', { name: /reload current data/i })).toBeNull();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledTimes(2);
@@ -250,11 +250,11 @@ describe('Pulse proposal edit readiness', () => {
     render(PulsePage, { props: { data: { proposals: [proposal] } } });
     await fireEvent.click(screen.getByRole('button', { name: /^edit$/i }));
     await fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await screen.findByRole('alert');
+    await screen.findByRole('status');
     expect(screen.queryByLabelText('Arguments')).toBeNull();
     expect(screen.getByRole('button', { name: /^approve$/i }).hasAttribute('disabled')).toBe(true);
     await fireEvent.click(screen.getByRole('button', { name: /reload current data/i }));
-    await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    await vi.waitFor(() => expect(screen.queryByRole('status')).toBeNull());
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledTimes(2);
   });
@@ -367,7 +367,7 @@ describe('Pulse proposal edit readiness', () => {
       }),
     );
 
-    await screen.findByRole('alert');
+    await screen.findByRole('status');
     expect(editor.value).toBe(draft);
     expect(invalidate).not.toHaveBeenCalled();
     expect(save.hasAttribute('disabled')).toBe(true);

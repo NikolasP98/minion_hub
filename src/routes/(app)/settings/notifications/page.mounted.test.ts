@@ -342,13 +342,15 @@ describe('notification settings worker health', () => {
 
     expect(view.getByText('7')).toBeTruthy();
     await fireEvent.click(view.getByRole('button', { name: 'Refresh status' }));
-    await waitFor(() => expect(view.getByRole('alert')).toBeTruthy());
+    // The failed-read notice is a polite status now; other statuses share the page.
+    const failure = () => view.container.querySelector('.health-alert[role="status"]');
+    await waitFor(() => expect(failure()).not.toBeNull());
     expect(view.getByText('7')).toBeTruthy();
     expect(view.getByText(/last successful check/i)).toBeTruthy();
 
     await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(view.getByText('5000+')).toBeTruthy());
-    expect(view.queryByRole('alert')).toBeNull();
+    expect(failure()).toBeNull();
     expect(view.getByText('Delivery not ready')).toBeTruthy();
     expect(view.getByText(/whose delivery status is not verified/i)).toBeTruthy();
   });

@@ -222,7 +222,7 @@
       <div class="center"><Spinner /></div>
     {:else if loadError}
       <div class="acts">
-        <p class="t-caption bad" role="alert">{m.common_error()}</p>
+        <p class="t-caption bad" role="status">{m.common_error()}</p>
         <Button size="sm" variant="ghost" onclick={() => load(members)}>{m.common_retry()}</Button>
       </div>
     {:else if rows.length === 0}

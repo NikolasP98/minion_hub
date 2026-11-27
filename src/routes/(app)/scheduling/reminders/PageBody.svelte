@@ -411,7 +411,7 @@
           <span class="t-caption">{m.sched_rem_wait_unit()}</span>
         </span>
       </label>
-      <p class="t-caption mt-2" id="sched-rem-wait-help" role={waitInvalid ? 'alert' : undefined}>
+      <p class="t-caption mt-2" id="sched-rem-wait-help" role="status">
         {waitInvalid ? m.sched_rem_wait_range() : m.sched_rem_wait_help()}
       </p>
     </Card>

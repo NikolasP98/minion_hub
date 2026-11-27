@@ -180,6 +180,7 @@
   import { ConfirmDialog, Dialog, Sheet } from '$lib/components/ui/foundations';
   import { createOptimistic } from '$lib/utils/optimistic';
   import * as m from '$lib/paraglide/messages';
+  import { announce } from '$lib/a11y/announce';
   import { blockDetail, statusIcon } from './block-label';
   import { formatDate, formatMoney, formatTime, weekdayLabels } from '$lib/utils/format';
   import { dateKeyWeekday, instantDateKey, instantParts } from '$lib/time/zoned';
@@ -1784,7 +1785,6 @@
   // settle and the range's data to land (so the count is the real one), says
   // nothing until the user has touched the page (first paint and layout
   // measurement are not news), and never repeats the same view + range.
-  let announcement = $state('');
   let announceTimer: ReturnType<typeof setTimeout> | undefined;
   /** True between the first scroll event and the settle that follows. */
   let scrolling = $state(false);
@@ -1818,10 +1818,11 @@
       for (const [d, list] of bookingsByDay)
         if (inRange(d)) count += list.filter((b) => !isInactiveMemberStatus(b.status)).length;
       const parts = { view: viewName(view), range: rangeLabel };
-      announcement =
+      announce(
         count === 1
           ? m.sched_range_announce_one(parts)
-          : m.sched_range_announce_other({ ...parts, count });
+          : m.sched_range_announce_other({ ...parts, count }),
+      );
     }, 300);
   });
   $effect(() => () => clearTimeout(announceTimer));
@@ -3501,7 +3502,6 @@
     ? COMPACT_MONTH_ROW_REM
     : monthRowRem}rem;--cal-col-min:{Math.max(132, subs.length * MIN_SUB_PX)}px;{styleProp ?? ''}"
 >
-  <div class="sr-only cal-announce" role="status" aria-live="polite">{announcement}</div>
   {#if temporalError}
     <p class="t-caption text-destructive" role="alert">{temporalError}</p>
   {/if}

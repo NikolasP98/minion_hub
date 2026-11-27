@@ -122,7 +122,7 @@ describe('mounted POS money drafts', () => {
 
     await fireEvent.input(input, { target: { value: '1.02' } });
     expect(input.value).toBe('1.02');
-    expect(view.getByRole('alert').textContent).toContain('does not exceed');
+    expect(view.getByRole('status').textContent).toContain('does not exceed');
     expect((submit as HTMLButtonElement).disabled).toBe(true);
 
     await fireEvent.input(input, { target: { value: '0.001' } });

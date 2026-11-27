@@ -402,7 +402,7 @@ it('an unusable storage blocks the confirmation before any write', async () => {
     },
   });
   await confirmSwap();
-  await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(m.stock_corr_storage()));
+  await waitFor(() => expect(screen.getByText(m.stock_corr_storage())).toBeTruthy());
   expect(applies()).toHaveLength(0);
 });
 

@@ -30,7 +30,7 @@
   <div class="issues">
     {#each failed as window (window.key)}
       {@const range = rangeLabel(window)}
-      <div class="issue" role="alert" data-window-key={window.key}>
+      <div class="issue" role="status" data-window-key={window.key}>
         <span class="message">
           {window.hasData
             ? m.cal_window_refresh_failed({ range })

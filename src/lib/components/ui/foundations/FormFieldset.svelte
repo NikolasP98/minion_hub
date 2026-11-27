@@ -39,7 +39,7 @@
   </legend>
   <div data-part="options">{@render children()}</div>
   {#if error}
-    <p id={errorId} data-part="error" role="alert">{error}</p>
+    <p id={errorId} data-part="error" role="status">{error}</p>
   {:else if helper}
     <p id={helperId} data-part="helper">{helper}</p>
   {/if}

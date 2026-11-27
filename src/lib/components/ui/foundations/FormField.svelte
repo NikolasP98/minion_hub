@@ -73,7 +73,12 @@
   </label>
   <div data-part="control">{@render children(controlProps)}</div>
   {#if error}
-    <p id={errorId} data-part="error" role="alert">{error}</p>
+    <!-- Tied to the control (aria-describedby / aria-errormessage): read with the field,
+         announced politely when it appears. The form's own submit error is the alert.
+         TODO(handoff): the packaged twin (`FormField` in @minion-stack/ui, 5 hub screens) still
+         renders its error as role="alert" with no aria-errormessage; it needs a package release
+         (accessibility program ledger, item 23). -->
+    <p id={errorId} data-part="error" role="status">{error}</p>
   {/if}
   {#if helper}
     <p id={helperId} data-part="helper">{helper}</p>

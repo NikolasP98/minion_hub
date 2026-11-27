@@ -245,7 +245,7 @@
             <span class="inc-back-title">{methodLabel}</span>
           </Button>
           {#if paymentsError}
-            <span class="inc-msg" role="alert">{m.picker_load_failed()}</span>
+            <span class="inc-msg" role="status">{m.picker_load_failed()}</span>
           {:else if !paymentsLoaded}
             <span class="inc-msg"><Spinner size="xs" /></span>
           {:else if methodPayments.length === 0}

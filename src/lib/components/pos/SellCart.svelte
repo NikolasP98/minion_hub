@@ -243,7 +243,7 @@
             </div>
           {/if}
           {#if !money.ok}
-            <span class="req" role="alert">{issueMessage(money.code)}</span>
+            <span class="req" role="status">{issueMessage(money.code)}</span>
           {/if}
         </div>
       {/each}

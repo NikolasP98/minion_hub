@@ -37,6 +37,7 @@
 
 <div
   {...api.getRootProps() as Record<string, unknown>}
+  role="group"
   class="toast-item"
   data-type={api.type}
   style:--toast-accent={accentColor}

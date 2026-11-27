@@ -1405,6 +1405,7 @@
   "conn_connected": "Conectado",
   "conn_connecting": "Conectando…",
   "conn_notConnected": "Desconectado",
+  "conn_restarting": "Reiniciando",
   "connectionBanner_disconnected": "Puerta de acceso desconectada",
   "connectionBanner_manageHosts": "Gestionar servidores",
   "connectionBanner_rawReason": "motivo de la puerta de acceso",

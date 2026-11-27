@@ -144,7 +144,7 @@
       {/each}
     </ol>
     {#if failed}
-      <p class="t-caption error" role="alert">{m.doors_form_submissions_error()}</p>
+      <p class="t-caption error" role="status">{m.doors_form_submissions_error()}</p>
     {/if}
     {#if nextCursor}
       <div>

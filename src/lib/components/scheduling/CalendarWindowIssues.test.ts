@@ -33,7 +33,7 @@ describe('CalendarWindowIssues', () => {
       },
     });
 
-    const alerts = view.getAllByRole('alert');
+    const alerts = view.getAllByRole('status');
     expect(alerts).toHaveLength(2);
     expect(alerts[0]?.textContent).toContain('Could not load events');
     expect(alerts[0]?.textContent).toContain('Sep 21, 2026');
@@ -46,10 +46,10 @@ describe('CalendarWindowIssues', () => {
 
   it('removes the alert when retry changes that window to loading', async () => {
     const view = render(CalendarWindowIssues, { props: { windows: [cold], onretry: vi.fn() } });
-    expect(view.getAllByRole('alert')).toHaveLength(1);
+    expect(view.getAllByRole('status')).toHaveLength(1);
 
     await view.rerender({ windows: [{ ...cold, status: 'loading' }], onretry: vi.fn() });
-    expect(view.queryByRole('alert')).toBeNull();
+    expect(view.queryByRole('status')).toBeNull();
   });
 
   it('keeps date-only labels stable in a browser zone west of UTC', () => {
@@ -57,8 +57,8 @@ describe('CalendarWindowIssues', () => {
     process.env.TZ = 'America/Los_Angeles';
     try {
       const view = render(CalendarWindowIssues, { props: { windows: [cold], onretry: vi.fn() } });
-      expect(view.getByRole('alert').textContent).toContain('Sep 21, 2026');
-      expect(view.getByRole('alert').textContent).not.toContain('Sep 20, 2026');
+      expect(view.getByRole('status').textContent).toContain('Sep 21, 2026');
+      expect(view.getByRole('status').textContent).not.toContain('Sep 20, 2026');
     } finally {
       process.env.TZ = previous;
     }

@@ -107,7 +107,7 @@ describe('mounted production reliability panels', () => {
       to: now + 1000,
     });
     setReliabilityOwner(owner);
-    await waitFor(() => expect(view.getByRole('alert')).toBeTruthy());
+    await waitFor(() => expect(view.getByRole('status')).toBeTruthy());
     expect(view.container.textContent).not.toContain('private transport detail');
     fail = false;
     await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
@@ -181,10 +181,10 @@ describe('mounted production reliability panels', () => {
     // Move the range and repair that current-range failure through the panel's
     // owned Retry button.
     await view.rerender({ serverId: 'host', actorId: 'actor', orgId: 'org', from: 30, to: 40 });
-    await waitFor(() => expect(view.getByRole('alert')).toBeTruthy());
+    await waitFor(() => expect(view.getByRole('status')).toBeTruthy());
     expect(view.container.textContent).not.toContain('7');
     await fireEvent.click(view.getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(view.container.textContent).toContain('3'));
-    expect(view.queryByRole('alert')).toBeNull();
+    expect(view.queryByRole('status')).toBeNull();
   });
 });
