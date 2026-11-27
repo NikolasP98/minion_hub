@@ -475,6 +475,7 @@ async function stories(options, ledger, tags) {
     options.artifacts && path.join(path.resolve(options.artifacts), 'stories-vitest.json');
   if (reuse) return judge(reuse, false);
   let first = await once();
+  // TODO(handoff): cause unknown (meta proposals/2026-11-20-hub-accessibility-program.md, item 25).
   // Seen twice in CI (master ec24b96b, PR #756): the browser runner goes silent and never ends.
   // A healthy run takes about 6 minutes; a killed one has measured nothing, so it runs again.
   if (first.timedOut) {
