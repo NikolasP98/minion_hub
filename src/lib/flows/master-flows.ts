@@ -549,7 +549,7 @@ const remindersAgentFlow: MasterFlow = {
     'How the Reminders autonomous agent works: an external cron tick scans upcoming bookings, finds due reminder stages (confirmation / 24h / 2h), composes a personalized Spanish WhatsApp message, sends it via the gateway, and mirrors it into the CRM messages ledger. Reconstructed from the hub reminders service.',
   tags: ['autonomous', 'scheduling', 'whatsapp'],
   nodes: [
-    { id: 'tick', kind: 'schedule', title: 'Cron tick (every minute)', subtitle: 'external scheduler → /api/scheduling/reminders/tick (CRON_SECRET)', position: at(0) },
+    { id: 'tick', kind: 'schedule', title: 'Cron tick (every 5 minutes)', subtitle: 'netcup health-gated-tick → /api/scheduling/reminders/tick (CRON_SECRET)', position: at(0) },
     { id: 'enabled', kind: 'guard', title: 'Reminders enabled for org?', subtitle: 'sched_reminder_config.enabled · else skip', position: at(1), branches: [{ id: 'on', label: 'Enabled' }, { id: 'off', label: 'Disabled' }] },
     { id: 'due', kind: 'process', title: 'Find due stages', subtitle: '60-day booking horizon · dueStages(confirmation/24h/2h) · claim-first dedupe', position: at(2) },
     { id: 'optout', kind: 'guard', title: 'Recipient opted out?', subtitle: 'crm_contacts.custom_fields._reminders_opt_out', position: at(3), branches: [{ id: 'ok', label: 'OK' }, { id: 'skip', label: 'Opted out' }] },

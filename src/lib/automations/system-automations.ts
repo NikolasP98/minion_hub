@@ -49,6 +49,16 @@ export interface SystemAutomation {
 export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
   // ── Scheduled on netcup — cadence verified against `crontab -l` ──────────
   { path: '/api/meta/sync/tick', key: 'meta_sync', cadence: 'ten_minutes', wiring: 'netcup' },
+  // Owner OK 2026-11-25: `health-gated-tick reminders` at 1-59/5 on the global lock. Paused the same day (commented
+  // out in the crontab): FACES WhatsApp was not linked, and a failed send is never retried.
+  // TODO(handoff): un-comment the crontab line and flip to 'netcup' once the number is linked and failed sends retry
+  // (proposals/2026-11-25-reminders-failed-send-retry.md).
+  {
+    path: '/api/scheduling/reminders/tick',
+    key: 'reminders',
+    cadence: 'five_minutes',
+    wiring: 'paused',
+  },
   // SUSII is decommissioned; this is a no-op safety net, so hourly is plenty.
   { path: '/api/finances/sync/tick', key: 'finance_sync', cadence: 'hourly', wiring: 'netcup' },
   {
@@ -127,12 +137,6 @@ export const SYSTEM_AUTOMATIONS: SystemAutomation[] = [
     path: '/api/brains/reconcile/tick',
     key: 'brains_reconcile',
     cadence: 'daily',
-    wiring: 'unscheduled',
-  },
-  {
-    path: '/api/scheduling/reminders/tick',
-    key: 'reminders',
-    cadence: 'minute',
     wiring: 'unscheduled',
   },
   {
