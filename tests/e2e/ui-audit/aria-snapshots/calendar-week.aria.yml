@@ -1,0 +1,116 @@
+- main:
+  - status
+  - group "Calendar view":
+    - button "Day"
+    - button "Week" [pressed]
+    - button "Month"
+  - button "Previous"
+  - button "12 – Jan 18"
+  - button "Next"
+  - button "Today"
+  - button "Calendar options"
+  - slider "Hour height — drag down to stretch, up to compress": 07:00 08:00 09:00 10:00 11:00 12:00 13:00 14:00 15:00 16:00 17:00 18:00 19:00 20:00 21:00
+  - text: Mon Dec 22
+  - button "New appointment here"
+  - text: Tue Dec 23
+  - button "New appointment here"
+  - text: Wed Dec 24
+  - button "New appointment here"
+  - text: Thu Dec 25
+  - button "New appointment here"
+  - text: Fri Dec 26
+  - button "New appointment here"
+  - text: Sat Dec 27
+  - button "New appointment here"
+  - text: Sun Dec 28
+  - button "New appointment here"
+  - text: Mon Dec 29
+  - button "New appointment here"
+  - text: Tue Dec 30
+  - button "New appointment here"
+  - text: Wed Dec 31
+  - button "New appointment here"
+  - text: Thu Jan 1
+  - button "New appointment here"
+  - text: Fri Jan 2
+  - button "New appointment here"
+  - text: Sat Jan 3
+  - button "New appointment here"
+  - text: Sun Jan 4
+  - button "New appointment here"
+  - text: Mon Jan 5
+  - button "New appointment here"
+  - text: Tue Jan 6
+  - button "New appointment here"
+  - text: Wed Jan 7
+  - button "New appointment here"
+  - text: Thu Jan 8
+  - button "New appointment here"
+  - text: Fri Jan 9
+  - button "New appointment here"
+  - text: Sat Jan 10
+  - button "New appointment here"
+  - text: Sun Jan 11
+  - button "New appointment here"
+  - text: Mon Jan 12
+  - button "New appointment here"
+  - button "09:00 Consultation Carla Mendoza Monday, January 12, 09:00 to 09:45, Confirmed"
+  - button "09:30 Consultation Jorge Rojas Monday, January 12, 09:30 to 10:30, Pending"
+  - text: Tue Jan 13
+  - button "New appointment here"
+  - button "14:00 Follow-up Li Wong Tuesday, January 13, 14:00 to 14:30, Confirmed"
+  - text: Wed Jan 14
+  - button "New appointment here"
+  - button "11:00 Consultation Pedro Castillo Wednesday, January 14, 11:00 to 11:45, No-show"
+  - text: Thu Jan 15
+  - button "New appointment here"
+  - button "16:00 Consultation Thursday, January 15, 16:00 to 17:00, Confirmed"
+  - text: Fri Jan 16
+  - button "New appointment here"
+  - button "12:00 Consultation Paid visit Friday, January 16, 12:00 to 12:45, Confirmed"
+  - text: Sat Jan 17
+  - button "New appointment here"
+  - text: Sun Jan 18
+  - button "New appointment here"
+  - text: Mon Jan 19
+  - button "New appointment here"
+  - text: Tue Jan 20
+  - button "New appointment here"
+  - text: Wed Jan 21
+  - button "New appointment here"
+  - text: Thu Jan 22
+  - button "New appointment here"
+  - text: Fri Jan 23
+  - button "New appointment here"
+  - text: Sat Jan 24
+  - button "New appointment here"
+  - text: Sun Jan 25
+  - button "New appointment here"
+  - text: Mon Jan 26
+  - button "New appointment here"
+  - text: Tue Jan 27
+  - button "New appointment here"
+  - text: Wed Jan 28
+  - button "New appointment here"
+  - text: Thu Jan 29
+  - button "New appointment here"
+  - text: Fri Jan 30
+  - button "New appointment here"
+  - text: Sat Jan 31
+  - button "New appointment here"
+  - text: Sun Feb 1
+  - button "New appointment here"
+  - text: Mon Feb 2
+  - button "New appointment here"
+  - text: Tue Feb 3
+  - button "New appointment here"
+  - text: Wed Feb 4
+  - button "New appointment here"
+  - text: Thu Feb 5
+  - button "New appointment here"
+  - text: Fri Feb 6
+  - button "New appointment here"
+  - text: Sat Feb 7
+  - button "New appointment here"
+  - text: Sun Feb 8
+  - button "New appointment here"

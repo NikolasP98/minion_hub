@@ -14,6 +14,8 @@ drizzle/meta
 src/lib/notifications/catalog.manifest.json
 # Prebuilt sandbox vendor bundle (bun run vendor:d3)
 static/vendor
+# Aria snapshots are written by the spec (tests/e2e/ui-audit/aria-snapshots.spec.ts)
+tests/e2e/ui-audit/aria-snapshots
 
 # Lock files
 bun.lock

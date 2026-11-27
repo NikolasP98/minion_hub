@@ -1,0 +1,14 @@
+- main:
+  - region "New":
+    - text: New 2
+    - button "Website redesign Garcia Studio"
+    - button "Quarterly SEO retainer Northwind"
+  - region "Contacted":
+    - text: Contacted 1
+    - button "Brand guidelines Lumen"
+  - region "Won":
+    - text: Won 1
+    - button "Logo Pine"
+  - region "Unclassified":
+    - text: Unclassified 1
+    - button "Unassigned lead Unknown"

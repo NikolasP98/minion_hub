@@ -1,0 +1,44 @@
+- main:
+  - textbox "Search…"
+  - text: 5 rows
+  - button "Filter"
+  - button "Columns"
+  - grid "Products":
+    - row "Code Resize Code Name Resize Name Status Resize Status Qty Resize Qty":
+      - columnheader "Code Resize Code":
+        - button "Code"
+        - separator "Resize Code"
+      - columnheader "Name Resize Name":
+        - button "Name"
+        - separator "Resize Name"
+      - columnheader "Status Resize Status":
+        - button "Status"
+        - separator "Resize Status"
+      - columnheader "Qty Resize Qty":
+        - button "Qty"
+        - separator "Resize Qty"
+    - row "SKU-0001 Oak Active 0":
+      - gridcell "SKU-0001"
+      - gridcell "Oak"
+      - gridcell "Active"
+      - gridcell "0"
+    - row "SKU-0002 Hydrating facial serum Paused 37":
+      - gridcell "SKU-0002"
+      - gridcell "Hydrating facial serum"
+      - gridcell "Paused"
+      - gridcell "37"
+    - row "SKU-0003 Pine Archived 24":
+      - gridcell "SKU-0003"
+      - gridcell "Pine"
+      - gridcell "Archived"
+      - gridcell "24"
+    - row "SKU-0004 Consultation Active 11":
+      - gridcell "SKU-0004"
+      - gridcell "Consultation"
+      - gridcell "Active"
+      - gridcell "11"
+    - row "SKU-0005 Lamp Paused 48":
+      - gridcell "SKU-0005"
+      - gridcell "Lamp"
+      - gridcell "Paused"
+      - gridcell "48"

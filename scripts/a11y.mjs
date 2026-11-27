@@ -47,6 +47,7 @@ const LEDGER = path.join(ROOT, 'tests', 'ui-audit', 'a11y-ledger.json');
 const TAGS_FILE = path.join(ROOT, 'tests', 'ui-audit', 'a11y-tags.json');
 const UNMEASURED = 'unmeasured';
 const WORKSHOP_PORT = 18907;
+const ARIA_PORT = 18908;
 
 /** Pure. */
 export function parseArgs(argv) {
@@ -337,7 +338,58 @@ function playwrightFailures(report) {
   return failures;
 }
 
-/** The two credential-free accessibility specs (FR-008): chart canvas and workshop. */
+/**
+ * One fixture-backed spec suite: build `tests/fixtures/<name>` to a fresh directory, serve it
+ * from an owned loopback port, run `playwright.<key>.config.ts` (Chromium) against it.
+ */
+async function fixtureSuite(name, key, port, record, suites) {
+  const KEY = key.toUpperCase();
+  const fixture = path.join(mkdtempSync(path.join(tmpdir(), `minion-a11y-${key}-`)), 'out');
+  const built = await run('node', [`tests/fixtures/${name}/build.mjs`], {
+    [`MINION_${KEY}_FIXTURE_OUT`]: fixture,
+  });
+  if (built.code !== 0)
+    return suites.push({ name, status: 'error', failures: ['fixture build failed'] });
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+  const server = createServer((request, response) => {
+    const pathname = new URL(request.url ?? '/', 'http://x').pathname;
+    const file = path.join(fixture, path.normalize(pathname === '/' ? '/index.html' : pathname));
+    if (!file.startsWith(fixture) || !existsSync(file) || !statSync(file).isFile()) {
+      response.writeHead(404).end();
+      return;
+    }
+    response.writeHead(200, {
+      'content-type': types[path.extname(file)] ?? 'application/octet-stream',
+    });
+    response.end(readFileSync(file));
+  });
+  await new Promise((resolve, reject) =>
+    server.once('error', reject).listen(port, '127.0.0.1', resolve),
+  );
+  const report = path.join(OUT, `${key}.json`);
+  try {
+    // TODO(handoff): Chromium only; the configs' Firefox and WebKit projects are not in CI yet
+    // (meta proposals/2026-11-20-hub-accessibility-program.md, S0 open ends).
+    await run(
+      'node',
+      [...playwright, '--config', `playwright.${key}.config.ts`, '--project', 'chromium'],
+      {
+        [`MINION_${KEY}_URL`]: `http://127.0.0.1:${port}`,
+        [`MINION_${KEY}_RESULTS`]: path.join('test-results', `a11y-${key}`),
+        [`MINION_${KEY}_REPORT`]: report,
+      },
+    );
+  } finally {
+    server.closeAllConnections();
+    server.close();
+  }
+  record(name, report);
+}
+
+/**
+ * The three credential-free accessibility specs (FR-008; spec 155): chart canvas, workshop and
+ * the aria snapshots of five complex widgets.
+ */
 async function specs() {
   const suites = [];
   const record = (name, file) => {
@@ -368,52 +420,11 @@ async function specs() {
   );
   record('canvas-accessibility', canvas);
 
-  const fixture = path.join(mkdtempSync(path.join(tmpdir(), 'minion-a11y-workshop-')), 'out');
-  const built = await run('node', ['tests/fixtures/workshop-accessibility/build.mjs'], {
-    MINION_WORKSHOP_FIXTURE_OUT: fixture,
-  });
-  if (built.code !== 0) {
-    suites.push({
-      name: 'workshop-accessibility',
-      status: 'error',
-      failures: ['fixture build failed'],
-    });
-  } else {
-    const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
-    const server = createServer((request, response) => {
-      const name = new URL(request.url ?? '/', 'http://x').pathname;
-      const file = path.join(fixture, path.normalize(name === '/' ? '/index.html' : name));
-      if (!file.startsWith(fixture) || !existsSync(file) || !statSync(file).isFile()) {
-        response.writeHead(404).end();
-        return;
-      }
-      response.writeHead(200, {
-        'content-type': types[path.extname(file)] ?? 'application/octet-stream',
-      });
-      response.end(readFileSync(file));
-    });
-    await new Promise((resolve, reject) =>
-      server.once('error', reject).listen(WORKSHOP_PORT, '127.0.0.1', resolve),
-    );
-    const workshop = path.join(OUT, 'workshop.json');
-    try {
-      // TODO(handoff): Chromium only; the config's Firefox and WebKit projects are not in CI yet
-      // (meta proposals/2026-11-20-hub-accessibility-program.md, S0 open ends).
-      await run(
-        'node',
-        [...playwright, '--config', 'playwright.workshop.config.ts', '--project', 'chromium'],
-        {
-          MINION_WORKSHOP_URL: `http://127.0.0.1:${WORKSHOP_PORT}`,
-          MINION_WORKSHOP_RESULTS: path.join('test-results', 'a11y-workshop'),
-          MINION_WORKSHOP_REPORT: workshop,
-        },
-      );
-    } finally {
-      server.closeAllConnections();
-      server.close();
-    }
-    record('workshop-accessibility', workshop);
-  }
+  // TODO(handoff): Chromium only; the workshop config's Firefox and WebKit projects are not in
+  // CI yet (meta proposals/2026-11-20-hub-accessibility-program.md, S0 open ends).
+  await fixtureSuite('workshop-accessibility', 'workshop', WORKSHOP_PORT, record, suites);
+  // What a screen reader is given for five complex widgets, pinned as files (spec 155).
+  await fixtureSuite('aria-snapshots', 'aria', ARIA_PORT, record, suites);
   return { status: suites.every((suite) => suite.status === 'pass') ? 'pass' : 'fail', suites };
 }
 

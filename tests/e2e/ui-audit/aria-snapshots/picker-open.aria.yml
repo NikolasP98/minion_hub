@@ -1,0 +1,56 @@
+- main:
+  - button "Open picker"
+- dialog "Add a service":
+  - toolbar "Add a service":
+    - heading "Add a service" [level=2]
+    - text: Add a service
+    - button "Fullscreen"
+    - button "Close"
+  - paragraph: Alt+Arrow keys move the window; Shift+Alt+Arrow keys resize it; Escape closes.
+  - searchbox "Search entries…"
+  - text: 5 results
+  - grid "Add a service":
+    - row "Name Resize Name SKU Resize SKU Price Resize Price Row actions":
+      - columnheader "Name Resize Name":
+        - text: Name
+        - separator "Resize Name"
+      - columnheader "SKU Resize SKU":
+        - text: SKU
+        - separator "Resize SKU"
+      - columnheader "Price Resize Price":
+        - text: Price
+        - separator "Resize Price"
+      - columnheader "Row actions"
+    - row "Keratin treatment SKU-1000 S/ 17.50 Add this entry":
+      - gridcell "Keratin treatment"
+      - gridcell "SKU-1000"
+      - gridcell "S/ 17.50"
+      - gridcell "Add this entry":
+        - button "Add this entry"
+    - row "Haircut SKU-1001 S/ 35.00 Add this entry":
+      - gridcell "Haircut"
+      - gridcell "SKU-1001"
+      - gridcell "S/ 35.00"
+      - gridcell "Add this entry":
+        - button "Add this entry"
+    - row "Beard trim SKU-1002 S/ 52.50 Add this entry":
+      - gridcell "Beard trim"
+      - gridcell "SKU-1002"
+      - gridcell "S/ 52.50"
+      - gridcell "Add this entry":
+        - button "Add this entry"
+    - row "Hair colour SKU-1003 S/ 70.00 Add this entry":
+      - gridcell "Hair colour"
+      - gridcell "SKU-1003"
+      - gridcell "S/ 70.00"
+      - gridcell "Add this entry":
+        - button "Add this entry"
+    - row "Manicure SKU-1004 S/ 87.50 Add this entry":
+      - gridcell "Manicure"
+      - gridcell "SKU-1004"
+      - gridcell "S/ 87.50"
+      - gridcell "Add this entry":
+        - button "Add this entry"
+  - contentinfo:
+    - paragraph: Double-click a row to add it. Use arrow keys to move between rows.
+  - button "Resize window"
