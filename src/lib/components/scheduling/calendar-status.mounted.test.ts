@@ -75,49 +75,57 @@ describe('block status line and name', () => {
 
 describe('range live region', () => {
   const touch = () => document.dispatchEvent(new Event('pointerdown'));
+  // The calendar speaks through the shared announcer (spec 155), not a region of its own.
+  const said = () => document.querySelector('[data-announcer="polite"]')?.textContent ?? '';
+  const frame = () => vi.advanceTimersByTimeAsync(20); // the announcer sets its text on a frame
+  afterEach(() => {
+    for (const el of document.querySelectorAll('[data-announcer]')) el.textContent = '';
+  });
 
   it('is empty on mount, then announces once, 300 ms after the last change', async () => {
     vi.useFakeTimers();
     const { container, rerender } = mount();
-    const region = container.querySelector('[role="status"].sr-only')!;
-    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(container.querySelector('[aria-live]')).toBeNull(); // no private live region
     await vi.advanceTimersByTimeAsync(400);
     touch();
-    expect(region.textContent).toBe('');
+    expect(said()).toBe('');
     await rerender({ view: 'week' });
     await vi.advanceTimersByTimeAsync(200);
     await rerender({ view: 'month' });
     await vi.advanceTimersByTimeAsync(299);
-    expect(region.textContent).toBe('');
+    expect(said()).toBe('');
     await vi.advanceTimersByTimeAsync(1);
     await tick();
-    expect(region.textContent).toMatch(/^Month: .+, 1 appointment$/);
+    await frame();
+    expect(said()).toMatch(/^Month: .+, 1 appointment$/);
   });
 
   it('says nothing before the user touches the page', async () => {
     vi.useFakeTimers();
-    const { container, rerender } = mount();
+    const { rerender } = mount();
     await vi.advanceTimersByTimeAsync(400);
     await rerender({ view: 'month' });
     await vi.advanceTimersByTimeAsync(400);
-    expect(container.querySelector('[role="status"].sr-only')!.textContent).toBe('');
+    await frame();
+    expect(said()).toBe('');
   });
 
   it('waits for the range to load, then counts what landed (cancelled excluded)', async () => {
     vi.useFakeTimers();
-    const { container, rerender } = mount({ bookings: [] });
-    const region = container.querySelector('[role="status"].sr-only')!;
+    const { rerender } = mount({ bookings: [] });
     await vi.advanceTimersByTimeAsync(400);
     touch();
     await rerender({ view: 'month', busy: true });
     await vi.advanceTimersByTimeAsync(1000);
-    expect(region.textContent).toBe('');
+    await frame();
+    expect(said()).toBe('');
     await rerender({
       busy: false,
       bookings: [SUBJECT, { ...SUBJECT, id: 'x-cancelled', status: 'cancelled' }],
     });
     await vi.advanceTimersByTimeAsync(300);
     await tick();
-    expect(region.textContent).toMatch(/^Month: .+, 1 appointment$/);
+    await frame();
+    expect(said()).toMatch(/^Month: .+, 1 appointment$/);
   });
 });

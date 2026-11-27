@@ -64,7 +64,7 @@
       {#if emptyAction}<div class="state-action">{@render emptyAction()}</div>{/if}
     </div>
   {:else if state.kind === 'error'}
-    <div class="async-state" role="alert">
+    <div class="async-state" role="status">
       <span class="state-icon" aria-hidden="true"><AlertTriangle size={20} /></span>
       <h3>{state.title ?? m.common_error()}</h3>
       {#if state.description}<p>{state.description}</p>{/if}
@@ -82,7 +82,7 @@
       {#if forbiddenAction}<div class="state-action">{@render forbiddenAction()}</div>{/if}
     </div>
   {:else}
-    <div class="async-state" role="alert">
+    <div class="async-state" role="status">
       <span class="state-icon" aria-hidden="true"><WifiOff size={20} /></span>
       <h3>{state.title}</h3>
       {#if state.description}<p>{state.description}</p>{/if}

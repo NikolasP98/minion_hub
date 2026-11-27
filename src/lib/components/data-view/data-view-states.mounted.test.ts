@@ -103,7 +103,7 @@ describe('CollectionState matrix', () => {
     const t = mount('partial', 'finance totals');
     expect(t.rows()).not.toBeNull();
     const banner = t.view.container.querySelector<HTMLElement>(STATE)!;
-    expect(banner.getAttribute('role')).toBe('alert');
+    expect(banner.getAttribute('role')).toBe('status');
     expect(banner.textContent).toContain('finance totals');
     await clickRetryOnce(t);
   });

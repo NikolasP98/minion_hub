@@ -4,11 +4,29 @@
   import Popover from '$lib/components/ui/Popover.svelte';
   import { Button } from '@minion-stack/ui';
   import * as m from '$lib/paraglide/messages';
+  import { announce } from '$lib/a11y/announce';
   import type { ActionRuntime, ActionRecord } from '$lib/services/actions/runtime.svelte';
 
   let { actions, connecting = false }: { actions: ActionRuntime; connecting?: boolean } = $props();
   const visible = $derived(actions.indicatorVisible || connecting);
   let open = $state(false);
+  // Spoken through the shared announcer, when the text changes.
+  $effect(() => {
+    if (visible) announce(m.common_loading());
+  });
+  const summary = $derived(
+    [
+      actions.backgroundJobs ? m.asyncAction_jobs({ count: String(actions.backgroundJobs) }) : '',
+      actions.attentionRequired
+        ? m.asyncAction_attention({ count: String(actions.attentionRequired) })
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  $effect(() => {
+    if (summary) announce(summary);
+  });
   function label(action: ActionRecord) {
     if (action.definitionId.startsWith('table.')) return m.asyncAction_table();
     if (action.definitionId.startsWith('finance.')) return m.asyncAction_finance();
@@ -30,17 +48,10 @@
   }
 </script>
 
-<div class="sr-only" role="status">{visible ? m.common_loading() : ''}</div>
 {#if visible}
   <div class="global-activity" aria-hidden="true"><ProgressBar value={null} size="sm" /></div>
 {/if}
 
-<div class="sr-only" role="status">
-  {actions.backgroundJobs ? m.asyncAction_jobs({ count: String(actions.backgroundJobs) }) : ''}
-  {actions.attentionRequired
-    ? m.asyncAction_attention({ count: String(actions.attentionRequired) })
-    : ''}
-</div>
 {#if actions.backgroundJobs || actions.attentionRequired}
   <!-- A page that reserved the corner (calendar "+") stacks: button, assistant launcher, then this. -->
   <div

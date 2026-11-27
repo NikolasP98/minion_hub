@@ -268,7 +268,7 @@ describe('CustomPropertyManager', () => {
 
     const save = screen.getByRole('button', { name: /^Save$|^Guardar$/i });
     await waitFor(() => expect((save as HTMLButtonElement).disabled).toBe(true));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    expect((await screen.findByRole('status')).textContent).toMatch(
       /syntax|sintaxis|field|campo|formula|fórmula/i,
     );
   });

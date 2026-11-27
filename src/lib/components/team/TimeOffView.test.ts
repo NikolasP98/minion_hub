@@ -58,11 +58,11 @@ it('shows a real balance read failure in the request dialog and retries without 
   const view = render(TimeOffView, { props });
   const dialog = await view.findByRole('dialog');
   await waitFor(() =>
-    expect(within(dialog).getByRole('alert').textContent).toContain('Balance unavailable'),
+    expect(within(dialog).getByRole('status').textContent).toContain('Balance unavailable'),
   );
   await fireEvent.click(within(dialog).getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(dialog.textContent).toContain('7'));
-  await waitFor(() => expect(within(dialog).queryByRole('alert')).toBeNull());
+  await waitFor(() => expect(within(dialog).queryByRole('status')).toBeNull());
   expect(view.getByRole('dialog')).toBe(dialog);
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(dialog.textContent).toContain('7');

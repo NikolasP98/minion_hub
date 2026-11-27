@@ -47,7 +47,7 @@ const booking = (id: string, start = '2026-10-03T15:00:00Z'): TeamBooking => ({
 const scroller = () => Object.assign(document.createElement('div'), { scrollLeft: 0 });
 
 describe('Team read states', () => {
-  it('shows a denied balance as an alert, then retry loads the actual balance', async () => {
+  it('shows a denied balance as a notice, then retry loads the actual balance', async () => {
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -58,14 +58,14 @@ describe('Team read states', () => {
     const { read, view } = await mount();
     await read.load('/api/scheduling/hr/leave-requests?balance=1');
     await tick();
-    expect(within(view.getByTestId('read')).getByRole('alert').textContent).toContain(
+    expect(within(view.getByTestId('read')).getByRole('status').textContent).toContain(
       'scheduling: view required',
     );
     expect(read.data).toBeNull();
     await fireEvent.click(within(view.getByTestId('read')).getByRole('button', { name: 'Retry' }));
     await vi.waitFor(() => expect(read.data).toEqual({ balance: 8 }));
     await tick();
-    expect(within(view.getByTestId('read')).queryByRole('alert')).toBeNull();
+    expect(view.getByTestId('read').querySelector('.async-state')).toBeNull(); // the balance itself is an <output>
     expect(within(view.getByTestId('read')).getByText('8')).toBeTruthy();
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -102,7 +102,7 @@ describe('Team read states', () => {
     const { read, view } = await mount();
     await read.load('/balance');
     await tick();
-    expect(within(view.getByTestId('read')).getByRole('alert').textContent).toContain(
+    expect(within(view.getByTestId('read')).getByRole('status').textContent).toContain(
       'Network request failed',
     );
     expect(read.data).toBeNull();
@@ -136,7 +136,7 @@ describe('Team read states', () => {
     expect(firstUrl.searchParams.get('to')).toBe('2026-10-06T04:59:59.999Z');
     await vi.waitFor(() => expect(timeline.errors).toHaveLength(1));
     await tick();
-    expect(within(view.getByTestId('timeline')).getByRole('alert').textContent).toContain(
+    expect(within(view.getByTestId('timeline')).getByRole('status').textContent).toContain(
       'permission denied',
     );
     await fireEvent.click(

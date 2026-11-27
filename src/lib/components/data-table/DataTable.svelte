@@ -4030,7 +4030,7 @@
     {@attach gridTabStops}
   >
     {#if hasError}
-      <div class="flex items-center justify-center h-full p-8" role="alert">
+      <div class="flex items-center justify-center h-full p-8" role="status">
         {#if errorContent}
           {@render errorContent(error)}
         {:else}

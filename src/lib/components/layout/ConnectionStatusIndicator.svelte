@@ -94,9 +94,10 @@
     error: 'bg-destructive text-destructive shadow-[var(--shadow-status-glow)]',
   };
   const STATUS_LABEL: Record<DotState, () => string> = {
-    connected: () => 'Connected',
-    connecting: () => (expectedRestart ? 'Restarting' : 'Reconnecting'),
-    error: () => 'Disconnected',
+    connected: () => m.conn_connected(),
+    connecting: () =>
+      expectedRestart ? m.conn_restarting() : m.usersui_channelStateReconnecting(),
+    error: () => m.conn_notConnected(),
   };
   const STATUS_TEXT_CLASS: Record<DotState, string> = {
     connected: 'text-success',

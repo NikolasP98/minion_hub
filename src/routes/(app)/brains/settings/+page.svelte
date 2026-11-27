@@ -215,7 +215,7 @@
         </div>
 
         {#if data.enrichment.status === 'degraded'}
-          <div class="degraded-status" role="alert">
+          <div class="degraded-status">
             <p class="t-label">{m.brains_settings_degraded()}</p>
             <ul>
               {#each data.enrichment.reasons as reason}
