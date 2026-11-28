@@ -986,10 +986,47 @@ jobs:
           bun run i18n:compile
           bunx svelte-kit sync
 
+      # The ~150 system packages Firefox and WebKit need come from the runner's Ubuntu mirror,
+      # which at times serves them at a few kB/s: that step then took 15-40 min and every
+      # 40-minute cancellation of this job (4 of 171 runs, Nov 14-27) started there. apt reuses a
+      # downloaded .deb of the same version, so the cached ones are never fetched again.
+      - name: Name the system-package cache (runner image + Playwright version)
+        id: browser-debs-key
+        run: |
+          echo "prefix=critical-browser-debs-$ImageOS-pw$(node -p "require('@playwright/test/package.json').version")-" >> "$GITHUB_OUTPUT"
+          echo "image=$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the browser system-package cache
+        id: browser-debs
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/critical-browser-debs
+          key: ${{ steps.browser-debs-key.outputs.prefix }}${{ steps.browser-debs-key.outputs.image }}
+          restore-keys: ${{ steps.browser-debs-key.outputs.prefix }}
+
       - name: Install the lockfile-selected browser matrix
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/critical-playwright-browsers
-        run: node node_modules/@playwright/test/cli.js install --with-deps chromium firefox webkit
+          BROWSER_DEBS: ${{ runner.temp }}/critical-browser-debs
+        run: |
+          mkdir -p "$BROWSER_DEBS"
+          echo 'APT::Keep-Downloaded-Packages "true";' | sudo tee /etc/apt/apt.conf.d/99-keep-browser-debs > /dev/null
+          shopt -s nullglob
+          cached=("$BROWSER_DEBS"/*.deb)
+          if (( ${#cached[@]} )); then sudo cp "${cached[@]}" /var/cache/apt/archives/; fi
+          node node_modules/@playwright/test/cli.js install --with-deps chromium firefox webkit
+          # Drop versions the mirror no longer offers, so the cache does not grow with each image.
+          sudo apt-get autoclean -qq
+          kept=(/var/cache/apt/archives/*.deb)
+          if (( ${#kept[@]} )); then cp "${kept[@]}" "$BROWSER_DEBS"/; fi
+          echo "browser system packages: ${#cached[@]} restored from cache, ${#kept[@]} kept for the next run"
+
+      - name: Save the browser system-package cache
+        if: steps.browser-debs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/critical-browser-debs
+          key: ${{ steps.browser-debs.outputs.cache-primary-key }}
 
       - name: Run the full credential-free critical-journeys matrix
         env:
