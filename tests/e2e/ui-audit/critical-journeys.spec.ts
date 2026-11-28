@@ -81,6 +81,20 @@ test.beforeEach(async ({ page, browser }, info) => {
   });
 });
 test.afterEach(async ({ page }, info) => {
+  // DIAG ONLY (branch diag/webkit-flake): native stacks of every browser process the moment a journey fails.
+  if (info.status !== info.expectedStatus && process.env.DIAG_GDB) {
+    const { execSync } = await import('node:child_process');
+    const stamp = Date.now();
+    const pids = execSync(`pgrep -f "${process.env.PLAYWRIGHT_BROWSERS_PATH}" || true`).toString().trim().split(/\s+/).filter(Boolean);
+    let dump = `failed at ${stamp} (${info.title} / ${info.project.name}): ${info.error?.message?.slice(0, 300)}\n`;
+    for (const pid of pids) {
+      try {
+        dump += `\n===== pid ${pid} ${execSync(`ps -o comm=,rss=,pcpu= -p ${pid} || true`).toString().trim()}\n`;
+        dump += execSync(`sudo timeout 20 gdb -batch -p ${pid} -ex 'thread apply all bt 40' 2>&1 || true`, { maxBuffer: 64 << 20 }).toString();
+      } catch (e) { dump += String(e); }
+    }
+    fs.writeFileSync(path.join(process.env.MINION_CRITICAL_EVIDENCE!, `gdb-${stamp}.txt`), dump);
+  }
   await info.attach('network-boundary', {
     body: JSON.stringify({
       unexpectedNativeRequestsOrErrors: violations.get(page) ?? [],
