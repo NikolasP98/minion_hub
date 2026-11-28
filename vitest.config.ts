@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import path from 'node:path';
 import { NATIVE_POSTGRES_EXCLUDES } from './scripts/qc/native-postgres-manifest';
 import { fileURLToPath } from 'node:url';
+import tailwindcss from '@tailwindcss/vite';
 import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
 import { playwright } from '@vitest/browser-playwright';
 const dirname =
@@ -63,9 +64,10 @@ const unitTest = {
 const storybookProject = () => ({
   extends: true,
   plugins: [
-    // TODO(handoff): This lane omits Tailwind processing; align its CSS producer
-    // and qualify the broad styled-story regressions before enabling it. See meta
-    // proposals/2026-11-23-storybook-vitest-css-producer-parity.md.
+    // The same CSS producer as the app and the built Storybook: without it `@theme` is never
+    // processed, the page stays white and every contrast measurement is against the wrong
+    // background (meta proposals/2026-11-23-storybook-vitest-css-producer-parity.md).
+    tailwindcss(),
     // The plugin will run tests for the stories defined in your Storybook config
     // See options at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon#storybooktest
     storybookTest({
