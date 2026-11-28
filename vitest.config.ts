@@ -76,6 +76,9 @@ const storybookProject = () => ({
   define: {
     __APP_VERSION__: JSON.stringify('storybook'),
   },
+  // Prebundled up front: found mid-run, Vite re-optimizes and reloads the browser page, the
+  // story files then fail to import and the runner has twice hung on that reload in CI.
+  optimizeDeps: { include: ['@zag-js/steps', '@inlang/paraglide-sveltekit/internal'] },
   test: {
     name: 'storybook',
     // The Storybook dev server gets $lib/$server from the SvelteKit plugin; this
